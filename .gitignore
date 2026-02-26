@@ -1,0 +1,11 @@
+# Directories
+.tmp.driveupload/
+.tmp.drivedownload/
+.agent/
+.claude/
+
+# Configuration and Rule Files
+.antigravityrules
+CLAUDE.md
+JULES.md
+GEMINI.md
