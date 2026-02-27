@@ -384,6 +384,51 @@ function Wise:SetFrameEditMode(f, name, enabled)
                 end
             end
 
+            -- Off-screen placement check
+            local minLeft = self:GetLeft()
+            local minBottom = self:GetBottom()
+            local maxRight = self:GetRight()
+            local maxTop = self:GetTop()
+
+            if self.buttons then
+                for _, btn in ipairs(self.buttons) do
+                    if btn:IsShown() then
+                        local bLeft = btn:GetLeft()
+                        local bBottom = btn:GetBottom()
+                        local bRight = btn:GetRight()
+                        local bTop = btn:GetTop()
+
+                        if bLeft and bLeft < minLeft then minLeft = bLeft end
+                        if bBottom and bBottom < minBottom then minBottom = bBottom end
+                        if bRight and bRight > maxRight then maxRight = bRight end
+                        if bTop and bTop > maxTop then maxTop = bTop end
+                    end
+                end
+            end
+
+            local uiW = UIParent:GetWidth()
+            local uiH = UIParent:GetHeight()
+            local dx, dy = 0, 0
+
+            if minLeft and minLeft < 0 then
+                dx = -minLeft
+            elseif maxRight and maxRight > uiW then
+                dx = uiW - maxRight
+            end
+
+            if minBottom and minBottom < 0 then
+                dy = -minBottom
+            elseif maxTop and maxTop > uiH then
+                dy = uiH - maxTop
+            end
+
+            if dx ~= 0 or dy ~= 0 then
+                xOfs = xOfs + dx
+                yOfs = yOfs + dy
+                self:ClearAllPoints()
+                self:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
+            end
+
             -- Update Saved Variables
             if WiseDB.groups[name] and WiseDB.groups[name].anchorMode ~= "mouse" then
                 WiseDB.groups[name].anchor = {point=point, x=xOfs, y=yOfs}
