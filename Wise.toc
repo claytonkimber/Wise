@@ -8,7 +8,7 @@
 ## Version: @project-version@
 ## SavedVariables: WiseDB
 ## OptionalDeps: LargerMacroIconSelection, Masque
-## IconTexture: Interface\AddOns\Wise\Media\WiseLogo
+## IconTexture: Interface\AddOns\Wise\Media\WiseLogo.tga
 
 # Libraries
 Libs\LibDBIcon\embeds.xml
