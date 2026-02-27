@@ -44,4 +44,5 @@ modules\BugReport.lua
 
 # Wiser
 wiser\SmartItem.lua
+wiser\Forms.lua
 wiser\BarCopy.lua
