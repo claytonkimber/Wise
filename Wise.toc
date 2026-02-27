@@ -1,11 +1,12 @@
 ## Interface: 120001, 120000
 ## Title: Wise
-## Notes: A flexible ring menu addon.
+## Notes: A flexible action bar rework with smart features and account wide settings.
 ## Author: Wise
 ## X-Category: Interface Enhancements
 ## X-License: MIT
 ## X-Website:
 ## Version: @project-version@
+## X-Curse-Project-ID: 1473207
 ## SavedVariables: WiseDB
 ## OptionalDeps: LargerMacroIconSelection, Masque
 ## IconTexture: Interface\AddOns\Wise\Media\WiseLogoSquare_512.tga
