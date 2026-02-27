@@ -98,8 +98,18 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
     button2 = "Cancel",
     OnAccept = function(self, data)
         if data.oldOwner then
-            Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+            if data.oldSlot == "SYSTEM" then
+                -- It's a WoW system binding
+                SetBinding(data.key)
+                local currentSet = GetCurrentBindingSet()
+                if currentSet == 1 or currentSet == 2 then
+                    SaveBindings(currentSet)
+                end
+            else
+                Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+            end
         end
+
         if data.isSlotBinding then
             data.group.actions[data.slotIdx].keybind = data.key
         else
@@ -130,9 +140,12 @@ function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
     local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
     if oldOwner then
         local ownerText = oldOwner
-        if oldSlot then
+        if oldSlot == "SYSTEM" then
+            ownerText = oldOwner
+        elseif oldSlot then
             ownerText = oldOwner .. " (Slot " .. oldSlot .. ")"
         end
+
         -- If it's the exact same binding, do nothing special
         if oldOwner == Wise.selectedGroup and oldSlot == slotIdx then
              return false -- No conflict with itself
