@@ -77,6 +77,35 @@ function Wise:FormatKeybindText(text)
     return text
 end
 
+function Wise:FindKeybindOwner(key)
+    if not key or key == "" then return nil, nil end
+    for groupName, group in pairs(WiseDB.groups) do
+        if group.binding == key then
+            return groupName, nil
+        end
+        if group.actions then
+            for slotIdx, actionList in pairs(group.actions) do
+                if actionList.keybind == key then
+                    return groupName, slotIdx
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+function Wise:ClearKeybind(groupName, slotIdx)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+    if slotIdx then
+        if group.actions and group.actions[slotIdx] then
+            group.actions[slotIdx].keybind = nil
+        end
+    else
+        group.binding = nil
+    end
+end
+
 -- Returns binding text specifically for the interface list (sidebar).
 -- Returns explicit interface binding if exists, otherwise "**" if any slot is bound.
 function Wise:GetInterfaceListBindingText(groupName)

@@ -92,6 +92,67 @@ local function CreateConditionValidator(editBox, panel)
     return status
 end
 
+StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
+    text = "Key '%s' is currently bound to '%s'. Use anyway?",
+    button1 = "Yes",
+    button2 = "Cancel",
+    OnAccept = function(self, data)
+        if data.oldOwner then
+            Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+        end
+        if data.isSlotBinding then
+            data.group.actions[data.slotIdx].keybind = data.key
+        else
+            data.group.binding = data.key
+        end
+        Wise:UpdateBindings()
+        if data.btn then
+            data.btn:SetText(data.key)
+        end
+        Wise:UpdateOptionsUI()
+    end,
+    OnCancel = function(self, data)
+        -- Revert text
+        if data.btn then
+            if data.isSlotBinding then
+                data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
+            else
+                data.btn:SetText(data.group.binding or "None")
+            end
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
+function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
+    local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
+    if oldOwner then
+        local ownerText = oldOwner
+        if oldSlot then
+            ownerText = oldOwner .. " (Slot " .. oldSlot .. ")"
+        end
+        -- If it's the exact same binding, do nothing special
+        if oldOwner == Wise.selectedGroup and oldSlot == slotIdx then
+             return false -- No conflict with itself
+        end
+
+        local data = {
+            key = key,
+            group = group,
+            slotIdx = slotIdx,
+            isSlotBinding = isSlotBinding,
+            oldOwner = oldOwner,
+            oldSlot = oldSlot,
+            btn = btn
+        }
+        StaticPopup_Show("WISE_CONFIRM_BINDING_OVERWRITE", key, ownerText, data)
+        return true
+    end
+    return false
+end
+
 local function UpdateConditionStr(str, token, enable)
     str = str or ""
     -- Simple check if token exists
@@ -923,15 +984,20 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
                         end
                     end
 
-                    slot.keybind = mods .. key
-                    self:SetText(mods .. key)
-
-                    Wise:UpdateBindings()
-
+                    local fullKey = mods .. key
                     self:EnableKeyboard(false)
                     self:EnableMouseWheel(false)
                     self:SetScript("OnKeyDown", nil)
                     self:SetScript("OnMouseWheel", nil)
+
+                    if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
+                        return
+                    end
+
+                    slot.keybind = fullKey
+                    self:SetText(fullKey)
+
+                    Wise:UpdateBindings()
                     Wise:UpdateOptionsUI()
                 end
 
@@ -2502,13 +2568,18 @@ function Wise:RenderGroupProperties(panel, group, y)
                      if IsControlKeyDown() then mods = mods .. "CTRL-" end
                      if IsShiftKeyDown() then mods = mods .. "SHIFT-" end
 
-                     group.actions[Wise.selectedSlot].keybind = mods .. key
-                     self:SetText(mods .. key)
-
-                     Wise:UpdateBindings()
-
+                     local fullKey = mods .. key
                      self:EnableKeyboard(false)
                      self:SetScript("OnKeyDown", nil)
+
+                     if Wise:CheckBindingConflict(fullKey, group, Wise.selectedSlot, true, self) then
+                         return
+                     end
+
+                     group.actions[Wise.selectedSlot].keybind = fullKey
+                     self:SetText(fullKey)
+
+                     Wise:UpdateBindings()
                  end)
              end
          end)
@@ -2929,14 +3000,19 @@ function Wise:RenderGroupProperties(panel, group, y)
                         end
                     end
 
-                    group.binding = mods .. key
-
-                    Wise:UpdateBindings()
-
+                    local fullKey = mods .. key
                     self:EnableKeyboard(false)
                     self:EnableMouseWheel(false)
                     self:SetScript("OnKeyDown", nil)
                     self:SetScript("OnMouseWheel", nil)
+
+                    if Wise:CheckBindingConflict(fullKey, group, nil, false, self) then
+                        return
+                    end
+
+                    group.binding = fullKey
+
+                    Wise:UpdateBindings()
                     Wise:UpdateOptionsUI()
                 end
 
