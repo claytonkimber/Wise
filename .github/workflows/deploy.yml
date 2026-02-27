@@ -1,0 +1,41 @@
+name: Package and Release
+
+on:
+  push:
+    tags:
+      - '*.*.release' # This only triggers when you push a tag ending in .release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse Tag and Generate Version
+        id: versioning
+        run: |
+          # Example input tag: 1.0.release
+          TAG=${GITHUB_REF_NAME}
+          
+          # Remove '.release' to get '1.0'
+          BASE_VERSION=${TAG%.release}
+          
+          # Get current date in YYYYMMDD format
+          DATE=$(date +'%Y%m%d')
+          
+          # Combine them: 1.0.20260227
+          FULL_VERSION="${BASE_VERSION}.${DATE}"
+          
+          echo "Full version is $FULL_VERSION"
+          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package and Upload
+        uses: BigWigsMods/packager@v2
+        with:
+          # Use the generated version from the previous step
+          args: -g "${{ steps.versioning.outputs.version }}" -r "release"
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
