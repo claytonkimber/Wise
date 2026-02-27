@@ -90,7 +90,7 @@ The default macro editor is... limited. Wise can add *any number* of macros that
 
 ## Comparison (Or: Why Not Use X?)
 
-Let me be clear: The addons listed below are **masterpieces**. Their authors are legends. I am just a guy with an LLM subscription and a dream. Wise is not a replacement; it's an alternative vision.
+Let me be clear: The addons listed below are masterpieces. Their authors are legends. Wise is an alternative vision.
 
 ### vs. OPie
 **OPie** is the GOAT of ring menus. It's stable, efficient, and handles everything perfectly.
