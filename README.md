@@ -1,7 +1,5 @@
 # Wise Addon
 
-*(Or: How I Learned to Stop Worrying and Love AI-Generated Lua Code)*
-
 ![Wise Logo](Media/WiseLogo.jpg)
 
 ## What is Wise?
