@@ -13,8 +13,6 @@ What sets Wise apart is that there are no individual profiles for different toon
 *   Want your flying/mount/toys key bindings to be the same on every toon you have, even if you just created it?  Wise.
 *   Want to have dynamically adjusting item bars/buttons based on what you have in your bags and across all toons?  Wise.
 
-Basically, I wanted a thing that does *exactly* what I want, but I didn't want to spend 40 hours learning the WoW API and Lua quirks because, let's be real, I have actual work to do. I have Slack notifications piling up as we speak. So, I asked an AI to write it for me. Does it work? Yes. Do I know how? Mostly.
-
 **Wise** lets you create:
 *   **Lines:"** Action bars, essentially
 *   **Circles:** Because Fitts's Law is a thing, even if I'm too busy to explain it.
@@ -82,7 +80,7 @@ Hate writing Lua conditions. So Wise has checkboxes for the easy stuff.
 ![Visibility Settings](Media/Visibility_settings.jpg)
 
 ### 7. Macros 
-The default macro editor is... limited. Wise can add any number of macros that you want.  They aren't tied to the in game macros.  Wise's editor has syntax highlighting (well, it colors spell names blue if they exist, and red if you typo'd them). It's the little things. **Also a WIP**
+The default macro editor is... limited. Wise can add *any number* of macros that you want.  They aren't tied to the in game macros.  Wise's editor has syntax highlighting (well, it colors spell names blue if they exist, and red if you typo'd them). It's the little things. **Also a WIP**
 
 ## Power User Stuff
 
