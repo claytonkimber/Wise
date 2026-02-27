@@ -1288,10 +1288,21 @@ function Wise:GetSecureAttributes(actionData, conditions)
         secureType = "macro"
         if string.sub(aValue, 1, 1) == "/" then
             secureAttr = "macrotext"
+            if hasCond then
+                -- e.g. "/click ActionButton1" -> "/click [possessbar] ActionButton1"
+                local cmd, rest = string.match(aValue, "^(/%a+)%s+(.*)$")
+                if cmd and rest then
+                    secureValue = cmd .. " " .. conditions .. " " .. rest
+                else
+                    secureValue = aValue
+                end
+            else
+                secureValue = aValue
+            end
         else
             secureAttr = "macro"
+            secureValue = aValue
         end
-        secureValue = aValue
     elseif aType == "mount" then
         if C_MountJournal then
             local mountName, spellID = C_MountJournal.GetMountInfoByID(aValue)

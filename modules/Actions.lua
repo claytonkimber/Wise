@@ -1142,7 +1142,7 @@ function Wise:CreateEmbeddedPicker(parent)
     local categories = {
         "Spell", "Items", "Equipped", "Battle pets", "Mounts", "Macros",
         "Equipment sets", "Raid markers", "Toys", "UI panel", "UI Visibility", "Skyriding",
-        "Professions", "Interface", "DataBroker", "Miscellaneous"
+        "Professions", "Interface", "DataBroker", "Miscellaneous", "Override bars"
     }
 
     local prevItem
@@ -1508,6 +1508,7 @@ function Wise:PickerRefresh(filter)
                     if self.data.name then extra.name = self.data.name end
                     if self.data.category then extra.category = self.data.category end
                     if self.data.sourceSpecID then extra.sourceSpecID = self.data.sourceSpecID end
+                    if self.data.conditions then extra.conditions = self.data.conditions end
                     Wise.PickerCallback(self.data.type, self.data.value, extra)
                 end
                 Wise.pickingAction = false
@@ -1966,6 +1967,42 @@ function Wise:GetProfessions(filter)
 end
 
 function Wise:GetDataBroker(filter) return {} end
+
+function Wise:GetOverridebars(filter)
+    local items = {}
+
+    local overrideBarName = "Override Bar Button "
+    for i = 1, 8 do
+        local name = overrideBarName .. i
+        if not filter or string.find(string.lower(name), filter, 1, true) then
+            table.insert(items, {
+                type = "macro",
+                value = "/click OverrideActionBarButton" .. i,
+                name = name,
+                icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+                category = "Override bars",
+                conditions = "[overridebar]"
+            })
+        end
+    end
+
+    local possessBarName = "Possess Bar Button "
+    for i = 1, 8 do
+        local name = possessBarName .. i
+        if not filter or string.find(string.lower(name), filter, 1, true) then
+            table.insert(items, {
+                type = "macro",
+                value = "/click ActionButton" .. i,
+                name = name,
+                icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+                category = "Override bars",
+                conditions = "[possessbar]"
+            })
+        end
+    end
+
+    return items
+end
 
 function Wise:GetMiscellaneous(filter)
     local items = {}
