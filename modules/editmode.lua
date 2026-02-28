@@ -273,7 +273,6 @@ local function CreateEditModeOverlay(f, name)
     if f.EditModeOverlay then return f.EditModeOverlay end
 
     local overlay = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    overlay:SetAllPoints(f)
     overlay:SetFrameLevel(f:GetFrameLevel() + 10) -- Ensure it's on top
 
     -- Semi-transparent background
@@ -306,13 +305,24 @@ local function CreateEditModeOverlay(f, name)
 
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    overlay.label:SetPoint("BOTTOM", overlay, "TOP", 0, 2)
     overlay.label:SetText(name)
     overlay.label:SetTextColor(0, 1, 1, 1)
 
     -- Enable mouse on overlay for click detection and drag forwarding
     overlay:EnableMouse(true)
     overlay:RegisterForDrag("LeftButton")
+
+    overlay:SetScript("OnUpdate", function(self)
+        local _, cy = self:GetCenter()
+        if not cy then return end
+        local screenHeight = (UIParent and UIParent:GetHeight()) or 768
+        self.label:ClearAllPoints()
+        if cy > screenHeight / 2 then
+            self.label:SetPoint("TOP", self, "BOTTOM", 0, -2)
+        else
+            self.label:SetPoint("BOTTOM", self, "TOP", 0, 2)
+        end
+    end)
 
     -- Forward drags from overlay to parent frame (with tracking to distinguish click vs drag)
     overlay:SetScript("OnDragStart", function(self)
@@ -358,40 +368,65 @@ function Wise:SetFrameEditMode(f, name, enabled)
         -- Hide existing simple texture if present (legacy support)
         if f.texture then f.texture:Hide() end
 
-        -- Calculate clamp insets to prevent off-screen placement during drag
+        -- Calculate actual bounding box for overlay size and clamp insets
         local cLeft, cRight, cTop, cBottom = 0, 0, 0, 0
         local fLeft = f:GetLeft()
         local fRight = f:GetRight()
         local fTop = f:GetTop()
         local fBottom = f:GetBottom()
 
+        local minLeft, maxRight, maxTop, minBottom
         if fLeft and fRight and fTop and fBottom and f.buttons then
-            local minLeft = fLeft
-            local maxRight = fRight
-            local maxTop = fTop
-            local minBottom = fBottom
-
             for _, btn in ipairs(f.buttons) do
                 if btn:IsShown() then
                     local bLeft = btn:GetLeft()
                     local bRight = btn:GetRight()
                     local bTop = btn:GetTop()
                     local bBottom = btn:GetBottom()
-                    if bLeft and bLeft < minLeft then minLeft = bLeft end
-                    if bRight and bRight > maxRight then maxRight = bRight end
-                    if bTop and bTop > maxTop then maxTop = bTop end
-                    if bBottom and bBottom < minBottom then minBottom = bBottom end
+                    if bLeft and (not minLeft or bLeft < minLeft) then minLeft = bLeft end
+                    if bRight and (not maxRight or bRight > maxRight) then maxRight = bRight end
+                    if bTop and (not maxTop or bTop > maxTop) then maxTop = bTop end
+                    if bBottom and (not minBottom or bBottom < minBottom) then minBottom = bBottom end
                 end
             end
+        end
 
+        if not minLeft and fLeft then
+            minLeft = fLeft
+            maxRight = fRight
+            maxTop = fTop
+            minBottom = fBottom
+        end
+
+        if fLeft and minLeft and maxRight and maxTop and minBottom then
             -- Insets are relative to the frame's edges
             cLeft = minLeft - fLeft
             cRight = fRight - maxRight
             cTop = fTop - maxTop
             cBottom = minBottom - fBottom
-        end
 
-        f:SetClampRectInsets(cLeft, cRight, cTop, cBottom)
+            f:SetClampRectInsets(cLeft, cRight, cTop, cBottom)
+
+            -- Sizing and positioning the overlay exactly to the bounding box
+            local width = maxRight - minLeft
+            local height = maxTop - minBottom
+            if width < 10 then width = 10 end
+            if height < 10 then height = 10 end
+
+            overlay:ClearAllPoints()
+            overlay:SetSize(width + 4, height + 4) -- small padding
+
+            local cx = (minLeft + maxRight) / 2
+            local cy = (minBottom + maxTop) / 2
+            local fCenterX = fLeft + (fRight - fLeft) / 2
+            local fCenterY = fBottom + (fTop - fBottom) / 2
+
+            overlay:SetPoint("CENTER", f, "CENTER", cx - fCenterX, cy - fCenterY)
+        else
+            f:SetClampRectInsets(0, 0, 0, 0)
+            overlay:ClearAllPoints()
+            overlay:SetAllPoints(f)
+        end
         f:SetClampedToScreen(true)
 
         f:SetScript("OnDragStart", f.StartMoving)
