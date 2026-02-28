@@ -44,8 +44,8 @@ local function ApplyOffsetFromPopup()
     local x = tonumber(selectionPopup.xBox:GetText()) or 0
     local y = tonumber(selectionPopup.yBox:GetText()) or 0
 
-    -- Save to DB
-    group.anchor = { point = point, x = x, y = y }
+    -- Save to DB (relativePoint matches point for manual entry)
+    group.anchor = { point = point, relativePoint = point, x = x, y = y }
 
     -- Reposition live via Anchor proxy
     if f.Anchor then
@@ -462,7 +462,20 @@ function Wise:SetFrameEditMode(f, name, enabled)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", function(self)
             self:StopMovingOrSizing()
-            local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
+
+            -- To avoid anchor drifting due to WOW's StopMoving resolving
+            -- randomly to TOPLEFT/BOTTOMLEFT etc., we force the anchor
+            -- to represent the exact CENTER relative to UIParent's CENTER.
+            local cx, cy = self:GetCenter()
+            local ux, uy = UIParent:GetCenter()
+            
+            local eff = self:GetEffectiveScale()
+            local uEff = UIParent:GetEffectiveScale()
+            
+            local xOfs = ((cx * eff) - (ux * uEff)) / uEff
+            local yOfs = ((cy * eff) - (uy * uEff)) / uEff
+            
+            local point, relativeTo, relativePoint = "CENTER", UIParent, "CENTER"
 
             -- Grid Snapping Logic
             local snapped = false
@@ -478,16 +491,16 @@ function Wise:SetFrameEditMode(f, name, enabled)
                     -- Simple round to nearest grid line
                     xOfs = floor(xOfs / spacing + 0.5) * spacing
                     yOfs = floor(yOfs / spacing + 0.5) * spacing
-
-                    self:ClearAllPoints()
-                    self:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
                     snapped = true
                 end
             end
+            
+            self:ClearAllPoints()
+            self:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
 
-            -- Update Saved Variables
+            -- Update Saved Variables (include relativePoint for accurate restoration)
             if WiseDB.groups[name] and WiseDB.groups[name].anchorMode ~= "mouse" then
-                WiseDB.groups[name].anchor = {point=point, x=xOfs, y=yOfs}
+                WiseDB.groups[name].anchor = {point=point, relativePoint=relativePoint, x=xOfs, y=yOfs}
             end
 
             -- Sync Anchor frame to new position (snapped or not)

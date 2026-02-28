@@ -1923,6 +1923,11 @@ function Wise:UpdateGroupDisplay(name)
         RegisterStateDriver(f, "visibility", "hide")
         f:Hide()
         return
+    else
+        -- Clear any previous "visibility" hide driver that may have been registered
+        -- when the group was unavailable. Without this, the "visibility" state driver
+        -- permanently overrides all other visibility logic (game, manual, custom, etc.).
+        UnregisterStateDriver(f, "visibility")
     end
 
     -- Migration: Ensure baseVisibility is set if missing
@@ -2184,9 +2189,14 @@ function Wise:UpdateGroupDisplay(name)
         end
     
         -- Position f.Anchor acting as the actual position holder
+        -- Use full 5-parameter SetPoint to preserve the exact coordinate system from edit mode.
+        -- After dragging, WoW anchors as TOPLEFT→BOTTOMLEFT (absolute screen coords), so we
+        -- must restore with the same relativePoint to avoid position shifts on edit mode exit.
         f.Anchor:ClearAllPoints()
         if group.anchor then
-            f.Anchor:SetPoint(group.anchor.point or "CENTER", group.anchor.x or 0, group.anchor.y or 0)
+            local point = group.anchor.point or "CENTER"
+            local relPoint = group.anchor.relativePoint or point
+            f.Anchor:SetPoint(point, UIParent, relPoint, group.anchor.x or 0, group.anchor.y or 0)
         else
             f.Anchor:SetPoint("CENTER")
         end

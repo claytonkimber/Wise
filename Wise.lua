@@ -115,17 +115,20 @@ end
 function Wise:IsGroupAvailable(groupName)
     local group = WiseDB.groups[groupName]
     if not group then return false end
-    
+
+    -- Wiser Interfaces: Always available (visibility controlled by easy/hard mode settings)
+    -- Must be checked FIRST, before enabled/availability, because Wiser groups may have
+    -- enabled=false (legacy default) or availability.mode="NONE" (from Properties migration)
+    -- that would incorrectly mark them unavailable.
+    if group.isWiser then return true end
+
     -- If no availability struct (e.g. custom groups or old version), default to enabled/true
     if not group.availability then
         -- respecting old 'enabled' flag if present, otherwise true
         if group.enabled ~= nil then return group.enabled end
         return true
     end
-    
-    -- Wiser Interfaces: Always available (visibility controlled by easy/hard mode settings)
-    if group.isWiser then return true end
-    
+
     local avail = group.availability
     if avail.mode == "ALL" then
         return true
@@ -1014,6 +1017,7 @@ end
 Wise.BlizzardFrames = {
     -- Action Bar 1: MainMenuBarArtFrame (art background), ActionButton1..12 (buttons)
     -- We avoid hiding MainMenuBar itself because it contains XP/Rep bars (StatusTrackingBarManager) and MicroMenu in some modes.
+    -- Additional decorative art (end caps, background) is handled separately in UpdateBlizzardUI.
     { key = "hideActionBar1", label = "Action Bar 1", frames = {"MainMenuBarArtFrame"} },
     { key = "hideStanceBar", label = "Stance Bar", frames = {"StanceBar"} },
     { key = "hidePetBar", label = "Pet Bar", frames = {"PetActionBar"} },
@@ -1059,8 +1063,10 @@ function Wise:UpdateBlizzardUI()
         end
     end
 
-    -- Special handling for Action Buttons 1-12
+    -- Special handling for Action Bar 1: buttons + decorative art elements
     local hideAB1 = settings["hideActionBar1"]
+
+    -- Action Buttons 1-12
     for i = 1, 12 do
         local btn = _G["ActionButton" .. i]
         if btn then
@@ -1071,6 +1077,32 @@ function Wise:UpdateBlizzardUI()
                 UnregisterStateDriver(btn, "visibility")
                 if btn.Show then btn:Show() end
                 Wise.managedFrames[btn] = nil
+            end
+        end
+    end
+
+    -- Decorative art elements (end caps / dragon-gryphon art, background, page number)
+    -- These may be child frames or textures that aren't covered by MainMenuBarArtFrame alone.
+    local artElements = {
+        _G["MainMenuBarArtFrameBackground"],
+        _G["ActionBarPageNumber"],
+        MainMenuBar and MainMenuBar.EndCaps,
+        MainMenuBar and MainMenuBar.BorderArt,
+        MainMenuBarArtFrame and MainMenuBarArtFrame.LeftEndCap,
+        MainMenuBarArtFrame and MainMenuBarArtFrame.RightEndCap,
+        MainMenuBarArtFrame and MainMenuBarArtFrame.PageNumber,
+    }
+    for _, element in ipairs(artElements) do
+        if element then
+            if hideAB1 then
+                element:SetAlpha(0)
+                if element.Hide then element:Hide() end
+                Wise.managedArtElements = Wise.managedArtElements or {}
+                Wise.managedArtElements[element] = true
+            elseif Wise.managedArtElements and Wise.managedArtElements[element] then
+                element:SetAlpha(1)
+                if element.Show then element:Show() end
+                Wise.managedArtElements[element] = nil
             end
         end
     end
