@@ -358,6 +358,42 @@ function Wise:SetFrameEditMode(f, name, enabled)
         -- Hide existing simple texture if present (legacy support)
         if f.texture then f.texture:Hide() end
 
+        -- Calculate clamp insets to prevent off-screen placement during drag
+        local cLeft, cRight, cTop, cBottom = 0, 0, 0, 0
+        local fLeft = f:GetLeft()
+        local fRight = f:GetRight()
+        local fTop = f:GetTop()
+        local fBottom = f:GetBottom()
+
+        if fLeft and fRight and fTop and fBottom and f.buttons then
+            local minLeft = fLeft
+            local maxRight = fRight
+            local maxTop = fTop
+            local minBottom = fBottom
+
+            for _, btn in ipairs(f.buttons) do
+                if btn:IsShown() then
+                    local bLeft = btn:GetLeft()
+                    local bRight = btn:GetRight()
+                    local bTop = btn:GetTop()
+                    local bBottom = btn:GetBottom()
+                    if bLeft and bLeft < minLeft then minLeft = bLeft end
+                    if bRight and bRight > maxRight then maxRight = bRight end
+                    if bTop and bTop > maxTop then maxTop = bTop end
+                    if bBottom and bBottom < minBottom then minBottom = bBottom end
+                end
+            end
+
+            -- Insets are relative to the frame's edges
+            cLeft = minLeft - fLeft
+            cRight = fRight - maxRight
+            cTop = fTop - maxTop
+            cBottom = minBottom - fBottom
+        end
+
+        f:SetClampRectInsets(cLeft, cRight, cTop, cBottom)
+        f:SetClampedToScreen(true)
+
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", function(self)
             self:StopMovingOrSizing()
@@ -410,6 +446,8 @@ function Wise:SetFrameEditMode(f, name, enabled)
         f:EnableMouse(false)
         f:SetMovable(false)
         f:RegisterForDrag() -- Clear drag registration
+        f:SetClampedToScreen(false)
+        f:SetClampRectInsets(0, 0, 0, 0)
 
         -- Restore Strata
         if f.originalStrata then
