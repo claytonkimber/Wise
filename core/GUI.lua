@@ -2370,7 +2370,7 @@ function Wise:UpdateGroupDisplay(name)
         
         local btn = f.buttons[i]
         if not btn then
-            btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate")
+            btn = CreateFrame("CheckButton", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate")
             btn:SetSize(iconSize, iconSize)
             btn:RegisterForClicks("AnyUp", "AnyDown") 
             
@@ -2378,6 +2378,12 @@ function Wise:UpdateGroupDisplay(name)
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetAllPoints()
             
+            -- Checked state
+            btn:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+            if btn.GetCheckedTexture and btn:GetCheckedTexture() then
+                btn:GetCheckedTexture():SetBlendMode("ADD")
+            end
+
             -- Cooldown frame (standard WoW cooldown sweep)
             btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
             btn.cooldown:SetAllPoints()
@@ -2700,11 +2706,17 @@ function Wise:UpdateGroupDisplay(name)
              
              local vBtn = f.visualDisplay.buttons[i]
              if not vBtn then
-                 vBtn = CreateFrame("Button", nil, f.visualDisplay)
+                 vBtn = CreateFrame("CheckButton", nil, f.visualDisplay)
                  vBtn:SetSize(visualIconSize, visualIconSize)
                  vBtn:EnableMouse(false) -- Not clickable
                  vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
                  vBtn.icon:SetAllPoints()
+
+             -- Checked state
+             vBtn:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+             if vBtn.GetCheckedTexture and vBtn:GetCheckedTexture() then
+                 vBtn:GetCheckedTexture():SetBlendMode("ADD")
+             end
                  vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn, "CooldownFrameTemplate")
                  vBtn.cooldown:SetAllPoints()
                  vBtn.cooldown:SetDrawEdge(true)
