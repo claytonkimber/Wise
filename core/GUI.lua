@@ -941,7 +941,9 @@ function Wise:CreateGroupFrame(name)
         
         -- Nested Interface Positioning (Jump Mode):
         -- Position this child group relative to the parent button that opened it.
-        if group and group.anchorMode ~= "mouse" then
+        -- Skip nesting behaviors for Wiser interfaces (they are never legitimately nested
+        -- and should not be subject to cascade close, close-on-leave, or parent positioning).
+        if group and group.anchorMode ~= "mouse" and not group.isWiser then
             local parentName, parentGroup = Wise:GetParentInfo(self.groupName)
             if parentName and parentGroup then
                 Wise:PositionNestedChild(self, self.groupName, parentName)
@@ -1878,12 +1880,19 @@ function Wise:CloseChildInterfaces(groupName)
     if InCombatLockdown() then return end
     local children = Wise:GetChildInterfaces(groupName)
     for _, childName in ipairs(children) do
-        local childFrame = Wise.frames and Wise.frames[childName]
-        if childFrame and childFrame:IsShown() then
-            childFrame:SetAttribute("state-manual", "hide")
-            local driver = Wise.WiseStateDriver
-            if driver then
-                driver:SetAttribute("wisesetstate", childName .. ":inactive")
+        local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childName]
+        -- Skip Wiser interfaces: they manage their own visibility independently
+        -- and should not be cascade-closed when a parent hides
+        if childGroup and childGroup.isWiser then
+            -- Do not cascade close Wiser interfaces
+        else
+            local childFrame = Wise.frames and Wise.frames[childName]
+            if childFrame and childFrame:IsShown() then
+                childFrame:SetAttribute("state-manual", "hide")
+                local driver = Wise.WiseStateDriver
+                if driver then
+                    driver:SetAttribute("wisesetstate", childName .. ":inactive")
+                end
             end
         end
     end
@@ -1932,7 +1941,9 @@ function Wise:UpdateGroupDisplay(name)
     local parentName, parentGroup = Wise:GetParentInfo(name)
 
     -- Apply nested inheritance BEFORE visibility driver (driver reads toggleOnPress)
-    if parentName and parentGroup then
+    -- Skip for Wiser interfaces: they manage their own visibility and should not
+    -- be forced to ALWAYS_HIDDEN or toggleOnPress by nesting detection.
+    if parentName and parentGroup and not group.isWiser then
         -- Nested interfaces must toggle on press to respond to /click from parent.
         -- Even if the group has its own keybind, toggleOnPress is needed because
         -- /click simulates a full down+up and held mode would flash-and-hide.
