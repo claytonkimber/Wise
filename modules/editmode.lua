@@ -376,12 +376,43 @@ function Wise:SetFrameEditMode(f, name, enabled)
 
         local minLeft, maxRight, maxTop, minBottom
         if fLeft and fRight and fTop and fBottom and f.buttons then
+            local groupData = WiseDB.groups[name]
+            local isList = groupData and groupData.type == "list"
+
             for _, btn in ipairs(f.buttons) do
                 if btn:IsShown() then
-                    local bLeft = btn:GetLeft()
-                    local bRight = btn:GetRight()
-                    local bTop = btn:GetTop()
-                    local bBottom = btn:GetBottom()
+                    local bLeft, bRight, bTop, bBottom
+
+                    if isList then
+                        local regions = { btn.icon, btn.textLabel, btn.timerLabel, btn.count, btn.keybind }
+                        for _, r in ipairs(regions) do
+                            if r and r:IsShown() then
+                                local valid = true
+                                if type(r.GetText) == "function" then
+                                    local txt = r:GetText()
+                                    if not txt or txt == "" then valid = false end
+                                end
+                                if valid then
+                                    local rL = r:GetLeft()
+                                    local rR = r:GetRight()
+                                    local rT = r:GetTop()
+                                    local rB = r:GetBottom()
+                                    if rL and (not bLeft or rL < bLeft) then bLeft = rL end
+                                    if rR and (not bRight or rR > bRight) then bRight = rR end
+                                    if rT and (not bTop or rT > bTop) then bTop = rT end
+                                    if rB and (not bBottom or rB < bBottom) then bBottom = rB end
+                                end
+                            end
+                        end
+                    end
+
+                    if not bLeft then
+                        bLeft = btn:GetLeft()
+                        bRight = btn:GetRight()
+                        bTop = btn:GetTop()
+                        bBottom = btn:GetBottom()
+                    end
+
                     if bLeft and (not minLeft or bLeft < minLeft) then minLeft = bLeft end
                     if bRight and (not maxRight or bRight > maxRight) then maxRight = bRight end
                     if bTop and (not maxTop or bTop > maxTop) then maxTop = bTop end
