@@ -1072,12 +1072,28 @@ function Wise:UpdateBlizzardUI()
         if btn then
             if hideAB1 then
                 RegisterStateDriver(btn, "visibility", "hide")
+                btn:SetAlpha(0)
+                btn:EnableMouse(false)
                 Wise.managedFrames[btn] = true
             elseif Wise.managedFrames[btn] then
                 UnregisterStateDriver(btn, "visibility")
+                btn:SetAlpha(1)
+                btn:EnableMouse(true)
                 if btn.Show then btn:Show() end
                 Wise.managedFrames[btn] = nil
             end
+        end
+    end
+    
+    if MainActionBar then
+        if hideAB1 then
+            MainActionBar:SetAlpha(0)
+            MainActionBar:EnableMouse(false)
+            Wise.managedFrames[MainActionBar] = true
+        elseif Wise.managedFrames[MainActionBar] then
+            MainActionBar:SetAlpha(1)
+            MainActionBar:EnableMouse(true)
+            Wise.managedFrames[MainActionBar] = nil
         end
     end
 
@@ -1091,6 +1107,9 @@ function Wise:UpdateBlizzardUI()
         MainMenuBarArtFrame and MainMenuBarArtFrame.LeftEndCap,
         MainMenuBarArtFrame and MainMenuBarArtFrame.RightEndCap,
         MainMenuBarArtFrame and MainMenuBarArtFrame.PageNumber,
+        MainActionBar and MainActionBar.EndCaps,
+        MainActionBar and MainActionBar.BorderArt,
+        MainActionBar and MainActionBar.ActionBarPageNumber,
     }
     for _, element in ipairs(artElements) do
         if element then
