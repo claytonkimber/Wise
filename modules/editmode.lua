@@ -287,21 +287,20 @@ local function CreateEditModeOverlay(f, name)
 
     -- Center Lines (Crosshair)
     local lineThickness = 1
-    local lineLength = 20 -- Length from center
 
     -- Horizontal Line
     overlay.hLine = overlay:CreateTexture(nil, "OVERLAY")
     overlay.hLine:SetColorTexture(0, 1, 1, 0.5)
     overlay.hLine:SetHeight(lineThickness)
-    overlay.hLine:SetPoint("LEFT", overlay, "CENTER", -lineLength, 0)
-    overlay.hLine:SetPoint("RIGHT", overlay, "CENTER", lineLength, 0)
+    overlay.hLine:SetPoint("LEFT", overlay, "LEFT", 0, 0)
+    overlay.hLine:SetPoint("RIGHT", overlay, "RIGHT", 0, 0)
 
     -- Vertical Line
     overlay.vLine = overlay:CreateTexture(nil, "OVERLAY")
     overlay.vLine:SetColorTexture(0, 1, 1, 0.5)
     overlay.vLine:SetWidth(lineThickness)
-    overlay.vLine:SetPoint("TOP", overlay, "CENTER", 0, lineLength)
-    overlay.vLine:SetPoint("BOTTOM", overlay, "CENTER", 0, -lineLength)
+    overlay.vLine:SetPoint("TOP", overlay, "TOP", 0, 0)
+    overlay.vLine:SetPoint("BOTTOM", overlay, "BOTTOM", 0, 0)
 
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -401,8 +400,8 @@ function Wise:SetFrameEditMode(f, name, enabled)
         if fLeft and minLeft and maxRight and maxTop and minBottom then
             -- Insets are relative to the frame's edges
             cLeft = minLeft - fLeft
-            cRight = fRight - maxRight
-            cTop = fTop - maxTop
+            cRight = maxRight - fRight
+            cTop = maxTop - fTop
             cBottom = minBottom - fBottom
 
             f:SetClampRectInsets(cLeft, cRight, cTop, cBottom)
