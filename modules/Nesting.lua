@@ -606,3 +606,231 @@ function Wise:GetNestingTree(rootName)
     walk(rootName, 0, nil)
     return tree
 end
+
+-- Helper: Position a nested child group relative to the parent button that opened it.
+-- Uses the child's insecure Anchor frame so it works even during combat.
+
+function Wise:PositionNestedChild(childFrame, childName, parentName)
+    local parentFrame = Wise.frames and Wise.frames[parentName]
+    if not parentFrame then return end
+
+    -- Find which parent button is the interface action pointing to this child
+    local parentBtn = nil
+    if parentFrame.buttons then
+        for _, btn in ipairs(parentFrame.buttons) do
+            if btn:IsShown() and btn:GetAttribute("isa_interface_target") == childName then
+                parentBtn = btn
+                break
+            end
+        end
+    end
+
+    -- Fallback to parent frame center if no specific button found
+    local anchorFrame = parentBtn or parentFrame
+
+    -- Resolve open direction from the action's nesting options
+    local direction = "auto"
+    if parentBtn then
+        direction = parentBtn:GetAttribute("isa_open_direction") or "auto"
+    end
+    direction = Wise:ResolveOpenDirection(anchorFrame, direction)
+
+    -- Get the anchor frame's center in screen coordinates
+    local cx, cy = anchorFrame:GetCenter()
+    if not cx or not cy then return end
+
+    local uiScale = UIParent:GetScale()
+    local frameScale = childFrame:GetScale()
+    local correctedX = cx / frameScale
+    local correctedY = cy / frameScale
+
+    -- Offset based on direction (use parent icon size as spacing)
+    local spacingX = (parentBtn and parentBtn:GetWidth() or 50) + 10
+    local spacingY = (parentBtn and parentBtn:GetHeight() or 50) + 10
+
+    -- In a list layout, width might be much larger (150+), so handle X offset carefully
+    if parentBtn and parentBtn.textLabel and parentBtn.textLabel:IsShown() then
+        -- This is likely a list item. The actual clickable width is the whole row,
+        -- but visually we might want to offset relative to the icon or the whole row.
+        spacingX = parentBtn:GetWidth() + 10
+    end
+
+    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
+    local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childName]
+    local closeParentOnOpen = false
+    local displayType = childGroup and childGroup.type or "circle"
+
+    if parentGroup and parentGroup.actions then
+        for _, states in pairs(parentGroup.actions) do
+            if type(states) == "table" then
+                for _, action in ipairs(states) do
+                    if action.type == "interface" and action.value == childName then
+                        local opts = Wise:GetNestingOptions(action)
+                        if opts then
+                            if opts.closeParentOnOpen then
+                                closeParentOnOpen = true
+                            end
+                            if opts.nestedInterfaceType and opts.nestedInterfaceType ~= "default" then
+                                displayType = opts.nestedInterfaceType
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- If the parent closes, the new child exactly overlaps the selected parent icon.
+    -- Furthermore, if the child layout is a circle, its natural center IS the parent icon.
+    if closeParentOnOpen or displayType == "circle" then
+        spacingX = 0
+        spacingY = 0
+    end
+
+    if direction == "up" then
+        correctedY = correctedY + spacingY / frameScale
+    elseif direction == "down" then
+        correctedY = correctedY - spacingY / frameScale
+    elseif direction == "right" then
+        correctedX = correctedX + spacingX / frameScale
+    elseif direction == "left" then
+        correctedX = correctedX - spacingX / frameScale
+    end
+    -- "center" keeps the same position
+
+    -- Move the proxy anchor (safe even in combat)
+    if childFrame.Anchor then
+        childFrame.Anchor:ClearAllPoints()
+        childFrame.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+    end
+
+    -- Also move the secure frame directly (only safe out of combat)
+    if not InCombatLockdown() then
+        childFrame:ClearAllPoints()
+        childFrame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+    end
+    
+    Wise:DebugPrint("PositionNestedChild: child=%s parent=%s parentBtn=%s cx=%.1f cy=%.1f correctedX=%.1f correctedY=%.1f", 
+        childName, parentName, parentBtn and parentBtn:GetName() or "NONE", cx or 0, cy or 0, correctedX or 0, correctedY or 0)
+end
+
+function Wise:StartNestedCloseOnLeave(childFrame, childName, parentInstanceId)
+    -- Cancel any existing ticker
+    if childFrame.nestedCloseTicker then
+        childFrame.nestedCloseTicker:Cancel()
+        childFrame.nestedCloseTicker = nil
+    end
+
+    local parentFrame = Wise.frames and Wise.frames[parentInstanceId]
+    local parentName = parentFrame and parentFrame.groupName or parentInstanceId
+
+    -- Find the interface action data to check closeOnLeave option
+    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
+    if not parentGroup or not parentGroup.actions then return end
+
+    local closeOnLeave = true -- default
+    for _, states in pairs(parentGroup.actions) do
+        if type(states) == "table" then
+            for _, action in ipairs(states) do
+                if action.type == "interface" and action.value == childName then
+                    local opts = Wise:GetNestingOptions(action)
+                    if opts then
+                        closeOnLeave = opts.closeOnLeave
+                    end
+                    break
+                end
+            end
+        end
+    end
+
+    if not closeOnLeave then return end
+
+    local parentFrame = Wise.frames and Wise.frames[parentName]
+    local leaveDelay = 0 -- grace frames before closing
+    local leaveCount = 0
+    local LEAVE_THRESHOLD = 3 -- ticks (~0.6s) before closing
+
+    childFrame.nestedCloseTicker = C_Timer.NewTicker(0.2, function()
+        if not childFrame:IsShown() then
+            if childFrame.nestedCloseTicker then
+                childFrame.nestedCloseTicker:Cancel()
+                childFrame.nestedCloseTicker = nil
+            end
+            return
+        end
+
+        -- Check if mouse is over any child button or the child frame itself
+        local overChild = childFrame:IsMouseOver(20, -20, -20, 20) -- slight padding
+        local overParent = parentFrame and parentFrame:IsShown() and parentFrame:IsMouseOver(20, -20, -20, 20)
+
+        if overChild or overParent then
+            leaveCount = 0
+        else
+            leaveCount = leaveCount + 1
+            if leaveCount >= LEAVE_THRESHOLD then
+                -- Close the child interface
+                if not InCombatLockdown() then
+                    childFrame:SetAttribute("state-manual", "hide")
+                    -- Notify the state driver
+                    local driver = Wise.WiseStateDriver
+                    if driver then
+                        driver:SetAttribute("wisesetstate", childName .. ":inactive")
+                    end
+                end
+                if childFrame.nestedCloseTicker then
+                    childFrame.nestedCloseTicker:Cancel()
+                    childFrame.nestedCloseTicker = nil
+                end
+            end
+        end
+    end)
+end
+
+-- Helper: Hide the parent group if closeParentOnOpen is enabled for this nesting.
+function Wise:HandleCloseParentOnOpen(childName, parentInstanceId)
+    local parentFrame = Wise.frames and Wise.frames[parentInstanceId]
+    local parentName = parentFrame and parentFrame.groupName or parentInstanceId
+
+    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
+    if not parentGroup or not parentGroup.actions then return end
+
+    for _, states in pairs(parentGroup.actions) do
+        if type(states) == "table" then
+            for _, action in ipairs(states) do
+                if action.type == "interface" and action.value == childName then
+                    local opts = Wise:GetNestingOptions(action)
+                    if opts and opts.closeParentOnOpen then
+                        if parentFrame and parentFrame:IsShown() and not InCombatLockdown() then
+                            parentFrame:SetAttribute("state-manual", "hide")
+                        end
+                    end
+                    return
+                end
+            end
+        end
+    end
+end
+
+-- Helper: Close all child interfaces of a group (cascade close)
+function Wise:CloseChildInterfaces(groupName)
+    if InCombatLockdown() then return end
+    local children = Wise:GetChildInterfaces(groupName)
+    for _, childName in ipairs(children) do
+        local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childName]
+        -- Skip Wiser interfaces: they manage their own visibility independently
+        -- and should not be cascade-closed when a parent hides
+        if childGroup and childGroup.isWiser then
+            -- Do not cascade close Wiser interfaces
+        else
+            local childFrame = Wise.frames and Wise.frames[childName]
+            if childFrame and childFrame:IsShown() then
+                childFrame:SetAttribute("state-manual", "hide")
+                local driver = Wise.WiseStateDriver
+                if driver then
+                    driver:SetAttribute("wisesetstate", childName .. ":inactive")
+                end
+            end
+        end
+    end
+end
