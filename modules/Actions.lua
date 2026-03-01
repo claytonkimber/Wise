@@ -477,7 +477,22 @@ end
 function Wise:GetActionName(actionType, value, extraData)
     if extraData and extraData.name then return extraData.name end
     
-    if actionType == "spell" then
+    if actionType == "action" then
+        if tonumber(value) then
+            local actionTypeStr, id, subType = GetActionInfo(tonumber(value))
+            if actionTypeStr == "spell" and id then
+                local info = C_Spell.GetSpellInfo(id)
+                return info and info.name or "Action " .. value
+            elseif actionTypeStr == "item" and id then
+                return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or GetItemInfo(id) or "Action " .. value
+            elseif actionTypeStr == "macro" and id then
+                return GetMacroInfo(id) or "Action " .. value
+            end
+            return "Action " .. value
+        end
+        return "Unknown Action"
+
+    elseif actionType == "spell" then
         if C_Spell and C_Spell.GetSpellInfo then
              local info = C_Spell.GetSpellInfo(value)
              return info and info.name or value
@@ -527,6 +542,17 @@ function Wise:GetActionName(actionType, value, extraData)
                     _, name = GetSpecializationInfoByID(val)
                 end
                 return name or ("Spec " .. val)
+            end
+        end
+        if type(value) == "string" and string.sub(value, 1, 5) == "form_" then
+            local formIndex = tonumber(string.sub(value, 6))
+            if formIndex then
+                local icon, _, _, spellID = GetShapeshiftFormInfo(formIndex)
+                if spellID then
+                    local info = C_Spell.GetSpellInfo(spellID)
+                    if info and info.name then return info.name end
+                end
+                return "Form " .. formIndex
             end
         end
         if type(value) == "string" and string.sub(value, 1, 9) == "lootspec_" then
@@ -613,7 +639,14 @@ function Wise:GetActionIcon(actionType, value, extraData)
 
     local texture = 134400 -- Default Question Mark
     
-    if actionType == "spell" then
+    if actionType == "action" then
+        if tonumber(value) then
+            local icon = GetActionTexture(tonumber(value))
+            if icon then return icon end
+        end
+        return 134400
+
+    elseif actionType == "spell" then
         if C_Spell and C_Spell.GetSpellInfo then
             local spellInfo = C_Spell.GetSpellInfo(value)
             if spellInfo and spellInfo.iconID then
@@ -794,6 +827,13 @@ function Wise:GetActionIcon(actionType, value, extraData)
                 if icon then texture = icon end
             end
         end
+        if type(value) == "string" and string.sub(value, 1, 5) == "form_" then
+            local formIndex = tonumber(string.sub(value, 6))
+            if formIndex then
+                local icon = GetShapeshiftFormInfo(formIndex)
+                if icon then texture = icon end
+            end
+        end
         if type(value) == "string" and string.sub(value, 1, 9) == "lootspec_" then
             local specID = tonumber(string.sub(value, 10))
             if specID then
@@ -891,6 +931,9 @@ function Wise:IsActionKnown(actionType, value)
         
     elseif actionType == "interface" then
         return WiseDB and WiseDB.groups and WiseDB.groups[value] ~= nil
+
+    elseif actionType == "action" then
+        return tonumber(value) and HasAction(tonumber(value)) or true
 
     elseif actionType == "empty" then
         return true
@@ -1142,7 +1185,7 @@ function Wise:CreateEmbeddedPicker(parent)
     local categories = {
         "Spell", "Items", "Equipped", "Battle pets", "Mounts", "Macros",
         "Equipment sets", "Raid markers", "Toys", "UI panel", "UI Visibility", "Skyriding",
-        "Professions", "Interface", "DataBroker", "Miscellaneous"
+        "Professions", "Interface", "DataBroker", "Miscellaneous", "Override bars"
     }
 
     local prevItem
@@ -1508,6 +1551,7 @@ function Wise:PickerRefresh(filter)
                     if self.data.name then extra.name = self.data.name end
                     if self.data.category then extra.category = self.data.category end
                     if self.data.sourceSpecID then extra.sourceSpecID = self.data.sourceSpecID end
+                    if self.data.conditions then extra.conditions = self.data.conditions end
                     Wise.PickerCallback(self.data.type, self.data.value, extra)
                 end
                 Wise.pickingAction = false
@@ -1966,6 +2010,47 @@ function Wise:GetProfessions(filter)
 end
 
 function Wise:GetDataBroker(filter) return {} end
+
+function Wise:GetOverridebars(filter)
+    local items = {}
+
+    local overrideBarName = "Override Bar Button "
+    for i = 1, 8 do
+        local name = overrideBarName .. i
+        if not filter or string.find(string.lower(name), filter, 1, true) then
+            -- Override bar action IDs are 133-144
+            local actionID = 132 + i
+            table.insert(items, {
+                type = "action",
+                value = actionID,
+                name = name,
+                icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+                category = "Override bars",
+                conditions = "[overridebar]"
+            })
+        end
+    end
+
+    local possessBarName = "Possess Bar Button "
+    for i = 1, 8 do
+        local name = possessBarName .. i
+        if not filter or string.find(string.lower(name), filter, 1, true) then
+            -- Possess bar usually maps over ActionButton1-12 which map to 1-12 or 121-132
+            -- Let's use 121-132 for explicit possess bar slots
+            local actionID = 120 + i
+            table.insert(items, {
+                type = "action",
+                value = actionID,
+                name = name,
+                icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+                category = "Override bars",
+                conditions = "[possessbar]"
+            })
+        end
+    end
+
+    return items
+end
 
 function Wise:GetMiscellaneous(filter)
     local items = {}

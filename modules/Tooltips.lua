@@ -41,7 +41,13 @@ function Wise:AddInterfaceTooltip(btn)
         local value = (meta and meta.actionValue) or self.actionValue
         local data = (meta and meta.actionData) or self.actionData
 
-        if type == "spell" then
+        if type == "action" then
+            if tonumber(value) then
+                GameTooltip:SetAction(tonumber(value))
+            else
+                GameTooltip:SetText("Unknown Action", 1, 1, 1)
+            end
+        elseif type == "spell" then
             local spellID = (meta and meta.spellID)
 
             if not spellID then

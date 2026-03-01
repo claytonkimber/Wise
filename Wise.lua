@@ -303,7 +303,34 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         Wise:UpdateGroupDisplay("Menu Bar")
     end
 
-    -- 3. Specs
+    -- 3. Forms (Shapeshift / Stances)
+    local numForms = GetNumShapeshiftForms()
+    if numForms and numForms > 0 then
+        local formGroup = EnsureWiserGroup("Forms", "circle")
+        for i = 1, numForms do
+            local icon, isActive, isCastable, spellID = GetShapeshiftFormInfo(i)
+            if icon then
+                local formName
+                if spellID then
+                    local info = C_Spell.GetSpellInfo(spellID)
+                    formName = info and info.name
+                end
+                formName = formName or ("Form " .. i)
+                table.insert(formGroup.buttons, {
+                    type = "misc",
+                    value = "form_" .. i,
+                    name = formName,
+                    icon = icon,
+                    category = "global"
+                })
+            end
+        end
+        if Wise.frames["Forms"] and Wise.frames["Forms"]:IsShown() then
+            Wise:UpdateGroupDisplay("Forms")
+        end
+    end
+
+    -- 4. Specs
     local specGroup = EnsureWiserGroup("Specs", "circle")
     local numSpecs = GetNumSpecializations()
     local currentSpecIndex = GetSpecialization()
@@ -752,6 +779,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("UPDATE_BINDINGS")
+frame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 
 function frame:OnEvent(event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -812,7 +840,7 @@ function frame:OnEvent(event, arg1)
         if not WiseDB.tutorialComplete and Wise.Demo then
              C_Timer.After(2, function() Wise.Demo:Start() end)
         end
-    elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" then
+    elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" or event == "UPDATE_SHAPESHIFT_FORMS" then
         -- Update character cache
         if Wise.UpdateCharacterInfo then
             Wise:UpdateCharacterInfo(event)
