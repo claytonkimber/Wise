@@ -1303,6 +1303,26 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureAttr = "macro"
             secureValue = aValue
         end
+    elseif aType == "action" then
+        if hasCond then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            -- Action IDs 133-144 are OverrideActionBar.
+            -- Using /click OverrideActionBarButtonX works well for those.
+            local aNum = tonumber(aValue)
+            if aNum and aNum >= 133 and aNum <= 144 then
+                secureValue = "/click " .. conditions .. " OverrideActionBarButton" .. (aNum - 132)
+            elseif aNum and aNum >= 121 and aNum <= 132 then
+                -- Possess bars (bottomleft) are often ActionButton1-12 depending on mapping, but /click ActionButtonX works when possessed.
+                secureValue = "/click " .. conditions .. " ActionButton" .. (aNum - 120)
+            else
+                secureValue = "/click " .. conditions .. " ActionButton" .. (aNum or 1)
+            end
+        else
+            secureType = "action"
+            secureAttr = "action"
+            secureValue = tonumber(aValue)
+        end
     elseif aType == "mount" then
         if C_MountJournal then
             local mountName, spellID = C_MountJournal.GetMountInfoByID(aValue)
@@ -2695,6 +2715,15 @@ function Wise:UpdateGroupDisplay(name)
             if not isChargeSpell and IsConsumableSpell and IsConsumableSpell(aValue) then
                 count = GetSpellCount(aValue)
             end
+        elseif aType == "action" and tonumber(aValue) then
+            if IsConsumableAction(tonumber(aValue)) then
+                count = GetActionCount(tonumber(aValue))
+            end
+            local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
+            if maxCharges and maxCharges > 1 then
+                count = charges
+                isChargeSpell = true
+            end
         end
         
         -- Apply charge/count text via Text
@@ -2888,7 +2917,7 @@ function Wise:UpdateGroupDisplay(name)
                     needsTicker = true
                     break
                 end
-                if meta.actionType == "misc" and meta.actionValue == "custom_macro" then
+                if (meta.actionType == "misc" and meta.actionValue == "custom_macro") or meta.actionType == "action" then
                     needsTicker = true
                     break
                 end
@@ -2902,6 +2931,16 @@ function Wise:UpdateGroupDisplay(name)
                 if btn:IsShown() then
                     local meta = Wise.buttonMeta[btn]
                     if not meta then -- skip
+                    elseif meta.actionType == "action" then
+                         local aID = tonumber(meta.actionValue)
+                         if aID then
+                             local tex = GetActionTexture(aID) or 134400
+                             btn.icon:SetTexture(tex)
+                             local vClone = meta.visualClone or btn.visualClone
+                             if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                             Wise:UpdateButtonCooldown(btn)
+                             Wise:UpdateButtonUsability(btn)
+                         end
                     elseif meta.actionType == "misc" and meta.actionValue == "custom_macro" then
                          -- Update Custom Macro
                          local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
@@ -3505,7 +3544,14 @@ function Wise:UpdateButtonCooldown(btn)
     
     local start, duration = 0, 0
     
-    if spellID then
+    local actionType = (meta and meta.actionType) or btn.actionType
+    local actionValue = (meta and meta.actionValue) or btn.actionValue
+
+    if actionType == "action" and tonumber(actionValue) then
+        start, duration = GetActionCooldown(tonumber(actionValue))
+        start = start or 0
+        duration = duration or 0
+    elseif spellID then
         local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
         if cooldownInfo then
             start = cooldownInfo.startTime or 0
@@ -3793,8 +3839,13 @@ function Wise:UpdateButtonUsability(btn)
     
     local isUsable, noMana = true, false
     
+    local actionType = (meta and meta.actionType) or btn.actionType
+    local actionValue = (meta and meta.actionValue) or btn.actionValue
+
     -- Module 4: API Compatibility (Polyfill)
-    if spellID then
+    if actionType == "action" and tonumber(actionValue) then
+        isUsable, noMana = IsUsableAction(tonumber(actionValue))
+    elseif spellID then
         isUsable, noMana = Wise:IsSpellUsable(spellID)
     elseif itemID then
         if C_Item and C_Item.IsUsableItem then

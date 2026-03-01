@@ -477,7 +477,22 @@ end
 function Wise:GetActionName(actionType, value, extraData)
     if extraData and extraData.name then return extraData.name end
     
-    if actionType == "spell" then
+    if actionType == "action" then
+        if tonumber(value) then
+            local actionTypeStr, id, subType = GetActionInfo(tonumber(value))
+            if actionTypeStr == "spell" and id then
+                local info = C_Spell.GetSpellInfo(id)
+                return info and info.name or "Action " .. value
+            elseif actionTypeStr == "item" and id then
+                return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or GetItemInfo(id) or "Action " .. value
+            elseif actionTypeStr == "macro" and id then
+                return GetMacroInfo(id) or "Action " .. value
+            end
+            return "Action " .. value
+        end
+        return "Unknown Action"
+
+    elseif actionType == "spell" then
         if C_Spell and C_Spell.GetSpellInfo then
              local info = C_Spell.GetSpellInfo(value)
              return info and info.name or value
@@ -613,7 +628,14 @@ function Wise:GetActionIcon(actionType, value, extraData)
 
     local texture = 134400 -- Default Question Mark
     
-    if actionType == "spell" then
+    if actionType == "action" then
+        if tonumber(value) then
+            local icon = GetActionTexture(tonumber(value))
+            if icon then return icon end
+        end
+        return 134400
+
+    elseif actionType == "spell" then
         if C_Spell and C_Spell.GetSpellInfo then
             local spellInfo = C_Spell.GetSpellInfo(value)
             if spellInfo and spellInfo.iconID then
@@ -891,6 +913,9 @@ function Wise:IsActionKnown(actionType, value)
         
     elseif actionType == "interface" then
         return WiseDB and WiseDB.groups and WiseDB.groups[value] ~= nil
+
+    elseif actionType == "action" then
+        return tonumber(value) and HasAction(tonumber(value)) or true
 
     elseif actionType == "empty" then
         return true
@@ -1975,9 +2000,11 @@ function Wise:GetOverridebars(filter)
     for i = 1, 8 do
         local name = overrideBarName .. i
         if not filter or string.find(string.lower(name), filter, 1, true) then
+            -- Override bar action IDs are 133-144
+            local actionID = 132 + i
             table.insert(items, {
-                type = "macro",
-                value = "/click OverrideActionBarButton" .. i,
+                type = "action",
+                value = actionID,
                 name = name,
                 icon = "Interface\\Icons\\INV_Misc_QuestionMark",
                 category = "Override bars",
@@ -1990,9 +2017,12 @@ function Wise:GetOverridebars(filter)
     for i = 1, 8 do
         local name = possessBarName .. i
         if not filter or string.find(string.lower(name), filter, 1, true) then
+            -- Possess bar usually maps over ActionButton1-12 which map to 1-12 or 121-132
+            -- Let's use 121-132 for explicit possess bar slots
+            local actionID = 120 + i
             table.insert(items, {
-                type = "macro",
-                value = "/click ActionButton" .. i,
+                type = "action",
+                value = actionID,
                 name = name,
                 icon = "Interface\\Icons\\INV_Misc_QuestionMark",
                 category = "Override bars",
