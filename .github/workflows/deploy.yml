@@ -21,5 +21,7 @@ jobs:
 
       - name: Package and Upload
         uses: BigWigsMods/packager@v2
-        with:
-          args: -r "${{ steps.vars.outputs.type }}"
+        env:
+          CF_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
+          WOWI_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
+          WAGO_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
