@@ -28,6 +28,8 @@ local GameTooltip = GameTooltip
 -- API Compatibility
 local GetSpellBaseCooldown = (C_Spell and C_Spell.GetSpellBaseCooldown) or GetSpellBaseCooldown
 local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
+local GetFlyoutInfo = GetFlyoutInfo
+local GetFlyoutSlotInfo = GetFlyoutSlotInfo
 
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
@@ -148,6 +150,216 @@ function Wise:GetSkyriding(filter)
 
     table.sort(spells, function(a, b) return a.name < b.name end)
     return spells
+end
+
+function Wise:GetTransportation(filter)
+    local items = {}
+    local seen = {}
+
+    -- 1. Spells (Teleport, Portal, Hero's Path, etc.)
+    local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
+    for i = 1, numSkillLines do
+        local info = C_SpellBook.GetSpellBookSkillLineInfo(i)
+        if info then
+            local offset = info.itemIndexOffset
+            local count = info.numSpellBookItems
+            for j = 1, count do
+                local index = offset + j
+                local spellType, spellId = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
+                if spellType == Enum.SpellBookItemType.Spell then
+                    if not C_Spell.IsSpellPassive(spellId) then
+                        local sName = C_Spell.GetSpellName(spellId)
+                        local sIcon = C_Spell.GetSpellTexture(spellId)
+                        if sName then
+                            local isTransport = false
+                            local displayName = sName
+
+                            -- Check keywords
+                            if string.match(sName, "^Teleport:") or
+                               string.match(sName, "^Portal:") or
+                               sName == "Dreamwalk" or
+                               sName == "Astral Recall" or
+                               sName == "Zen Pilgrimage" or
+                               sName == "Death Gate" then
+                                isTransport = true
+                            elseif string.find(sName, "Hero's Path:") then
+                                isTransport = true
+                                -- Remove "Hero's Path: " or "Hero's Path:"
+                                displayName = string.gsub(sName, "Hero's Path:%s*", "")
+                            end
+
+                            if isTransport and (not filter or string.find(string.lower(displayName), filter, 1, true)) then
+                                if not seen[displayName] then
+                                    table.insert(items, {
+                                        type = "spell",
+                                        value = spellId,
+                                        name = displayName,
+                                        icon = sIcon,
+                                        category = "Transportation"
+                                    })
+                                    seen[displayName] = true
+                                end
+                            end
+                        end
+                    end
+                elseif spellType == Enum.SpellBookItemType.Flyout then
+                    local flyoutID = spellId
+                    local flyoutName, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
+                    if isKnown and numSlots > 0 then
+                        for s = 1, numSlots do
+                            local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
+                            if isKnownSlot and flyoutSpellID then
+                                local actualSpellID = overrideSpellID or flyoutSpellID
+                                if not C_Spell.IsSpellPassive(actualSpellID) then
+                                    local sName = C_Spell.GetSpellName(actualSpellID)
+                                    local sIcon = C_Spell.GetSpellTexture(actualSpellID)
+                                    if sName then
+                                        local isTransport = false
+                                        local displayName = sName
+
+                                        if string.match(sName, "^Teleport:") or
+                                           string.match(sName, "^Portal:") or
+                                           sName == "Dreamwalk" or
+                                           sName == "Astral Recall" or
+                                           sName == "Zen Pilgrimage" or
+                                           sName == "Death Gate" then
+                                            isTransport = true
+                                        elseif string.find(sName, "Hero's Path:") then
+                                            isTransport = true
+                                            -- Remove "Hero's Path: " or "Hero's Path:"
+                                            displayName = string.gsub(sName, "Hero's Path:%s*", "")
+                                        elseif flyoutName and string.find(flyoutName, "Hero's Path:") then
+                                            isTransport = true
+                                        end
+
+                                        if isTransport and (not filter or string.find(string.lower(displayName), filter, 1, true)) then
+                                            if not seen[displayName] then
+                                                table.insert(items, {
+                                                    type = "spell",
+                                                    value = actualSpellID,
+                                                    name = displayName,
+                                                    icon = sIcon,
+                                                    category = "Transportation"
+                                                })
+                                                seen[displayName] = true
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Items (Hearthstones, teleport items in bags)
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info and info.itemID then
+                local name = C_Item.GetItemNameByID(info.itemID)
+                if name then
+                    local isTransportItem = false
+
+                    if string.match(string.lower(name), "hearthstone") then
+                        isTransportItem = true
+                    else
+                        -- Check if item casts a teleport spell
+                        local spellID
+                        if GetItemSpell then
+                            local _, sID = GetItemSpell(info.itemID)
+                            spellID = sID
+                        end
+                        if not spellID and C_Item and C_Item.GetItemSpell then
+                            local res = C_Item.GetItemSpell(info.itemID)
+                            if res and res.spellID then spellID = res.spellID end
+                        end
+
+                        if spellID then
+                            local sName = C_Spell.GetSpellName(spellID)
+                            if sName and (string.match(sName, "^Teleport:") or string.match(sName, "^Portal:")) then
+                                isTransportItem = true
+                            end
+                        end
+                    end
+
+                    if isTransportItem and (not filter or string.find(string.lower(name), filter, 1, true)) then
+                        if not seen[name] then
+                            table.insert(items, {
+                                type = "item",
+                                value = info.itemID,
+                                name = name,
+                                icon = info.iconFileID,
+                                category = "Transportation"
+                            })
+                            seen[name] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Toys (Hearthstones, Wormholes, etc.)
+    if C_ToyBox then
+        local wasCollectedShown = C_ToyBox.GetCollectedShown()
+        local wasUncollectedShown = C_ToyBox.GetUncollectedShown()
+        C_ToyBox.SetCollectedShown(true)
+        C_ToyBox.SetUncollectedShown(false)
+        for i = 1, C_ToyBox.GetNumFilteredToys() do
+            local itemID = C_ToyBox.GetToyFromIndex(i)
+            if itemID ~= -1 then
+                local _, name, icon = C_ToyBox.GetToyInfo(itemID)
+                if name then
+                    local isTransportToy = false
+                    local lName = string.lower(name)
+
+                    if string.match(lName, "hearthstone") or string.match(lName, "wormhole") then
+                        isTransportToy = true
+                    else
+                        -- Check if toy casts a teleport spell
+                        local spellID
+                        if GetItemSpell then
+                            local _, sID = GetItemSpell(itemID)
+                            spellID = sID
+                        end
+                        if not spellID and C_Item and C_Item.GetItemSpell then
+                            local res = C_Item.GetItemSpell(itemID)
+                            if res and res.spellID then spellID = res.spellID end
+                        end
+
+                        if spellID then
+                            local sName = C_Spell.GetSpellName(spellID)
+                            if sName and (string.match(sName, "^Teleport:") or string.match(sName, "^Portal:")) then
+                                isTransportToy = true
+                            end
+                        end
+                    end
+
+                    if isTransportToy and (not filter or string.find(string.lower(name), filter, 1, true)) then
+                        if not seen[name] then
+                            table.insert(items, {
+                                type = "toy",
+                                value = itemID,
+                                name = name,
+                                icon = icon,
+                                category = "Transportation"
+                            })
+                            seen[name] = true
+                        end
+                    end
+                end
+            end
+        end
+        C_ToyBox.SetCollectedShown(wasCollectedShown)
+        C_ToyBox.SetUncollectedShown(wasUncollectedShown)
+    end
+
+    table.sort(items, function(a, b) return a.name < b.name end)
+    return items
 end
 
 function Wise:GetInterface(filter)
@@ -1185,7 +1397,7 @@ function Wise:CreateEmbeddedPicker(parent)
     local categories = {
         "Spell", "Items", "Equipped", "Battle pets", "Mounts", "Macros",
         "Equipment sets", "Raid markers", "Toys", "UI panel", "UI Visibility", "Skyriding",
-        "Professions", "Interface", "DataBroker", "Miscellaneous", "Override bars"
+        "Professions", "Interface", "DataBroker", "Miscellaneous", "Override bars", "Transportation"
     }
 
     local prevItem
