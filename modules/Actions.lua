@@ -183,30 +183,8 @@ function Wise:GetInterface(filter)
             -- Filter by text
             if not filter or string.find(string.lower(name), filter, 1, true) then
 
+                -- All nesting allowed initially since child mode can be overridden
                 local allowed = true
-
-                -- Determine if parent is a Line (box with 1 row or 1 column)
-                local parentIsLine = (parentGroup.type == "box") and (parentGroup.boxWidth == 1 or parentGroup.boxHeight == 1)
-
-                -- Rule: Circles can only nest into other circles
-                if group.type == "circle" and parentType ~= "circle" then
-                    allowed = false
-                end
-
-                -- Rule: Boxes (grids) can't nest; only Lines (box with 1 dimension) can
-                if group.type == "box" then
-                    local isLine = (group.boxWidth == 1 or group.boxHeight == 1)
-
-                    if not isLine then
-                         -- Grid box: never allowed as child
-                         allowed = false
-                    elseif parentIsLine then
-                         -- Line into Line: must be perpendicular
-                         local pAxis = parentGroup.fixedAxis or "x"
-                         local cAxis = group.fixedAxis or "x"
-                         if pAxis == cAxis then allowed = false end
-                    end
-                end
 
                 if allowed then
                     local icon = Wise:GetActionIcon("interface", name)

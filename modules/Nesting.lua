@@ -75,6 +75,12 @@ NESTING_LAYOUT_RULES["box_box"] = function(parentGroup, childGroup)
     return pAxis ~= cAxis
 end
 
+-- List -> List: allowed
+NESTING_LAYOUT_RULES["list_list"] = function(parentGroup, childGroup)
+    return true
+end
+
+
 -- Button -> anything: buttons are single-action, no nesting
 NESTING_LAYOUT_RULES["button_circle"] = function() return false end
 NESTING_LAYOUT_RULES["button_box"] = function() return false end
@@ -189,6 +195,7 @@ Wise.NESTING_DEFAULTS = {
     showGhostIndicator = true,      -- Show a visual indicator that this slot opens a sub-interface
     anchorToParentSlot = true,      -- Position child relative to the parent button that opened it
     openDirection = "auto",         -- "auto", "up", "down", "left", "right" - where child appears
+    nestedInterfaceType = "default", -- "default", "circle", "line", "box", "list", "button"
 }
 
 --- Get the effective nesting options for an interface action, merging defaults.
