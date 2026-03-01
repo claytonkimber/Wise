@@ -780,6 +780,7 @@ frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("UPDATE_BINDINGS")
 frame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
+frame:RegisterEvent("UPDATE_EXTRA_ACTIONBAR")
 
 function frame:OnEvent(event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -840,7 +841,7 @@ function frame:OnEvent(event, arg1)
         if not WiseDB.tutorialComplete and Wise.Demo then
              C_Timer.After(2, function() Wise.Demo:Start() end)
         end
-    elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" or event == "UPDATE_SHAPESHIFT_FORMS" then
+    elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" or event == "UPDATE_SHAPESHIFT_FORMS" or event == "UPDATE_EXTRA_ACTIONBAR" then
         -- Update character cache
         if Wise.UpdateCharacterInfo then
             Wise:UpdateCharacterInfo(event)

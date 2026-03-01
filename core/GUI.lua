@@ -1174,8 +1174,6 @@ function Wise:BuildVisibilityDriver(f, group)
          str = str:gsub("%[bank%]", "[actionbar:99]")
          str = str:gsub("bank", "actionbar:99") -- A bit aggressive but likely safe for standard secure options (banking isn't one)
          str = str:gsub("mailbox", "actionbar:99")
-         str = str:gsub("extrabar", "actionbar:99")
-
          
          return str
     end
@@ -2077,7 +2075,6 @@ function Wise:UpdateGroupDisplay(name)
          local isBankOpen = BankFrame and BankFrame:IsShown()
          local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
          local isMailbox = MailFrame and MailFrame:IsShown()
-         local isExtraBar = HasExtraActionBar and HasExtraActionBar() or (ExtraActionBarFrame and ExtraActionBarFrame:IsShown())
 
          local customShow = false
          
@@ -2096,10 +2093,6 @@ function Wise:UpdateGroupDisplay(name)
               if isMailbox then customShow = true end
          end
          
-         if showStr:find("extrabar") then
-              if isExtraBar then customShow = true end
-         end
-
          -- Evaluate Hide (Overrides Show)
          if hideStr:find("guildbank") then
               if isGuildBank then customShow = false end
@@ -2111,10 +2104,6 @@ function Wise:UpdateGroupDisplay(name)
 
          if hideStr:find("mailbox") then
               if isMailbox then customShow = false end
-         end
-
-         if hideStr:find("extrabar") then
-              if isExtraBar then customShow = false end
          end
 
          return customShow
