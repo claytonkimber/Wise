@@ -544,6 +544,17 @@ function Wise:GetActionName(actionType, value, extraData)
                 return name or ("Spec " .. val)
             end
         end
+        if type(value) == "string" and string.sub(value, 1, 5) == "form_" then
+            local formIndex = tonumber(string.sub(value, 6))
+            if formIndex then
+                local icon, _, _, spellID = GetShapeshiftFormInfo(formIndex)
+                if spellID then
+                    local info = C_Spell.GetSpellInfo(spellID)
+                    if info and info.name then return info.name end
+                end
+                return "Form " .. formIndex
+            end
+        end
         if type(value) == "string" and string.sub(value, 1, 9) == "lootspec_" then
             local specID = tonumber(string.sub(value, 10))
             if specID then
@@ -813,6 +824,13 @@ function Wise:GetActionIcon(actionType, value, extraData)
             local specIndex = tonumber(string.sub(value, 6))
             if specIndex then
                 local _, _, _, icon = GetSpecializationInfo(specIndex)
+                if icon then texture = icon end
+            end
+        end
+        if type(value) == "string" and string.sub(value, 1, 5) == "form_" then
+            local formIndex = tonumber(string.sub(value, 6))
+            if formIndex then
+                local icon = GetShapeshiftFormInfo(formIndex)
                 if icon then texture = icon end
             end
         end

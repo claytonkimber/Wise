@@ -1512,6 +1512,18 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
+        elseif aValue:match("^form_") then
+            local formIndex = tonumber(aValue:match("^form_(%d+)"))
+            if formIndex then
+                local icon, isActive, isCastable, spellID = GetShapeshiftFormInfo(formIndex)
+                if spellID then
+                    local info = C_Spell.GetSpellInfo(spellID)
+                    local castName = (info and info.name) or spellID
+                    secureType = "macro"
+                    secureAttr = "macrotext"
+                    secureValue = "/cast " .. castName
+                end
+            end
         elseif aValue:match("^lootspec_") then
             local specID = tonumber(aValue:match("^lootspec_(%d+)"))
             secureType = "macro"
@@ -2403,8 +2415,15 @@ function Wise:UpdateGroupDisplay(name)
         if not btn then
             btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate")
             btn:SetSize(iconSize, iconSize)
-            btn:RegisterForClicks("AnyUp", "AnyDown") 
-            
+            btn:RegisterForClicks("AnyUp", "AnyDown")
+
+            -- Active state highlight (manually managed, not CheckButton)
+            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
+            btn.activeHighlight:SetAllPoints()
+            btn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+            btn.activeHighlight:SetBlendMode("ADD")
+            btn.activeHighlight:Hide()
+
             -- Icon
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetAllPoints()
@@ -2642,6 +2661,15 @@ function Wise:UpdateGroupDisplay(name)
              elseif resolvedType == "item" then
                  itemID = resolvedValue
              end
+        elseif aType == "misc" and type(aValue) == "string" and aValue:match("^form_") then
+            local formIndex = tonumber(aValue:match("^form_(%d+)"))
+            if formIndex then
+                local _, _, _, formSpellID = GetShapeshiftFormInfo(formIndex)
+                if formSpellID then
+                    local info = C_Spell.GetSpellInfo(formSpellID)
+                    if info then spellID = info.spellID end
+                end
+            end
         end
         
         -- Store in metadata (safe for combat)
@@ -2658,10 +2686,11 @@ function Wise:UpdateGroupDisplay(name)
             activeState = actionInfo.activeState or 1,
         }
         btn.groupName = name -- Store for Text lookups
-        
-        -- Update cooldown immediately
+
+        -- Update cooldown and active state immediately
         Wise:UpdateButtonCooldown(btn)
-        
+        Wise:UpdateButtonState(btn)
+
         -- Apply visual state for known/unknown and category match
         local categoryMatch = actionInfo.categoryMatch
         local isValid = isKnown and categoryMatch
@@ -2743,6 +2772,14 @@ function Wise:UpdateGroupDisplay(name)
                  vBtn = CreateFrame("Button", nil, f.visualDisplay)
                  vBtn:SetSize(visualIconSize, visualIconSize)
                  vBtn:EnableMouse(false) -- Not clickable
+
+                 -- Active state highlight (manually managed)
+                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
+                 vBtn.activeHighlight:SetAllPoints()
+                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+                 vBtn.activeHighlight:SetBlendMode("ADD")
+                 vBtn.activeHighlight:Hide()
+
                  vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
                  vBtn.icon:SetAllPoints()
                  vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn, "CooldownFrameTemplate")
@@ -2900,10 +2937,11 @@ function Wise:UpdateGroupDisplay(name)
         Wise:SetFrameEditMode(f, name, false)
     end
     
-    -- Sync Cooldowns and Usability once after setup
+    -- Sync Cooldowns, Usability, and Active State once after setup
     for _, btn in ipairs(f.buttons) do
         Wise:UpdateButtonCooldown(btn)
         Wise:UpdateButtonUsability(btn)
+        Wise:UpdateButtonState(btn)
     end
     
     -- Condition evaluation ticker for multi-state and interface icon updates
@@ -3919,6 +3957,113 @@ function Wise:UpdateAllUsability()
     end
 end
 
+-- Active State Highlight Functions
+
+-- Cache: maps shapeshift form spellIDs to their form index
+local shapeshiftSpellToForm = {}
+local function RebuildShapeshiftCache()
+    wipe(shapeshiftSpellToForm)
+    local numForms = GetNumShapeshiftForms() or 0
+    for i = 1, numForms do
+        local _, _, _, formSpellID = GetShapeshiftFormInfo(i)
+        if formSpellID then
+            shapeshiftSpellToForm[formSpellID] = i
+            -- Also map base spellID in case the button stores a different rank/variant
+            local info = C_Spell.GetSpellInfo(formSpellID)
+            if info and info.spellID and info.spellID ~= formSpellID then
+                shapeshiftSpellToForm[info.spellID] = i
+            end
+        end
+    end
+end
+
+-- Rebuild cache on relevant events
+local shapeshiftCacheFrame = CreateFrame("Frame")
+shapeshiftCacheFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
+shapeshiftCacheFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+shapeshiftCacheFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+shapeshiftCacheFrame:SetScript("OnEvent", RebuildShapeshiftCache)
+
+function Wise:UpdateButtonState(btn)
+    if not btn then return end
+
+    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+    if not meta then return end
+
+    local isActive = false
+    local actionType = meta.actionType
+    local actionValue = meta.actionValue
+    local spellID = meta.spellID
+    local itemID = meta.itemID
+
+    if actionType == "action" and tonumber(actionValue) then
+        local aID = tonumber(actionValue)
+        local isCurrent = false
+        if C_ActionBar and C_ActionBar.IsCurrentAction then isCurrent = C_ActionBar.IsCurrentAction(aID) elseif IsCurrentAction then isCurrent = IsCurrentAction(aID) end
+        local isAutoRepeat = false
+        if C_ActionBar and C_ActionBar.IsAutoRepeatAction then isAutoRepeat = C_ActionBar.IsAutoRepeatAction(aID) elseif IsAutoRepeatAction then isAutoRepeat = IsAutoRepeatAction(aID) end
+        isActive = isCurrent or isAutoRepeat
+    elseif actionType == "spell" and spellID then
+        local isCurrent = false
+        if C_Spell and C_Spell.IsCurrentSpell then isCurrent = C_Spell.IsCurrentSpell(spellID) elseif IsCurrentSpell then isCurrent = IsCurrentSpell(spellID) end
+        local isAutoRepeat = false
+        if C_Spell and C_Spell.IsAutoRepeatSpell then isAutoRepeat = C_Spell.IsAutoRepeatSpell(spellID) elseif IsAutoRepeatSpell then isAutoRepeat = IsAutoRepeatSpell(spellID) end
+        isActive = isCurrent or isAutoRepeat
+        -- Also check if this spell is a shapeshift form
+        if not isActive then
+            local formIndex = shapeshiftSpellToForm[spellID]
+            if formIndex then
+                isActive = GetShapeshiftForm() == formIndex
+            end
+        end
+    elseif actionType == "item" and itemID then
+        local isCurrent = false
+        if C_Item and C_Item.IsCurrentItem then isCurrent = C_Item.IsCurrentItem(itemID) elseif IsCurrentItem then isCurrent = IsCurrentItem(itemID) end
+        isActive = isCurrent
+    elseif actionType == "misc" and type(actionValue) == "string" then
+        local formIndex = actionValue:match("^form_(%d+)")
+        if formIndex then
+            local currentForm = GetShapeshiftForm()
+            isActive = currentForm == tonumber(formIndex)
+            -- Refresh the icon from GetShapeshiftFormInfo (may change per form state)
+            local formIcon = GetShapeshiftFormInfo(tonumber(formIndex))
+            if formIcon and btn.icon then
+                btn.icon:SetTexture(formIcon)
+                local vClone = (meta and meta.visualClone) or btn.visualClone
+                if vClone and vClone.icon then
+                    vClone.icon:SetTexture(formIcon)
+                end
+            end
+        end
+    end
+
+    if btn.activeHighlight then
+        btn.activeHighlight:SetShown(isActive)
+    end
+
+    local visualClone = (meta and meta.visualClone) or btn.visualClone
+    if visualClone and visualClone.activeHighlight then
+        visualClone.activeHighlight:SetShown(isActive)
+    end
+end
+
+function Wise:UpdateAllStates()
+    for name, frame in pairs(Wise.frames) do
+        if not WiseDB.groups[name] then
+            Wise.frames[name] = nil
+        elseif frame.buttons then
+            for _, btn in ipairs(frame.buttons) do
+                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+                local visualClone = (meta and meta.visualClone) or btn.visualClone
+
+                if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+                    Wise:UpdateButtonState(btn)
+                end
+            end
+        end
+    end
+end
+
 -- Error Suppression System
 -- When a Wise button with "Suppress all errors" is clicked, temporarily prevent
 -- UIErrorsFrame from receiving UI_ERROR_MESSAGE at all (no text, no sound).
@@ -3970,11 +4115,17 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("UNIT_AURA") 
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+-- Active state (checked) events
+eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 eventFrame:SetScript("OnEvent", function(self, event, unit)
     if event == "UNIT_AURA" then
         if unit == "target" or unit == "player" then
             Wise:UpdateAllUsability()
             Wise:UpdateAllCooldowns()
+        end
+        if unit == "player" then
+            Wise:UpdateAllStates()
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         Wise:UpdateAllUsability()
@@ -3983,14 +4134,15 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
         Wise:UpdateAllUsability()
     elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
         Wise:UpdateAllUsability()
+    elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_UPDATE_STATE" then
+        Wise:UpdateAllStates()
     elseif event == "SPELL_UPDATE_CHARGES" then
         Wise:UpdateAllCharges()
     else
         -- Cooldown events
         Wise:UpdateAllCooldowns()
         Wise:UpdateAllCharges()
-        -- Also check usability on CD update (sometimes related?) 
-        -- Optimization: usually not needed, but safe to do if not spammy.
+        Wise:UpdateAllStates()
     end
 end)
 
