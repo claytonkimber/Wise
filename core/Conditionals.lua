@@ -154,7 +154,6 @@ Wise.builtinConditionals = {
 
     { name = "button:n", desc = "Mouse button n pressed", skipeval = true },
     { name = "cursor", desc = "Dragging an item/spell" },
-    { name = "extrabar", desc = "Extra action bar is visible" },
     { name = "modifier", desc = "Any modifier key held" },
     { name = "mod", desc = "Any modifier key held (alias)" },
     { name = "mod:shift", desc = "Shift key held" },
@@ -198,6 +197,9 @@ Wise.opieConditionals = {
     { name = "prof:skill", desc = "Profession skill level (tail, lw, alch, etc)", skipeval = true },
 
     -- Bank & Storage
+    -- UI Extensions
+    { name = "extrabar", desc = "Extra action bar is visible" },
+
     { type = "header", text = "Bank & Storage" },
     { name = "bank", desc = "Bank interface is open" },
     { name = "guildbank", desc = "Guild Bank interface is open" },
@@ -457,7 +459,10 @@ function Wise:EvaluateCustomCondition(name, args)
     elseif check == "falling" then
         return IsFalling()
     elseif check == "cleanse" then
-        return false 
+        return false
+    -- UI Extensions
+    elseif check == "extrabar" then
+        return HasExtraActionBar and HasExtraActionBar() or (ExtraActionBarFrame and ExtraActionBarFrame:IsShown()) or false
         
     -- Bank Checks
     elseif check == "bank" then
