@@ -95,7 +95,7 @@ function Wise:FindKeybindOwner(key)
     -- Check WoW global bindings
     local existingAction = GetBindingAction(key)
     if existingAction and existingAction ~= "" then
-        return "WoW Action: " .. existingAction, "SYSTEM"
+        return existingAction, "SYSTEM"
     end
 
     return nil, nil

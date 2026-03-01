@@ -100,7 +100,7 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
         if data.oldOwner then
             if data.oldSlot == "SYSTEM" then
                 -- It's a WoW system binding
-                SetBinding(data.key)
+                SetBinding(data.key, nil)
                 local currentSet = GetCurrentBindingSet()
                 if currentSet == 1 or currentSet == 2 then
                     SaveBindings(currentSet)
@@ -141,7 +141,9 @@ function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
     if oldOwner then
         local ownerText = oldOwner
         if oldSlot == "SYSTEM" then
-            ownerText = oldOwner
+            -- Let's resolve the binding name for a better string
+            local actionName = _G["BINDING_NAME_" .. oldOwner] or oldOwner
+            ownerText = "WoW Action: " .. actionName
         elseif oldSlot then
             ownerText = oldOwner .. " (Slot " .. oldSlot .. ")"
         end
