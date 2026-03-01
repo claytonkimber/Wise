@@ -1,0 +1,3 @@
+# Properties UI already calls `Wise:UpdateGroupDisplay(Wise.selectedGroup)` when any nesting option changes.
+# Since `UpdateGroupDisplay` on the parent now automatically loops over its slots and recursively calls `UpdateGroupDisplay(aValue, childInstanceId, nestOpts)`, the child's display will be automatically updated with the new layout type whenever a property changes on the parent!
+# The only case where it wouldn't update is if the user somehow changed the global type of the child interface while editing the child interface directly. However, we already have `C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)` for when the child's own properties change.

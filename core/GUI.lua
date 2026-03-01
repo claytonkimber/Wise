@@ -456,10 +456,12 @@ WiseStateDriver:SetAttribute("_onattribute-wisesetstate", [[
     end
 ]])
 
-function Wise:CreateGroupFrame(name)
-    if Wise.frames[name] then return Wise.frames[name] end
+function Wise:CreateGroupFrame(name, instanceId)
+    local frameKey = instanceId or name
+    if Wise.frames[frameKey] then return Wise.frames[frameKey] end
     
-    local f = CreateFrame("Frame", "WiseGroup_"..name, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
+    local uiName = "WiseGroup_" .. (instanceId and instanceId:gsub("[: ]", "_") or name)
+    local f = CreateFrame("Frame", uiName, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
     f:SetSize(50, 50)
     f:EnableMouse(false) -- Default to click-through (enabled only in Edit Mode)
     
@@ -484,7 +486,7 @@ function Wise:CreateGroupFrame(name)
     -- Secure Toggle Button (Hidden)
     -- Secure Toggle Button (Hidden but active)
     -- Must be parented to UIParent (or similar) so it doesn't get hidden when 'f' is hidden by State Driver
-    local toggleBtn = CreateFrame("Button", "WiseGroupToggle_"..name, UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
+    local toggleBtn = CreateFrame("Button", "WiseGroupToggle_"..(instanceId and instanceId:gsub("[: ]", "_") or name), UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
     toggleBtn:RegisterForClicks("AnyDown", "AnyUp")
     -- SecureHandlerAttributeTemplate provides SetFrameRef via SecureHandler_OnLoad mixin
     
@@ -761,7 +763,7 @@ function Wise:CreateGroupFrame(name)
                         self:SetAttribute("spell", _rv_s)
                         self:SetAttribute("item", _rv_i)
                         self:SetAttribute("macrotext", _rv_m)
-                        if hideOnUse then f:SetAttribute("state-manual", "hide") end
+                        if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     else
                         self:SetAttribute("debug_msg", "Press+Button: No valid target found. Count="..count)
                     end
@@ -802,7 +804,7 @@ function Wise:CreateGroupFrame(name)
                         self:SetAttribute("ul_item", _rv_i)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
-                        if hideOnUse then f:SetAttribute("state-manual", "hide") end
+                        if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     end
                  else
                     self:SetAttribute("type", nil)
@@ -828,7 +830,7 @@ function Wise:CreateGroupFrame(name)
                         self:SetAttribute("ul_item", _rv_i)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
-                        if hideOnUse then f:SetAttribute("state-manual", "hide") end
+                        if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     end
                  else
                     local t = self:GetAttribute("ul_type")
@@ -837,7 +839,7 @@ function Wise:CreateGroupFrame(name)
                          self:SetAttribute("spell", self:GetAttribute("ul_spell"))
                          self:SetAttribute("item", self:GetAttribute("ul_item"))
                          self:SetAttribute("macrotext", self:GetAttribute("ul_macrotext"))
-                         if hideOnUse then f:SetAttribute("state-manual", "hide") end
+                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     else
                          self:SetAttribute("type", nil)
                     end
@@ -944,17 +946,16 @@ function Wise:CreateGroupFrame(name)
         -- Skip nesting behaviors for Wiser interfaces (they are never legitimately nested
         -- and should not be subject to cascade close, close-on-leave, or parent positioning).
         if group and group.anchorMode ~= "mouse" and not group.isWiser then
-            local parentName, parentGroup = Wise:GetParentInfo(self.groupName)
-            if parentName and parentGroup then
-                Wise:PositionNestedChild(self, self.groupName, parentName)
+            if self.parentInstanceId then
+                Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
 
                 -- closeParentOnOpen: hide parent when child opens
                 if not InCombatLockdown() then
-                    Wise:HandleCloseParentOnOpen(self.groupName, parentName)
+                    Wise:HandleCloseParentOnOpen(self.groupName, self.parentInstanceId)
                 end
 
                 -- Auto-close on leave: start monitoring mouse proximity
-                Wise:StartNestedCloseOnLeave(self, self.groupName, parentName)
+                Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
             end
         end
 
@@ -1075,7 +1076,7 @@ function Wise:CreateGroupFrame(name)
         self:SetAttribute("state-wise-hide", shouldHide and "show" or "hide")
     ]])
 
-    Wise.frames[name] = f
+    Wise.frames[frameKey] = f
     return f
 end
 
@@ -1762,186 +1763,8 @@ function Wise:GetRotationIcon(btn, childGroupName, nestMode)
     return nil
 end
 
--- Helper: Position a nested child group relative to the parent button that opened it.
--- Uses the child's insecure Anchor frame so it works even during combat.
-function Wise:PositionNestedChild(childFrame, childName, parentName)
-    local parentFrame = Wise.frames and Wise.frames[parentName]
-    if not parentFrame then return end
 
-    -- Find which parent button is the interface action pointing to this child
-    local parentBtn = nil
-    if parentFrame.buttons then
-        for _, btn in ipairs(parentFrame.buttons) do
-            if btn:IsShown() and btn:GetAttribute("isa_interface_target") == childName then
-                parentBtn = btn
-                break
-            end
-        end
-    end
-
-    -- Fallback to parent frame center if no specific button found
-    local anchorFrame = parentBtn or parentFrame
-
-    -- Resolve open direction from the action's nesting options
-    local direction = "auto"
-    if parentBtn then
-        direction = parentBtn:GetAttribute("isa_open_direction") or "auto"
-    end
-    direction = Wise:ResolveOpenDirection(anchorFrame, direction)
-
-    -- Get the anchor frame's center in screen coordinates
-    local cx, cy = anchorFrame:GetCenter()
-    if not cx or not cy then return end
-
-    local uiScale = UIParent:GetScale()
-    local frameScale = childFrame:GetScale()
-    local correctedX = cx / frameScale
-    local correctedY = cy / frameScale
-
-    -- Offset based on direction (use parent icon size as spacing)
-    local spacing = (parentBtn and parentBtn:GetWidth() or 50) + 10
-    if direction == "up" then
-        correctedY = correctedY + spacing / frameScale
-    elseif direction == "down" then
-        correctedY = correctedY - spacing / frameScale
-    elseif direction == "right" then
-        correctedX = correctedX + spacing / frameScale
-    elseif direction == "left" then
-        correctedX = correctedX - spacing / frameScale
-    end
-    -- "center" keeps the same position
-
-    -- Move the proxy anchor (safe even in combat)
-    if childFrame.Anchor then
-        childFrame.Anchor:ClearAllPoints()
-        childFrame.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
-    end
-
-    -- Also move the secure frame directly (only safe out of combat)
-    if not InCombatLockdown() then
-        childFrame:ClearAllPoints()
-        childFrame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
-    end
-end
-
--- Helper: Start a ticker that closes the nested child when the mouse leaves
--- both the child group and the parent group. Respects closeOnLeave nesting option.
-function Wise:StartNestedCloseOnLeave(childFrame, childName, parentName)
-    -- Cancel any existing ticker
-    if childFrame.nestedCloseTicker then
-        childFrame.nestedCloseTicker:Cancel()
-        childFrame.nestedCloseTicker = nil
-    end
-
-    -- Find the interface action data to check closeOnLeave option
-    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
-    if not parentGroup or not parentGroup.actions then return end
-
-    local closeOnLeave = true -- default
-    for _, states in pairs(parentGroup.actions) do
-        if type(states) == "table" then
-            for _, action in ipairs(states) do
-                if action.type == "interface" and action.value == childName then
-                    local opts = Wise:GetNestingOptions(action)
-                    if opts then
-                        closeOnLeave = opts.closeOnLeave
-                    end
-                    break
-                end
-            end
-        end
-    end
-
-    if not closeOnLeave then return end
-
-    local parentFrame = Wise.frames and Wise.frames[parentName]
-    local leaveDelay = 0 -- grace frames before closing
-    local leaveCount = 0
-    local LEAVE_THRESHOLD = 3 -- ticks (~0.6s) before closing
-
-    childFrame.nestedCloseTicker = C_Timer.NewTicker(0.2, function()
-        if not childFrame:IsShown() then
-            if childFrame.nestedCloseTicker then
-                childFrame.nestedCloseTicker:Cancel()
-                childFrame.nestedCloseTicker = nil
-            end
-            return
-        end
-
-        -- Check if mouse is over any child button or the child frame itself
-        local overChild = childFrame:IsMouseOver(20, -20, -20, 20) -- slight padding
-        local overParent = parentFrame and parentFrame:IsShown() and parentFrame:IsMouseOver(20, -20, -20, 20)
-
-        if overChild or overParent then
-            leaveCount = 0
-        else
-            leaveCount = leaveCount + 1
-            if leaveCount >= LEAVE_THRESHOLD then
-                -- Close the child interface
-                if not InCombatLockdown() then
-                    childFrame:SetAttribute("state-manual", "hide")
-                    -- Notify the state driver
-                    local driver = Wise.WiseStateDriver
-                    if driver then
-                        driver:SetAttribute("wisesetstate", childName .. ":inactive")
-                    end
-                end
-                if childFrame.nestedCloseTicker then
-                    childFrame.nestedCloseTicker:Cancel()
-                    childFrame.nestedCloseTicker = nil
-                end
-            end
-        end
-    end)
-end
-
--- Helper: Hide the parent group if closeParentOnOpen is enabled for this nesting.
-function Wise:HandleCloseParentOnOpen(childName, parentName)
-    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
-    if not parentGroup or not parentGroup.actions then return end
-
-    for _, states in pairs(parentGroup.actions) do
-        if type(states) == "table" then
-            for _, action in ipairs(states) do
-                if action.type == "interface" and action.value == childName then
-                    local opts = Wise:GetNestingOptions(action)
-                    if opts and opts.closeParentOnOpen then
-                        local parentFrame = Wise.frames and Wise.frames[parentName]
-                        if parentFrame and parentFrame:IsShown() and not InCombatLockdown() then
-                            parentFrame:SetAttribute("state-manual", "hide")
-                        end
-                    end
-                    return
-                end
-            end
-        end
-    end
-end
-
--- Helper: Close all child interfaces of a group (cascade close)
-function Wise:CloseChildInterfaces(groupName)
-    if InCombatLockdown() then return end
-    local children = Wise:GetChildInterfaces(groupName)
-    for _, childName in ipairs(children) do
-        local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childName]
-        -- Skip Wiser interfaces: they manage their own visibility independently
-        -- and should not be cascade-closed when a parent hides
-        if childGroup and childGroup.isWiser then
-            -- Do not cascade close Wiser interfaces
-        else
-            local childFrame = Wise.frames and Wise.frames[childName]
-            if childFrame and childFrame:IsShown() then
-                childFrame:SetAttribute("state-manual", "hide")
-                local driver = Wise.WiseStateDriver
-                if driver then
-                    driver:SetAttribute("wisesetstate", childName .. ":inactive")
-                end
-            end
-        end
-    end
-end
-
-function Wise:UpdateGroupDisplay(name)
+function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Protect against combat execution (SecureStateDriver, SetPoint, etc.)
     if InCombatLockdown() then
         Wise.pendingUpdates = Wise.pendingUpdates or {}
@@ -1952,13 +1775,21 @@ function Wise:UpdateGroupDisplay(name)
     local group = WiseDB.groups[name]
     if not group then return end
     
-    local f = Wise:CreateGroupFrame(name)
+    local f = Wise:CreateGroupFrame(name, instanceId)
     
+    f.instanceId = instanceId or name
+    if overrideOpts and overrideOpts._parentInstanceId then
+        f.parentInstanceId = overrideOpts._parentInstanceId
+    end
+
     -- Apply Anchor (only for fixed mode or initial positioning)
     -- Mouse mode will reposition via OnUpdate
     -- Determine if this is the "Always Visible + Mouse" mode
     -- Determine if this is the "Always Visible + Mouse" mode
-    local layoutType = group.type or "circle"
+    local displayType = group.type or "circle"
+    if overrideOpts and overrideOpts.nestedInterfaceType and overrideOpts.nestedInterfaceType ~= "default" then
+        displayType = overrideOpts.nestedInterfaceType
+    end
     local mode = group.interaction or "toggle"
     
     -- Check Availability override (Wiser interfaces)
@@ -2002,11 +1833,9 @@ function Wise:UpdateGroupDisplay(name)
         if group.visibilitySettings.baseVisibility ~= "ALWAYS_HIDDEN" then
             group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN"
         end
-        -- If parent uses hideOnUse, inherit it so nested interface closes parent chain
-        if parentGroup.visibilitySettings and parentGroup.visibilitySettings.hideOnUse then
-            if group.visibilitySettings.hideOnUse == nil then
-                group.visibilitySettings.hideOnUse = true
-            end
+        -- Nested interfaces should hide on use by default (unless explicitly set to false)
+        if group.visibilitySettings.hideOnUse == nil then
+            group.visibilitySettings.hideOnUse = true
         end
     end
 
@@ -2329,7 +2158,7 @@ function Wise:UpdateGroupDisplay(name)
 
         f.toggleBtn:SetAttribute("toggleOnPress", group.visibilitySettings.toggleOnPress)
         f.toggleBtn:SetAttribute("hideOnUse", group.visibilitySettings.hideOnUse)
-        f.toggleBtn:SetAttribute("layoutType", group.type or "circle")
+        f.toggleBtn:SetAttribute("layoutType", displayType)
         f.toggleBtn:SetAttribute("openNestedButton", group.nestingOpenButton or "BUTTON1")
 
         Wise:DebugPrint(string.format("Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'", 
@@ -2434,7 +2263,7 @@ function Wise:UpdateGroupDisplay(name)
         
         local btn = f.buttons[i]
         if not btn then
-            btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate")
+            btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate")
             btn:SetSize(iconSize, iconSize)
             btn:RegisterForClicks("AnyUp", "AnyDown")
 
@@ -2545,21 +2374,61 @@ function Wise:UpdateGroupDisplay(name)
 
         -- Mark interface buttons with nesting attributes
         if aType == "interface" then
+            local frameKey = instanceId or name
+            local childInstanceId = frameKey .. "_" .. tostring(i) .. "_" .. aValue
             btn:SetAttribute("isa_is_interface", true)
-            btn:SetAttribute("isa_interface_target", aValue)
+            btn:SetAttribute("isa_interface_target", childInstanceId)
+
             local nestOpts = Wise:GetNestingOptions(actionData)
             if nestOpts then
                 btn:SetAttribute("isa_open_button", nestOpts.openNestedButton or "BUTTON1")
                 btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+
+                if nestOpts.openOnHover then
+                    -- Open on hover via secure snippet
+                    btn:SetAttribute("_onenter", [[
+                        local target = self:GetAttribute("isa_interface_target")
+                        if target then
+                            local childGroup = self:GetFrameRef("child_group")
+                            if childGroup then
+                                local _cManual = childGroup:GetAttribute("state-manual") or "hide"
+                                if _cManual == "hide" then
+                                    childGroup:SetAttribute("state-manual", "show")
+                                    local driver = self:GetFrameRef("WiseStateDriver")
+                                    if driver then
+                                        driver:SetAttribute("wisesetstate", target .. ":active")
+                                    end
+                                end
+                            end
+                        end
+                    ]])
+                else
+                    btn:SetAttribute("_onenter", nil)
+                end
             end
 
             -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
             local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
             if childGroup then
-                -- Ensure child frame exists (CreateGroupFrame is idempotent)
-                local childFrame = Wise:CreateGroupFrame(aValue)
+                local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
                 if childFrame then
-                    f.toggleBtn:SetFrameRef("nested_" .. aValue, childFrame)
+                    f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
+                    btn:SetFrameRef("child_group", childFrame)
+                    if Wise.WiseStateDriver then
+                        btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+                    end
+                end
+
+                -- Recursive update to prepare child layout with overrides
+                if not nestOpts then nestOpts = {} end
+                nestOpts._parentInstanceId = frameKey
+
+                local currentDepth = (overrideOpts and overrideOpts._depth) or 0
+                if currentDepth < 3 then
+                    nestOpts._depth = currentDepth + 1
+                    Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
+                else
+                    Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
                 end
             end
 
@@ -2901,7 +2770,7 @@ function Wise:UpdateGroupDisplay(name)
         end
         
         -- Apply Layout to Visual Display
-        Wise:ApplyLayout(f.visualDisplay, group.type, #actionsToShow, name)
+        Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
     end
     
     -- Hide unused buttons
@@ -2948,7 +2817,7 @@ function Wise:UpdateGroupDisplay(name)
     end
     f:SetAttribute("nested_max_keys", #actionsToShow)
     
-    Wise:ApplyLayout(f, group.type, #actionsToShow, name)
+    Wise:ApplyLayout(f, displayType, #actionsToShow, name)
     
     -- Sync Edit Mode state (skip for mouse-anchored)
     if Wise.editMode and group.anchorMode ~= "mouse" then
