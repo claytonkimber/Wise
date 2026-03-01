@@ -3541,6 +3541,37 @@ function Wise:UpdateBindings()
     if InCombatLockdown() then return end
     ClearOverrideBindings(Wise.BindingFrame)
     
+    local keysToClear = {}
+
+    for name, group in pairs(WiseDB.groups) do
+        -- Validate against system bindings first (WoW might have claimed it)
+        if group.binding and string.len(group.binding) > 0 then
+            local existingAction = GetBindingAction(group.binding)
+            if existingAction and existingAction ~= "" then
+                -- Schedule to clear later to avoid modifying table during iteration
+                table.insert(keysToClear, {group=name, slot=nil})
+            end
+        end
+
+        if group.actions then
+            for slotIdx, actionList in pairs(group.actions) do
+                if actionList.keybind and string.len(actionList.keybind) > 0 then
+                    local existingAction = GetBindingAction(actionList.keybind)
+                    if existingAction and existingAction ~= "" then
+                        table.insert(keysToClear, {group=name, slot=slotIdx})
+                    end
+                end
+            end
+        end
+    end
+
+    -- Process cleared keys
+    for _, clearData in ipairs(keysToClear) do
+        if Wise.ClearKeybind then
+            Wise:ClearKeybind(clearData.group, clearData.slot)
+        end
+    end
+
     for name, group in pairs(WiseDB.groups) do
         -- 1. Group Toggle Binding
         if group.binding and string.len(group.binding) > 0 then
