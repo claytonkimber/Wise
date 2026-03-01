@@ -182,9 +182,10 @@ function Wise:GetTransportation(filter)
                                sName == "Zen Pilgrimage" or
                                sName == "Death Gate" then
                                 isTransport = true
-                            elseif string.match(sName, "^Hero's Path: ") then
+                            elseif string.find(sName, "Hero's Path:") then
                                 isTransport = true
-                                displayName = string.gsub(sName, "^Hero's Path: ", "")
+                                -- Remove "Hero's Path: " or "Hero's Path:"
+                                displayName = string.gsub(sName, "Hero's Path:%s*", "")
                             end
 
                             if isTransport and (not filter or string.find(string.lower(displayName), filter, 1, true)) then
@@ -223,9 +224,10 @@ function Wise:GetTransportation(filter)
                                            sName == "Zen Pilgrimage" or
                                            sName == "Death Gate" then
                                             isTransport = true
-                                        elseif string.match(sName, "^Hero's Path: ") then
+                                        elseif string.find(sName, "Hero's Path:") then
                                             isTransport = true
-                                            displayName = string.gsub(sName, "^Hero's Path: ", "")
+                                            -- Remove "Hero's Path: " or "Hero's Path:"
+                                            displayName = string.gsub(sName, "Hero's Path:%s*", "")
                                         end
 
                                         if isTransport and (not filter or string.find(string.lower(displayName), filter, 1, true)) then
