@@ -204,7 +204,7 @@ function Wise:GetTransportation(filter)
                     end
                 elseif spellType == Enum.SpellBookItemType.Flyout then
                     local flyoutID = spellId
-                    local _, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
+                    local flyoutName, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
                     if isKnown and numSlots > 0 then
                         for s = 1, numSlots do
                             local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
@@ -228,6 +228,8 @@ function Wise:GetTransportation(filter)
                                             isTransport = true
                                             -- Remove "Hero's Path: " or "Hero's Path:"
                                             displayName = string.gsub(sName, "Hero's Path:%s*", "")
+                                        elseif flyoutName and string.find(flyoutName, "Hero's Path:") then
+                                            isTransport = true
                                         end
 
                                         if isTransport and (not filter or string.find(string.lower(displayName), filter, 1, true)) then
