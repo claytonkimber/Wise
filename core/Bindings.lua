@@ -2,7 +2,7 @@
 local addonName, Wise = ...
 
 -- Returns display text and raw key for a given group slot.
--- Hierarchy: 1) Slot-specific binding, 2) Interface-level binding (slot 1 only), 3) WoW keybinding fallback
+-- Hierarchy: 1) Slot-specific binding, 2) WoW keybinding fallback
 function Wise:GetKeybind(groupName, slotIndex)
     if not groupName then return nil end
     local group = WiseDB.groups[groupName]
@@ -14,11 +14,6 @@ function Wise:GetKeybind(groupName, slotIndex)
         if slotKey and slotKey ~= "" then
             return Wise:FormatKeybindText(slotKey), slotKey
         end
-    end
-
-    -- 1.5. Interface-level binding (slot 1 only) if no slot-specific binding exists
-    if slotIndex == 1 and group.binding and group.binding ~= "" then
-        return Wise:FormatKeybindText(group.binding), group.binding
     end
 
     -- 2. Check for nested interface bindings
