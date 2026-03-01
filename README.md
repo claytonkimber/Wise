@@ -109,6 +109,23 @@ These are the standard for action bars. They work. They are solid.
 The Options Window is a work in progress, making it easier to handle is on the roadmap.  
 There will be bugs, I'm very new to this and also, it's a very new addon
 
+## Compatibility
+
+Wise creates its own frames, and doesn't use the default WoW action bar frames, so as far as I know, Wise is compatible with:
+* OPie
+* GSE (Gnome Sequencer Enhanced)
+* Bartender / Dominos / ElvUI
+* Any addon that uses the standard WoW API for action bars
+
+There is hotkey mapping deconfliction for the native UI, but I haven't implemented checking for other addons completely yet.
+
+## Known Issues
+* Nesting isn't completely implemented how I would like it to work yet
+* Single-Button Assistant is working, but feels off, so I'm looking into it
+* Some Spells fail to copy when using the Bar Copy Tool, still looking into this
+* The options interface is a mess, see roadmap below
+* Auto push to CF isn't working yet, but I'm now approved in CF, so that's progress
+
 ## Roadmap
 * Version 1.0.[date code] - **we are here**
 * bug fixes
