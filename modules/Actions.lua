@@ -1655,6 +1655,34 @@ function Wise:GetSpell(filter)
                                  end
                              end
                          end
+                    elseif spellType == Enum.SpellBookItemType.Flyout then
+                         local flyoutID = spellId
+                         local _, _, numSlots, isKnown = GetFlyoutInfo(flyoutID)
+                         if isKnown and numSlots > 0 then
+                              for s = 1, numSlots do
+                                   local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
+                                   if isKnownSlot and flyoutSpellID then
+                                        local actualSpellID = overrideSpellID or flyoutSpellID
+                                        if not C_Spell.IsSpellPassive(actualSpellID) then
+                                             local sName = C_Spell.GetSpellName(actualSpellID)
+                                             local sIcon = C_Spell.GetSpellTexture(actualSpellID)
+                                             if sName and (not filter or string.find(string.lower(sName), filter, 1, true)) then
+                                                  if not seen[sName] then
+                                                       table.insert(spells, {
+                                                            type="spell",
+                                                            value=actualSpellID,
+                                                            name=sName,
+                                                            icon=sIcon,
+                                                            category=realCategory,
+                                                            sourceSpecID=sourceSpecID
+                                                       })
+                                                       seen[sName] = true
+                                                  end
+                                             end
+                                        end
+                                   end
+                              end
+                         end
                     end
                 end
             end
