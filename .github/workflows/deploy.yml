@@ -1,7 +1,9 @@
 on:
   push:
-    branches: [ main ]  # Pushing code = Alpha
-    tags: [ 'v*' ]      # Creating tag = Release
+    branches:
+      - main
+    tags:
+      - '*' # This will trigger on ANY tag you push
 
 jobs:
   release:
