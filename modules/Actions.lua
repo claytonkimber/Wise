@@ -1620,7 +1620,7 @@ function Wise:GetSpell(filter)
                 displayCategory = "Off-Spec"
                 realCategory = "spec"
                 sourceSpecID = specID
-            elseif skillLineName == "General" then
+            elseif skillLineName == "General" or skillLineName == "Warbands" then
                 displayCategory = "Global"
                 realCategory = "global"
             else
