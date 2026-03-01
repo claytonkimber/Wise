@@ -63,7 +63,7 @@ local VALID_CONDITIONALS = {
     ["@focus"] = true, ["@pet"] = true, ["@vehicle"] = true, ["@targettarget"] = true,
 
     -- Wise Custom Conditionals (Handled via Lua/Custom State)
-    ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true, ["always"] = true,
+    ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true, ["auctionhouse"] = true, ["always"] = true,
 }
 
 -- Built-in Conditionals List
@@ -202,6 +202,7 @@ Wise.opieConditionals = {
     { name = "bank", desc = "Bank interface is open" },
     { name = "guildbank", desc = "Guild Bank interface is open" },
     { name = "mailbox", desc = "Mailbox is open" },
+    { name = "auctionhouse", desc = "Auction House is open" },
 
     -- Non-Secure (Combat Restricted)
     { type = "header", text = "Non-Secure Conditionals" },
@@ -468,6 +469,9 @@ function Wise:EvaluateCustomCondition(name, args)
 
     elseif check == "mailbox" then
         return MailFrame and MailFrame:IsShown()
+
+    elseif check == "auctionhouse" then
+        return AuctionHouseFrame and AuctionHouseFrame:IsShown()
     end
     
     return false
