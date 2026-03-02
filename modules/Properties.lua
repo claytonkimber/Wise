@@ -1757,6 +1757,153 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         y = y - 40
 
+
+        -- Per-Interface Circle Radius & Rotation (if circle)
+        if group.type == "circle" then
+            -- Radius Slider
+            local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
+            local actionCount = 0
+            if group.actions then
+                for _ in pairs(group.actions) do actionCount = actionCount + 1 end
+            end
+            if actionCount < 2 then actionCount = 2 end -- Prevent division by zero
+            local minRadius = math.ceil(effectiveIconSize / (2 * math.sin(math.pi / actionCount)))
+            if minRadius < effectiveIconSize then minRadius = effectiveIconSize end -- Absolute floor
+
+            local currentRadius = group.circleRadius or (effectiveIconSize * 2)
+            if currentRadius < minRadius then currentRadius = minRadius end
+
+            local radLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            radLabel:SetPoint("TOPLEFT", 10, y)
+            radLabel:SetText("Radius: " .. currentRadius)
+            tinsert(panel.controls, radLabel)
+
+            y = y - 22
+            local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+            radSlider:SetPoint("TOPLEFT", 30, y)
+            radSlider:SetSize(140, 16)
+            radSlider:SetMinMaxValues(minRadius, 200)
+            radSlider:SetValue(currentRadius)
+            radSlider:SetValueStep(1)
+            radSlider:SetObeyStepOnDrag(true)
+            radSlider.Low:SetText(tostring(minRadius))
+            radSlider.High:SetText("200")
+            radSlider.Text:SetText(tostring(currentRadius))
+
+            local function UpdateRadius(v)
+                v = math.floor(v)
+                if v < minRadius then v = minRadius end
+                if v > 200 then v = 200 end
+                group.circleRadius = v
+                radSlider:SetValue(v)
+                radLabel:SetText("Radius: " .. v)
+                radSlider.Text:SetText(tostring(v))
+                C_Timer.After(0.1, function()
+                    if not InCombatLockdown() then
+                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                    end
+                end)
+            end
+
+            radSlider:SetScript("OnValueChanged", function(self, value)
+                UpdateRadius(value)
+            end)
+            tinsert(panel.controls, radSlider)
+
+            -- Minus Button for Radius
+            local radMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            radMinusBtn:SetSize(18, 18)
+            radMinusBtn:SetPoint("RIGHT", radSlider, "LEFT", -2, 0)
+            radMinusBtn:SetText("-")
+            radMinusBtn:SetScript("OnClick", function()
+                UpdateRadius(radSlider:GetValue() - 1)
+            end)
+            tinsert(panel.controls, radMinusBtn)
+
+            -- Plus Button for Radius
+            local radPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            radPlusBtn:SetSize(18, 18)
+            radPlusBtn:SetPoint("LEFT", radSlider, "RIGHT", 2, 0)
+            radPlusBtn:SetText("+")
+            radPlusBtn:SetScript("OnClick", function()
+                UpdateRadius(radSlider:GetValue() + 1)
+            end)
+            tinsert(panel.controls, radPlusBtn)
+
+            y = y - 40
+
+            -- Rotation Slider (0-359 degrees)
+            local currentRotation = group.circleRotation or 0
+            local rotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            rotLabel:SetPoint("TOPLEFT", 10, y)
+            rotLabel:SetText("Rotation: " .. currentRotation .. "\194\176")
+            tinsert(panel.controls, rotLabel)
+
+            y = y - 22
+            local rotSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+            rotSlider:SetPoint("TOPLEFT", 30, y)
+            rotSlider:SetSize(140, 16)
+            rotSlider:SetMinMaxValues(0, 359)
+            rotSlider:SetValue(currentRotation)
+            rotSlider:SetValueStep(1)
+            rotSlider:SetObeyStepOnDrag(true)
+            rotSlider.Low:SetText("0\194\176")
+            rotSlider.High:SetText("359\194\176")
+            rotSlider.Text:SetText(tostring(currentRotation) .. "\194\176")
+
+            local function UpdateRotation(v)
+                v = math.floor(v)
+                if v < 0 then v = 359 end
+                if v > 359 then v = 0 end
+                group.circleRotation = v
+                rotSlider:SetValue(v)
+                rotLabel:SetText("Rotation: " .. v .. "\194\176")
+                rotSlider.Text:SetText(tostring(v) .. "\194\176")
+                C_Timer.After(0.1, function()
+                    if not InCombatLockdown() then
+                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                    end
+                end)
+            end
+
+            rotSlider:SetScript("OnValueChanged", function(self, value)
+                -- We only use OnValueChanged when dragging the slider
+                -- The manual update function handles wrapping for the buttons
+                local v = math.floor(value)
+                group.circleRotation = v
+                rotLabel:SetText("Rotation: " .. v .. "\194\176")
+                self.Text:SetText(tostring(v) .. "\194\176")
+                C_Timer.After(0.1, function()
+                    if not InCombatLockdown() then
+                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                    end
+                end)
+            end)
+            tinsert(panel.controls, rotSlider)
+
+            -- Minus Button for Rotation
+            local rotMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            rotMinusBtn:SetSize(18, 18)
+            rotMinusBtn:SetPoint("RIGHT", rotSlider, "LEFT", -2, 0)
+            rotMinusBtn:SetText("-")
+            rotMinusBtn:SetScript("OnClick", function()
+                UpdateRotation(rotSlider:GetValue() - 1)
+            end)
+            tinsert(panel.controls, rotMinusBtn)
+
+            -- Plus Button for Rotation
+            local rotPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            rotPlusBtn:SetSize(18, 18)
+            rotPlusBtn:SetPoint("LEFT", rotSlider, "RIGHT", 2, 0)
+            rotPlusBtn:SetText("+")
+            rotPlusBtn:SetScript("OnClick", function()
+                UpdateRotation(rotSlider:GetValue() + 1)
+            end)
+            tinsert(panel.controls, rotPlusBtn)
+
+            y = y - 40
+        end
+
         -- Per-Interface Text Size
         local piTextLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         piTextLabel:SetPoint("TOPLEFT", 10, y)
@@ -2397,82 +2544,6 @@ function Wise:RenderGroupProperties(panel, group, y)
                 end)
             end)
             tinsert(panel.controls, padYSlider)
-            y = y - 40
-
-        elseif group.type == "circle" then
-            -- Radius Slider
-            local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
-            local actionCount = 0
-            if group.actions then
-                for _ in pairs(group.actions) do actionCount = actionCount + 1 end
-            end
-            if actionCount < 2 then actionCount = 2 end -- Prevent division by zero
-            local minRadius = math.ceil(effectiveIconSize / (2 * math.sin(math.pi / actionCount)))
-            if minRadius < effectiveIconSize then minRadius = effectiveIconSize end -- Absolute floor
-
-            local currentRadius = group.circleRadius or (effectiveIconSize * 2)
-            if currentRadius < minRadius then currentRadius = minRadius end
-
-            local radLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            radLabel:SetPoint("TOPLEFT", 10, y)
-            radLabel:SetText("Radius: " .. currentRadius)
-            tinsert(panel.controls, radLabel)
-
-            y = y - 22
-            local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            radSlider:SetPoint("TOPLEFT", 10, y)
-            radSlider:SetSize(180, 16)
-            radSlider:SetMinMaxValues(minRadius, 200)
-            radSlider:SetValue(currentRadius)
-            radSlider:SetValueStep(1)
-            radSlider:SetObeyStepOnDrag(true)
-            radSlider.Low:SetText(tostring(minRadius))
-            radSlider.High:SetText("200")
-            radSlider.Text:SetText(tostring(currentRadius))
-            radSlider:SetScript("OnValueChanged", function(self, value)
-                local v = math.floor(value)
-                group.circleRadius = v
-                radLabel:SetText("Radius: " .. v)
-                self.Text:SetText(tostring(v))
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, radSlider)
-            y = y - 40
-
-            -- Rotation Slider (0-359 degrees)
-            local currentRotation = group.circleRotation or 0
-            local rotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            rotLabel:SetPoint("TOPLEFT", 10, y)
-            rotLabel:SetText("Rotation: " .. currentRotation .. "\194\176")
-            tinsert(panel.controls, rotLabel)
-
-            y = y - 22
-            local rotSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            rotSlider:SetPoint("TOPLEFT", 10, y)
-            rotSlider:SetSize(180, 16)
-            rotSlider:SetMinMaxValues(0, 359)
-            rotSlider:SetValue(currentRotation)
-            rotSlider:SetValueStep(1)
-            rotSlider:SetObeyStepOnDrag(true)
-            rotSlider.Low:SetText("0\194\176")
-            rotSlider.High:SetText("359\194\176")
-            rotSlider.Text:SetText(tostring(currentRotation) .. "\194\176")
-            rotSlider:SetScript("OnValueChanged", function(self, value)
-                local v = math.floor(value)
-                group.circleRotation = v
-                rotLabel:SetText("Rotation: " .. v .. "\194\176")
-                self.Text:SetText(tostring(v) .. "\194\176")
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, rotSlider)
             y = y - 40
         end
     end
