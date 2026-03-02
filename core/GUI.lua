@@ -1174,6 +1174,10 @@ function Wise:BuildVisibilityDriver(f, group)
          str = str:gsub("%[bank%]", "[actionbar:99]")
          str = str:gsub("bank", "actionbar:99") -- A bit aggressive but likely safe for standard secure options (banking isn't one)
          str = str:gsub("mailbox", "actionbar:99")
+         -- extrabar: native [extrabar] conditional misses some zone abilities (e.g. G-99 Breakneck)
+         -- where ExtraActionButton1 is shown but HasExtraActionBar() is false.
+         -- Handle via custom ticker instead.
+         str = str:gsub("extrabar", "actionbar:99")
          
          return str
     end
@@ -2075,35 +2079,46 @@ function Wise:UpdateGroupDisplay(name)
          local isBankOpen = BankFrame and BankFrame:IsShown()
          local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
          local isMailbox = MailFrame and MailFrame:IsShown()
+         -- ExtraActionButton1:IsShown() catches zone abilities (e.g. G-99 Breakneck)
+         -- that Blizzard shows without setting HasExtraActionBar() or the [extrabar] macro conditional
+         local isExtraBar = (HasExtraActionBar and HasExtraActionBar()) or (ExtraActionButton1 and ExtraActionButton1:IsShown())
 
          local customShow = false
-         
+
          -- Use separate IFs to allow OR logic if multiple are present
          -- Use brackets %[name%] to prevent substring matches (e.g. 'bank' inside 'guildbank')
-         
+
          if showStr:find("guildbank") then
               if isGuildBank then customShow = true end
          end
-         
+
          if showStr:find("%[bank%]") or showStr:find("%f[%a]bank%f[%a]") then
               if isBankOpen then customShow = true end
          end
-         
+
          if showStr:find("mailbox") then
               if isMailbox then customShow = true end
          end
-         
+
+         if showStr:find("extrabar") then
+              if isExtraBar then customShow = true end
+         end
+
          -- Evaluate Hide (Overrides Show)
          if hideStr:find("guildbank") then
               if isGuildBank then customShow = false end
          end
-         
+
          if hideStr:find("%[bank%]") or hideStr:find("%f[%a]bank%f[%a]") then
               if isBankOpen then customShow = false end
          end
 
          if hideStr:find("mailbox") then
               if isMailbox then customShow = false end
+         end
+
+         if hideStr:find("extrabar") then
+              if isExtraBar then customShow = false end
          end
 
          return customShow
