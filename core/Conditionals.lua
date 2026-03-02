@@ -458,7 +458,7 @@ function Wise:EvaluateCustomCondition(name, args)
     elseif check == "falling" then
         return IsFalling()
     elseif check == "cleanse" then
-        return false 
+        return false
         
     -- Bank Checks
     elseif check == "bank" then
