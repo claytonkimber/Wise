@@ -1,29 +1,42 @@
+name: Release
+
 on:
+  # Package alpha version automatically every day
+  #schedule:
+  #  - cron: '0 6 * * *'
+  
+  # Trigger on tags like 1.0.1 or v1.0.1
   push:
-    branches:
-      - main
     tags:
-      - '*' # This will trigger on ANY tag you push
+      - '*.*.*'
+      - 'v*.*.*'
+
+  # Allows manual trigger from the Actions tab
+  workflow_dispatch:
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for changelogs
 
       - name: Determine Release Type
         id: vars
+        shell: bash
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "type=release" >> $GITHUB_OUTPUT
           else
             echo "type=alpha" >> $GITHUB_OUTPUT
           fi
 
-      - name: Package and Upload
+      - name: Package and Release
         uses: BigWigsMods/packager@v2
         env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          # This tells the packager what type to upload as
           CF_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
-          WOWI_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
-          WAGO_RELEASE_TYPE: ${{ steps.vars.outputs.type }}
