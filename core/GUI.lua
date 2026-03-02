@@ -3409,37 +3409,6 @@ Wise.BindingFrame = CreateFrame("Frame")
 function Wise:UpdateBindings()
     if InCombatLockdown() then return end
     ClearOverrideBindings(Wise.BindingFrame)
-    
-    local keysToClear = {}
-
-    for name, group in pairs(WiseDB.groups) do
-        -- Validate against system bindings first (WoW might have claimed it)
-        if group.binding and string.len(group.binding) > 0 then
-            local existingAction = GetBindingAction(group.binding)
-            if existingAction and existingAction ~= "" then
-                -- Schedule to clear later to avoid modifying table during iteration
-                table.insert(keysToClear, {group=name, slot=nil})
-            end
-        end
-
-        if group.actions then
-            for slotIdx, actionList in pairs(group.actions) do
-                if actionList.keybind and string.len(actionList.keybind) > 0 then
-                    local existingAction = GetBindingAction(actionList.keybind)
-                    if existingAction and existingAction ~= "" then
-                        table.insert(keysToClear, {group=name, slot=slotIdx})
-                    end
-                end
-            end
-        end
-    end
-
-    -- Process cleared keys
-    for _, clearData in ipairs(keysToClear) do
-        if Wise.ClearKeybind then
-            Wise:ClearKeybind(clearData.group, clearData.slot)
-        end
-    end
 
     for name, group in pairs(WiseDB.groups) do
         -- 1. Group Toggle Binding
@@ -3447,7 +3416,7 @@ function Wise:UpdateBindings()
             -- "WiseGroupToggle_"..name is the global name of the secure button
             SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, "WiseGroupToggle_"..name)
         end
-        
+
         -- 2. Slot Bindings (Direct Mode only)
         -- Nested bindings are handled by the SecureFrame itself (via attributes)
         local f = Wise.frames[name]
@@ -3458,16 +3427,17 @@ function Wise:UpdateBindings()
             if not nested then
                 for slotIdx, actionList in pairs(group.actions) do
                     if actionList.keybind and string.len(actionList.keybind) > 0 then
-                        -- Find button matching this slot
+                        -- Find button matching this slot (don't require IsShown —
+                        -- bindings must work even when the group UI is hidden)
                         if f and f.buttons then
                             local foundBtn = nil
                             for _, btn in ipairs(f.buttons) do
-                                if btn:IsShown() and btn.slot == slotIdx then
+                                if btn.slot == slotIdx then
                                     foundBtn = btn
                                     break
                                 end
                             end
-                            
+
                             if foundBtn and _G[foundBtn:GetName()] then
                                 SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName())
                             end
