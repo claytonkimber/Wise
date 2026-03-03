@@ -348,8 +348,8 @@ function Wise:PopulateSettingsView(panel)
     ry = ry - 20
     
     local iconSlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
-    AddToContent(rightContent, iconSlider, rx+10, ry)
-    iconSlider:SetSize(panelWidth - 40, 16)
+    AddToContent(rightContent, iconSlider, rx+40, ry)
+    iconSlider:SetSize(panelWidth - 100, 16)
     iconSlider:SetMinMaxValues(16, 64)
     iconSlider:SetValue(WiseDB.settings.iconSize or 30)
     iconSlider:SetValueStep(2)
@@ -380,6 +380,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = iconSlider:GetMinMaxValues()
         if v >= min then iconSlider:SetValue(v) end
     end)
+    table.insert(panel.children, iconSliderMinusBtn)
 
     -- Plus Button for iconSlider
     local iconSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
@@ -391,6 +392,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = iconSlider:GetMinMaxValues()
         if v <= max then iconSlider:SetValue(v) end
     end)
+    table.insert(panel.children, iconSliderPlusBtn)
     -- Text Size
     local textLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, textLabel, rx, ry)
@@ -398,8 +400,8 @@ function Wise:PopulateSettingsView(panel)
     ry = ry - 20
     
     local textSlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
-    AddToContent(rightContent, textSlider, rx+10, ry)
-    textSlider:SetSize(panelWidth - 40, 16)
+    AddToContent(rightContent, textSlider, rx+40, ry)
+    textSlider:SetSize(panelWidth - 100, 16)
     textSlider:SetMinMaxValues(8, 24)
     textSlider:SetValue(WiseDB.settings.textSize or 12)
     textSlider:SetValueStep(1)
@@ -430,6 +432,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = textSlider:GetMinMaxValues()
         if v >= min then textSlider:SetValue(v) end
     end)
+    table.insert(panel.children, textSliderMinusBtn)
 
     -- Plus Button for textSlider
     local textSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
@@ -441,6 +444,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = textSlider:GetMinMaxValues()
         if v <= max then textSlider:SetValue(v) end
     end)
+    table.insert(panel.children, textSliderPlusBtn)
     -- Font
     local fontLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, fontLabel, rx, ry)
@@ -493,7 +497,7 @@ function Wise:PopulateSettingsView(panel)
     
     local fontBtn = CreateFrame("Button", nil, rightContent, "GameMenuButtonTemplate")
     fontBtn:SetSize(panelWidth - 20, 24)
-    AddToContent(rightContent, fontBtn, rx+10, ry)
+    AddToContent(rightContent, fontBtn, rx, ry)
     fontBtn:SetText(currentFontName)
     fontBtn:SetScript("OnClick", function(self)
         if self.dropdown and self.dropdown:IsShown() then self.dropdown:Hide(); return end
@@ -638,8 +642,8 @@ function Wise:PopulateSettingsView(panel)
     ry = ry - 20
     
     local kbSizeSlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
-    AddToContent(rightContent, kbSizeSlider, rx+10, ry)
-    kbSizeSlider:SetSize(panelWidth - 40, 16)
+    AddToContent(rightContent, kbSizeSlider, rx+40, ry)
+    kbSizeSlider:SetSize(panelWidth - 100, 16)
     kbSizeSlider:SetMinMaxValues(8, 24)
     kbSizeSlider:SetValue(WiseDB.settings.keybindTextSize or 10)
     kbSizeSlider:SetValueStep(1)
@@ -669,6 +673,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = kbSizeSlider:GetMinMaxValues()
         if v >= min then kbSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, kbSizeSliderMinusBtn)
 
     -- Plus Button for kbSizeSlider
     local kbSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
@@ -680,6 +685,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = kbSizeSlider:GetMinMaxValues()
         if v <= max then kbSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, kbSizeSliderPlusBtn)
     -- Charge Text
     local chargeHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, chargeHeader, rx, ry)
@@ -741,8 +747,8 @@ function Wise:PopulateSettingsView(panel)
     ry = ry - 20
     
     local chargeSizeSlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
-    AddToContent(rightContent, chargeSizeSlider, rx+10, ry)
-    chargeSizeSlider:SetSize(panelWidth - 40, 16)
+    AddToContent(rightContent, chargeSizeSlider, rx+40, ry)
+    chargeSizeSlider:SetSize(panelWidth - 100, 16)
     chargeSizeSlider:SetMinMaxValues(8, 24)
     chargeSizeSlider:SetValue(WiseDB.settings.chargeTextSize or 12)
     chargeSizeSlider:SetValueStep(1)
@@ -772,6 +778,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = chargeSizeSlider:GetMinMaxValues()
         if v >= min then chargeSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, chargeSizeSliderMinusBtn)
 
     -- Plus Button for chargeSizeSlider
     local chargeSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
@@ -783,6 +790,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = chargeSizeSlider:GetMinMaxValues()
         if v <= max then chargeSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, chargeSizeSliderPlusBtn)
     -- Countdown Text
     local cdHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, cdHeader, rx, ry)
@@ -841,8 +849,8 @@ function Wise:PopulateSettingsView(panel)
     ry = ry - 20
     
     local cdSizeSlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
-    AddToContent(rightContent, cdSizeSlider, rx+10, ry)
-    cdSizeSlider:SetSize(panelWidth - 40, 16)
+    AddToContent(rightContent, cdSizeSlider, rx+40, ry)
+    cdSizeSlider:SetSize(panelWidth - 100, 16)
     cdSizeSlider:SetMinMaxValues(8, 24)
     cdSizeSlider:SetValue(WiseDB.settings.countdownTextSize or 12)
     cdSizeSlider:SetValueStep(1)
@@ -870,6 +878,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = cdSizeSlider:GetMinMaxValues()
         if v >= min then cdSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, cdSizeSliderMinusBtn)
 
     -- Plus Button for cdSizeSlider
     local cdSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
@@ -881,6 +890,7 @@ function Wise:PopulateSettingsView(panel)
         local min, max = cdSizeSlider:GetMinMaxValues()
         if v <= max then cdSizeSlider:SetValue(v) end
     end)
+    table.insert(panel.children, cdSizeSliderPlusBtn)
     -- Proc Glows
     local glowHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, glowHeader, rx, ry)
