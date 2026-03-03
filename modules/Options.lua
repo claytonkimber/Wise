@@ -616,6 +616,58 @@ function Wise:RefreshGroupList()
     toolsHdr:SetText("Tools")
     y = y - 18
 
+    -- Bar Copy Tool
+    if Wise.BAR_COPY_TEMPLATE then
+        local barBtn = container.buttons[btnIndex]
+        if not barBtn then
+            barBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
+            barBtn:SetSize(165, 40)
+
+            barBtn.icon = barBtn:CreateTexture(nil, "ARTWORK")
+            barBtn.icon:SetSize(32, 32)
+            barBtn.icon:SetPoint("LEFT", 5, 0)
+
+            barBtn.label = barBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            barBtn.label:SetPoint("LEFT", barBtn.icon, "RIGHT", 10, 0)
+            barBtn.label:SetJustifyH("LEFT")
+            barBtn.label:SetWidth(110)
+            barBtn.label:SetWordWrap(false)
+
+            -- Keybind Label
+            barBtn.kbLabel = barBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            barBtn.kbLabel:SetPoint("RIGHT", barBtn.icon, "LEFT", -5, 0)
+            barBtn.kbLabel:SetJustifyH("RIGHT")
+            barBtn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
+
+            barBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+            tinsert(container.buttons, barBtn)
+        end
+        barBtn:Show()
+        barBtn:SetPoint("TOPLEFT", 40, y)
+
+        barBtn.icon:SetTexture("Interface\\Icons\\Spell_Holy_BorrowedTime")
+        barBtn.label:SetText(Wise.BAR_COPY_TEMPLATE)
+
+        barBtn.kbLabel:Hide()
+
+        if Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
+             barBtn:LockHighlight()
+        else
+             barBtn:UnlockHighlight()
+        end
+
+        barBtn:SetScript("OnClick", function()
+            Wise.selectedGroup = Wise.BAR_COPY_TEMPLATE
+            Wise.selectedSlot = nil
+            Wise.selectedState = nil
+            Wise:UpdateOptionsUI()
+        end)
+
+        y = y - 42
+        btnIndex = btnIndex + 1
+    end
+
     -- Smart Item Tool (Always show, placeholder if missing Syndicator)
     local isSyndicator = Wise:IsSyndicatorAvailable()
 
@@ -739,58 +791,6 @@ function Wise:RefreshGroupList()
 
     y = y - 42
     btnIndex = btnIndex + 1
-
-    -- Bar Copy Tool
-    if Wise.BAR_COPY_TEMPLATE then
-        local barBtn = container.buttons[btnIndex]
-        if not barBtn then
-            barBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            barBtn:SetSize(230, 40)
-
-            barBtn.icon = barBtn:CreateTexture(nil, "ARTWORK")
-            barBtn.icon:SetSize(32, 32)
-            barBtn.icon:SetPoint("LEFT", 5, 0)
-
-            barBtn.label = barBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            barBtn.label:SetPoint("LEFT", barBtn.icon, "RIGHT", 10, 0)
-            barBtn.label:SetJustifyH("LEFT")
-            barBtn.label:SetWidth(175)
-            barBtn.label:SetWordWrap(false)
-
-            -- Keybind Label
-            barBtn.kbLabel = barBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            barBtn.kbLabel:SetPoint("RIGHT", barBtn.icon, "LEFT", -5, 0)
-            barBtn.kbLabel:SetJustifyH("RIGHT")
-            barBtn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
-
-            barBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-
-            tinsert(container.buttons, barBtn)
-        end
-        barBtn:Show()
-        barBtn:SetPoint("TOPLEFT", 40, y)
-
-        barBtn.icon:SetTexture("Interface\\Icons\\Spell_Holy_BorrowedTime")
-        barBtn.label:SetText(Wise.BAR_COPY_TEMPLATE)
-
-        barBtn.kbLabel:Hide()
-
-        if Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
-             barBtn:LockHighlight()
-        else
-             barBtn:UnlockHighlight()
-        end
-
-        barBtn:SetScript("OnClick", function()
-            Wise.selectedGroup = Wise.BAR_COPY_TEMPLATE
-            Wise.selectedSlot = nil
-            Wise.selectedState = nil
-            Wise:UpdateOptionsUI()
-        end)
-
-        y = y - 42
-        btnIndex = btnIndex + 1
-    end
 
     -- Hide unused buttons
     for k = btnIndex, #container.buttons do
