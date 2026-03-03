@@ -1880,6 +1880,34 @@ function Wise:GetSpell(filter)
     end
 
     
+    -- Class-specific hidden/replacement spells
+    local _, playerClass = UnitClass("player")
+    local classSpells = {
+        PALADIN = {
+            427453 -- Hammer of Light
+        }
+    }
+
+    if classSpells[playerClass] and (Wise.PickerSpellFilter == "In-Spec" or Wise.PickerSpellFilter == "Global") then
+        for _, spellName in ipairs(classSpells[playerClass]) do
+            if not seen[spellName] then
+                local info = C_Spell.GetSpellInfo(spellName)
+                if info then
+                    if not filter or string.find(string.lower(info.name), filter, 1, true) then
+                        table.insert(spells, {
+                            type="spell",
+                            value=info.spellID,
+                            name=info.name,
+                            icon=info.iconID,
+                            category="class"
+                        })
+                        seen[spellName] = true
+                    end
+                end
+            end
+        end
+    end
+
     -- Manual Exclusions/Inclusions
     if Wise.PickerSpellFilter == "Global" then
         -- Assist (often missed by spellbook iterators)
