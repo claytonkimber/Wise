@@ -1551,8 +1551,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- X Dimension Slider
              local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-             xSlider:SetPoint("TOPLEFT", 10, y)
-             xSlider:SetSize(120, 16)
+             xSlider:SetPoint("TOPLEFT", 37, y)
+             xSlider:SetSize(126, 16)
              xSlider:SetMinMaxValues(2, 10)
              xSlider:SetValue(group.boxWidth)
              xSlider:SetValueStep(1)
@@ -1566,6 +1566,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                  C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
              end)
              tinsert(panel.controls, xSlider)
+
+             -- Minus Button for xSlider
+             local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+             xSliderMinusBtn:SetSize(27, 27)
+             xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
+             xSliderMinusBtn:SetText("-")
+             xSliderMinusBtn:SetScript("OnClick", function()
+                 local v = xSlider:GetValue() - 1
+                 local min, max = xSlider:GetMinMaxValues()
+                 if v >= min then xSlider:SetValue(v) end
+             end)
+             tinsert(panel.controls, xSliderMinusBtn)
+
+             -- Plus Button for xSlider
+             local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+             xSliderPlusBtn:SetSize(27, 27)
+             xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
+             xSliderPlusBtn:SetText("+")
+             xSliderPlusBtn:SetScript("OnClick", function()
+                 local v = xSlider:GetValue() + 1
+                 local min, max = xSlider:GetMinMaxValues()
+                 if v <= max then xSlider:SetValue(v) end
+             end)
+             tinsert(panel.controls, xSliderPlusBtn)
 
              -- Fixed X Checkbox
              local fixedX = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
@@ -1591,8 +1615,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Y Dimension Slider
              local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-             ySlider:SetPoint("TOPLEFT", 10, y)
-             ySlider:SetSize(120, 16)
+             ySlider:SetPoint("TOPLEFT", 37, y)
+             ySlider:SetSize(126, 16)
              ySlider:SetMinMaxValues(2, 10)
              ySlider:SetValue(group.boxHeight)
              ySlider:SetValueStep(1)
@@ -1606,6 +1630,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                  C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
              end)
              tinsert(panel.controls, ySlider)
+
+             -- Minus Button for ySlider
+             local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+             ySliderMinusBtn:SetSize(27, 27)
+             ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
+             ySliderMinusBtn:SetText("-")
+             ySliderMinusBtn:SetScript("OnClick", function()
+                 local v = ySlider:GetValue() - 1
+                 local min, max = ySlider:GetMinMaxValues()
+                 if v >= min then ySlider:SetValue(v) end
+             end)
+             tinsert(panel.controls, ySliderMinusBtn)
+
+             -- Plus Button for ySlider
+             local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+             ySliderPlusBtn:SetSize(27, 27)
+             ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
+             ySliderPlusBtn:SetText("+")
+             ySliderPlusBtn:SetScript("OnClick", function()
+                 local v = ySlider:GetValue() + 1
+                 local min, max = ySlider:GetMinMaxValues()
+                 if v <= max then ySlider:SetValue(v) end
+             end)
+             tinsert(panel.controls, ySliderPlusBtn)
 
              -- Fixed Y Checkbox
              local fixedY = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
@@ -1733,8 +1781,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         y = y - 22
         local piIconSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piIconSlider:SetPoint("TOPLEFT", 10, y)
-        piIconSlider:SetSize(180, 16)
+        piIconSlider:SetPoint("TOPLEFT", 37, y)
+        piIconSlider:SetSize(126, 16)
         piIconSlider:SetMinMaxValues(16, 64)
         piIconSlider:SetValue(effectiveIconSize)
         piIconSlider:SetValueStep(2)
@@ -1754,6 +1802,30 @@ function Wise:RenderGroupProperties(panel, group, y)
             end)
         end)
         tinsert(panel.controls, piIconSlider)
+
+        -- Minus Button for piIconSlider
+        local piIconSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piIconSliderMinusBtn:SetSize(27, 27)
+        piIconSliderMinusBtn:SetPoint("RIGHT", piIconSlider, "LEFT", -2, 0)
+        piIconSliderMinusBtn:SetText("-")
+        piIconSliderMinusBtn:SetScript("OnClick", function()
+            local v = piIconSlider:GetValue() - 2
+            local min, max = piIconSlider:GetMinMaxValues()
+            if v >= min then piIconSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piIconSliderMinusBtn)
+
+        -- Plus Button for piIconSlider
+        local piIconSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piIconSliderPlusBtn:SetSize(27, 27)
+        piIconSliderPlusBtn:SetPoint("LEFT", piIconSlider, "RIGHT", 2, 0)
+        piIconSliderPlusBtn:SetText("+")
+        piIconSliderPlusBtn:SetScript("OnClick", function()
+            local v = piIconSlider:GetValue() + 2
+            local min, max = piIconSlider:GetMinMaxValues()
+            if v <= max then piIconSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piIconSliderPlusBtn)
 
         y = y - 40
 
@@ -1780,8 +1852,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 22
             local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            radSlider:SetPoint("TOPLEFT", 30, y)
-            radSlider:SetSize(140, 16)
+            radSlider:SetPoint("TOPLEFT", 37, y)
+            radSlider:SetSize(126, 16)
             radSlider:SetMinMaxValues(minRadius, 200)
             radSlider:SetValue(currentRadius)
             radSlider:SetValueStep(1)
@@ -1790,7 +1862,9 @@ function Wise:RenderGroupProperties(panel, group, y)
             radSlider.High:SetText("200")
             radSlider.Text:SetText(tostring(currentRadius))
 
-            local function UpdateRadius(v)
+
+
+                        local function UpdateRadius(v)
                 v = math.floor(v)
                 if v < minRadius then v = minRadius end
                 if v > 200 then v = 200 end
@@ -1841,8 +1915,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 22
             local rotSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            rotSlider:SetPoint("TOPLEFT", 30, y)
-            rotSlider:SetSize(140, 16)
+            rotSlider:SetPoint("TOPLEFT", 37, y)
+            rotSlider:SetSize(126, 16)
             rotSlider:SetMinMaxValues(0, 359)
             rotSlider:SetValue(currentRotation)
             rotSlider:SetValueStep(1)
@@ -1851,7 +1925,9 @@ function Wise:RenderGroupProperties(panel, group, y)
             rotSlider.High:SetText("359\194\176")
             rotSlider.Text:SetText(tostring(currentRotation) .. "\194\176")
 
-            local function UpdateRotation(v)
+
+
+                        local function UpdateRotation(v)
                 v = math.floor(v)
                 if v < 0 then v = 359 end
                 if v > 359 then v = 0 end
@@ -1913,8 +1989,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         y = y - 22
         local piTextSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piTextSlider:SetPoint("TOPLEFT", 10, y)
-        piTextSlider:SetSize(180, 16)
+        piTextSlider:SetPoint("TOPLEFT", 37, y)
+        piTextSlider:SetSize(126, 16)
         piTextSlider:SetMinMaxValues(8, 24)
         piTextSlider:SetValue(effectiveTextSize)
         piTextSlider:SetValueStep(1)
@@ -1926,7 +2002,6 @@ function Wise:RenderGroupProperties(panel, group, y)
             local size = math.floor(value)
             group.textSize = size
             self.Text:SetText(tostring(size))
-
             -- Manual update for Text Label
             piTextLabel:SetText("Text Size:" .. (group.textSize and " |cffff8800(Custom)|r" or ""))
             UpdateDisplayStatus()
@@ -1939,6 +2014,31 @@ function Wise:RenderGroupProperties(panel, group, y)
         end)
         tinsert(panel.controls, piTextSlider)
 
+
+
+        -- Minus Button for piTextSlider
+        local piTextSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piTextSliderMinusBtn:SetSize(27, 27)
+        piTextSliderMinusBtn:SetPoint("RIGHT", piTextSlider, "LEFT", -2, 0)
+        piTextSliderMinusBtn:SetText("-")
+        piTextSliderMinusBtn:SetScript("OnClick", function()
+            local v = piTextSlider:GetValue() - 1
+            local min, max = piTextSlider:GetMinMaxValues()
+            if v >= min then piTextSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piTextSliderMinusBtn)
+
+        -- Plus Button for piTextSlider
+        local piTextSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piTextSliderPlusBtn:SetSize(27, 27)
+        piTextSliderPlusBtn:SetPoint("LEFT", piTextSlider, "RIGHT", 2, 0)
+        piTextSliderPlusBtn:SetText("+")
+        piTextSliderPlusBtn:SetScript("OnClick", function()
+            local v = piTextSlider:GetValue() + 1
+            local min, max = piTextSlider:GetMinMaxValues()
+            if v <= max then piTextSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piTextSliderPlusBtn)
         y = y - 40
 
         -- Per-Interface Font Selection
@@ -2162,8 +2262,8 @@ function Wise:RenderGroupProperties(panel, group, y)
         y = y - 22
 
         local piKbSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piKbSizeSlider:SetPoint("TOPLEFT", 10, y)
-        piKbSizeSlider:SetSize(180, 16)
+        piKbSizeSlider:SetPoint("TOPLEFT", 37, y)
+        piKbSizeSlider:SetSize(126, 16)
         piKbSizeSlider:SetMinMaxValues(8, 24)
         piKbSizeSlider:SetValue(effectiveKbSize)
         piKbSizeSlider:SetValueStep(1)
@@ -2180,6 +2280,30 @@ function Wise:RenderGroupProperties(panel, group, y)
             C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
         end)
         tinsert(panel.controls, piKbSizeSlider)
+
+        -- Minus Button for piKbSizeSlider
+        local piKbSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piKbSizeSliderMinusBtn:SetSize(27, 27)
+        piKbSizeSliderMinusBtn:SetPoint("RIGHT", piKbSizeSlider, "LEFT", -2, 0)
+        piKbSizeSliderMinusBtn:SetText("-")
+        piKbSizeSliderMinusBtn:SetScript("OnClick", function()
+            local v = piKbSizeSlider:GetValue() - 1
+            local min, max = piKbSizeSlider:GetMinMaxValues()
+            if v >= min then piKbSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piKbSizeSliderMinusBtn)
+
+        -- Plus Button for piKbSizeSlider
+        local piKbSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piKbSizeSliderPlusBtn:SetSize(27, 27)
+        piKbSizeSliderPlusBtn:SetPoint("LEFT", piKbSizeSlider, "RIGHT", 2, 0)
+        piKbSizeSliderPlusBtn:SetText("+")
+        piKbSizeSliderPlusBtn:SetScript("OnClick", function()
+            local v = piKbSizeSlider:GetValue() + 1
+            local min, max = piKbSizeSlider:GetMinMaxValues()
+            if v <= max then piKbSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piKbSizeSliderPlusBtn)
 
         y = y - 35
 
@@ -2260,8 +2384,8 @@ function Wise:RenderGroupProperties(panel, group, y)
         y = y - 22
 
         local piChargeSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piChargeSizeSlider:SetPoint("TOPLEFT", 10, y)
-        piChargeSizeSlider:SetSize(180, 16)
+        piChargeSizeSlider:SetPoint("TOPLEFT", 37, y)
+        piChargeSizeSlider:SetSize(126, 16)
         piChargeSizeSlider:SetMinMaxValues(8, 24)
         piChargeSizeSlider:SetValue(effectiveChargeSize)
         piChargeSizeSlider:SetValueStep(1)
@@ -2278,6 +2402,30 @@ function Wise:RenderGroupProperties(panel, group, y)
             C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
         end)
         tinsert(panel.controls, piChargeSizeSlider)
+
+        -- Minus Button for piChargeSizeSlider
+        local piChargeSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piChargeSizeSliderMinusBtn:SetSize(27, 27)
+        piChargeSizeSliderMinusBtn:SetPoint("RIGHT", piChargeSizeSlider, "LEFT", -2, 0)
+        piChargeSizeSliderMinusBtn:SetText("-")
+        piChargeSizeSliderMinusBtn:SetScript("OnClick", function()
+            local v = piChargeSizeSlider:GetValue() - 1
+            local min, max = piChargeSizeSlider:GetMinMaxValues()
+            if v >= min then piChargeSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piChargeSizeSliderMinusBtn)
+
+        -- Plus Button for piChargeSizeSlider
+        local piChargeSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piChargeSizeSliderPlusBtn:SetSize(27, 27)
+        piChargeSizeSliderPlusBtn:SetPoint("LEFT", piChargeSizeSlider, "RIGHT", 2, 0)
+        piChargeSizeSliderPlusBtn:SetText("+")
+        piChargeSizeSliderPlusBtn:SetScript("OnClick", function()
+            local v = piChargeSizeSlider:GetValue() + 1
+            local min, max = piChargeSizeSlider:GetMinMaxValues()
+            if v <= max then piChargeSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piChargeSizeSliderPlusBtn)
 
         y = y - 35
 
@@ -2353,8 +2501,8 @@ function Wise:RenderGroupProperties(panel, group, y)
         y = y - 22
 
         local piCountdownSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piCountdownSizeSlider:SetPoint("TOPLEFT", 10, y)
-        piCountdownSizeSlider:SetSize(180, 16)
+        piCountdownSizeSlider:SetPoint("TOPLEFT", 37, y)
+        piCountdownSizeSlider:SetSize(126, 16)
         piCountdownSizeSlider:SetMinMaxValues(8, 24)
         piCountdownSizeSlider:SetValue(effectiveCountdownSize)
         piCountdownSizeSlider:SetValueStep(1)
@@ -2371,6 +2519,30 @@ function Wise:RenderGroupProperties(panel, group, y)
             C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
         end)
         tinsert(panel.controls, piCountdownSizeSlider)
+
+        -- Minus Button for piCountdownSizeSlider
+        local piCountdownSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piCountdownSizeSliderMinusBtn:SetSize(27, 27)
+        piCountdownSizeSliderMinusBtn:SetPoint("RIGHT", piCountdownSizeSlider, "LEFT", -2, 0)
+        piCountdownSizeSliderMinusBtn:SetText("-")
+        piCountdownSizeSliderMinusBtn:SetScript("OnClick", function()
+            local v = piCountdownSizeSlider:GetValue() - 1
+            local min, max = piCountdownSizeSlider:GetMinMaxValues()
+            if v >= min then piCountdownSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piCountdownSizeSliderMinusBtn)
+
+        -- Plus Button for piCountdownSizeSlider
+        local piCountdownSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piCountdownSizeSliderPlusBtn:SetSize(27, 27)
+        piCountdownSizeSliderPlusBtn:SetPoint("LEFT", piCountdownSizeSlider, "RIGHT", 2, 0)
+        piCountdownSizeSliderPlusBtn:SetText("+")
+        piCountdownSizeSliderPlusBtn:SetScript("OnClick", function()
+            local v = piCountdownSizeSlider:GetValue() + 1
+            local min, max = piCountdownSizeSlider:GetMinMaxValues()
+            if v <= max then piCountdownSizeSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piCountdownSizeSliderPlusBtn)
 
         y = y - 35
 
@@ -2458,8 +2630,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 22
             local padSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padSlider:SetPoint("TOPLEFT", 10, y)
-            padSlider:SetSize(180, 16)
+            padSlider:SetPoint("TOPLEFT", 37, y)
+            padSlider:SetSize(126, 16)
             padSlider:SetMinMaxValues(0, 40)
             padSlider:SetValue(currentPadding)
             padSlider:SetValueStep(1)
@@ -2479,6 +2651,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                 end)
             end)
             tinsert(panel.controls, padSlider)
+
+            -- Minus Button for padSlider
+            local padSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padSliderMinusBtn:SetSize(27, 27)
+            padSliderMinusBtn:SetPoint("RIGHT", padSlider, "LEFT", -2, 0)
+            padSliderMinusBtn:SetText("-")
+            padSliderMinusBtn:SetScript("OnClick", function()
+                local v = padSlider:GetValue() - 1
+                local min, max = padSlider:GetMinMaxValues()
+                if v >= min then padSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padSliderMinusBtn)
+
+            -- Plus Button for padSlider
+            local padSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padSliderPlusBtn:SetSize(27, 27)
+            padSliderPlusBtn:SetPoint("LEFT", padSlider, "RIGHT", 2, 0)
+            padSliderPlusBtn:SetText("+")
+            padSliderPlusBtn:SetScript("OnClick", function()
+                local v = padSlider:GetValue() + 1
+                local min, max = padSlider:GetMinMaxValues()
+                if v <= max then padSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padSliderPlusBtn)
             y = y - 40
 
         elseif group.type == "box" then
@@ -2491,8 +2687,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 22
             local padXSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padXSlider:SetPoint("TOPLEFT", 10, y)
-            padXSlider:SetSize(180, 16)
+            padXSlider:SetPoint("TOPLEFT", 37, y)
+            padXSlider:SetSize(126, 16)
             padXSlider:SetMinMaxValues(0, 40)
             padXSlider:SetValue(currentPadX)
             padXSlider:SetValueStep(1)
@@ -2512,6 +2708,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                 end)
             end)
             tinsert(panel.controls, padXSlider)
+
+            -- Minus Button for padXSlider
+            local padXSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padXSliderMinusBtn:SetSize(27, 27)
+            padXSliderMinusBtn:SetPoint("RIGHT", padXSlider, "LEFT", -2, 0)
+            padXSliderMinusBtn:SetText("-")
+            padXSliderMinusBtn:SetScript("OnClick", function()
+                local v = padXSlider:GetValue() - 1
+                local min, max = padXSlider:GetMinMaxValues()
+                if v >= min then padXSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padXSliderMinusBtn)
+
+            -- Plus Button for padXSlider
+            local padXSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padXSliderPlusBtn:SetSize(27, 27)
+            padXSliderPlusBtn:SetPoint("LEFT", padXSlider, "RIGHT", 2, 0)
+            padXSliderPlusBtn:SetText("+")
+            padXSliderPlusBtn:SetScript("OnClick", function()
+                local v = padXSlider:GetValue() + 1
+                local min, max = padXSlider:GetMinMaxValues()
+                if v <= max then padXSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padXSliderPlusBtn)
             y = y - 40
 
             -- Y Padding Slider
@@ -2523,8 +2743,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 22
             local padYSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padYSlider:SetPoint("TOPLEFT", 10, y)
-            padYSlider:SetSize(180, 16)
+            padYSlider:SetPoint("TOPLEFT", 37, y)
+            padYSlider:SetSize(126, 16)
             padYSlider:SetMinMaxValues(0, 40)
             padYSlider:SetValue(currentPadY)
             padYSlider:SetValueStep(1)
@@ -2544,6 +2764,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                 end)
             end)
             tinsert(panel.controls, padYSlider)
+
+            -- Minus Button for padYSlider
+            local padYSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padYSliderMinusBtn:SetSize(27, 27)
+            padYSliderMinusBtn:SetPoint("RIGHT", padYSlider, "LEFT", -2, 0)
+            padYSliderMinusBtn:SetText("-")
+            padYSliderMinusBtn:SetScript("OnClick", function()
+                local v = padYSlider:GetValue() - 1
+                local min, max = padYSlider:GetMinMaxValues()
+                if v >= min then padYSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padYSliderMinusBtn)
+
+            -- Plus Button for padYSlider
+            local padYSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            padYSliderPlusBtn:SetSize(27, 27)
+            padYSliderPlusBtn:SetPoint("LEFT", padYSlider, "RIGHT", 2, 0)
+            padYSliderPlusBtn:SetText("+")
+            padYSliderPlusBtn:SetScript("OnClick", function()
+                local v = padYSlider:GetValue() + 1
+                local min, max = padYSlider:GetMinMaxValues()
+                if v <= max then padYSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, padYSliderPlusBtn)
             y = y - 40
         end
     end
@@ -2610,8 +2854,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 18
             local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            xSlider:SetPoint("TOPLEFT", 10, y)
-            xSlider:SetSize(160, 16)
+            xSlider:SetPoint("TOPLEFT", 37, y)
+            xSlider:SetSize(126, 16)
             xSlider:SetMinMaxValues(-100, 100)
             xSlider:SetValue(group.mouseOffsetX or 0)
             xSlider:SetValueStep(5)
@@ -2625,6 +2869,30 @@ function Wise:RenderGroupProperties(panel, group, y)
             end)
             tinsert(panel.controls, xSlider)
 
+            -- Minus Button for xSlider
+            local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            xSliderMinusBtn:SetSize(27, 27)
+            xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
+            xSliderMinusBtn:SetText("-")
+            xSliderMinusBtn:SetScript("OnClick", function()
+                local v = xSlider:GetValue() - 5
+                local min, max = xSlider:GetMinMaxValues()
+                if v >= min then xSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, xSliderMinusBtn)
+
+            -- Plus Button for xSlider
+            local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            xSliderPlusBtn:SetSize(27, 27)
+            xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
+            xSliderPlusBtn:SetText("+")
+            xSliderPlusBtn:SetScript("OnClick", function()
+                local v = xSlider:GetValue() + 5
+                local min, max = xSlider:GetMinMaxValues()
+                if v <= max then xSlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, xSliderPlusBtn)
+
             y = y - 25
 
             -- Y Offset
@@ -2635,8 +2903,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             y = y - 18
             local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            ySlider:SetPoint("TOPLEFT", 10, y)
-            ySlider:SetSize(160, 16)
+            ySlider:SetPoint("TOPLEFT", 37, y)
+            ySlider:SetSize(126, 16)
             ySlider:SetMinMaxValues(-100, 100)
             ySlider:SetValue(group.mouseOffsetY or 0)
             ySlider:SetValueStep(5)
@@ -2649,6 +2917,30 @@ function Wise:RenderGroupProperties(panel, group, y)
                 yOffsetLabel:SetText("Y Offset: " .. group.mouseOffsetY)
             end)
             tinsert(panel.controls, ySlider)
+
+            -- Minus Button for ySlider
+            local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            ySliderMinusBtn:SetSize(27, 27)
+            ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
+            ySliderMinusBtn:SetText("-")
+            ySliderMinusBtn:SetScript("OnClick", function()
+                local v = ySlider:GetValue() - 5
+                local min, max = ySlider:GetMinMaxValues()
+                if v >= min then ySlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, ySliderMinusBtn)
+
+            -- Plus Button for ySlider
+            local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            ySliderPlusBtn:SetSize(27, 27)
+            ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
+            ySliderPlusBtn:SetText("+")
+            ySliderPlusBtn:SetScript("OnClick", function()
+                local v = ySlider:GetValue() + 5
+                local min, max = ySlider:GetMinMaxValues()
+                if v <= max then ySlider:SetValue(v) end
+            end)
+            tinsert(panel.controls, ySliderPlusBtn)
 
             y = y - 10
         end
