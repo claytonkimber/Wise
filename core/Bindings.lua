@@ -57,9 +57,25 @@ function Wise:GetKeybind(groupName, slotIndex)
     return nil
 end
 
--- Format raw keybind text for display (e.g. ALT-Q -> A-Q)
+-- Format raw keybind text for display (max 3 chars)
+-- Compound modifier+mouse patterns handled first to stay within 3 chars
 function Wise:FormatKeybindText(text)
     if not text then return nil end
+    -- 1. Compound: modifier + mousewheel (e.g. SHIFT-MOUSEWHEELUP -> SwU)
+    text = text:gsub("ALT%-MOUSEWHEELUP", "AwU")
+    text = text:gsub("ALT%-MOUSEWHEELDOWN", "AwD")
+    text = text:gsub("CTRL%-MOUSEWHEELUP", "CwU")
+    text = text:gsub("CTRL%-MOUSEWHEELDOWN", "CwD")
+    text = text:gsub("SHIFT%-MOUSEWHEELUP", "SwU")
+    text = text:gsub("SHIFT%-MOUSEWHEELDOWN", "SwD")
+    -- 2. Compound: modifier + mouse button (e.g. SHIFT-BUTTON3 -> S3)
+    text = text:gsub("ALT%-BUTTON(%d)", "A%1")
+    text = text:gsub("CTRL%-BUTTON(%d)", "C%1")
+    text = text:gsub("SHIFT%-BUTTON(%d)", "S%1")
+    text = text:gsub("ALT%-MIDDLEMOUSE", "A3")
+    text = text:gsub("CTRL%-MIDDLEMOUSE", "C3")
+    text = text:gsub("SHIFT%-MIDDLEMOUSE", "S3")
+    -- 3. Simple replacements
     text = text:gsub("ALT%-", "A-")
     text = text:gsub("CTRL%-", "C-")
     text = text:gsub("SHIFT%-", "S-")
@@ -67,6 +83,7 @@ function Wise:FormatKeybindText(text)
     text = text:gsub("MOUSEWHEELUP", "MwU")
     text = text:gsub("MOUSEWHEELDOWN", "MwD")
     text = text:gsub("MIDDLEMOUSE", "M3")
+    text = text:gsub("BUTTON3", "M3")
     text = text:gsub("BUTTON4", "M4")
     text = text:gsub("BUTTON5", "M5")
     return text

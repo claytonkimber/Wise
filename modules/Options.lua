@@ -4,7 +4,7 @@ local addonName, Wise = ...
 function Wise:CreateOptionsFrame()
     local f = CreateFrame("Frame", "WiseOptionsFrame", UIParent, "PortraitFrameTemplate")
     f:Hide()
-    f:SetSize(850, 500)
+    f:SetSize(930, 500)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -33,11 +33,11 @@ function Wise:CreateOptionsFrame()
     f.Sidebar = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
     f.Sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -60)
     f.Sidebar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 40) -- Anchor to bottom (tabs area)
-    f.Sidebar:SetWidth(200)
+    f.Sidebar:SetWidth(300)
 
     -- Sticky "New Wise Interface" button at top of sidebar
     f.Sidebar.AddBtn = CreateFrame("Button", nil, f.Sidebar, "GameMenuButtonTemplate")
-    f.Sidebar.AddBtn:SetSize(180, 24)
+    f.Sidebar.AddBtn:SetSize(280, 24)
     f.Sidebar.AddBtn:SetText("New Wise Interface")
     f.Sidebar.AddBtn:SetPoint("TOP", f.Sidebar, "TOP", 0, -20)
     Wise:AddTooltip(f.Sidebar.AddBtn, "Create a new custom interface (ring, bar, grid).")
@@ -53,7 +53,7 @@ function Wise:CreateOptionsFrame()
 
     -- Sticky "Add New Slot" button at top of middle panel
     f.Middle.AddSlotBtn = CreateFrame("Button", nil, f.Middle, "GameMenuButtonTemplate")
-    f.Middle.AddSlotBtn:SetSize(180, 24)
+    f.Middle.AddSlotBtn:SetSize(280, 24)
     f.Middle.AddSlotBtn:SetText("Add New Slot")
     f.Middle.AddSlotBtn:SetPoint("TOP", f.Middle, "TOP", 0, -20)
     Wise:AddTooltip(f.Middle.AddSlotBtn, "Add a new action slot to the selected interface.")
@@ -192,7 +192,7 @@ function Wise:CreateOptionsFrame()
     f.Sidebar.Scroll:SetPoint("TOPLEFT", f.Sidebar.AddBtn, "BOTTOMLEFT", -10, -5)
     f.Sidebar.Scroll:SetPoint("BOTTOMRIGHT", -25, 5)
     f.Sidebar.Content = CreateFrame("Frame", nil, f.Sidebar.Scroll)
-    f.Sidebar.Content:SetSize(175, 400)
+    f.Sidebar.Content:SetSize(275, 400)
     f.Sidebar.Scroll:SetScrollChild(f.Sidebar.Content)
 
     f.Middle.Scroll = CreateFrame("ScrollFrame", nil, f.Middle, "UIPanelScrollFrameTemplate")
@@ -206,7 +206,7 @@ function Wise:CreateOptionsFrame()
     f.Right.Scroll:SetPoint("TOPLEFT", 0, -25)
     f.Right.Scroll:SetPoint("BOTTOMRIGHT", -25, 25)
     f.Right.Content = CreateFrame("Frame", nil, f.Right.Scroll)
-    f.Right.Content:SetSize(250, 400) -- Initial Width
+    f.Right.Content:SetSize(275, 400) -- Initial Width
     f.Right.Scroll:SetScrollChild(f.Right.Content)
 
     
@@ -370,7 +370,7 @@ function Wise:RefreshGroupList()
         local btn = container.buttons[btnIndex]
         if not btn then
             btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            btn:SetSize(165, 40)
+            btn:SetSize(230, 40)
             
             -- Icon
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
@@ -381,7 +381,7 @@ function Wise:RefreshGroupList()
             btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             btn.label:SetPoint("LEFT", btn.icon, "RIGHT", 10, 0)
             btn.label:SetJustifyH("LEFT")
-            btn.label:SetWidth(110)
+            btn.label:SetWidth(175)
             btn.label:SetWordWrap(false)
 
             -- Keybind Label
@@ -405,7 +405,7 @@ function Wise:RefreshGroupList()
         end
 
         btn:Show()
-        btn:SetPoint("TOPLEFT", 25, y)
+        btn:SetPoint("TOPLEFT", 40, y)
 
         -- Determine Icon (Use first action's icon or default)
         local iconTexture = 134400
@@ -491,7 +491,7 @@ function Wise:RefreshGroupList()
          local btn = container.buttons[btnIndex]
          if not btn then
             btn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            btn:SetSize(165, 40)
+            btn:SetSize(230, 40)
             
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetSize(32, 32)
@@ -500,7 +500,7 @@ function Wise:RefreshGroupList()
             btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             btn.label:SetPoint("LEFT", btn.icon, "RIGHT", 10, 0)
             btn.label:SetJustifyH("LEFT")
-            btn.label:SetWidth(110)
+            btn.label:SetWidth(175)
             btn.label:SetWordWrap(false)
 
             -- Keybind Label
@@ -523,7 +523,7 @@ function Wise:RefreshGroupList()
          end
 
          btn:Show()
-         btn:SetPoint("TOPLEFT", 25, y)
+         btn:SetPoint("TOPLEFT", 40, y)
 
 
          local isValid, err = Wise:ValidateGroup(data and name or "")
@@ -622,7 +622,7 @@ function Wise:RefreshGroupList()
     local smartBtn = container.buttons[btnIndex]
     if not smartBtn then
         smartBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
-        smartBtn:SetSize(165, 40)
+        smartBtn:SetSize(230, 40)
 
         smartBtn.icon = smartBtn:CreateTexture(nil, "ARTWORK")
         smartBtn.icon:SetSize(32, 32)
@@ -631,7 +631,7 @@ function Wise:RefreshGroupList()
         smartBtn.label = smartBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         smartBtn.label:SetPoint("LEFT", smartBtn.icon, "RIGHT", 10, 0)
         smartBtn.label:SetJustifyH("LEFT")
-        smartBtn.label:SetWidth(110)
+        smartBtn.label:SetWidth(175)
         smartBtn.label:SetWordWrap(false)
 
         -- Keybind Label
@@ -645,7 +645,7 @@ function Wise:RefreshGroupList()
         tinsert(container.buttons, smartBtn)
     end
     smartBtn:Show()
-    smartBtn:SetPoint("TOPLEFT", 25, y)
+    smartBtn:SetPoint("TOPLEFT", 40, y)
 
     -- Special icon for Smart Item (bag icon)
     smartBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10_Blue")
@@ -745,7 +745,7 @@ function Wise:RefreshGroupList()
         local barBtn = container.buttons[btnIndex]
         if not barBtn then
             barBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
-            barBtn:SetSize(165, 40)
+            barBtn:SetSize(230, 40)
 
             barBtn.icon = barBtn:CreateTexture(nil, "ARTWORK")
             barBtn.icon:SetSize(32, 32)
@@ -754,7 +754,7 @@ function Wise:RefreshGroupList()
             barBtn.label = barBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             barBtn.label:SetPoint("LEFT", barBtn.icon, "RIGHT", 10, 0)
             barBtn.label:SetJustifyH("LEFT")
-            barBtn.label:SetWidth(110)
+            barBtn.label:SetWidth(175)
             barBtn.label:SetWordWrap(false)
 
             -- Keybind Label
@@ -768,7 +768,7 @@ function Wise:RefreshGroupList()
             tinsert(container.buttons, barBtn)
         end
         barBtn:Show()
-        barBtn:SetPoint("TOPLEFT", 25, y)
+        barBtn:SetPoint("TOPLEFT", 40, y)
 
         barBtn.icon:SetTexture("Interface\\Icons\\Spell_Holy_BorrowedTime")
         barBtn.label:SetText(Wise.BAR_COPY_TEMPLATE)
