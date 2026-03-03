@@ -1812,7 +1812,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             -- Minus Button for Radius
             local radMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            radMinusBtn:SetSize(18, 18)
+            radMinusBtn:SetSize(27, 27)
             radMinusBtn:SetPoint("RIGHT", radSlider, "LEFT", -2, 0)
             radMinusBtn:SetText("-")
             radMinusBtn:SetScript("OnClick", function()
@@ -1822,7 +1822,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             -- Plus Button for Radius
             local radPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            radPlusBtn:SetSize(18, 18)
+            radPlusBtn:SetSize(27, 27)
             radPlusBtn:SetPoint("LEFT", radSlider, "RIGHT", 2, 0)
             radPlusBtn:SetText("+")
             radPlusBtn:SetScript("OnClick", function()
@@ -1883,7 +1883,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             -- Minus Button for Rotation
             local rotMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            rotMinusBtn:SetSize(18, 18)
+            rotMinusBtn:SetSize(27, 27)
             rotMinusBtn:SetPoint("RIGHT", rotSlider, "LEFT", -2, 0)
             rotMinusBtn:SetText("-")
             rotMinusBtn:SetScript("OnClick", function()
@@ -1893,7 +1893,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
             -- Plus Button for Rotation
             local rotPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            rotPlusBtn:SetSize(18, 18)
+            rotPlusBtn:SetSize(27, 27)
             rotPlusBtn:SetPoint("LEFT", rotSlider, "RIGHT", 2, 0)
             rotPlusBtn:SetText("+")
             rotPlusBtn:SetScript("OnClick", function()
