@@ -369,6 +369,28 @@ function Wise:PopulateSettingsView(panel)
     end)
     ry = ry - 40
 
+
+    -- Minus Button for iconSlider
+    local iconSliderMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    iconSliderMinusBtn:SetSize(27, 27)
+    iconSliderMinusBtn:SetPoint("RIGHT", iconSlider, "LEFT", -2, 0)
+    iconSliderMinusBtn:SetText("-")
+    iconSliderMinusBtn:SetScript("OnClick", function()
+        local v = iconSlider:GetValue() - 2
+        local min, max = iconSlider:GetMinMaxValues()
+        if v >= min then iconSlider:SetValue(v) end
+    end)
+
+    -- Plus Button for iconSlider
+    local iconSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    iconSliderPlusBtn:SetSize(27, 27)
+    iconSliderPlusBtn:SetPoint("LEFT", iconSlider, "RIGHT", 2, 0)
+    iconSliderPlusBtn:SetText("+")
+    iconSliderPlusBtn:SetScript("OnClick", function()
+        local v = iconSlider:GetValue() + 2
+        local min, max = iconSlider:GetMinMaxValues()
+        if v <= max then iconSlider:SetValue(v) end
+    end)
     -- Text Size
     local textLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, textLabel, rx, ry)
@@ -397,6 +419,28 @@ function Wise:PopulateSettingsView(panel)
     end)
     ry = ry - 40
 
+
+    -- Minus Button for textSlider
+    local textSliderMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    textSliderMinusBtn:SetSize(27, 27)
+    textSliderMinusBtn:SetPoint("RIGHT", textSlider, "LEFT", -2, 0)
+    textSliderMinusBtn:SetText("-")
+    textSliderMinusBtn:SetScript("OnClick", function()
+        local v = textSlider:GetValue() - 1
+        local min, max = textSlider:GetMinMaxValues()
+        if v >= min then textSlider:SetValue(v) end
+    end)
+
+    -- Plus Button for textSlider
+    local textSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    textSliderPlusBtn:SetSize(27, 27)
+    textSliderPlusBtn:SetPoint("LEFT", textSlider, "RIGHT", 2, 0)
+    textSliderPlusBtn:SetText("+")
+    textSliderPlusBtn:SetScript("OnClick", function()
+        local v = textSlider:GetValue() + 1
+        local min, max = textSlider:GetMinMaxValues()
+        if v <= max then textSlider:SetValue(v) end
+    end)
     -- Font
     local fontLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, fontLabel, rx, ry)
@@ -614,6 +658,28 @@ function Wise:PopulateSettingsView(panel)
     end)
     ry = ry - 40
 
+
+    -- Minus Button for kbSizeSlider
+    local kbSizeSliderMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    kbSizeSliderMinusBtn:SetSize(27, 27)
+    kbSizeSliderMinusBtn:SetPoint("RIGHT", kbSizeSlider, "LEFT", -2, 0)
+    kbSizeSliderMinusBtn:SetText("-")
+    kbSizeSliderMinusBtn:SetScript("OnClick", function()
+        local v = kbSizeSlider:GetValue() - 1
+        local min, max = kbSizeSlider:GetMinMaxValues()
+        if v >= min then kbSizeSlider:SetValue(v) end
+    end)
+
+    -- Plus Button for kbSizeSlider
+    local kbSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    kbSizeSliderPlusBtn:SetSize(27, 27)
+    kbSizeSliderPlusBtn:SetPoint("LEFT", kbSizeSlider, "RIGHT", 2, 0)
+    kbSizeSliderPlusBtn:SetText("+")
+    kbSizeSliderPlusBtn:SetScript("OnClick", function()
+        local v = kbSizeSlider:GetValue() + 1
+        local min, max = kbSizeSlider:GetMinMaxValues()
+        if v <= max then kbSizeSlider:SetValue(v) end
+    end)
     -- Charge Text
     local chargeHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, chargeHeader, rx, ry)
@@ -695,6 +761,28 @@ function Wise:PopulateSettingsView(panel)
     end)
     ry = ry - 40
     
+
+    -- Minus Button for chargeSizeSlider
+    local chargeSizeSliderMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    chargeSizeSliderMinusBtn:SetSize(27, 27)
+    chargeSizeSliderMinusBtn:SetPoint("RIGHT", chargeSizeSlider, "LEFT", -2, 0)
+    chargeSizeSliderMinusBtn:SetText("-")
+    chargeSizeSliderMinusBtn:SetScript("OnClick", function()
+        local v = chargeSizeSlider:GetValue() - 1
+        local min, max = chargeSizeSlider:GetMinMaxValues()
+        if v >= min then chargeSizeSlider:SetValue(v) end
+    end)
+
+    -- Plus Button for chargeSizeSlider
+    local chargeSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    chargeSizeSliderPlusBtn:SetSize(27, 27)
+    chargeSizeSliderPlusBtn:SetPoint("LEFT", chargeSizeSlider, "RIGHT", 2, 0)
+    chargeSizeSliderPlusBtn:SetText("+")
+    chargeSizeSliderPlusBtn:SetScript("OnClick", function()
+        local v = chargeSizeSlider:GetValue() + 1
+        local min, max = chargeSizeSlider:GetMinMaxValues()
+        if v <= max then chargeSizeSlider:SetValue(v) end
+    end)
     -- Countdown Text
     local cdHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, cdHeader, rx, ry)
@@ -771,6 +859,28 @@ function Wise:PopulateSettingsView(panel)
     end)
     ry = ry - 40
     
+
+    -- Minus Button for cdSizeSlider
+    local cdSizeSliderMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    cdSizeSliderMinusBtn:SetSize(27, 27)
+    cdSizeSliderMinusBtn:SetPoint("RIGHT", cdSizeSlider, "LEFT", -2, 0)
+    cdSizeSliderMinusBtn:SetText("-")
+    cdSizeSliderMinusBtn:SetScript("OnClick", function()
+        local v = cdSizeSlider:GetValue() - 1
+        local min, max = cdSizeSlider:GetMinMaxValues()
+        if v >= min then cdSizeSlider:SetValue(v) end
+    end)
+
+    -- Plus Button for cdSizeSlider
+    local cdSizeSliderPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    cdSizeSliderPlusBtn:SetSize(27, 27)
+    cdSizeSliderPlusBtn:SetPoint("LEFT", cdSizeSlider, "RIGHT", 2, 0)
+    cdSizeSliderPlusBtn:SetText("+")
+    cdSizeSliderPlusBtn:SetScript("OnClick", function()
+        local v = cdSizeSlider:GetValue() + 1
+        local min, max = cdSizeSlider:GetMinMaxValues()
+        if v <= max then cdSizeSlider:SetValue(v) end
+    end)
     -- Proc Glows
     local glowHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, glowHeader, rx, ry)
