@@ -1831,7 +1831,8 @@ function Wise:GetSpell(filter)
                          if not C_Spell.IsSpellPassive(spellId) then
                              local name = C_Spell.GetSpellName(spellId)
                              local icon = C_Spell.GetSpellTexture(spellId)
-                             if name and (not filter or string.find(string.lower(name), filter, 1, true)) then
+                             local description = C_Spell.GetSpellDescription(spellId) or ""
+                             if name and (not filter or string.find(string.lower(name), filter, 1, true) or string.find(string.lower(description), filter, 1, true)) then
                                  if not seen[name] then
                                      table.insert(spells, {
                                          type="spell",
@@ -1856,7 +1857,8 @@ function Wise:GetSpell(filter)
                                         if not C_Spell.IsSpellPassive(actualSpellID) then
                                              local sName = C_Spell.GetSpellName(actualSpellID)
                                              local sIcon = C_Spell.GetSpellTexture(actualSpellID)
-                                             if sName and (not filter or string.find(string.lower(sName), filter, 1, true)) then
+                                             local description = C_Spell.GetSpellDescription(actualSpellID) or ""
+                                             if sName and (not filter or string.find(string.lower(sName), filter, 1, true) or string.find(string.lower(description), filter, 1, true)) then
                                                   if not seen[sName] then
                                                        table.insert(spells, {
                                                             type="spell",
