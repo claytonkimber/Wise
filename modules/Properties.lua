@@ -1012,6 +1012,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
                         self:EnableMouseWheel(false)
                         self:SetScript("OnKeyDown", nil)
                         self:SetScript("OnMouseWheel", nil)
+                        self:SetScript("OnMouseDown", nil)
                         self:SetText(slot.keybind or "None")
                         return
                     end
@@ -1032,6 +1033,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
                             self:EnableMouseWheel(false)
                             self:SetScript("OnKeyDown", nil)
                             self:SetScript("OnMouseWheel", nil)
+                            self:SetScript("OnMouseDown", nil)
                             self:SetText(slot.keybind or "None")
                             return
                         end
@@ -1042,6 +1044,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
                     self:EnableMouseWheel(false)
                     self:SetScript("OnKeyDown", nil)
                     self:SetScript("OnMouseWheel", nil)
+                    self:SetScript("OnMouseDown", nil)
 
                     if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
                         return
@@ -1060,6 +1063,15 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
 
                 self:SetScript("OnMouseWheel", function(self, delta)
                     local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
+                    FinishSlotBinding(key)
+                end)
+
+                self:SetScript("OnMouseDown", function(self, button)
+                    if button == "LeftButton" or button == "RightButton" then return end
+                    local key = button
+                    if button == "MiddleButton" then key = "BUTTON3" end
+                    if button == "Button4" then key = "BUTTON4" end
+                    if button == "Button5" then key = "BUTTON5" end
                     FinishSlotBinding(key)
                 end)
             end
@@ -2970,10 +2982,13 @@ function Wise:RenderGroupProperties(panel, group, y)
              else
                  self:SetText("Press Key...")
                  self:EnableKeyboard(true)
-                 self:SetScript("OnKeyDown", function(self, key)
+
+                 local function FinishSlotBinding(key)
+                     if not key then return end
                      if key == "ESCAPE" then
                          self:EnableKeyboard(false)
                          self:SetScript("OnKeyDown", nil)
+                         self:SetScript("OnMouseDown", nil)
                          self:SetText(group.actions[Wise.selectedSlot].keybind or "None")
                          return
                      end
@@ -2987,6 +3002,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                      local fullKey = mods .. key
                      self:EnableKeyboard(false)
                      self:SetScript("OnKeyDown", nil)
+                     self:SetScript("OnMouseDown", nil)
 
                      if Wise:CheckBindingConflict(fullKey, group, Wise.selectedSlot, true, self) then
                          return
@@ -2996,6 +3012,19 @@ function Wise:RenderGroupProperties(panel, group, y)
                      self:SetText(fullKey)
 
                      Wise:UpdateBindings()
+                 end
+
+                 self:SetScript("OnKeyDown", function(self, key)
+                     FinishSlotBinding(key)
+                 end)
+
+                 self:SetScript("OnMouseDown", function(self, button)
+                     if button == "LeftButton" or button == "RightButton" then return end
+                     local key = button
+                     if button == "MiddleButton" then key = "BUTTON3" end
+                    if button == "Button4" then key = "BUTTON4" end
+                    if button == "Button5" then key = "BUTTON5" end
+                     FinishSlotBinding(key)
                  end)
              end
          end)
@@ -3380,6 +3409,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                         self:EnableMouseWheel(false)
                         self:SetScript("OnKeyDown", nil)
                         self:SetScript("OnMouseWheel", nil)
+                        self:SetScript("OnMouseDown", nil)
                         Wise:RefreshPropertiesPanel()
                         return
                     end
@@ -3411,6 +3441,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                             self:EnableMouseWheel(false)
                             self:SetScript("OnKeyDown", nil)
                             self:SetScript("OnMouseWheel", nil)
+                            self:SetScript("OnMouseDown", nil)
                             Wise:RefreshPropertiesPanel()
                             return
                         end
@@ -3421,6 +3452,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                     self:EnableMouseWheel(false)
                     self:SetScript("OnKeyDown", nil)
                     self:SetScript("OnMouseWheel", nil)
+                    self:SetScript("OnMouseDown", nil)
 
                     if Wise:CheckBindingConflict(fullKey, group, nil, false, self) then
                         return
@@ -3438,6 +3470,15 @@ function Wise:RenderGroupProperties(panel, group, y)
 
                 self:SetScript("OnMouseWheel", function(self, delta)
                     local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
+                    FinishBinding(key)
+                end)
+
+                self:SetScript("OnMouseDown", function(self, button)
+                    if button == "LeftButton" or button == "RightButton" then return end
+                    local key = button
+                    if button == "MiddleButton" then key = "BUTTON3" end
+                    if button == "Button4" then key = "BUTTON4" end
+                    if button == "Button5" then key = "BUTTON5" end
                     FinishBinding(key)
                 end)
             end
