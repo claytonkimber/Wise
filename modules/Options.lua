@@ -108,6 +108,16 @@ function Wise:CreateOptionsFrame()
         Wise:ToggleEditMode()
     end)
 
+    -- Wise Only Edit Mode Button (to the left of Edit Mode Button)
+    f.WiseOnlyEditModeBtn = CreateFrame("Button", nil, f.TabStrip, "GameMenuButtonTemplate")
+    f.WiseOnlyEditModeBtn:SetSize(140, 24)
+    f.WiseOnlyEditModeBtn:SetText("Wise Edit Mode")
+    f.WiseOnlyEditModeBtn:SetPoint("RIGHT", f.EditModeBtn, "LEFT", -5, 0)
+    Wise:AddTooltip(f.WiseOnlyEditModeBtn, "Toggle edit mode for Wise interfaces only.")
+    f.WiseOnlyEditModeBtn:SetScript("OnClick", function()
+        Wise:ToggleWiseOnlyEditMode()
+    end)
+
     -- Define Views
     f.Views = {}
     f.Views.Editor = { f.Sidebar, f.Middle, f.Right }
@@ -283,6 +293,14 @@ function Wise:SetTab(viewName)
             f.EditModeBtn:Show()
         else
             f.EditModeBtn:Hide()
+        end
+    end
+
+    if f.WiseOnlyEditModeBtn then
+        if viewName == "Editor" then
+            f.WiseOnlyEditModeBtn:Show()
+        else
+            f.WiseOnlyEditModeBtn:Hide()
         end
     end
 

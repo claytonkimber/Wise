@@ -549,6 +549,14 @@ function Wise:SetFrameEditMode(f, name, enabled)
     end
 end
 
+function Wise:ToggleWiseOnlyEditMode()
+    if Wise.editMode then
+        Wise:ExitEditMode()
+    else
+        Wise:EnterEditMode()
+    end
+end
+
 function Wise:EnterEditMode()
     Wise.editMode = true
     if WiseDB and WiseDB.groups then
