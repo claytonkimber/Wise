@@ -404,7 +404,7 @@ function Wise:RefreshGroupList()
 
             -- Keybind Label
             btn.kbLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.kbLabel:SetPoint("RIGHT", btn, "RIGHT", -25, 0)
+            btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
             -- Lock Button
@@ -559,7 +559,7 @@ function Wise:RefreshGroupList()
 
             -- Keybind Label
             btn.kbLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.kbLabel:SetPoint("RIGHT", btn, "RIGHT", -25, 0)
+            btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
             -- Lock Button

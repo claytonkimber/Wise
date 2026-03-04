@@ -8,6 +8,9 @@ function Wise:OnDragReceive(groupName, slotIndex)
     if WiseDB.settings.enableDragDrop == false then return end
     local type, id, subType, param4 = GetCursorInfo()
     
+    if WiseDB.groups[groupName] and WiseDB.groups[groupName].isLocked then return end
+
+
     if type == "spell" then
         -- Standard GetCursorInfo for spell: "spell", slotIndex, bookType, spellID
         local _, bookSlot, bookType, spellID = GetCursorInfo()
@@ -107,7 +110,7 @@ function Wise:StartDragHighlight()
     for groupName, f in pairs(Wise.frames) do
         if f:IsShown() and f.buttons then
              for _, btn in ipairs(f.buttons) do
-                 if btn:IsShown() then
+                 if btn:IsShown() and not (WiseDB.groups[groupName] and WiseDB.groups[groupName].isLocked) then
                      Wise:ShowOverlayGlow(btn)
                      -- Optional: set a distinct color or texture?
                      -- For now, reusing the existing "proc glow" is easiest,
