@@ -4,7 +4,7 @@ local addonName, Wise = ...
 -- Drag and Drop Handler
 -- ============================================================================
 
-function Wise:OnDragReceive(groupName, slotIndex)
+function Wise:OnDragReceive(groupName, slotIndex, isAppend)
     if WiseDB.settings.enableDragDrop == false then return end
     local type, id, subType, param4 = GetCursorInfo()
     
@@ -58,38 +58,38 @@ function Wise:OnDragReceive(groupName, slotIndex)
         if finalSpellID then
              local extra = {}
              if sourceSpecID then extra.sourceSpecID = sourceSpecID end
-             Wise:ReplaceSlotAction(groupName, slotIndex, "spell", finalSpellID, category, extra)
+             if isAppend then Wise:AddAction(groupName, slotIndex, "spell", finalSpellID, category, extra) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "spell", finalSpellID, category, extra) end
              ClearCursor()
         end
         
     elseif type == "item" then
         -- GetCursorInfo returns: "item", itemID, itemLink
-        Wise:ReplaceSlotAction(groupName, slotIndex, "item", id)
+        if isAppend then Wise:AddAction(groupName, slotIndex, "item", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "item", id) end
         ClearCursor()
         
     elseif type == "macro" then
         -- GetMacroInfo(index) returns name, icon, body.
         local name = GetMacroInfo(id)
         if name then
-            Wise:ReplaceSlotAction(groupName, slotIndex, "macro", name)
+            if isAppend then Wise:AddAction(groupName, slotIndex, "macro", name) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "macro", name) end
             ClearCursor()
         end
         
     elseif type == "mount" then
         -- "mount", mountID
-        Wise:ReplaceSlotAction(groupName, slotIndex, "mount", id)
+        if isAppend then Wise:AddAction(groupName, slotIndex, "mount", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "mount", id) end
         ClearCursor()
         
     elseif type == "battlepet" then
         -- "battlepet", petID
-        Wise:ReplaceSlotAction(groupName, slotIndex, "battlepet", id)
+        if isAppend then Wise:AddAction(groupName, slotIndex, "battlepet", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "battlepet", id) end
         ClearCursor()
         
     elseif type == "equipmentset" then
         -- "equipmentset", setID
          local name = C_EquipmentSet.GetEquipmentSetInfo(id)
          if name then
-            Wise:ReplaceSlotAction(groupName, slotIndex, "equipmentset", name)
+            if isAppend then Wise:AddAction(groupName, slotIndex, "equipmentset", name) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "equipmentset", name) end
             ClearCursor()
          end
     end
@@ -117,6 +117,27 @@ function Wise:StartDragHighlight()
              end
         end
     end
+
+    -- Options Interface Highlight
+    if Wise.OptionsFrame and Wise.OptionsFrame:IsShown() and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.Content and Wise.OptionsFrame.Middle.Content.slots then
+        for _, slot in ipairs(Wise.OptionsFrame.Middle.Content.slots) do
+            if slot:IsShown() then
+                slot:SetBackdropBorderColor(0, 1, 0, 1) -- Green outline for slots
+                if slot.ActionButtons then
+                    for _, btn in ipairs(slot.ActionButtons) do
+                        if btn:IsShown() then
+                            -- maybe glow the buttons? or just the slot is fine.
+                            -- Let's glow the buttons to be explicit
+                            Wise:ShowOverlayGlow(btn)
+                        end
+                    end
+                end
+                if slot.AddStateBtn and slot.AddStateBtn:IsShown() then
+                     Wise:ShowOverlayGlow(slot.AddStateBtn)
+                end
+            end
+        end
+    end
 end
 
 function Wise:StopDragHighlight()
@@ -131,6 +152,31 @@ function Wise:StopDragHighlight()
                  -- For simplicity, hide all, then trigger usability update to restore procs.
                  Wise:HideOverlayGlow(btn)
              end
+        end
+    end
+
+    -- Options Interface Highlight Removal
+    if Wise.OptionsFrame and Wise.OptionsFrame:IsShown() and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.Content and Wise.OptionsFrame.Middle.Content.slots then
+        for _, slot in ipairs(Wise.OptionsFrame.Middle.Content.slots) do
+            if slot:IsShown() then
+                -- Restore selected color or default
+                if Wise.selectedSlot == slot.slotID then
+                    slot:SetBackdropBorderColor(1, 0.8, 0, 1) -- Gold Selected
+                else
+                    slot:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+                end
+
+                if slot.ActionButtons then
+                    for _, btn in ipairs(slot.ActionButtons) do
+                        if btn:IsShown() then
+                            Wise:HideOverlayGlow(btn)
+                        end
+                    end
+                end
+                if slot.AddStateBtn and slot.AddStateBtn:IsShown() then
+                     Wise:HideOverlayGlow(slot.AddStateBtn)
+                end
+            end
         end
     end
     
