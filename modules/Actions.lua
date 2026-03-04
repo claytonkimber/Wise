@@ -558,15 +558,32 @@ end
 function Wise:ReplaceSlotAction(groupName, slotIndex, actionType, actionValue, category, extraData)
     local group = WiseDB.groups[groupName]
     if not group then return end
-    
+
     Wise:MigrateGroupToActions(group)
-    
+
     -- Clear existing actions in this slot
     group.actions[slotIndex] = {}
-    
+
     -- Add the new action as the only action (default priority/state)
     Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData)
-    
+
+    -- Refresh UI
+    Wise:UpdateGroupDisplay(groupName)
+    Wise:UpdateOptionsUI()
+end
+
+function Wise:ReplaceStateAction(groupName, slotIndex, stateIndex, actionType, actionValue, category, extraData)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+
+    Wise:MigrateGroupToActions(group)
+
+    if not group.actions[slotIndex] or not group.actions[slotIndex][stateIndex] then return end
+
+    -- Remove the old state and insert the new one at the same position
+    table.remove(group.actions[slotIndex], stateIndex)
+    Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData, stateIndex)
+
     -- Refresh UI
     Wise:UpdateGroupDisplay(groupName)
     Wise:UpdateOptionsUI()
@@ -2590,6 +2607,8 @@ function Wise:RefreshActionsView(container)
                  btn.errorIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-NotReady")
                  btn.errorIcon:Hide()
 
+                 btn:RegisterForDrag("LeftButton")
+
                  tinsert(slotFrame.ActionButtons, btn)
              end
 
@@ -2680,12 +2699,21 @@ function Wise:RefreshActionsView(container)
                      btn:SetBackdropColor(0.2, 0.2, 0.2, 1)
                  end
                  
+                 local capturedSlotForDrag = sIdx
+                 local capturedStateForDrag = aIdx
                  btn:SetScript("OnClick", function()
+                     if GetCursorInfo() then
+                         Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
+                         return
+                     end
                      Wise.selectedSlot = sIdx
                      Wise.selectedState = aIdx
                      Wise.pickingIcon = false
                      Wise:RefreshActionsView(container)
                      Wise:RefreshPropertiesPanel()
+                 end)
+                 btn:SetScript("OnReceiveDrag", function()
+                     Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
                  end)
 
                  btn:SetScript("OnEnter", function(self)

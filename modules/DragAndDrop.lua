@@ -4,14 +4,27 @@ local addonName, Wise = ...
 -- Drag and Drop Handler
 -- ============================================================================
 
-function Wise:OnDragReceive(groupName, slotIndex, isAppend)
+function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
     if WiseDB.settings.enableDragDrop == false then return end
     local type, id, subType, param4 = GetCursorInfo()
-    
+
+    -- Helper: route to append, replace-state, or replace-slot
+    local function applyAction(actionType, actionValue, category, extra)
+        if isAppend then
+            Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extra)
+            Wise:UpdateGroupDisplay(groupName)
+            Wise:UpdateOptionsUI()
+        elseif stateIndex then
+            Wise:ReplaceStateAction(groupName, slotIndex, stateIndex, actionType, actionValue, category, extra)
+        else
+            Wise:ReplaceSlotAction(groupName, slotIndex, actionType, actionValue, category, extra)
+        end
+    end
+
     if type == "spell" then
         -- Standard GetCursorInfo for spell: "spell", slotIndex, bookType, spellID
         local _, bookSlot, bookType, spellID = GetCursorInfo()
-        
+
         local finalSpellID = spellID
         local category = "global"
         local sourceSpecID = nil
@@ -25,18 +38,14 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend)
                  finalSpellID = sID
              end
         end
-        
+
         -- Categorize the spell using SpellBook Info
         if finalSpellID and bookSlot and C_SpellBook and C_SpellBook.GetSpellBookItemType then
-             -- Iterate skill lines to find where this slot lives
-             -- Note: C_SpellBook doesn't have a direct "GetSkillLineForSlot" AFAIK,
-             -- we have to iterate ranges.
              local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
              for i = 1, numSkillLines do
                  local info = C_SpellBook.GetSpellBookSkillLineInfo(i)
                  if info and info.itemIndexOffset and info.numSpellBookItems then
                      if bookSlot > info.itemIndexOffset and bookSlot <= (info.itemIndexOffset + info.numSpellBookItems) then
-                         -- Found the skill line
                          local currentSpec = GetSpecialization()
                          local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
 
@@ -46,7 +55,6 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend)
                          elseif info.name == "General" then
                              category = "global"
                          else
-                             -- Class line (no spec ID, not General)
                              category = "class"
                          end
                          break
@@ -58,38 +66,33 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend)
         if finalSpellID then
              local extra = {}
              if sourceSpecID then extra.sourceSpecID = sourceSpecID end
-             if isAppend then Wise:AddAction(groupName, slotIndex, "spell", finalSpellID, category, extra) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "spell", finalSpellID, category, extra) end
+             applyAction("spell", finalSpellID, category, extra)
              ClearCursor()
         end
-        
+
     elseif type == "item" then
-        -- GetCursorInfo returns: "item", itemID, itemLink
-        if isAppend then Wise:AddAction(groupName, slotIndex, "item", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "item", id) end
+        applyAction("item", id)
         ClearCursor()
-        
+
     elseif type == "macro" then
-        -- GetMacroInfo(index) returns name, icon, body.
         local name = GetMacroInfo(id)
         if name then
-            if isAppend then Wise:AddAction(groupName, slotIndex, "macro", name) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "macro", name) end
+            applyAction("macro", name)
             ClearCursor()
         end
-        
+
     elseif type == "mount" then
-        -- "mount", mountID
-        if isAppend then Wise:AddAction(groupName, slotIndex, "mount", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "mount", id) end
+        applyAction("mount", id)
         ClearCursor()
-        
+
     elseif type == "battlepet" then
-        -- "battlepet", petID
-        if isAppend then Wise:AddAction(groupName, slotIndex, "battlepet", id) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "battlepet", id) end
+        applyAction("battlepet", id)
         ClearCursor()
-        
+
     elseif type == "equipmentset" then
-        -- "equipmentset", setID
          local name = C_EquipmentSet.GetEquipmentSetInfo(id)
          if name then
-            if isAppend then Wise:AddAction(groupName, slotIndex, "equipmentset", name) Wise:UpdateGroupDisplay(groupName) Wise:UpdateOptionsUI() else Wise:ReplaceSlotAction(groupName, slotIndex, "equipmentset", name) end
+            applyAction("equipmentset", name)
             ClearCursor()
          end
     end
