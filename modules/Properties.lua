@@ -3133,11 +3133,9 @@ function Wise:RenderGroupProperties(panel, group, y)
                         -- Force refresh Edit Mode state if needed (e.g. disabled -> hide overlay)
                         if Wise.editMode then
                             local f = Wise.frames[Wise.selectedGroup]
-                            if f and Wise.SetFrameEditMode and Wise:IsGroupDisabled(group) then
-                                Wise:SetFrameEditMode(f, Wise.selectedGroup, false)
-                            elseif f and Wise.SetFrameEditMode and not Wise:IsGroupDisabled(group) then
-                                -- Re-enable if it became enabled
-                                Wise:SetFrameEditMode(f, Wise.selectedGroup, true)
+                            if f and Wise.SetFrameEditMode then
+                                local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                                Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                             end
                         end
                         -- Refresh sidebar list to update enabled/disabled colors
@@ -3297,7 +3295,8 @@ function Wise:RenderGroupProperties(panel, group, y)
                     if Wise.editMode then
                         local f = Wise.frames[Wise.selectedGroup]
                         if f and Wise.SetFrameEditMode then
-                            Wise:SetFrameEditMode(f, Wise.selectedGroup, not Wise:IsGroupDisabled(group))
+                            local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                            Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                         end
                     end
                     -- Refresh sidebar list to update enabled/disabled colors
@@ -3345,7 +3344,8 @@ function Wise:RenderGroupProperties(panel, group, y)
                     if Wise.editMode then
                         local f = Wise.frames[Wise.selectedGroup]
                         if f and Wise.SetFrameEditMode then
-                            Wise:SetFrameEditMode(f, Wise.selectedGroup, not Wise:IsGroupDisabled(group))
+                            local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                            Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                         end
                     end
                     -- Refresh sidebar list to update enabled/disabled colors

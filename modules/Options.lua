@@ -440,7 +440,7 @@ function Wise:RefreshGroupList()
         else
             btn.label:SetText(name)
             btn.errorIcon:Hide()
-            if Wise:IsGroupDisabled(data) then
+            if Wise:IsGroupDisabled(data, name) then
                 btn.label:SetTextColor(0.5, 0.5, 0.5) -- Gray for disabled
             else
                 btn.label:SetTextColor(1, 0.82, 0) -- Standard Gold
@@ -574,7 +574,7 @@ function Wise:RefreshGroupList()
              btn.errorIcon:Show()
          else
              btn.label:SetText(name)
-             if Wise:IsGroupDisabled(data) then
+             if Wise:IsGroupDisabled(data, name) then
                  btn.label:SetTextColor(0.5, 0.5, 0.5) -- Gray for disabled
              else
                  btn.label:SetTextColor(1, 0.82, 0) -- Standard Gold

@@ -477,18 +477,11 @@ function Wise:SetFrameEditMode(f, name, enabled)
             
             local point, relativeTo, relativePoint = "CENTER", UIParent, "CENTER"
 
-            -- Grid Snapping Logic
+            -- Grid Snapping Logic (skip in Wise-only edit mode where no grid is shown)
             local snapped = false
-            if EditModeManagerFrame and EditModeManagerFrame.Grid and EditModeManagerFrame.Grid:IsShown() then
-                local spacing = 20 -- Default fallback
-                if EditModeManagerFrame.GetGridSpacing then
-                    spacing = EditModeManagerFrame:GetGridSpacing()
-                elseif EditModeManagerFrame.Grid.gridSpacing then
-                    spacing = EditModeManagerFrame.Grid.gridSpacing
-                end
-
-                if spacing and spacing > 0 then
-                    -- Simple round to nearest grid line
+            if not Wise.wiseOnlyEditMode and EditModeManagerFrame and EditModeManagerFrame.Grid and EditModeManagerFrame.Grid:IsShown() then
+                local spacing = 4 -- Small snap distance for precise placement
+                if spacing > 0 then
                     xOfs = floor(xOfs / spacing + 0.5) * spacing
                     yOfs = floor(yOfs / spacing + 0.5) * spacing
                     snapped = true
@@ -551,8 +544,10 @@ end
 
 function Wise:ToggleWiseOnlyEditMode()
     if Wise.editMode then
+        Wise.wiseOnlyEditMode = false
         Wise:ExitEditMode()
     else
+        Wise.wiseOnlyEditMode = true
         Wise:EnterEditMode()
     end
 end
@@ -562,9 +557,11 @@ function Wise:EnterEditMode()
     if WiseDB and WiseDB.groups then
         for name, group in pairs(WiseDB.groups) do
             local f = Wise.frames[name]
-            -- Only enable edit mode for non-mouse anchored groups
-            if f and Wise.SetFrameEditMode and group.anchorMode ~= "mouse" then
-                if not Wise:IsGroupDisabled(group) then
+            if f and Wise.SetFrameEditMode then
+                -- Skip disabled interfaces and mouse-anchored groups in all edit modes
+                if Wise:IsGroupDisabled(group, name) or group.anchorMode == "mouse" then
+                    Wise:SetFrameEditMode(f, name, false)
+                else
                     Wise:SetFrameEditMode(f, name, true)
                     f:Show()
                     if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
@@ -577,6 +574,7 @@ end
 function Wise:ExitEditMode()
     HideSelectionPopup()
     Wise.editMode = false
+    Wise.wiseOnlyEditMode = false
     if WiseDB and WiseDB.groups then
         for name, group in pairs(WiseDB.groups) do
             local f = Wise.frames[name]

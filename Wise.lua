@@ -168,8 +168,9 @@ function Wise:IsActionAllowed(action)
     return true
 end
 
--- Helper: Check if interface is "Disabled" (no visibility settings)
-function Wise:IsGroupDisabled(group)
+-- Helper: Check if interface is "Disabled" (no user-configured visibility settings)
+-- Nested children whose only visibility comes from nesting inheritance are still disabled.
+function Wise:IsGroupDisabled(group, groupName)
     if not group then return true end
     local s = group.visibilitySettings and group.visibilitySettings.customShow
     local h = group.visibilitySettings and group.visibilitySettings.customHide
@@ -182,6 +183,15 @@ function Wise:IsGroupDisabled(group)
     if not hasS and not hasH and not held and not toggle then
         return true
     end
+
+    -- If toggle is the only setting and this is a nested child, it was inherited — treat as disabled
+    if toggle and not hasS and not hasH and not held and groupName then
+        local parentName = Wise:GetParentInfo(groupName)
+        if parentName then
+            return true
+        end
+    end
+
     return false
 end
 
