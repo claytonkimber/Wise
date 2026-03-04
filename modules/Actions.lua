@@ -2474,29 +2474,38 @@ function Wise:RefreshActionsView(container)
 
         slotFrame.AddStateBtn:SetScript("OnClick", function(self)
              local capturedSlotID = self.slotID
-             Wise.pickingAction = true
-             Wise.PickerCallback = function(type, value, extra)
-                 -- Pass nil for category so Wise:AddAction resolves it from extra (or defaults to global)
-                 Wise:AddAction(groupName, capturedSlotID, type, value, nil, extra)
-                 Wise:RefreshActionsView(container)
+             local type = GetCursorInfo()
+             if type then
+                 Wise:OnDragReceive(groupName, capturedSlotID, true)
+             else
+                 Wise.pickingAction = true
+                 Wise.PickerCallback = function(type, value, extra)
+                     -- Pass nil for category so Wise:AddAction resolves it from extra (or defaults to global)
+                     Wise:AddAction(groupName, capturedSlotID, type, value, nil, extra)
+                     Wise:RefreshActionsView(container)
+                     Wise:RefreshPropertiesPanel()
+                     C_Timer.After(0, function()
+                        if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                     end)
+                 end
+                 Wise.PickerCurrentCategory = "Spell"
                  Wise:RefreshPropertiesPanel()
-                 C_Timer.After(0, function()
-                    if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                 end)
              end
-             Wise.PickerCurrentCategory = "Spell"
-             Wise:RefreshPropertiesPanel()
+        end)
+        slotFrame.AddStateBtn:SetScript("OnReceiveDrag", function(self)
+             local capturedSlotID = self.slotID
+             Wise:OnDragReceive(groupName, capturedSlotID, true)
         end)
 
         -- OPTIONS PANEL DRAG AND DROP
         slotFrame:SetScript("OnReceiveDrag", function(self)
-            Wise:OnDragReceive(groupName, self.slotID)
+            Wise:OnDragReceive(groupName, self.slotID, false)
         end)
         slotFrame:SetScript("OnMouseUp", function(self)
             -- Check if cursor has something to drop
             local type = GetCursorInfo()
             if type then
-                Wise:OnDragReceive(groupName, self.slotID)
+                Wise:OnDragReceive(groupName, self.slotID, false)
             else
                 -- Normal click logic (select slot)
                 Wise.selectedSlot = self.slotID
