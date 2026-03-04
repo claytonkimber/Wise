@@ -1,0 +1,2 @@
+# Use manual changelog instead of auto-generated from git commits
+manual-changelog: CHANGELOG.md

@@ -130,6 +130,22 @@ function Wise:AddInterfaceTooltip(btn)
              GameTooltip:SetText("Toggle " .. label, 1, 1, 1)
 
         elseif type == "misc" then
+             local hasAction = false
+             if value == "extrabutton" and data and data.showTooltip then
+                 local extraBtn = _G["ExtraActionButton1"]
+                 if extraBtn and extraBtn:IsShown() and extraBtn.action then
+                     GameTooltip:SetAction(extraBtn.action)
+                     hasAction = true
+                 end
+             elseif value == "zoneability" and data and data.showTooltip then
+                 local zoneFrame = _G["ZoneAbilityFrame"]
+                 local zoneBtn = zoneFrame and zoneFrame.SpellButton
+                 if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                     GameTooltip:SetSpellByID(zoneBtn.spellID)
+                     hasAction = true
+                 end
+             end
+             if not hasAction then
              local label = value
              if value == "hearthstone" then label = "Hearthstone"
              elseif value == "extrabutton" then label = "Extra Action Button"
@@ -158,6 +174,7 @@ function Wise:AddInterfaceTooltip(btn)
              end
 
              GameTooltip:SetText(label, 1, 1, 1)
+             end -- hasAction
 
         else
              -- Fallback

@@ -558,15 +558,32 @@ end
 function Wise:ReplaceSlotAction(groupName, slotIndex, actionType, actionValue, category, extraData)
     local group = WiseDB.groups[groupName]
     if not group then return end
-    
+
     Wise:MigrateGroupToActions(group)
-    
+
     -- Clear existing actions in this slot
     group.actions[slotIndex] = {}
-    
+
     -- Add the new action as the only action (default priority/state)
     Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData)
-    
+
+    -- Refresh UI
+    Wise:UpdateGroupDisplay(groupName)
+    Wise:UpdateOptionsUI()
+end
+
+function Wise:ReplaceStateAction(groupName, slotIndex, stateIndex, actionType, actionValue, category, extraData)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+
+    Wise:MigrateGroupToActions(group)
+
+    if not group.actions[slotIndex] or not group.actions[slotIndex][stateIndex] then return end
+
+    -- Remove the old state and insert the new one at the same position
+    table.remove(group.actions[slotIndex], stateIndex)
+    Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData, stateIndex)
+
     -- Refresh UI
     Wise:UpdateGroupDisplay(groupName)
     Wise:UpdateOptionsUI()
@@ -1006,8 +1023,23 @@ function Wise:GetActionIcon(actionType, value, extraData)
           end
          
     elseif actionType == "misc" then
-        if value == "extrabutton" then texture = "Interface\\Icons\\Temp" end
-        if value == "zoneability" then texture = "Interface\\Icons\\Temp" end
+        if value == "extrabutton" then
+            local extraBtn = _G["ExtraActionButton1"]
+            if extraBtn and extraBtn:IsShown() and extraBtn.action then
+                texture = GetActionTexture(extraBtn.action) or "Interface\\Icons\\Temp"
+            else
+                texture = "Interface\\Icons\\Temp"
+            end
+        end
+        if value == "zoneability" then
+            local zoneFrame = _G["ZoneAbilityFrame"]
+            local zoneBtn = zoneFrame and zoneFrame.SpellButton
+            if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
+                if info then texture = info.iconID end
+            end
+            texture = texture or "Interface\\Icons\\Temp"
+        end
         if value == "leave_vehicle" then texture = "Interface\\Icons\\Spell_Shadow_SacrificialPact" end
         if value == "custom_macro" then texture = 134400 end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
@@ -1882,6 +1914,34 @@ function Wise:GetSpell(filter)
     end
 
     
+    -- Class-specific hidden/replacement spells
+    local _, playerClass = UnitClass("player")
+    local classSpells = {
+        PALADIN = {
+            427453 -- Hammer of Light
+        }
+    }
+
+    if classSpells[playerClass] and (Wise.PickerSpellFilter == "In-Spec" or Wise.PickerSpellFilter == "Global") then
+        for _, spellName in ipairs(classSpells[playerClass]) do
+            if not seen[spellName] then
+                local info = C_Spell.GetSpellInfo(spellName)
+                if info then
+                    if not filter or string.find(string.lower(info.name), filter, 1, true) then
+                        table.insert(spells, {
+                            type="spell",
+                            value=info.spellID,
+                            name=info.name,
+                            icon=info.iconID,
+                            category="class"
+                        })
+                        seen[spellName] = true
+                    end
+                end
+            end
+        end
+    end
+
     -- Manual Exclusions/Inclusions
     if Wise.PickerSpellFilter == "Global" then
         -- Assist (often missed by spellbook iterators)
@@ -2476,29 +2536,38 @@ function Wise:RefreshActionsView(container)
 
         slotFrame.AddStateBtn:SetScript("OnClick", function(self)
              local capturedSlotID = self.slotID
-             Wise.pickingAction = true
-             Wise.PickerCallback = function(type, value, extra)
-                 -- Pass nil for category so Wise:AddAction resolves it from extra (or defaults to global)
-                 Wise:AddAction(groupName, capturedSlotID, type, value, nil, extra)
-                 Wise:RefreshActionsView(container)
+             local type = GetCursorInfo()
+             if type then
+                 Wise:OnDragReceive(groupName, capturedSlotID, true)
+             else
+                 Wise.pickingAction = true
+                 Wise.PickerCallback = function(type, value, extra)
+                     -- Pass nil for category so Wise:AddAction resolves it from extra (or defaults to global)
+                     Wise:AddAction(groupName, capturedSlotID, type, value, nil, extra)
+                     Wise:RefreshActionsView(container)
+                     Wise:RefreshPropertiesPanel()
+                     C_Timer.After(0, function()
+                        if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                     end)
+                 end
+                 Wise.PickerCurrentCategory = "Spell"
                  Wise:RefreshPropertiesPanel()
-                 C_Timer.After(0, function()
-                    if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                 end)
              end
-             Wise.PickerCurrentCategory = "Spell"
-             Wise:RefreshPropertiesPanel()
+        end)
+        slotFrame.AddStateBtn:SetScript("OnReceiveDrag", function(self)
+             local capturedSlotID = self.slotID
+             Wise:OnDragReceive(groupName, capturedSlotID, true)
         end)
 
         -- OPTIONS PANEL DRAG AND DROP
         slotFrame:SetScript("OnReceiveDrag", function(self)
-            Wise:OnDragReceive(groupName, self.slotID)
+            Wise:OnDragReceive(groupName, self.slotID, false)
         end)
         slotFrame:SetScript("OnMouseUp", function(self)
             -- Check if cursor has something to drop
             local type = GetCursorInfo()
             if type then
-                Wise:OnDragReceive(groupName, self.slotID)
+                Wise:OnDragReceive(groupName, self.slotID, false)
             else
                 -- Normal click logic (select slot)
                 Wise.selectedSlot = self.slotID
@@ -2580,6 +2649,8 @@ function Wise:RefreshActionsView(container)
                  btn.errorIcon:SetPoint("BOTTOMRIGHT", btn.iconFrame, "BOTTOMRIGHT", 4, -4)
                  btn.errorIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-NotReady")
                  btn.errorIcon:Hide()
+
+                 btn:RegisterForDrag("LeftButton")
 
                  tinsert(slotFrame.ActionButtons, btn)
              end
@@ -2671,12 +2742,21 @@ function Wise:RefreshActionsView(container)
                      btn:SetBackdropColor(0.2, 0.2, 0.2, 1)
                  end
                  
+                 local capturedSlotForDrag = sIdx
+                 local capturedStateForDrag = aIdx
                  btn:SetScript("OnClick", function()
+                     if GetCursorInfo() then
+                         Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
+                         return
+                     end
                      Wise.selectedSlot = sIdx
                      Wise.selectedState = aIdx
                      Wise.pickingIcon = false
                      Wise:RefreshActionsView(container)
                      Wise:RefreshPropertiesPanel()
+                 end)
+                 btn:SetScript("OnReceiveDrag", function()
+                     Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
                  end)
 
                  btn:SetScript("OnEnter", function(self)

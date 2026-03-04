@@ -762,6 +762,37 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 10
 
+    -- Show Tooltip checkbox (for Extra Action Button)
+    if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability") then
+        local tipCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        tipCheck:SetPoint("TOPLEFT", 10, y)
+        tipCheck:SetChecked(action.showTooltip or false)
+        tipCheck.text = tipCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        tipCheck.text:SetPoint("LEFT", tipCheck, "RIGHT", 5, 0)
+        tipCheck.text:SetText("Show tooltip on hover")
+
+        tipCheck:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Show Tooltip", 1, 1, 1)
+            GameTooltip:AddLine("Displays the action's spell tooltip when hovering this button on the interface.", nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        tipCheck:SetScript("OnLeave", GameTooltip_Hide)
+
+        tipCheck:SetScript("OnClick", function(self)
+            action.showTooltip = self:GetChecked() and true or false
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+        tinsert(panel.controls, tipCheck)
+        tinsert(panel.controls, tipCheck.text)
+        y = y - 30
+    end
+
     -- Remove Action button
     local removeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
     removeBtn:SetSize(140, 22)
