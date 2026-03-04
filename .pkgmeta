@@ -1,0 +1,2 @@
+# Tells the packager which file to use as the changelog
+changelog: CHANGELOG.md
