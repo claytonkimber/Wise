@@ -1062,6 +1062,8 @@ Wise.BlizzardFrames = {
     { key = "hideOverrideBar", label = "Override Bar", frames = {"OverrideActionBar"} },
     { key = "hideMicroMenu", label = "Micro Menu", frames = {"MicroMenuContainer", "MicroMenu"} },
     { key = "hideBagsBar", label = "Bags Bar", frames = {"BagsBar", "BagBarExpandable"} },
+    { key = "hideExtraActionBar", label = "Extra Action Button", frames = {"ExtraActionBarFrame"} },
+    { key = "hideZoneAbility", label = "Zone Ability Button", frames = {"ZoneAbilityFrame"} },
 }
 
 -- Hook into Edit Mode to re-apply visibility when exiting Edit Mode

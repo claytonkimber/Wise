@@ -2845,7 +2845,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     needsTicker = true
                     break
                 end
-                if (meta.actionType == "misc" and meta.actionValue == "custom_macro") or meta.actionType == "action" then
+                if (meta.actionType == "misc" and (meta.actionValue == "custom_macro" or meta.actionValue == "extrabutton" or meta.actionValue == "zoneability")) or meta.actionType == "action" then
                     needsTicker = true
                     break
                 end
@@ -2904,6 +2904,34 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              Wise:UpdateButtonCooldown(btn)
                              Wise:UpdateButtonUsability(btn)
                          end
+                    elseif meta.actionType == "misc" and meta.actionValue == "extrabutton" then
+                         -- Update Extra Action Button icon dynamically
+                         local extraBtn = _G["ExtraActionButton1"]
+                         local tex
+                         if extraBtn and extraBtn:IsShown() and extraBtn.action then
+                             tex = GetActionTexture(extraBtn.action)
+                         end
+                         tex = tex or "Interface\\Icons\\Temp"
+                         btn.icon:SetTexture(tex)
+                         local vClone = meta.visualClone or btn.visualClone
+                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         Wise:UpdateButtonCooldown(btn)
+                         Wise:UpdateButtonUsability(btn)
+                    elseif meta.actionType == "misc" and meta.actionValue == "zoneability" then
+                         -- Update Zone Ability icon dynamically
+                         local zoneFrame = _G["ZoneAbilityFrame"]
+                         local zoneBtn = zoneFrame and zoneFrame.SpellButton
+                         local tex
+                         if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                             local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
+                             if info then tex = info.iconID end
+                         end
+                         tex = tex or "Interface\\Icons\\Temp"
+                         btn.icon:SetTexture(tex)
+                         local vClone = meta.visualClone or btn.visualClone
+                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         Wise:UpdateButtonCooldown(btn)
+                         Wise:UpdateButtonUsability(btn)
                     elseif meta.actionType == "interface" then
                         -- Update interface icon dynamically (reflects child's current active action)
                         local nestMode = btn:GetAttribute("isa_nest_mode") or "jump"
@@ -3480,6 +3508,23 @@ function Wise:UpdateButtonCooldown(btn)
         start, duration = GetActionCooldown(tonumber(actionValue))
         start = start or 0
         duration = duration or 0
+    elseif actionType == "misc" and actionValue == "extrabutton" then
+        local extraBtn = _G["ExtraActionButton1"]
+        if extraBtn and extraBtn:IsShown() and extraBtn.action then
+            start, duration = GetActionCooldown(extraBtn.action)
+            start = start or 0
+            duration = duration or 0
+        end
+    elseif actionType == "misc" and actionValue == "zoneability" then
+        local zoneFrame = _G["ZoneAbilityFrame"]
+        local zoneBtn = zoneFrame and zoneFrame.SpellButton
+        if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+            local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
+            if cooldownInfo then
+                start = cooldownInfo.startTime or 0
+                duration = cooldownInfo.duration or 0
+            end
+        end
     elseif spellID then
         local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
         if cooldownInfo then
@@ -3774,6 +3819,17 @@ function Wise:UpdateButtonUsability(btn)
     -- Module 4: API Compatibility (Polyfill)
     if actionType == "action" and tonumber(actionValue) then
         isUsable, noMana = IsUsableAction(tonumber(actionValue))
+    elseif actionType == "misc" and actionValue == "extrabutton" then
+        local extraBtn = _G["ExtraActionButton1"]
+        if extraBtn and extraBtn:IsShown() and extraBtn.action then
+            isUsable, noMana = IsUsableAction(extraBtn.action)
+        end
+    elseif actionType == "misc" and actionValue == "zoneability" then
+        local zoneFrame = _G["ZoneAbilityFrame"]
+        local zoneBtn = zoneFrame and zoneFrame.SpellButton
+        if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+            isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
+        end
     elseif spellID then
         isUsable, noMana = Wise:IsSpellUsable(spellID)
     elseif itemID then

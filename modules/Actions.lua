@@ -1023,8 +1023,23 @@ function Wise:GetActionIcon(actionType, value, extraData)
           end
          
     elseif actionType == "misc" then
-        if value == "extrabutton" then texture = "Interface\\Icons\\Temp" end
-        if value == "zoneability" then texture = "Interface\\Icons\\Temp" end
+        if value == "extrabutton" then
+            local extraBtn = _G["ExtraActionButton1"]
+            if extraBtn and extraBtn:IsShown() and extraBtn.action then
+                texture = GetActionTexture(extraBtn.action) or "Interface\\Icons\\Temp"
+            else
+                texture = "Interface\\Icons\\Temp"
+            end
+        end
+        if value == "zoneability" then
+            local zoneFrame = _G["ZoneAbilityFrame"]
+            local zoneBtn = zoneFrame and zoneFrame.SpellButton
+            if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
+                if info then texture = info.iconID end
+            end
+            texture = texture or "Interface\\Icons\\Temp"
+        end
         if value == "leave_vehicle" then texture = "Interface\\Icons\\Spell_Shadow_SacrificialPact" end
         if value == "custom_macro" then texture = 134400 end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
