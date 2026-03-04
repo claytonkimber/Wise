@@ -404,9 +404,27 @@ function Wise:RefreshGroupList()
 
             -- Keybind Label
             btn.kbLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
+            btn.kbLabel:SetPoint("RIGHT", btn, "RIGHT", -25, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
+            -- Lock Button
+            btn.lockBtn = CreateFrame("Button", nil, btn)
+            btn.lockBtn:SetSize(14, 14)
+            btn.lockBtn:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+
+            btn.lockBtn.icon = btn.lockBtn:CreateTexture(nil, "ARTWORK")
+            btn.lockBtn.icon:SetAllPoints()
+            btn.lockBtn.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+
+            btn.lockBtn:SetScript("OnClick", function(self)
+                local name = self:GetParent().groupName
+                local data = WiseDB.groups[name]
+                if data then
+                    data.isLocked = not data.isLocked
+                    Wise:UpdateOptionsUI()
+                end
+            end)
+
             
             -- Highlight
             btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -431,6 +449,24 @@ function Wise:RefreshGroupList()
             iconTexture = Wise:GetActionIcon(data.buttons[1].type, data.buttons[1].value)
         end
         btn.icon:SetTexture(iconTexture)
+        btn.groupName = name
+        if data.isLocked then
+            btn.lockBtn.icon:SetDesaturated(false)
+            btn.lockBtn.icon:SetAlpha(1.0)
+            btn.lockBtn:Show()
+        else
+            btn.lockBtn.icon:SetDesaturated(true)
+            btn.lockBtn.icon:SetAlpha(0.3)
+            btn.lockBtn:Show()
+        end
+        btn.lockBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(data.isLocked and "Unlock Interface" or "Lock Interface", 1, 1, 1)
+            GameTooltip:AddLine("Prevents all changes to this interface, including drag & drop and keybinds.", 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        btn.lockBtn:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+
         
         local hasVisErrors = Wise:HasVisibilityErrors(name)
 
@@ -523,9 +559,27 @@ function Wise:RefreshGroupList()
 
             -- Keybind Label
             btn.kbLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
+            btn.kbLabel:SetPoint("RIGHT", btn, "RIGHT", -25, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
+            -- Lock Button
+            btn.lockBtn = CreateFrame("Button", nil, btn)
+            btn.lockBtn:SetSize(14, 14)
+            btn.lockBtn:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+
+            btn.lockBtn.icon = btn.lockBtn:CreateTexture(nil, "ARTWORK")
+            btn.lockBtn.icon:SetAllPoints()
+            btn.lockBtn.icon:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
+
+            btn.lockBtn:SetScript("OnClick", function(self)
+                local name = self:GetParent().groupName
+                local data = WiseDB.groups[name]
+                if data then
+                    data.isLocked = not data.isLocked
+                    Wise:UpdateOptionsUI()
+                end
+            end)
+
             
             btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
             
@@ -563,6 +617,24 @@ function Wise:RefreshGroupList()
          end
          
          btn.icon:SetTexture(iconTexture)
+        btn.groupName = name
+        if data.isLocked then
+            btn.lockBtn.icon:SetDesaturated(false)
+            btn.lockBtn.icon:SetAlpha(1.0)
+            btn.lockBtn:Show()
+        else
+            btn.lockBtn.icon:SetDesaturated(true)
+            btn.lockBtn.icon:SetAlpha(0.3)
+            btn.lockBtn:Show()
+        end
+        btn.lockBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(data.isLocked and "Unlock Interface" or "Lock Interface", 1, 1, 1)
+            GameTooltip:AddLine("Prevents all changes to this interface, including drag & drop and keybinds.", 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        btn.lockBtn:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+
          
          local hasVisErrors = Wise:HasVisibilityErrors(name)
 
