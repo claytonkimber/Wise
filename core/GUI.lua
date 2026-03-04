@@ -1175,6 +1175,7 @@ function Wise:BuildVisibilityDriver(f, group)
          str = str:gsub("%[bank%]", "[actionbar:99]")
          str = str:gsub("bank", "actionbar:99") -- A bit aggressive but likely safe for standard secure options (banking isn't one)
          str = str:gsub("mailbox", "actionbar:99")
+         str = str:gsub("undermouse", "actionbar:99")
          
          return str
     end
@@ -1905,6 +1906,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
          local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
          local isMailbox = MailFrame and MailFrame:IsShown()
 
+         -- Helper: Get Undermouse State
+         -- f.visualDisplay or f itself contains the buttons. We use the f.Anchor if f might be hidden, or just f itself.
+         -- But to properly check a 10px padding even if hidden, we need GetRect.
+         local isUnderMouse = false
+         local checkFrame = f.visualDisplay or f
+
+         -- If the frame is hidden, GetRect returns nil. We must fall back to f.Anchor which is always shown.
+         if checkFrame and not checkFrame:IsVisible() and f.Anchor and f.Anchor:IsVisible() then
+             checkFrame = f.Anchor
+         end
+
+         if checkFrame then
+              local left, bottom, width, height = checkFrame:GetRect()
+              if left and bottom and width and height then
+                   local scale = checkFrame:GetEffectiveScale()
+                   local x, y = GetCursorPosition()
+                   x = x / scale
+                   y = y / scale
+                   -- 10 pixels bubble
+                   local pad = 10
+                   if x >= (left - pad) and x <= (left + width + pad) and y >= (bottom - pad) and y <= (bottom + height + pad) then
+                        isUnderMouse = true
+                   end
+              end
+         end
+
          local customShow = false
          
          -- Use separate IFs to allow OR logic if multiple are present
@@ -1921,6 +1948,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
          if showStr:find("mailbox") then
               if isMailbox then customShow = true end
          end
+
+         if showStr:find("undermouse") then
+              if isUnderMouse then customShow = true end
+         end
          
          -- Evaluate Hide (Overrides Show)
          if hideStr:find("guildbank") then
@@ -1933,6 +1964,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
          if hideStr:find("mailbox") then
               if isMailbox then customShow = false end
+         end
+
+         if hideStr:find("undermouse") then
+              if isUnderMouse then customShow = false end
          end
 
          return customShow
@@ -1948,16 +1983,20 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     end
 
     -- Ticker for updates
-    if not f.customVisTicker then
-        f.customVisTicker = C_Timer.NewTicker(0.5, function()
-             local isShow = CheckCustomVisibility()
-             local current = f:GetAttribute("state-custom")
-             local target = isShow and "show" or "hide"
-             if current ~= target and not InCombatLockdown() then
-                 f:SetAttribute("state-custom", target)
-             end
-        end)
+    if f.customVisTicker then
+        f.customVisTicker:Cancel()
     end
+
+    local hasUnderMouse = (showStr and showStr:find("undermouse")) or (hideStr and hideStr:find("undermouse"))
+    local tickRate = hasUnderMouse and 0.1 or 0.5
+    f.customVisTicker = C_Timer.NewTicker(tickRate, function()
+         local isShow = CheckCustomVisibility()
+         local current = f:GetAttribute("state-custom")
+         local target = isShow and "show" or "hide"
+         if current ~= target and not InCombatLockdown() then
+             f:SetAttribute("state-custom", target)
+         end
+    end)
 
     -- Check if combat visible for mouse tracking
     -- Use raw strings to determine intent
