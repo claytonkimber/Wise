@@ -1912,11 +1912,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     local hasUnderMouse = cvShowUnderMouse or cvHideUnderMouse
     local hasNonMouseConditions = cvShowGuildBank or cvShowBank or cvShowMailbox
                                   or cvHideGuildBank or cvHideBank or cvHideMailbox
-    -- Detect combat modifier paired with undermouse (e.g. "[combat][undermouse]")
-    -- [nocombat][undermouse] → only show out of combat, [combat][undermouse] → only show in combat
+    -- Detect combat modifier paired with undermouse (e.g. "[combat,undermouse]" or "[nocombat,undermouse]")
+    -- [nocombat,undermouse] → only show out of combat (default from checkbox)
+    -- [combat,undermouse] → only show in combat (user-typed, enables combat visual display)
     -- Plain [undermouse] with no combat modifier → out of combat only (safe default)
-    local undermouseCombatOnly = cvShowStr:find("combat.*undermouse") and not cvShowStr:find("nocombat") and true or false
-    local undermouseNoCombat = cvShowStr:find("nocombat.*undermouse") and true or false
+    local undermouseNoCombat = cvShowStr:find("nocombat") and cvShowUnderMouse and true or false
+    local undermouseCombatOnly = cvShowStr:find("combat") and not cvShowStr:find("nocombat") and cvShowUnderMouse and true or false
     -- If neither modifier is present, default to nocombat behavior
     if cvShowUnderMouse and not undermouseCombatOnly and not undermouseNoCombat then
         undermouseNoCombat = true
