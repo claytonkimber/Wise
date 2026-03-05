@@ -699,8 +699,8 @@ function Wise:PositionNestedChild(childFrame, childName, parentName)
     end
     -- "center" keeps the same position
 
-    -- Move the proxy anchor (safe even in combat)
-    if childFrame.Anchor then
+    -- Move the proxy anchor (only safe out of combat since it anchors a secure frame)
+    if childFrame.Anchor and not InCombatLockdown() then
         childFrame.Anchor:ClearAllPoints()
         childFrame.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
     end

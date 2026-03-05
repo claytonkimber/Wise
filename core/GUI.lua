@@ -891,8 +891,10 @@ function Wise:CreateGroupFrame(name, instanceId)
         local offsetY = group.mouseOffsetY or 0
         
         -- Position frame at cursor using BOTTOMLEFT (raw pixel coords)
-        self:ClearAllPoints()
-        self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x + offsetX, y + offsetY)
+        if not InCombatLockdown() then
+            self:ClearAllPoints()
+            self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x + offsetX, y + offsetY)
+        end
     end
     
     -- Module 2: Blocker Strategy
@@ -917,7 +919,7 @@ function Wise:CreateGroupFrame(name, instanceId)
             local offsetY = (group.mouseOffsetY or 0) / frameScale
             
             -- Move the PROXY ANCHOR, not the secure frame
-            if self.Anchor then
+            if self.Anchor and not InCombatLockdown() then
                 self.Anchor:ClearAllPoints()
                 self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
@@ -1910,6 +1912,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     local hasUnderMouse = cvShowUnderMouse or cvHideUnderMouse
     local hasNonMouseConditions = cvShowGuildBank or cvShowBank or cvShowMailbox
                                   or cvHideGuildBank or cvHideBank or cvHideMailbox
+    -- Detect combat modifier paired with undermouse (e.g. "[combat][undermouse]")
+    -- [nocombat][undermouse] → only show out of combat, [combat][undermouse] → only show in combat
+    -- Plain [undermouse] with no combat modifier → out of combat only (safe default)
+    local undermouseCombatOnly = cvShowStr:find("combat.*undermouse") and not cvShowStr:find("nocombat") and true or false
+    local undermouseNoCombat = cvShowStr:find("nocombat.*undermouse") and true or false
+    -- If neither modifier is present, default to nocombat behavior
+    if cvShowUnderMouse and not undermouseCombatOnly and not undermouseNoCombat then
+        undermouseNoCombat = true
+    end
 
     -- Bounding box offsets for undermouse hit testing (populated after ApplyLayout)
     local cachedMinX, cachedMaxX, cachedMinY, cachedMaxY = -35, 35, -35, 35
@@ -1987,7 +1998,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local wasShowingInCombat = false
         f.undermouseFrame:Show()
         f.undermouseFrame:SetScript("OnUpdate", function(self, elapsed)
-            local isOver = IsMouseOverInterface()
+            local inCombat = InCombatLockdown()
+
+            -- Respect combat modifiers: [combat][undermouse] vs [nocombat][undermouse]
+            -- If undermouseNoCombat and in combat → undermouse should not trigger
+            -- If undermouseCombatOnly and not in combat → undermouse should not trigger
+            local undermouseActive = true
+            if undermouseNoCombat and inCombat then undermouseActive = false end
+            if undermouseCombatOnly and not inCombat then undermouseActive = false end
+
+            local isOver = undermouseActive and IsMouseOverInterface() or false
             local customShow = false
 
             -- Check non-mouse conditions at reduced rate (every 0.5s)
@@ -2003,7 +2023,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             if cvShowUnderMouse and isOver then customShow = true end
             if cvHideUnderMouse and isOver then customShow = false end
 
-            if InCombatLockdown() then
+            if inCombat then
                 -- In combat: can't touch secure frame attributes.
                 -- Use f.visualDisplay (insecure mirror) for show/hide instead.
                 if f.visualDisplay then

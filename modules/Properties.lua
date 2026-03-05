@@ -3113,7 +3113,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             if h == "[always]" and s == "" and not held and not toggle then return "hidden" end
             if s == "[combat]" and h == "" and not held and not toggle then return "combat" end
             if s == "[nocombat]" and h == "" and not held and not toggle then return "nocombat" end
-            if s == "[undermouse]" and h == "" and not held and not toggle then return "undermouse" end
+            if (s == "[undermouse]" or s == "[nocombat][undermouse]") and h == "" and not held and not toggle then return "undermouse" end
 
             local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
             if held and s == groupToken and not toggle then return "held" end
@@ -3145,7 +3145,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             elseif mode == "nocombat" then
                 group.visibilitySettings.customShow = "[nocombat]"
             elseif mode == "undermouse" then
-                group.visibilitySettings.customShow = "[undermouse]"
+                group.visibilitySettings.customShow = "[nocombat][undermouse]"
             elseif mode == "held" then
                 local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
                 group.visibilitySettings.customShow = groupToken
