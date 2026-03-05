@@ -65,6 +65,7 @@ local VALID_CONDITIONALS = {
     -- Wise Custom Conditionals (Handled via Lua/Custom State)
     ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true, ["auctionhouse"] = true, ["always"] = true,
     ["zoneability"] = true,
+    ["undermouse"] = true,
 }
 
 -- Built-in Conditionals List
@@ -223,6 +224,10 @@ Wise.opieConditionals = {
     { name = "combo:n", desc = "Combo points >= n", combatRestricted = true, skipeval = true },
     { name = "near:object", desc = "Near specific object/creature", combatRestricted = true, skipeval = true },
     { name = "bar:n", desc = "Action bar page is n (Future-aware)", combatRestricted = true, skipeval = true },
+
+    -- UI Interaction
+    { type = "header", text = "UI Interaction" },
+    { name = "undermouse", desc = "Mouse is over the interface", combatRestricted = false },
 }
 
 function Wise:UpdateConditionalsTab()

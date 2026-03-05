@@ -3113,6 +3113,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             if h == "[always]" and s == "" and not held and not toggle then return "hidden" end
             if s == "[combat]" and h == "" and not held and not toggle then return "combat" end
             if s == "[nocombat]" and h == "" and not held and not toggle then return "nocombat" end
+            if (s == "[undermouse]" or s == "[nocombat,undermouse]") and h == "" and not held and not toggle then return "undermouse" end
 
             local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
             if held and s == groupToken and not toggle then return "held" end
@@ -3143,6 +3144,8 @@ function Wise:RenderGroupProperties(panel, group, y)
                 group.visibilitySettings.customShow = "[combat]"
             elseif mode == "nocombat" then
                 group.visibilitySettings.customShow = "[nocombat]"
+            elseif mode == "undermouse" then
+                group.visibilitySettings.customShow = "[nocombat,undermouse]"
             elseif mode == "held" then
                 local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
                 group.visibilitySettings.customShow = groupToken
@@ -3228,6 +3231,30 @@ function Wise:RenderGroupProperties(panel, group, y)
         CreateCheckLogic(chkOOC, "nocombat")
         tinsert(panel.controls, chkOOC)
         tinsert(panel.controls, chkOOC.text)
+
+        y = y - 25
+
+        -- Row 2.5: Undermouse
+        local chkUnderMouse = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        chkUnderMouse:SetPoint("TOPLEFT", 10, y)
+        chkUnderMouse.text = chkUnderMouse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        chkUnderMouse.text:SetPoint("LEFT", chkUnderMouse, "RIGHT", 5, 0)
+        chkUnderMouse.text:SetText("Show on Mouseover")
+        CreateCheckLogic(chkUnderMouse, "undermouse")
+        tinsert(panel.controls, chkUnderMouse)
+        tinsert(panel.controls, chkUnderMouse.text)
+
+        if currentMode == "undermouse" then
+            y = y - 22
+            local mouseWarning = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            mouseWarning:SetPoint("TOPLEFT", 35, y)
+            mouseWarning:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+            mouseWarning:SetJustifyH("LEFT")
+            mouseWarning:SetTextColor(0.8, 0.35, 0.35)
+            mouseWarning:SetText("Actions/Items are not clickable in combat\ndue to WoW restrictions.")
+            tinsert(panel.controls, mouseWarning)
+            y = y - 26
+        end
 
         y = y - 30
 
