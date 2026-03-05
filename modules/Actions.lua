@@ -1032,9 +1032,8 @@ function Wise:GetActionIcon(actionType, value, extraData)
             end
         end
         if value == "zoneability" then
-            local zoneFrame = _G["ZoneAbilityFrame"]
-            local zoneBtn = zoneFrame and zoneFrame.SpellButton
-            if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+            local zoneBtn = Wise:GetZoneAbilitySpellButton()
+            if zoneBtn and zoneBtn.spellID then
                 local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
                 if info then texture = info.iconID end
             end

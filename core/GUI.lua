@@ -22,6 +22,137 @@ local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
 
+-- Helper: Get the first active spell button from ZoneAbilityFrame.
+-- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
+-- instead of a direct .SpellButton child.
+local function GetZoneAbilitySpellButton()
+    local zoneFrame = _G["ZoneAbilityFrame"]
+    if not zoneFrame then return nil end
+    -- Modern: SpellButtonContainer with dynamic children
+    if zoneFrame.SpellButtonContainer then
+        local children = { zoneFrame.SpellButtonContainer:GetChildren() }
+        for _, child in ipairs(children) do
+            if child.spellID and child:IsShown() then
+                return child
+            end
+        end
+        -- Return first child even if not shown (for secure click binding)
+        for _, child in ipairs(children) do
+            if child.spellID then
+                return child
+            end
+        end
+    end
+    -- Legacy fallback: direct SpellButton
+    if zoneFrame.SpellButton then
+        return zoneFrame.SpellButton
+    end
+    return nil
+end
+
+-- Expose on Wise table for use in other modules (Actions.lua)
+function Wise:GetZoneAbilitySpellButton()
+    return GetZoneAbilitySpellButton()
+end
+
+-- Returns true if a zone ability is active (has a valid spell), regardless of
+-- whether ZoneAbilityFrame is hidden (e.g. by Wise's "Hide Zone Ability" setting).
+local function IsZoneAbilityActive()
+    local zoneBtn = GetZoneAbilitySpellButton()
+    return zoneBtn and zoneBtn.spellID ~= nil
+end
+
+-- All custom conditionals that are NOT understood by WoW's secure state driver.
+-- Used by BuildVisibilityDriver (SanitizeCustom) and UpdateGroupDisplay (CheckCustomVisibility).
+local CUSTOM_VIS_CONDITIONALS = {
+    ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true,
+    ["auctionhouse"] = true, ["zoneability"] = true,
+}
+
+-- Evaluate a single custom conditional token. Returns true/false.
+local function EvalCustomToken(token)
+    local negated = false
+    local t = token:match("^%s*(.-)%s*$") -- trim
+    if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
+        negated = true
+        t = t:sub(3)
+    end
+    local base = t:match("^([^:]+)") or t
+    base = base:lower()
+
+    local result = false
+    if base == "bank" then
+        result = BankFrame and BankFrame:IsShown() or false
+    elseif base == "guildbank" then
+        result = GuildBankFrame and GuildBankFrame:IsShown() or false
+    elseif base == "mailbox" then
+        result = MailFrame and MailFrame:IsShown() or false
+    elseif base == "auctionhouse" then
+        result = AuctionHouseFrame and AuctionHouseFrame:IsShown() or false
+    elseif base == "zoneability" then
+        result = IsZoneAbilityActive()
+    end
+
+    if negated then result = not result end
+    return result
+end
+
+-- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
+-- Returns true if ANY bracket group containing a custom conditional matches (OR across groups).
+-- Bracket groups with ONLY built-in conditionals are skipped (secure driver handles those).
+local function EvalConditionString(str)
+    if not str or str == "" then return false end
+
+    for block in str:gmatch("%[([^%]]*)%]") do
+        local blockHasCustom = false
+        local customTokens = {}
+        local secureTokens = {}
+
+        for token in block:gmatch("[^,]+") do
+            local trimmed = token:match("^%s*(.-)%s*$")
+            local check = trimmed:lower()
+            -- Strip 'no' prefix for lookup
+            local lookupBase = check
+            if lookupBase:sub(1, 2) == "no" then
+                local stripped = lookupBase:sub(3)
+                local stripBase = stripped:match("^([^:]+)") or stripped
+                if CUSTOM_VIS_CONDITIONALS[stripBase] then
+                    lookupBase = stripped
+                end
+            end
+            local baseToken = lookupBase:match("^([^:]+)") or lookupBase
+
+            if CUSTOM_VIS_CONDITIONALS[baseToken] then
+                blockHasCustom = true
+                table.insert(customTokens, trimmed)
+            else
+                table.insert(secureTokens, trimmed)
+            end
+        end
+
+        if blockHasCustom then
+            local groupMatch = true
+
+            for _, ct in ipairs(customTokens) do
+                if not EvalCustomToken(ct) then
+                    groupMatch = false
+                    break
+                end
+            end
+
+            if groupMatch and #secureTokens > 0 then
+                local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
+                local result = SecureCmdOptionParse(secureStr)
+                if result ~= "true" then groupMatch = false end
+            end
+
+            if groupMatch then return true end
+        end
+    end
+
+    return false
+end
+
 function Wise:GetGroupDisplaySettings(groupName)
     local group = groupName and WiseDB.groups[groupName]
     local settings = WiseDB.settings or {}
@@ -1159,23 +1290,19 @@ function Wise:BuildVisibilityDriver(f, group)
     
     local function SanitizeCustom(str)
          if not str then return "" end
-         -- Replace known custom conditionals that cause secure driver errors check
-         -- We replace them with a condition that is impossible to meet securely if it's the only one, 
-         -- effectively removing it from the secure driver's consideration (letting Lua handle it via state-custom).
-         -- Actually, if we remove it, the secure driver might default to show/hide incorrectly.
-         
-         -- Strategy: Convert [warbandbank] to [actionbar:99] (False).
-         -- If [warbandbank] is true, Lua sets state-custom=show. Gateway shows.
-         -- If [warbandbank] is false, Lua sets state-custom=hide. Gateway hides (assuming state-game is hide).
-         -- state-game sees [actionbar:99]. False. Hides.
-         
-         str = str:gsub("guildbank", "actionbar:99")
-         -- "bank" is a substring of others, so replace it last or be careful about boundaries.
-         -- Use patterns to match whole word?
-         str = str:gsub("%[bank%]", "[actionbar:99]")
-         str = str:gsub("bank", "actionbar:99") -- A bit aggressive but likely safe for standard secure options (banking isn't one)
-         str = str:gsub("mailbox", "actionbar:99")
-         
+         -- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
+         -- so the secure driver always returns false for it (Lua handles it via state-custom).
+         str = str:gsub("%[([^%]]+)%]", function(inner)
+             for token in inner:gmatch("[^,]+") do
+                 token = token:match("^%s*(.-)%s*$") -- trim
+                 local base = token:match("^no?(.+)") or token
+                 base = base:match("^([^:]+)") or base
+                 if CUSTOM_VIS_CONDITIONALS[base:lower()] then
+                     return "[actionbar:99]"
+                 end
+             end
+             return "[" .. inner .. "]"
+         end)
          return str
     end
     
@@ -1487,9 +1614,9 @@ function Wise:GetSecureAttributes(actionData, conditions)
         elseif aValue == "zoneability" then
             secureType = "click"
             secureAttr = "clickbutton"
-            local zoneFrame = _G["ZoneAbilityFrame"]
-            if zoneFrame and zoneFrame.SpellButton then
-                secureValue = zoneFrame.SpellButton
+            local zoneBtn = GetZoneAbilitySpellButton()
+            if zoneBtn then
+                secureValue = zoneBtn
             end
         elseif aValue == "leave_vehicle" then
             secureType = "macro"
@@ -1895,47 +2022,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     end
 
     -- Custom Visibility Logic (Immediate + Ticker)
+    -- Uses file-level EvalConditionString which handles OR across bracket groups
+    -- and AND within bracket groups, evaluating custom conditionals via Lua.
     local function CheckCustomVisibility()
          if InCombatLockdown() then return false end
          local showStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
          local hideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
-         
-         -- Helper: Get Bank Type State
-         local isBankOpen = BankFrame and BankFrame:IsShown()
-         local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
-         local isMailbox = MailFrame and MailFrame:IsShown()
 
-         local customShow = false
-         
-         -- Use separate IFs to allow OR logic if multiple are present
-         -- Use brackets %[name%] to prevent substring matches (e.g. 'bank' inside 'guildbank')
-         
-         if showStr:find("guildbank") then
-              if isGuildBank then customShow = true end
-         end
-         
-         if showStr:find("%[bank%]") or showStr:find("%f[%a]bank%f[%a]") then
-              if isBankOpen then customShow = true end
-         end
-         
-         if showStr:find("mailbox") then
-              if isMailbox then customShow = true end
-         end
-         
-         -- Evaluate Hide (Overrides Show)
-         if hideStr:find("guildbank") then
-              if isGuildBank then customShow = false end
-         end
-         
-         if hideStr:find("%[bank%]") or hideStr:find("%f[%a]bank%f[%a]") then
-              if isBankOpen then customShow = false end
-         end
+         local showResult = EvalConditionString(showStr)
+         local hideResult = EvalConditionString(hideStr)
 
-         if hideStr:find("mailbox") then
-              if isMailbox then customShow = false end
-         end
-
-         return customShow
+         -- Hide overrides show
+         if hideResult then return false end
+         return showResult
     end
 
     -- Initial Custom Check
@@ -2919,10 +3018,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          Wise:UpdateButtonUsability(btn)
                     elseif meta.actionType == "misc" and meta.actionValue == "zoneability" then
                          -- Update Zone Ability icon dynamically
-                         local zoneFrame = _G["ZoneAbilityFrame"]
-                         local zoneBtn = zoneFrame and zoneFrame.SpellButton
+                         local zoneBtn = GetZoneAbilitySpellButton()
                          local tex
-                         if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                         if zoneBtn and zoneBtn.spellID then
                              local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
                              if info then tex = info.iconID end
                          end
@@ -2930,6 +3028,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          btn.icon:SetTexture(tex)
                          local vClone = meta.visualClone or btn.visualClone
                          if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         -- Rebind clickbutton when the spell button changes (e.g. entering garrison)
+                         if canSetAttrs and zoneBtn then
+                             btn:SetAttribute("clickbutton", zoneBtn)
+                         end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
                     elseif meta.actionType == "interface" then
@@ -3516,9 +3618,8 @@ function Wise:UpdateButtonCooldown(btn)
             duration = duration or 0
         end
     elseif actionType == "misc" and actionValue == "zoneability" then
-        local zoneFrame = _G["ZoneAbilityFrame"]
-        local zoneBtn = zoneFrame and zoneFrame.SpellButton
-        if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+        local zoneBtn = GetZoneAbilitySpellButton()
+        if zoneBtn and zoneBtn.spellID then
             local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
             if cooldownInfo then
                 start = cooldownInfo.startTime or 0
@@ -3825,9 +3926,8 @@ function Wise:UpdateButtonUsability(btn)
             isUsable, noMana = IsUsableAction(extraBtn.action)
         end
     elseif actionType == "misc" and actionValue == "zoneability" then
-        local zoneFrame = _G["ZoneAbilityFrame"]
-        local zoneBtn = zoneFrame and zoneFrame.SpellButton
-        if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+        local zoneBtn = GetZoneAbilitySpellButton()
+        if zoneBtn and zoneBtn.spellID then
             isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
         end
     elseif spellID then

@@ -64,6 +64,7 @@ local VALID_CONDITIONALS = {
 
     -- Wise Custom Conditionals (Handled via Lua/Custom State)
     ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true, ["auctionhouse"] = true, ["always"] = true,
+    ["zoneability"] = true,
 }
 
 -- Built-in Conditionals List
@@ -203,6 +204,10 @@ Wise.opieConditionals = {
     { name = "guildbank", desc = "Guild Bank interface is open" },
     { name = "mailbox", desc = "Mailbox is open" },
     { name = "auctionhouse", desc = "Auction House is open" },
+
+    -- Zone / Extra Abilities
+    { type = "header", text = "Zone & Extra Abilities" },
+    { name = "zoneability", desc = "Zone ability is available (garrison, covenant, etc)" },
 
     -- Non-Secure (Combat Restricted)
     { type = "header", text = "Non-Secure Conditionals" },
@@ -472,6 +477,11 @@ function Wise:EvaluateCustomCondition(name, args)
 
     elseif check == "auctionhouse" then
         return AuctionHouseFrame and AuctionHouseFrame:IsShown()
+
+    -- Zone Ability (works even if ZoneAbilityFrame is hidden by Wise settings)
+    elseif check == "zoneability" then
+        local zoneBtn = Wise:GetZoneAbilitySpellButton()
+        return zoneBtn and zoneBtn.spellID ~= nil
     end
     
     return false

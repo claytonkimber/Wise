@@ -138,9 +138,8 @@ function Wise:AddInterfaceTooltip(btn)
                      hasAction = true
                  end
              elseif value == "zoneability" and data and data.showTooltip then
-                 local zoneFrame = _G["ZoneAbilityFrame"]
-                 local zoneBtn = zoneFrame and zoneFrame.SpellButton
-                 if zoneBtn and zoneFrame:IsShown() and zoneBtn.spellID then
+                 local zoneBtn = Wise:GetZoneAbilitySpellButton()
+                 if zoneBtn and zoneBtn.spellID then
                      GameTooltip:SetSpellByID(zoneBtn.spellID)
                      hasAction = true
                  end
