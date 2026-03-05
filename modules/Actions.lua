@@ -31,6 +31,442 @@ local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
 local GetFlyoutInfo = GetFlyoutInfo
 local GetFlyoutSlotInfo = GetFlyoutSlotInfo
 
+-- ═══════════════════════════════════════════════════════════════
+-- Drag-to-Reorder Infrastructure
+-- ═══════════════════════════════════════════════════════════════
+
+local DRAG_THRESHOLD = 8 -- pixels of movement before drag activates
+
+-- Forward declarations (defined after helpers)
+local FinalizeSlotReorder
+local FinalizeStateReorder
+local CleanupDrag
+local ReorderDrag_OnUpdate
+
+local reorderDrag = {
+    active = false,         -- true once drag threshold is met
+    pending = false,        -- true between mousedown and threshold
+    dragType = nil,         -- "slot" or "state"
+    sourceSlotID = nil,     -- the data key in group.actions
+    sourceVisualIdx = nil,  -- 1-based visual index of source slot
+    sourceStateIdx = nil,   -- for state drag: index within states array
+    targetVisualIdx = nil,  -- computed during drag
+    targetStateIdx = nil,   -- computed during drag (state)
+    container = nil,
+    sourceFrame = nil,      -- the frame that was mousedown'd
+    startX = nil,           -- cursor position at mousedown
+    startY = nil,
+}
+
+local function GetOrCreateInsertIndicator(container)
+    if container.slotInsertIndicator then return container.slotInsertIndicator end
+    local ind = container:CreateTexture(nil, "OVERLAY")
+    ind:SetColorTexture(0, 0.8, 1, 0.9)
+    ind:SetSize(260, 3)
+    ind:Hide()
+    container.slotInsertIndicator = ind
+    return ind
+end
+
+local function GetOrCreateStateInsertIndicator(slotFrame)
+    if slotFrame.stateInsertIndicator then return slotFrame.stateInsertIndicator end
+    local ind = slotFrame:CreateTexture(nil, "OVERLAY")
+    ind:SetColorTexture(1, 0.8, 0, 0.9)
+    ind:SetSize(240, 2)
+    ind:Hide()
+    slotFrame.stateInsertIndicator = ind
+    return ind
+end
+
+-- Floating ghost frame that follows cursor during drag
+local dragGhost = nil
+local function GetOrCreateDragGhost()
+    if dragGhost then return dragGhost end
+    dragGhost = CreateFrame("Frame", "WiseDragGhost", UIParent, "BackdropTemplate")
+    dragGhost:SetFrameStrata("TOOLTIP")
+    dragGhost:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    dragGhost:SetBackdropColor(0.15, 0.15, 0.15, 0.85)
+    dragGhost:SetBackdropBorderColor(0, 0.8, 1, 1)
+    dragGhost:EnableMouse(false)
+    dragGhost:Hide()
+
+    dragGhost.icon = dragGhost:CreateTexture(nil, "ARTWORK")
+    dragGhost.icon:SetSize(24, 24)
+    dragGhost.icon:SetPoint("LEFT", 4, 0)
+
+    dragGhost.label = dragGhost:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dragGhost.label:SetPoint("LEFT", dragGhost.icon, "RIGHT", 4, 0)
+    dragGhost.label:SetPoint("RIGHT", -4, 0)
+    dragGhost.label:SetJustifyH("LEFT")
+
+    return dragGhost
+end
+
+local function ShowDragGhost(sourceFrame, dragType)
+    local ghost = GetOrCreateDragGhost()
+
+    if dragType == "slot" then
+        -- Show "Slot N" with border color
+        ghost:SetSize(160, 28)
+        ghost:SetBackdropBorderColor(0, 0.8, 1, 1)
+        ghost.icon:Hide()
+        ghost.label:ClearAllPoints()
+        ghost.label:SetPoint("CENTER")
+        ghost.label:SetText(sourceFrame.Header and sourceFrame.Header:GetText() or "Slot")
+    elseif dragType == "state" then
+        -- Show icon + name from the action button
+        ghost:SetSize(180, 30)
+        ghost:SetBackdropBorderColor(1, 0.8, 0, 1)
+        if sourceFrame.icon and sourceFrame.icon:GetTexture() then
+            ghost.icon:SetTexture(sourceFrame.icon:GetTexture())
+            ghost.icon:Show()
+            ghost.label:ClearAllPoints()
+            ghost.label:SetPoint("LEFT", ghost.icon, "RIGHT", 4, 0)
+            ghost.label:SetPoint("RIGHT", -4, 0)
+        else
+            ghost.icon:Hide()
+            ghost.label:ClearAllPoints()
+            ghost.label:SetPoint("CENTER")
+        end
+        ghost.label:SetText(sourceFrame.label and sourceFrame.label:GetText() or "State")
+    end
+
+    ghost:Show()
+end
+
+local function UpdateDragGhostPosition(cx, cy)
+    if not dragGhost or not dragGhost:IsShown() then return end
+    dragGhost:ClearAllPoints()
+    dragGhost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx + 20, cy - 10)
+end
+
+CleanupDrag = function(container)
+    if not container then container = reorderDrag.container end
+    -- Hide slot indicator
+    if container and container.slotInsertIndicator then
+        container.slotInsertIndicator:Hide()
+    end
+    -- Hide state indicators and restore alpha on all slots
+    if container and container.slots then
+        for _, slot in ipairs(container.slots) do
+            if slot:IsShown() then
+                slot:SetAlpha(1)
+                if slot.stateInsertIndicator then slot.stateInsertIndicator:Hide() end
+                for _, ab in ipairs(slot.ActionButtons) do
+                    if ab:IsShown() then ab:SetAlpha(1) end
+                end
+            end
+        end
+    end
+    -- Hide drag ghost
+    if dragGhost then dragGhost:Hide() end
+    -- Stop OnUpdate
+    if container then container:SetScript("OnUpdate", nil) end
+    -- Reset state
+    reorderDrag.active = false
+    reorderDrag.pending = false
+    reorderDrag.dragType = nil
+    reorderDrag.sourceSlotID = nil
+    reorderDrag.sourceVisualIdx = nil
+    reorderDrag.sourceStateIdx = nil
+    reorderDrag.targetVisualIdx = nil
+    reorderDrag.targetStateIdx = nil
+    reorderDrag.container = nil
+    reorderDrag.sourceFrame = nil
+    reorderDrag.startX = nil
+    reorderDrag.startY = nil
+end
+
+local function UpdateSlotInsertIndicator(container, cursorY)
+    local ind = GetOrCreateInsertIndicator(container)
+    local slots = container.slots
+    local bestIdx = nil
+    local anchorSlot = nil
+    local anchorPoint = nil -- "TOP" = place at top of anchorSlot, "BOTTOM" = place at bottom
+
+    -- Collect visible slots in order
+    local visibleSlots = {}
+    for _, slot in ipairs(slots) do
+        if slot:IsShown() then
+            visibleSlots[#visibleSlots + 1] = slot
+        end
+    end
+
+    if #visibleSlots == 0 then ind:Hide(); return end
+
+    -- Determine insertion point by comparing cursor to midpoints
+    for i, slot in ipairs(visibleSlots) do
+        local top = slot:GetTop()
+        local bottom = slot:GetBottom()
+        if top and bottom then
+            local mid = (top + bottom) / 2
+            if cursorY > mid then
+                -- Insert before this slot (indicator at its top edge)
+                bestIdx = i
+                anchorSlot = slot
+                anchorPoint = "TOP"
+                break
+            end
+        end
+    end
+
+    -- If cursor is below all slots, insert after last
+    if not bestIdx then
+        bestIdx = #visibleSlots + 1
+        anchorSlot = visibleSlots[#visibleSlots]
+        anchorPoint = "BOTTOM"
+    end
+
+    -- Hide indicator for no-op (dropping at same position)
+    local srcVis = reorderDrag.sourceVisualIdx
+    if bestIdx == srcVis or bestIdx == srcVis + 1 then
+        ind:Hide()
+        reorderDrag.targetVisualIdx = nil
+        return
+    end
+
+    reorderDrag.targetVisualIdx = bestIdx
+    ind:ClearAllPoints()
+    if anchorPoint == "TOP" then
+        ind:SetPoint("BOTTOM", anchorSlot, "TOP", 0, 5)
+    else
+        ind:SetPoint("TOP", anchorSlot, "BOTTOM", 0, -5)
+    end
+    ind:Show()
+end
+
+local function UpdateStateInsertIndicator(container, cursorY)
+    -- Find the source slot frame
+    local sourceSlotFrame = nil
+    if container.slots then
+        for _, slot in ipairs(container.slots) do
+            if slot:IsShown() and slot.slotID == reorderDrag.sourceSlotID then
+                sourceSlotFrame = slot
+                break
+            end
+        end
+    end
+    if not sourceSlotFrame then return end
+
+    local ind = GetOrCreateStateInsertIndicator(sourceSlotFrame)
+    local buttons = sourceSlotFrame.ActionButtons
+
+    -- Collect visible buttons in order
+    local visibleBtns = {}
+    for _, ab in ipairs(buttons) do
+        if ab:IsShown() then
+            visibleBtns[#visibleBtns + 1] = ab
+        end
+    end
+
+    if #visibleBtns == 0 then ind:Hide(); return end
+
+    local bestIdx = nil
+    local anchorBtn = nil
+    local anchorPoint = nil
+
+    for i, ab in ipairs(visibleBtns) do
+        local top = ab:GetTop()
+        local bottom = ab:GetBottom()
+        if top and bottom then
+            local mid = (top + bottom) / 2
+            if cursorY > mid then
+                bestIdx = i
+                anchorBtn = ab
+                anchorPoint = "TOP"
+                break
+            end
+        end
+    end
+
+    if not bestIdx then
+        bestIdx = #visibleBtns + 1
+        anchorBtn = visibleBtns[#visibleBtns]
+        anchorPoint = "BOTTOM"
+    end
+
+    -- Hide for no-op
+    local srcState = reorderDrag.sourceStateIdx
+    if bestIdx == srcState or bestIdx == srcState + 1 then
+        ind:Hide()
+        reorderDrag.targetStateIdx = nil
+        return
+    end
+
+    reorderDrag.targetStateIdx = bestIdx
+    ind:ClearAllPoints()
+    if anchorPoint == "TOP" then
+        ind:SetPoint("BOTTOM", anchorBtn, "TOP", 0, 1)
+    else
+        ind:SetPoint("TOP", anchorBtn, "BOTTOM", 0, -1)
+    end
+    ind:Show()
+end
+
+ReorderDrag_OnUpdate = function(self, elapsed)
+    if not reorderDrag.pending and not reorderDrag.active then return end
+    local scale = self:GetEffectiveScale()
+    local cx, cy = GetCursorPosition()
+    cx, cy = cx / scale, cy / scale
+
+    local mouseDown = IsMouseButtonDown("LeftButton")
+
+    -- Check threshold before activating
+    if reorderDrag.pending and not reorderDrag.active then
+        -- If mouse released before threshold, cancel pending
+        if not mouseDown then
+            reorderDrag.pending = false
+            reorderDrag.dragType = nil
+            reorderDrag.container = nil
+            reorderDrag.sourceFrame = nil
+            self:SetScript("OnUpdate", nil)
+            return
+        end
+        local dx = cx - (reorderDrag.startX or cx)
+        local dy = cy - (reorderDrag.startY or cy)
+        if (dx * dx + dy * dy) < (DRAG_THRESHOLD * DRAG_THRESHOLD) then
+            return -- not enough movement yet
+        end
+        -- Threshold met — activate drag
+        reorderDrag.active = true
+        reorderDrag.pending = false
+
+        if reorderDrag.sourceFrame then
+            reorderDrag.sourceFrame:SetAlpha(0.4)
+            ShowDragGhost(reorderDrag.sourceFrame, reorderDrag.dragType)
+        end
+    end
+
+    if reorderDrag.active then
+        -- Update ghost position (use raw screen coords for UIParent-anchored ghost)
+        local rawCx, rawCy = GetCursorPosition()
+        local uiScale = UIParent:GetEffectiveScale()
+        UpdateDragGhostPosition(rawCx / uiScale, rawCy / uiScale)
+
+        -- Check for mouse release to finalize
+        if not mouseDown then
+            if reorderDrag.dragType == "slot" then
+                FinalizeSlotReorder()
+            elseif reorderDrag.dragType == "state" then
+                FinalizeStateReorder()
+            else
+                CleanupDrag(self)
+            end
+            return
+        end
+
+        -- Update indicator position
+        if reorderDrag.dragType == "slot" then
+            UpdateSlotInsertIndicator(self, cy)
+        elseif reorderDrag.dragType == "state" then
+            UpdateStateInsertIndicator(self, cy)
+        end
+    end
+end
+
+FinalizeSlotReorder = function()
+    local container = reorderDrag.container
+    local groupName = Wise.selectedGroup
+    if not groupName or not WiseDB.groups[groupName] then CleanupDrag(container); return end
+    local group = WiseDB.groups[groupName]
+
+    local targetVis = reorderDrag.targetVisualIdx
+    if not targetVis then CleanupDrag(container); return end
+
+    -- Collect sorted keys
+    local keys = {}
+    for k in pairs(group.actions) do keys[#keys + 1] = k end
+    table.sort(keys)
+
+    local srcVis = reorderDrag.sourceVisualIdx
+    if not srcVis or srcVis < 1 or srcVis > #keys then CleanupDrag(container); return end
+
+    -- Build ordered list of action table references
+    local ordered = {}
+    for i, k in ipairs(keys) do
+        ordered[i] = group.actions[k]
+    end
+
+    -- Remove source from ordered list
+    local movedData = table.remove(ordered, srcVis)
+
+    -- Adjust target for removal shift
+    local insertAt = targetVis
+    if targetVis > srcVis then insertAt = insertAt - 1 end
+
+    -- Clamp
+    if insertAt < 1 then insertAt = 1 end
+    if insertAt > #ordered + 1 then insertAt = #ordered + 1 end
+
+    table.insert(ordered, insertAt, movedData)
+
+    -- Rebuild group.actions with sequential keys
+    local newActions = {}
+    for i, data in ipairs(ordered) do
+        newActions[i] = data
+    end
+    group.actions = newActions
+
+    -- Update selection tracking
+    if Wise.selectedSlot == reorderDrag.sourceSlotID then
+        Wise.selectedSlot = insertAt
+    end
+
+    CleanupDrag(container)
+    Wise:RefreshActionsView(container)
+    Wise:RefreshPropertiesPanel()
+    C_Timer.After(0, function()
+        if not InCombatLockdown() then Wise:UpdateGroupDisplay(groupName) end
+    end)
+end
+
+FinalizeStateReorder = function()
+    local container = reorderDrag.container
+    local groupName = Wise.selectedGroup
+    if not groupName or not WiseDB.groups[groupName] then CleanupDrag(container); return end
+    local group = WiseDB.groups[groupName]
+
+    local slotID = reorderDrag.sourceSlotID
+    local states = group.actions[slotID]
+    if not states then CleanupDrag(container); return end
+
+    local targetIdx = reorderDrag.targetStateIdx
+    if not targetIdx then CleanupDrag(container); return end
+
+    local srcIdx = reorderDrag.sourceStateIdx
+    if not srcIdx or srcIdx < 1 or srcIdx > #states then CleanupDrag(container); return end
+
+    local movedState = table.remove(states, srcIdx)
+
+    local insertAt = targetIdx
+    if targetIdx > srcIdx then insertAt = insertAt - 1 end
+    if insertAt < 1 then insertAt = 1 end
+    if insertAt > #states + 1 then insertAt = #states + 1 end
+
+    table.insert(states, insertAt, movedState)
+
+    -- Update selection tracking
+    if Wise.selectedSlot == slotID and Wise.selectedState == srcIdx then
+        Wise.selectedState = insertAt
+    end
+
+    CleanupDrag(container)
+    Wise:RefreshActionsView(container)
+    Wise:RefreshPropertiesPanel()
+    C_Timer.After(0, function()
+        if not InCombatLockdown() then Wise:UpdateGroupDisplay(groupName) end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- End Drag-to-Reorder Infrastructure
+-- ═══════════════════════════════════════════════════════════════
+
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
     local cat = action.category or "global"
@@ -2507,7 +2943,7 @@ function Wise:RefreshActionsView(container)
             
             -- State container
             slotFrame.ActionButtons = {}
-            
+
             -- Add State Button
             slotFrame.AddStateBtn = CreateFrame("Button", nil, slotFrame, "GameMenuButtonTemplate")
             slotFrame.AddStateBtn:SetSize(20, 20)
@@ -2529,9 +2965,30 @@ function Wise:RefreshActionsView(container)
             slotFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
         end
         
-        -- Update Scripts (Context Aware)
-        -- OnClick replaced by OnMouseUp below for Drag support
+        -- Slot Drag-to-Reorder (mousedown + movement threshold)
+        local capturedVisualIdx = slotIndex
+        slotFrame:SetScript("OnMouseDown", function(self, button)
+            if button ~= "LeftButton" then return end
+            if reorderDrag.active or reorderDrag.pending then return end
+            local grp = WiseDB.groups[groupName]
+            if grp and grp.isLocked then return end
+            if GetCursorInfo() then return end
 
+            local scale = container:GetEffectiveScale()
+            local cx, cy = GetCursorPosition()
+
+            reorderDrag.pending = true
+            reorderDrag.dragType = "slot"
+            reorderDrag.sourceSlotID = self.slotID
+            reorderDrag.sourceVisualIdx = capturedVisualIdx
+            reorderDrag.targetVisualIdx = nil
+            reorderDrag.container = container
+            reorderDrag.sourceFrame = self
+            reorderDrag.startX = cx / scale
+            reorderDrag.startY = cy / scale
+
+            container:SetScript("OnUpdate", ReorderDrag_OnUpdate)
+        end)
 
         slotFrame.AddStateBtn:SetScript("OnClick", function(self)
              local capturedSlotID = self.slotID
@@ -2562,7 +3019,17 @@ function Wise:RefreshActionsView(container)
         slotFrame:SetScript("OnReceiveDrag", function(self)
             Wise:OnDragReceive(groupName, self.slotID, false)
         end)
-        slotFrame:SetScript("OnMouseUp", function(self)
+        slotFrame:SetScript("OnMouseUp", function(self, button)
+            if button ~= "LeftButton" then return end
+            if reorderDrag.active then return end
+            -- If pending (threshold not met), cancel and treat as normal click
+            if reorderDrag.pending then
+                reorderDrag.pending = false
+                reorderDrag.dragType = nil
+                reorderDrag.container = nil
+                reorderDrag.sourceFrame = nil
+                container:SetScript("OnUpdate", nil)
+            end
             -- Check if cursor has something to drop
             local type = GetCursorInfo()
             if type then
@@ -2628,28 +3095,11 @@ function Wise:RefreshActionsView(container)
                  btn.suffix = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                  btn.suffix:SetJustifyH("LEFT")
 
-                 -- Up/Down reorder buttons
-                 btn.upBtn = CreateFrame("Button", nil, btn)
-                 btn.upBtn:SetSize(16, 14)
-                 btn.upBtn:SetPoint("RIGHT", -18, 4)
-                 btn.upBtn:SetNormalTexture("Interface\\Buttons\\Arrow-Up-Up")
-                 btn.upBtn:SetPushedTexture("Interface\\Buttons\\Arrow-Up-Down")
-                 btn.upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-
-                 btn.downBtn = CreateFrame("Button", nil, btn)
-                 btn.downBtn:SetSize(16, 14)
-                 btn.downBtn:SetPoint("RIGHT", -2, -4)
-                 btn.downBtn:SetNormalTexture("Interface\\Buttons\\Arrow-Down-Up")
-                 btn.downBtn:SetPushedTexture("Interface\\Buttons\\Arrow-Down-Down")
-                 btn.downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-
                  btn.errorIcon = btn:CreateTexture(nil, "OVERLAY")
                  btn.errorIcon:SetSize(16, 16)
                  btn.errorIcon:SetPoint("BOTTOMRIGHT", btn.iconFrame, "BOTTOMRIGHT", 4, -4)
                  btn.errorIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-NotReady")
                  btn.errorIcon:Hide()
-
-                 btn:RegisterForDrag("LeftButton")
 
                  tinsert(slotFrame.ActionButtons, btn)
              end
@@ -2700,7 +3150,7 @@ function Wise:RefreshActionsView(container)
                  btn.label:SetPoint("TOPLEFT", btn.iconFrame, "TOPRIGHT", 5, -2)
 
                  local hasReadout = Wise:SetCastReadout(btn.castReadout, action.type, action.value, groupName)
-                 local rightOffset = (totalStates > 1 and Wise.ActionFilter == "global") and -40 or -15
+                 local rightOffset = -15
 
                  if hasReadout then
                      btn.castReadout:ClearAllPoints()
@@ -2743,7 +3193,46 @@ function Wise:RefreshActionsView(container)
                  
                  local capturedSlotForDrag = sIdx
                  local capturedStateForDrag = aIdx
-                 btn:SetScript("OnClick", function()
+
+                 btn:SetScript("OnReceiveDrag", function()
+                     Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
+                 end)
+
+                 -- State Drag-to-Reorder (mousedown + movement threshold)
+                 btn:SetScript("OnMouseDown", function(self, button)
+                     if button ~= "LeftButton" then return end
+                     if reorderDrag.active or reorderDrag.pending then return end
+                     if GetCursorInfo() then return end
+                     local grp = WiseDB.groups[groupName]
+                     if grp and grp.isLocked then return end
+
+                     local scale = container:GetEffectiveScale()
+                     local cx, cy = GetCursorPosition()
+
+                     reorderDrag.pending = true
+                     reorderDrag.dragType = "state"
+                     reorderDrag.sourceSlotID = capturedSlotForDrag
+                     reorderDrag.sourceStateIdx = capturedStateForDrag
+                     reorderDrag.targetStateIdx = nil
+                     reorderDrag.container = container
+                     reorderDrag.sourceFrame = self
+                     reorderDrag.startX = cx / scale
+                     reorderDrag.startY = cy / scale
+
+                     container:SetScript("OnUpdate", ReorderDrag_OnUpdate)
+                 end)
+                 btn:SetScript("OnMouseUp", function(self, button)
+                     if button ~= "LeftButton" then return end
+                     if reorderDrag.active then return end
+                     -- If pending (threshold not met), cancel and treat as normal click
+                     if reorderDrag.pending then
+                         reorderDrag.pending = false
+                         reorderDrag.dragType = nil
+                         reorderDrag.container = nil
+                         reorderDrag.sourceFrame = nil
+                         container:SetScript("OnUpdate", nil)
+                     end
+                     -- Normal click / WoW cursor drop
                      if GetCursorInfo() then
                          Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
                          return
@@ -2753,9 +3242,6 @@ function Wise:RefreshActionsView(container)
                      Wise.pickingIcon = false
                      Wise:RefreshActionsView(container)
                      Wise:RefreshPropertiesPanel()
-                 end)
-                 btn:SetScript("OnReceiveDrag", function()
-                     Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
                  end)
 
                  btn:SetScript("OnEnter", function(self)
@@ -2767,59 +3253,6 @@ function Wise:RefreshActionsView(container)
                      end
                  end)
                  btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-                 -- Reorder buttons: show/hide based on position
-                 -- Only show reorder buttons if Global filter is active to avoid confusion
-                 if totalStates > 1 and Wise.ActionFilter == "global" then
-                     btn.upBtn:Show()
-                     btn.downBtn:Show()
-                     if aIdx == 1 then btn.upBtn:Hide() end
-                     if aIdx == totalStates then btn.downBtn:Hide() end
-
-                     local capturedSlot = sIdx
-                     local capturedIdx = aIdx
-                     btn.upBtn:SetScript("OnClick", function()
-                         local grp = WiseDB.groups[groupName]
-                         if grp and grp.actions[capturedSlot] then
-                             local states = grp.actions[capturedSlot]
-                             if capturedIdx > 1 then
-                                 states[capturedIdx], states[capturedIdx - 1] = states[capturedIdx - 1], states[capturedIdx]
-                                 if Wise.selectedSlot == capturedSlot and Wise.selectedState == capturedIdx then
-                                     Wise.selectedState = capturedIdx - 1
-                                 elseif Wise.selectedSlot == capturedSlot and Wise.selectedState == capturedIdx - 1 then
-                                     Wise.selectedState = capturedIdx
-                                 end
-                                 Wise:RefreshActionsView(container)
-                                 Wise:RefreshPropertiesPanel()
-                                 C_Timer.After(0, function()
-                                     if not InCombatLockdown() then Wise:UpdateGroupDisplay(groupName) end
-                                 end)
-                             end
-                         end
-                     end)
-                     btn.downBtn:SetScript("OnClick", function()
-                         local grp = WiseDB.groups[groupName]
-                         if grp and grp.actions[capturedSlot] then
-                             local states = grp.actions[capturedSlot]
-                             if capturedIdx < #states then
-                                 states[capturedIdx], states[capturedIdx + 1] = states[capturedIdx + 1], states[capturedIdx]
-                                 if Wise.selectedSlot == capturedSlot and Wise.selectedState == capturedIdx then
-                                     Wise.selectedState = capturedIdx + 1
-                                 elseif Wise.selectedSlot == capturedSlot and Wise.selectedState == capturedIdx + 1 then
-                                     Wise.selectedState = capturedIdx
-                                 end
-                                 Wise:RefreshActionsView(container)
-                                 Wise:RefreshPropertiesPanel()
-                                 C_Timer.After(0, function()
-                                     if not InCombatLockdown() then Wise:UpdateGroupDisplay(groupName) end
-                                 end)
-                             end
-                         end
-                     end)
-                 else
-                     btn.upBtn:Hide()
-                     btn.downBtn:Hide()
-                 end
 
                  innerY = innerY - 38
              else
