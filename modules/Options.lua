@@ -407,7 +407,15 @@ function Wise:RefreshGroupList()
             btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
-            -- Lock Button
+            
+            -- Highlight
+            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+            
+            tinsert(container.buttons, btn)
+        end
+
+        -- Lock Button (Ensure it exists for reused buttons)
+        if not btn.lockBtn then
             btn.lockBtn = CreateFrame("Button", nil, btn)
             btn.lockBtn:SetSize(14, 14)
             btn.lockBtn:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
@@ -424,12 +432,6 @@ function Wise:RefreshGroupList()
                     Wise:UpdateOptionsUI()
                 end
             end)
-
-            
-            -- Highlight
-            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-            
-            tinsert(container.buttons, btn)
         end
 
         if not btn.errorIcon then
@@ -562,7 +564,14 @@ function Wise:RefreshGroupList()
             btn.kbLabel:SetPoint("RIGHT", btn.icon, "LEFT", -5, 0)
             btn.kbLabel:SetJustifyH("RIGHT")
             btn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
-            -- Lock Button
+            
+            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+            
+            tinsert(container.buttons, btn)
+         end
+
+         -- Lock Button (Ensure it exists for reused buttons)
+         if not btn.lockBtn then
             btn.lockBtn = CreateFrame("Button", nil, btn)
             btn.lockBtn:SetSize(14, 14)
             btn.lockBtn:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
@@ -579,11 +588,6 @@ function Wise:RefreshGroupList()
                     Wise:UpdateOptionsUI()
                 end
             end)
-
-            
-            btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-            
-            tinsert(container.buttons, btn)
          end
 
          if not btn.errorIcon then
@@ -735,6 +739,8 @@ function Wise:RefreshGroupList()
         end
         barBtn:Show()
         barBtn:SetPoint("TOPLEFT", 40, y)
+        if barBtn.lockBtn then barBtn.lockBtn:Hide() end
+        if barBtn.errorIcon then barBtn.errorIcon:Hide() end
 
         barBtn.icon:SetTexture("Interface\\Icons\\Spell_Holy_BorrowedTime")
         barBtn.label:SetText(Wise.BAR_COPY_TEMPLATE)
@@ -788,6 +794,8 @@ function Wise:RefreshGroupList()
     end
     smartBtn:Show()
     smartBtn:SetPoint("TOPLEFT", 40, y)
+    if smartBtn.lockBtn then smartBtn.lockBtn:Hide() end
+    if smartBtn.errorIcon then smartBtn.errorIcon:Hide() end
 
     -- Special icon for Smart Item (bag icon)
     smartBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10_Blue")

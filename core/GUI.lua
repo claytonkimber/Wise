@@ -1895,108 +1895,155 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         if not f:GetAttribute("state-wise-hide") then f:SetAttribute("state-wise-hide", "hide") end
     end
 
-    -- Custom Visibility Logic (Immediate + Ticker)
+    -- Custom Visibility Logic (Immediate + Ticker/OnUpdate)
+    -- Pre-cache condition flags (these don't change until UpdateGroupDisplay is called again)
+    local cvShowStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
+    local cvHideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
+    local cvShowGuildBank = cvShowStr:find("guildbank") and true or false
+    local cvShowBank = (cvShowStr:find("%[bank%]") or cvShowStr:find("%f[%a]bank%f[%a]")) and true or false
+    local cvShowMailbox = cvShowStr:find("mailbox") and true or false
+    local cvShowUnderMouse = cvShowStr:find("undermouse") and true or false
+    local cvHideGuildBank = cvHideStr:find("guildbank") and true or false
+    local cvHideBank = (cvHideStr:find("%[bank%]") or cvHideStr:find("%f[%a]bank%f[%a]")) and true or false
+    local cvHideMailbox = cvHideStr:find("mailbox") and true or false
+    local cvHideUnderMouse = cvHideStr:find("undermouse") and true or false
+    local hasUnderMouse = cvShowUnderMouse or cvHideUnderMouse
+    local hasNonMouseConditions = cvShowGuildBank or cvShowBank or cvShowMailbox
+                                  or cvHideGuildBank or cvHideBank or cvHideMailbox
+
+    -- Bounding box offsets for undermouse hit testing (populated after ApplyLayout)
+    local cachedMinX, cachedMaxX, cachedMinY, cachedMaxY = -35, 35, -35, 35
+
+    -- Fast undermouse check (no string ops, no iteration — just cursor vs cached bounds)
+    local function IsMouseOverInterface()
+        local anchorFrame = f.Anchor
+        if not anchorFrame then return false end
+        local aLeft, aBottom, aWidth, aHeight = anchorFrame:GetRect()
+        if not aLeft then return false end
+        local scale = anchorFrame:GetEffectiveScale()
+        local cx, cy = GetCursorPosition()
+        cx = cx / scale
+        cy = cy / scale
+        local centerX = aLeft + aWidth / 2
+        local centerY = aBottom + aHeight / 2
+        return cx >= centerX + cachedMinX and cx <= centerX + cachedMaxX
+           and cy >= centerY + cachedMinY and cy <= centerY + cachedMaxY
+    end
+
+    -- Full condition check (for non-mouse conditions like bank/mailbox)
+    local function CheckNonMouseConditions()
+        local customShow = false
+        local isBankOpen = BankFrame and BankFrame:IsShown()
+        local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
+        local isMailbox = MailFrame and MailFrame:IsShown()
+        if cvShowGuildBank and isGuildBank then customShow = true end
+        if cvShowBank and isBankOpen then customShow = true end
+        if cvShowMailbox and isMailbox then customShow = true end
+        if cvHideGuildBank and isGuildBank then customShow = false end
+        if cvHideBank and isBankOpen then customShow = false end
+        if cvHideMailbox and isMailbox then customShow = false end
+        return customShow
+    end
+
+    -- Combined check for all conditions
     local function CheckCustomVisibility()
-         if InCombatLockdown() then return false end
-         local showStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
-         local hideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
-         
-         -- Helper: Get Bank Type State
-         local isBankOpen = BankFrame and BankFrame:IsShown()
-         local isGuildBank = GuildBankFrame and GuildBankFrame:IsShown()
-         local isMailbox = MailFrame and MailFrame:IsShown()
-
-         -- Helper: Get Undermouse State
-         -- f.visualDisplay or f itself contains the buttons. We use the f.Anchor if f might be hidden, or just f itself.
-         -- But to properly check a 10px padding even if hidden, we need GetRect.
-         local isUnderMouse = false
-         local checkFrame = f.visualDisplay or f
-
-         -- If the frame is hidden, GetRect returns nil. We must fall back to f.Anchor which is always shown.
-         if checkFrame and not checkFrame:IsVisible() and f.Anchor and f.Anchor:IsVisible() then
-             checkFrame = f.Anchor
-         end
-
-         if checkFrame then
-              local left, bottom, width, height = checkFrame:GetRect()
-              if left and bottom and width and height then
-                   local scale = checkFrame:GetEffectiveScale()
-                   local x, y = GetCursorPosition()
-                   x = x / scale
-                   y = y / scale
-                   -- 10 pixels bubble
-                   local pad = 10
-                   if x >= (left - pad) and x <= (left + width + pad) and y >= (bottom - pad) and y <= (bottom + height + pad) then
-                        isUnderMouse = true
-                   end
-              end
-         end
-
-         local customShow = false
-         
-         -- Use separate IFs to allow OR logic if multiple are present
-         -- Use brackets %[name%] to prevent substring matches (e.g. 'bank' inside 'guildbank')
-         
-         if showStr:find("guildbank") then
-              if isGuildBank then customShow = true end
-         end
-         
-         if showStr:find("%[bank%]") or showStr:find("%f[%a]bank%f[%a]") then
-              if isBankOpen then customShow = true end
-         end
-         
-         if showStr:find("mailbox") then
-              if isMailbox then customShow = true end
-         end
-
-         if showStr:find("undermouse") then
-              if isUnderMouse then customShow = true end
-         end
-         
-         -- Evaluate Hide (Overrides Show)
-         if hideStr:find("guildbank") then
-              if isGuildBank then customShow = false end
-         end
-         
-         if hideStr:find("%[bank%]") or hideStr:find("%f[%a]bank%f[%a]") then
-              if isBankOpen then customShow = false end
-         end
-
-         if hideStr:find("mailbox") then
-              if isMailbox then customShow = false end
-         end
-
-         if hideStr:find("undermouse") then
-              if isUnderMouse then customShow = false end
-         end
-
-         return customShow
+        if InCombatLockdown() then return false end
+        local customShow = false
+        if hasNonMouseConditions then
+            customShow = CheckNonMouseConditions()
+        end
+        if cvShowUnderMouse and IsMouseOverInterface() then customShow = true end
+        if cvHideUnderMouse and IsMouseOverInterface() then customShow = false end
+        return customShow
     end
 
     -- Initial Custom Check
     local initialCustomState = "hide"
-    if CheckCustomVisibility() then 
+    if CheckCustomVisibility() then
         initialCustomState = "show"
         if not InCombatLockdown() then f:SetAttribute("state-custom", "show") end
     else
         if not InCombatLockdown() then f:SetAttribute("state-custom", "hide") end
     end
 
-    -- Ticker for updates
+    -- Clean up previous custom visibility handlers
     if f.customVisTicker then
         f.customVisTicker:Cancel()
+        f.customVisTicker = nil
+    end
+    if f.undermouseFrame then
+        f.undermouseFrame:SetScript("OnUpdate", nil)
+        f.undermouseFrame:Hide()
     end
 
-    local hasUnderMouse = (showStr and showStr:find("undermouse")) or (hideStr and hideStr:find("undermouse"))
-    local tickRate = hasUnderMouse and 0.1 or 0.5
-    f.customVisTicker = C_Timer.NewTicker(tickRate, function()
-         local isShow = CheckCustomVisibility()
-         local current = f:GetAttribute("state-custom")
-         local target = isShow and "show" or "hide"
-         if current ~= target and not InCombatLockdown() then
-             f:SetAttribute("state-custom", target)
-         end
-    end)
+    if hasUnderMouse then
+        -- Use a dedicated hidden frame with OnUpdate for frame-rate mouse tracking.
+        -- OnUpdate fires every render frame (~16ms @ 60fps) for near-instant response.
+        -- We use a separate frame to avoid conflicting with f.Anchor's OnUpdate (mouse-follow mode).
+        if not f.undermouseFrame then
+            f.undermouseFrame = CreateFrame("Frame")
+        end
+        local nonMouseElapsed = 0
+        local wasShowingInCombat = false
+        f.undermouseFrame:Show()
+        f.undermouseFrame:SetScript("OnUpdate", function(self, elapsed)
+            local isOver = IsMouseOverInterface()
+            local customShow = false
+
+            -- Check non-mouse conditions at reduced rate (every 0.5s)
+            if hasNonMouseConditions then
+                nonMouseElapsed = nonMouseElapsed + elapsed
+                if nonMouseElapsed >= 0.5 then
+                    nonMouseElapsed = 0
+                    f._lastNonMouseResult = CheckNonMouseConditions()
+                end
+                if f._lastNonMouseResult then customShow = true end
+            end
+
+            if cvShowUnderMouse and isOver then customShow = true end
+            if cvHideUnderMouse and isOver then customShow = false end
+
+            if InCombatLockdown() then
+                -- In combat: can't touch secure frame attributes.
+                -- Use f.visualDisplay (insecure mirror) for show/hide instead.
+                if f.visualDisplay then
+                    if customShow then
+                        if not wasShowingInCombat then
+                            f.visualDisplay:Show()
+                            f:SetAlpha(0) -- Hide secure frame visually (keeps keybinds active)
+                            wasShowingInCombat = true
+                        end
+                    else
+                        if wasShowingInCombat then
+                            f.visualDisplay:Hide()
+                            wasShowingInCombat = false
+                        end
+                    end
+                end
+            else
+                -- Out of combat: use secure attribute path
+                -- If we were showing via visualDisplay in combat, clean up on transition
+                if wasShowingInCombat then
+                    f.visualDisplay:Hide()
+                    f:SetAlpha(1)
+                    wasShowingInCombat = false
+                end
+                local target = customShow and "show" or "hide"
+                if f:GetAttribute("state-custom") ~= target then
+                    f:SetAttribute("state-custom", target)
+                end
+            end
+        end)
+    elseif hasNonMouseConditions then
+        -- No undermouse: use slower ticker for bank/mailbox/etc (0.5s is fine)
+        f.customVisTicker = C_Timer.NewTicker(0.5, function()
+            local isShow = CheckCustomVisibility()
+            local target = isShow and "show" or "hide"
+            if f:GetAttribute("state-custom") ~= target and not InCombatLockdown() then
+                f:SetAttribute("state-custom", target)
+            end
+        end)
+    end
 
     -- Check if combat visible for mouse tracking
     -- Use raw strings to determine intent
@@ -2059,11 +2106,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     f.visualDisplay:SetFrameStrata(f:GetFrameStrata()) -- Sync strata
     
     -- Event Handler to toggle visual display in combat
+    -- When [undermouse] is active, the OnUpdate handler manages visualDisplay directly.
     f.visualDisplay:SetScript("OnEvent", function(self, event)
-        if isAlwaysVisibleMouse then
+        if hasUnderMouse then
+            -- Undermouse OnUpdate handles combat show/hide — don't interfere.
+            -- Only restore alpha when leaving combat (OnUpdate handles the rest).
+            if event == "PLAYER_REGEN_ENABLED" then
+                f:SetAlpha(1)
+            end
+        elseif isAlwaysVisibleMouse then
             if event == "PLAYER_REGEN_DISABLED" then
                 self:Show()
-                -- Make the stuck secure frame invisible but active for keybinds
                 f:SetAlpha(0)
             elseif event == "PLAYER_REGEN_ENABLED" then
                 self:Hide()
@@ -2857,7 +2910,36 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     f:SetAttribute("nested_max_keys", #actionsToShow)
     
     Wise:ApplyLayout(f, displayType, #actionsToShow, name)
-    
+
+    -- Compute undermouse bounding box from button layout (must be after ApplyLayout sets targetX/targetY)
+    if hasUnderMouse and f.buttons and #f.buttons > 0 then
+        local first = true
+        for _, btn in ipairs(f.buttons) do
+            local tx = btn.targetX or 0
+            local ty = btn.targetY or 0
+            local bw, bh = btn:GetSize()
+            local halfW = (bw or 40) / 2
+            local halfH = (bh or 40) / 2
+            if first then
+                cachedMinX = tx - halfW
+                cachedMaxX = tx + halfW
+                cachedMinY = ty - halfH
+                cachedMaxY = ty + halfH
+                first = false
+            else
+                if tx - halfW < cachedMinX then cachedMinX = tx - halfW end
+                if tx + halfW > cachedMaxX then cachedMaxX = tx + halfW end
+                if ty - halfH < cachedMinY then cachedMinY = ty - halfH end
+                if ty + halfH > cachedMaxY then cachedMaxY = ty + halfH end
+            end
+        end
+        -- Bake in padding
+        cachedMinX = cachedMinX - 10
+        cachedMaxX = cachedMaxX + 10
+        cachedMinY = cachedMinY - 10
+        cachedMaxY = cachedMaxY + 10
+    end
+
     -- Sync Edit Mode state (skip for mouse-anchored)
     if Wise.editMode and group.anchorMode ~= "mouse" then
         Wise:SetFrameEditMode(f, name, true)
