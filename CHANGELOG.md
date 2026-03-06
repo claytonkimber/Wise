@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.20260306] - 2026-03-06
+
+- [Feature] Replace hardcoded class spells with programmatic spell override resolution (e.g. Maul→Raze) across all UI surfaces
+- [Feature] Drag-to-reorder for slots and states in the Actions panel, replacing arrow buttons
+- [Feature] Wiki documentation for the addon covering basics and advanced topics
+- [Fix] Spell override resolution, PetActionBar taint, and category detection
+- [Fix] Interface visibility in edit mode for undermouse conditions
+- [Fix] Store base spell IDs so overrides update automatically on spec change
+
 ## [1.0.20260305] - 2026-03-05
 
 - [Feature] Add [undermouse] visibility conditional for showing interfaces on mouseover
