@@ -339,7 +339,26 @@ function Wise:PopulateSettingsView(panel)
         end)
         table.insert(panel.children, radio.text)
     end
-    ry = ry - 40
+    ry = ry - 30
+
+    -- Hide Empty Slots Checkbox
+    local hideEmptyCheck = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, hideEmptyCheck, rx, ry)
+    hideEmptyCheck:SetChecked(WiseDB.settings.hideEmptySlots or false)
+    hideEmptyCheck.text = hideEmptyCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hideEmptyCheck.text:SetPoint("LEFT", hideEmptyCheck, "RIGHT", 2, 0)
+    hideEmptyCheck.text:SetText("Hide Empty Slots")
+    hideEmptyCheck:SetScript("OnClick", function(self)
+        WiseDB.settings.hideEmptySlots = self:GetChecked() or false
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then
+                for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+            end
+        end)
+    end)
+    table.insert(panel.children, hideEmptyCheck)
+    table.insert(panel.children, hideEmptyCheck.text)
+    ry = ry - 30
 
     -- Icon Size
     local iconLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

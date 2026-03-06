@@ -204,7 +204,11 @@ function Wise:GetGroupDisplaySettings(groupName)
     if group and group.showCountdownText ~= nil then showCountdownText = group.showCountdownText end
     if showCountdownText == nil then showCountdownText = true end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText
+    local hideEmptySlots = settings.hideEmptySlots
+    if group and group.hideEmptySlots ~= nil then hideEmptySlots = group.hideEmptySlots end
+    if hideEmptySlots == nil then hideEmptySlots = false end
+
+    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots
 end
 
 function Wise:CreateGroup(name, type)
@@ -2501,7 +2505,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
-    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle = Wise:GetGroupDisplaySettings(name)
+    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots = Wise:GetGroupDisplaySettings(name)
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2545,7 +2549,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     HotKey = btn.keybind,
                 })
             end
-            
+
             -- Tooltip support
             Wise:AddInterfaceTooltip(btn)
 
@@ -2833,13 +2837,31 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local isValid = isKnown and categoryMatch
         btn.isValid = isValid
         
-        if isValid then
-            -- Initial state saturated; Usability check will refine this later
-            btn.icon:SetDesaturated(false)
-            btn.icon:SetAlpha(1)
+        local isEmptySlot = (aType == "empty")
+        if hideEmptySlots and isEmptySlot then
+            btn:EnableMouse(false)
+            btn.icon:SetAlpha(0)
+            if btn.cooldown then btn.cooldown:SetAlpha(0) end
+            if btn.activeHighlight then btn.activeHighlight:SetAlpha(0) end
+            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(0) end
+            if btn.count then btn.count:SetAlpha(0) end
+            if btn.keybind then btn.keybind:SetAlpha(0) end
         else
-            btn.icon:SetDesaturated(true)
-            btn.icon:SetAlpha(0.5)
+            btn:EnableMouse(true)
+            if btn.cooldown then btn.cooldown:SetAlpha(1) end
+            if btn.activeHighlight then btn.activeHighlight:SetAlpha(1) end
+            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(1) end
+            if btn.count then btn.count:SetAlpha(1) end
+            if btn.keybind then btn.keybind:SetAlpha(1) end
+
+            if isValid then
+                -- Initial state saturated; Usability check will refine this later
+                btn.icon:SetDesaturated(false)
+                btn.icon:SetAlpha(1)
+            else
+                btn.icon:SetDesaturated(true)
+                btn.icon:SetAlpha(0.5)
+            end
         end
         
         -- Update count (items, consumable spells, and spell charges)
@@ -2898,7 +2920,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     
     -- Sync Visual Display Buttons
     if f.visualDisplay then
-        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle = Wise:GetGroupDisplaySettings(name)
+        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
         for i, actionInfo in ipairs(actionsToShow) do
              local actionData = actionInfo.data
              local isKnown = actionInfo.known
@@ -2932,12 +2954,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
                  -- Masque Support
                  if Wise.MasqueGroup then
-                    Wise.MasqueGroup:AddButton(vBtn, {
-                        Icon = vBtn.icon,
-                        Cooldown = vBtn.cooldown,
-                        Count = vBtn.count,
-                        HotKey = vBtn.keybind,
-                    })
+                     Wise.MasqueGroup:AddButton(vBtn, {
+                         Icon = vBtn.icon,
+                         Cooldown = vBtn.cooldown,
+                         Count = vBtn.count,
+                         HotKey = vBtn.keybind,
+                     })
                  end
 
                  -- Tooltip support
@@ -2968,12 +2990,27 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              end
              
              -- Apply Desaturation (same as real button)
-             if isKnown and categoryMatch then
-                vBtn.icon:SetDesaturated(false)
-                vBtn.icon:SetAlpha(1)
+             local vIsEmpty = (actionData.type == "empty")
+             if visualHideEmpty and vIsEmpty then
+                 vBtn.icon:SetAlpha(0)
+                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(0) end
+                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(0) end
+                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(0) end
+                 if vBtn.count then vBtn.count:SetAlpha(0) end
+                 if vBtn.keybind then vBtn.keybind:SetAlpha(0) end
              else
-                vBtn.icon:SetDesaturated(true)
-                vBtn.icon:SetAlpha(0.5)
+                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(1) end
+                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(1) end
+                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(1) end
+                 if vBtn.count then vBtn.count:SetAlpha(1) end
+                 if vBtn.keybind then vBtn.keybind:SetAlpha(1) end
+                 if isKnown and categoryMatch then
+                    vBtn.icon:SetDesaturated(false)
+                    vBtn.icon:SetAlpha(1)
+                 else
+                    vBtn.icon:SetDesaturated(true)
+                    vBtn.icon:SetAlpha(0.5)
+                 end
              end
              
              -- Sync count (mirror position, font, and text from real button)
@@ -4174,8 +4211,15 @@ function Wise:UpdateButtonUsability(btn)
         end
     end
 
+    local _, _, _, _, _, _, _, _, _, _, showGlows, _, _, _, _, _, btnHideEmpty = Wise:GetGroupDisplaySettings(btn.groupName)
+    local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
+    local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
+    if btnHideEmpty and btnActionType == "empty" then
+        btn.icon:SetAlpha(0)
+        if vIcon then vIcon:SetAlpha(0) end
+    end
+
     -- Proc Glow Handling
-    local _, _, _, _, _, _, _, _, _, _, showGlows = Wise:GetGroupDisplaySettings(btn.groupName)
     
     local shouldGlow = false
     if showGlows and spellID then
