@@ -885,6 +885,15 @@ function frame:OnEvent(event, arg1)
         if Wise.UpdateInterfaceIcons then
             Wise:UpdateInterfaceIcons()
         end
+        -- Refresh options UI if open (spell names/icons may have changed due to overrides)
+        if Wise.UpdateOptionsUI then
+            Wise:UpdateOptionsUI()
+        end
+        -- Refresh action picker if it's open (spellbook contents may have changed)
+        if Wise.pickingAction and Wise.EmbeddedPicker and Wise.PickerRefresh then
+            local search = Wise.EmbeddedPicker.Search
+            Wise:PickerRefresh(search and search:GetText() or "")
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Process pending updates that were blocked during combat
         if Wise.pendingUpdates then
@@ -1096,6 +1105,15 @@ end
 
 Wise.managedFrames = Wise.managedFrames or {}
 
+-- Hidden parent frame for reparenting Blizzard frames that taint with RegisterStateDriver
+local hiddenParent = CreateFrame("Frame", nil, UIParent)
+hiddenParent:Hide()
+
+-- Frames that taint when hidden via RegisterStateDriver (e.g. PetActionBar calls SetShownBase)
+local reparentFrames = {
+    PetActionBar = true,
+}
+
 function Wise:UpdateBlizzardUI()
     if InCombatLockdown() then
         Wise.pendingBlizzardUIUpdate = true
@@ -1109,13 +1127,28 @@ function Wise:UpdateBlizzardUI()
         for _, frameName in ipairs(info.frames) do
             local frame = _G[frameName]
             if frame then
-                if shouldHide then
-                    RegisterStateDriver(frame, "visibility", "hide")
-                    Wise.managedFrames[frame] = true
-                elseif Wise.managedFrames[frame] then
-                    UnregisterStateDriver(frame, "visibility")
-                    if frame.Show then frame:Show() end
-                    Wise.managedFrames[frame] = nil
+                if reparentFrames[frameName] then
+                    -- Reparent to hidden frame to avoid taint from RegisterStateDriver
+                    if shouldHide then
+                        if not Wise.managedFrames[frame] then
+                            Wise.managedFrames[frame] = { originalParent = frame:GetParent() }
+                        end
+                        frame:SetParent(hiddenParent)
+                    elseif Wise.managedFrames[frame] then
+                        local savedParent = Wise.managedFrames[frame].originalParent or UIParent
+                        frame:SetParent(savedParent)
+                        if frame.Show then frame:Show() end
+                        Wise.managedFrames[frame] = nil
+                    end
+                else
+                    if shouldHide then
+                        RegisterStateDriver(frame, "visibility", "hide")
+                        Wise.managedFrames[frame] = true
+                    elseif Wise.managedFrames[frame] then
+                        UnregisterStateDriver(frame, "visibility")
+                        if frame.Show then frame:Show() end
+                        Wise.managedFrames[frame] = nil
+                    end
                 end
             end
         end

@@ -83,6 +83,49 @@ Wise.CategoryLabels = {
     character = "Character"
 }
 
+-- Resolve the spellbook category for a given spell ID.
+-- Returns category ("global", "class", "spec") and sourceSpecID (or nil).
+-- Checks both direct spell ID match and override match (base spell in book -> override active).
+function Wise:ResolveSpellCategory(spellID)
+    if not spellID or not C_SpellBook or not C_SpellBook.GetNumSpellBookSkillLines then
+        return "global", nil
+    end
+    if type(spellID) == "string" then
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+        if info then spellID = info.spellID else return "global", nil end
+    end
+
+    local currentSpec = GetSpecialization()
+    local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
+    local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
+
+    for i = 1, numSkillLines do
+        local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(i)
+        if lineInfo then
+            local offset = lineInfo.itemIndexOffset
+            local count = lineInfo.numSpellBookItems
+            for j = 1, count do
+                local index = offset + j
+                local spellType, bookSpellID = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
+                if spellType == Enum.SpellBookItemType.Spell then
+                    local overrideID = Wise:GetOverrideSpellID(bookSpellID)
+                    if bookSpellID == spellID or overrideID == spellID then
+                        if lineInfo.specID then
+                            return "spec", lineInfo.specID
+                        elseif lineInfo.name == "General" or lineInfo.name == "Warbands" then
+                            return "global", nil
+                        else
+                            return "class", nil
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return "global", nil
+end
+
 -- ... (existing code) ...
 
 function Wise:GetSkyriding(filter)
@@ -489,6 +532,18 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
     if category and category ~= "global" then resolvedCategory = category end
     if extraData and extraData.category then resolvedCategory = extraData.category end
 
+    -- Auto-detect category for spells if still "global" (catches all entry points)
+    if actionType == "spell" and resolvedCategory == "global" and Wise.ResolveSpellCategory then
+        local detectedCat, detectedSpecID = Wise:ResolveSpellCategory(actionValue)
+        if detectedCat ~= "global" then
+            resolvedCategory = detectedCat
+            if detectedSpecID and not (extraData and extraData.sourceSpecID) then
+                extraData = extraData or {}
+                extraData.sourceSpecID = detectedSpecID
+            end
+        end
+    end
+
     -- Spec ID: Use sourceSpecID if provided (for Off-Spec spells), else current spec
     local resolvedSpecID = specID
     if extraData and extraData.sourceSpecID then resolvedSpecID = extraData.sourceSpecID end
@@ -682,8 +737,9 @@ end
 
 
 function Wise:GetActionName(actionType, value, extraData)
-    if extraData and extraData.name then return extraData.name end
-    
+    -- For spells, always resolve dynamically (overrides change with spec/talents)
+    if extraData and extraData.name and actionType ~= "spell" then return extraData.name end
+
     if actionType == "action" then
         if tonumber(value) then
             local actionTypeStr, id, subType = GetActionInfo(tonumber(value))
@@ -700,11 +756,12 @@ function Wise:GetActionName(actionType, value, extraData)
         return "Unknown Action"
 
     elseif actionType == "spell" then
+        local overrideValue = Wise:GetOverrideSpellID(value) or value
         if C_Spell and C_Spell.GetSpellInfo then
-             local info = C_Spell.GetSpellInfo(value)
+             local info = C_Spell.GetSpellInfo(overrideValue)
              return info and info.name or value
         end
-        local name = GetSpellInfo(value)
+        local name = GetSpellInfo(overrideValue)
         return name or value
         
     elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
@@ -842,10 +899,11 @@ function Wise:GetActionName(actionType, value, extraData)
 end
 
 function Wise:GetActionIcon(actionType, value, extraData)
-    if extraData and extraData.icon then return extraData.icon end
+    -- For spells, always resolve dynamically (overrides change with spec/talents)
+    if extraData and extraData.icon and actionType ~= "spell" then return extraData.icon end
 
     local texture = 134400 -- Default Question Mark
-    
+
     if actionType == "action" then
         if tonumber(value) then
             local icon = GetActionTexture(tonumber(value))
@@ -1102,8 +1160,12 @@ function Wise:IsActionKnown(actionType, value)
                         for j = 1, count do
                             local index = offset + j
                             local spellType, bookSpellID = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
-                            if spellType == Enum.SpellBookItemType.Spell and bookSpellID == spellID then
-                                if not C_Spell.IsSpellPassive(bookSpellID) then return true end
+                            if spellType == Enum.SpellBookItemType.Spell then
+                                -- Check both direct match and override match (e.g. Maul -> Raze)
+                                local overrideID = Wise:GetOverrideSpellID(bookSpellID)
+                                if (bookSpellID == spellID or overrideID == spellID) then
+                                    if not C_Spell.IsSpellPassive(bookSpellID) then return true end
+                                end
                             end
                         end
                     end
@@ -1168,10 +1230,12 @@ function Wise:GetCastTimeText(actionType, value)
     local spellID
 
     if actionType == "spell" then
-        if type(value) == "number" then
-            spellID = value
-        elseif type(value) == "string" and C_Spell and C_Spell.GetSpellInfo then
-             local info = C_Spell.GetSpellInfo(value)
+        -- Resolve overrides for accurate cast time (e.g. Maul -> Raze)
+        local resolvedValue = Wise:GetOverrideSpellID(value) or value
+        if type(resolvedValue) == "number" then
+            spellID = resolvedValue
+        elseif type(resolvedValue) == "string" and C_Spell and C_Spell.GetSpellInfo then
+             local info = C_Spell.GetSpellInfo(resolvedValue)
              if info then spellID = info.spellID end
         end
     elseif actionType == "item" or actionType == "toy" then
@@ -1756,7 +1820,8 @@ function Wise:PickerRefresh(filter)
                 if self.data.tooltipFunc then
                     self.data.tooltipFunc(self.data.value)
                 elseif self.data.type == "spell" then
-                    GameTooltip:SetSpellByID(self.data.value)
+                    local tooltipID = Wise:GetOverrideSpellID(self.data.value) or self.data.value
+                    GameTooltip:SetSpellByID(tooltipID)
                 elseif self.data.type == "item" or self.data.type == "toy" then
                     GameTooltip:SetItemByID(self.data.value)
                 else
@@ -1861,14 +1926,16 @@ function Wise:GetSpell(filter)
                     local spellType, spellId = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
                     if spellType == Enum.SpellBookItemType.Spell then
                          if not C_Spell.IsSpellPassive(spellId) then
-                             local name = C_Spell.GetSpellName(spellId)
-                             local icon = C_Spell.GetSpellTexture(spellId)
-                             local description = C_Spell.GetSpellDescription(spellId) or ""
+                             -- Resolve spell overrides for display (e.g. Maul -> Raze)
+                             local displayId = Wise:GetOverrideSpellID(spellId) or spellId
+                             local name = C_Spell.GetSpellName(displayId)
+                             local icon = C_Spell.GetSpellTexture(displayId)
+                             local description = C_Spell.GetSpellDescription(displayId) or ""
                              if name and (not filter or string.find(string.lower(name), filter, 1, true) or string.find(string.lower(description), filter, 1, true)) then
                                  if not seen[name] then
                                      table.insert(spells, {
                                          type="spell",
-                                         value=spellId,
+                                         value=spellId,  -- Store base ID; overrides resolved dynamically
                                          name=name,
                                          icon=icon,
                                          category=realCategory,

@@ -28,8 +28,6 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
         local _, bookSlot, bookType, spellID = GetCursorInfo()
 
         local finalSpellID = spellID
-        local category = "global"
-        local sourceSpecID = nil
 
         if not finalSpellID and bookSlot then
              if C_SpellBook and C_SpellBook.GetSpellBookItemInfo then
@@ -41,31 +39,9 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
              end
         end
 
-        -- Categorize the spell using SpellBook Info
-        if finalSpellID and bookSlot and C_SpellBook and C_SpellBook.GetSpellBookItemType then
-             local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
-             for i = 1, numSkillLines do
-                 local info = C_SpellBook.GetSpellBookSkillLineInfo(i)
-                 if info and info.itemIndexOffset and info.numSpellBookItems then
-                     if bookSlot > info.itemIndexOffset and bookSlot <= (info.itemIndexOffset + info.numSpellBookItems) then
-                         local currentSpec = GetSpecialization()
-                         local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
-
-                         if info.specID then
-                             category = "spec"
-                             sourceSpecID = info.specID
-                         elseif info.name == "General" then
-                             category = "global"
-                         else
-                             category = "class"
-                         end
-                         break
-                     end
-                 end
-             end
-        end
-
         if finalSpellID then
+             -- Categorize the spell by scanning the spellbook for its skill line
+             local category, sourceSpecID = Wise:ResolveSpellCategory(finalSpellID)
              local extra = {}
              if sourceSpecID then extra.sourceSpecID = sourceSpecID end
              applyAction("spell", finalSpellID, category, extra)
