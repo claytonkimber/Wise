@@ -775,60 +775,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 10
 
-    if action.type == "misc" and action.value == "addon_magic" then
-        local alabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        alabel:SetPoint("TOPLEFT", 10, y)
-        alabel:SetText("Select Addons to Load:")
-        tinsert(panel.controls, alabel)
-        y = y - 20
-
-        action.addons = action.addons or {}
-        local selectedMap = {}
-        for _, v in ipairs(action.addons) do selectedMap[v] = true end
-
-        local numAddons = C_AddOns.GetNumAddOns()
-        for i = 1, numAddons do
-            local name, title, notes, loadable, reason, security, newVersion = C_AddOns.GetAddOnInfo(i)
-            -- Skip Blizzard default addons and Wise itself
-            if not name:match("^Blizzard_") and name ~= "Wise" then
-                local aCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-                aCheck:SetPoint("TOPLEFT", 10, y)
-                aCheck:SetChecked(selectedMap[name] or false)
-                aCheck.text = aCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                aCheck.text:SetPoint("LEFT", aCheck, "RIGHT", 5, 0)
-                aCheck.text:SetText(title or name)
-
-                aCheck.addonName = name
-                aCheck:SetScript("OnClick", function(self)
-                    local isChecked = self:GetChecked()
-                    local newAddons = {}
-                    local added = false
-                    for _, existing in ipairs(action.addons) do
-                        if existing ~= self.addonName then
-                            table.insert(newAddons, existing)
-                        elseif existing == self.addonName and isChecked then
-                            table.insert(newAddons, existing)
-                            added = true
-                        end
-                    end
-                    if isChecked and not added then
-                        table.insert(newAddons, self.addonName)
-                    end
-                    action.addons = newAddons
-                    -- We do not need to refresh the whole panel immediately, just update data
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then
-                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        end
-                    end)
-                end)
-
-                tinsert(panel.controls, aCheck)
-                tinsert(panel.controls, aCheck.text)
-                y = y - 25
-            end
-        end
-        y = y - 10
+    if action.type == "misc" and action.value == "addon_magic" and Wise.CreateAddonMagicPropertiesPanel then
+        y = Wise:CreateAddonMagicPropertiesPanel(panel, action, y)
     end
 
     -- Show Tooltip checkbox (for Extra Action Button)

@@ -1633,11 +1633,6 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
-        elseif aValue == "addon_magic" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            local addonListStr = actionData.addons and table.concat(actionData.addons, ",") or ""
-            secureValue = "/run Wise:ExecuteAddonMagic('" .. addonListStr .. "')"
         elseif aValue:match("^spec_") then
             local val = tonumber(aValue:match("^spec_(%d+)"))
             local specIndex = val

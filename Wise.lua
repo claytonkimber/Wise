@@ -868,12 +868,6 @@ function frame:OnEvent(event, arg1)
         if not WiseDB.tutorialComplete and Wise.Demo then
              C_Timer.After(2, function() Wise.Demo:Start() end)
         end
-        if WiseDB.addonsToDisable then
-            for _, addonName in ipairs(WiseDB.addonsToDisable) do
-                C_AddOns.DisableAddOn(addonName)
-            end
-            WiseDB.addonsToDisable = nil
-        end
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" or event == "UPDATE_SHAPESHIFT_FORMS" then
         -- Update character cache
         if Wise.UpdateCharacterInfo then
@@ -923,24 +917,6 @@ function frame:OnEvent(event, arg1)
     end
 end
 frame:SetScript("OnEvent", frame.OnEvent)
-
-function Wise:ExecuteAddonMagic(addonStr)
-    if not addonStr or addonStr == "" then return end
-
-    local addonsToDisable = {}
-    for addon in addonStr:gmatch("[^,]+") do
-        addon = strtrim(addon)
-        if addon ~= "" then
-            C_AddOns.EnableAddOn(addon)
-            table.insert(addonsToDisable, addon)
-        end
-    end
-
-    if #addonsToDisable > 0 then
-        WiseDB.addonsToDisable = addonsToDisable
-        ReloadUI()
-    end
-end
 
 -- Update icons for buttons that use "interface" action type (nested interfaces).
 -- Called on events that may change the nested interface's content (spec change, spells changed, etc.)
