@@ -1770,7 +1770,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         -- Show "(Custom)" or "(Global)" indicator
         local displayHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         displayHint:SetPoint("LEFT", displayLabel, "RIGHT", 8, 0)
-        local hasOverride = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition
+        local hasOverride = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or (group.hideEmptySlots ~= nil)
         displayHint:SetText(hasOverride and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
         tinsert(panel.controls, displayHint)
 
@@ -1796,7 +1796,6 @@ function Wise:RenderGroupProperties(panel, group, y)
             {val="rounded", text="Rounded"},
             {val="square", text="Square"},
             {val="round", text="Round"},
-            {val="invisible", text="Invisible"}
         }
 
         for _, styleMode in ipairs(styles) do
@@ -1817,7 +1816,29 @@ function Wise:RenderGroupProperties(panel, group, y)
              y = y - 22
         end
 
-        y = y - 10
+        y = y - 5
+
+        -- Hide Empty Slots checkbox (per-group)
+        local hideEmptyCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        hideEmptyCheck:SetPoint("TOPLEFT", 10, y)
+        local effectiveHideEmpty = group.hideEmptySlots
+        if effectiveHideEmpty == nil then effectiveHideEmpty = (WiseDB.settings and WiseDB.settings.hideEmptySlots) or false end
+        hideEmptyCheck:SetChecked(effectiveHideEmpty)
+        hideEmptyCheck.text = hideEmptyCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        hideEmptyCheck.text:SetPoint("LEFT", hideEmptyCheck, "RIGHT", 5, 0)
+        local hideEmptyLabelText = "Hide Empty Slots"
+        if group.hideEmptySlots ~= nil then hideEmptyLabelText = hideEmptyLabelText .. " |cffff8800(Custom)|r" end
+        hideEmptyCheck.text:SetText(hideEmptyLabelText)
+        hideEmptyCheck:SetScript("OnClick", function(self)
+            group.hideEmptySlots = self:GetChecked() or false
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
+        end)
+        tinsert(panel.controls, hideEmptyCheck)
+        tinsert(panel.controls, hideEmptyCheck.text)
+        y = y - 25
+
+        y = y - 5
 
         -- Per-Interface Icon Size
         local piIconLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1825,7 +1846,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
 
         local function UpdateDisplayStatus()
-            local over = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or group.countdownTextSize or group.countdownTextPosition or (group.showGCD ~= nil) or (group.showChargeText ~= nil) or (group.showCountdownText ~= nil)
+            local over = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or group.countdownTextSize or group.countdownTextPosition or (group.showGCD ~= nil) or (group.showChargeText ~= nil) or (group.showCountdownText ~= nil) or (group.hideEmptySlots ~= nil)
             displayHint:SetText(over and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
 
             local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
@@ -2654,7 +2675,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         resetGlobalBtn:SetText("Reset to Global Settings")
 
         -- Initial State Check
-        if not group.iconStyle and not group.iconSize and not group.textSize and not group.font and group.showKeybinds == nil and not group.keybindPosition and not group.keybindTextSize and not group.chargeTextSize and not group.chargeTextPosition and not group.countdownTextSize and not group.countdownTextPosition and group.showGCD == nil and group.showChargeText == nil and group.showCountdownText == nil then
+        if not group.iconStyle and not group.iconSize and not group.textSize and not group.font and group.showKeybinds == nil and not group.keybindPosition and not group.keybindTextSize and not group.chargeTextSize and not group.chargeTextPosition and not group.countdownTextSize and not group.countdownTextPosition and group.showGCD == nil and group.showChargeText == nil and group.showCountdownText == nil and group.hideEmptySlots == nil then
             resetGlobalBtn:Disable()
         end
 
@@ -2673,6 +2694,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             group.countdownTextSize = nil
             group.countdownTextPosition = nil
             group.showGCD = nil
+            group.hideEmptySlots = nil
 
             C_Timer.After(0.1, function()
                 if not InCombatLockdown() then

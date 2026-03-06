@@ -31,11 +31,11 @@ function Wise:AddInterfaceTooltip(btn)
         -- Check setting
         if not WiseDB.settings.showTooltips then return end
 
-        -- Check if button is invisible
+        -- Check if button is an invisible empty slot
         local groupName = self.groupName or (self:GetParent() and self:GetParent().groupName)
         if groupName and Wise.GetGroupDisplaySettings then
-            local _, _, _, _, _, _, _, _, _, _, _, _, iconStyle = Wise:GetGroupDisplaySettings(groupName)
-            if iconStyle == "invisible" then return end
+            local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, tipHideEmpty = Wise:GetGroupDisplaySettings(groupName)
+            if tipHideEmpty and self.actionType == "empty" then return end
         end
 
         -- Determine Anchor

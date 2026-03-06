@@ -204,7 +204,11 @@ function Wise:GetGroupDisplaySettings(groupName)
     if group and group.showCountdownText ~= nil then showCountdownText = group.showCountdownText end
     if showCountdownText == nil then showCountdownText = true end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText
+    local hideEmptySlots = settings.hideEmptySlots
+    if group and group.hideEmptySlots ~= nil then hideEmptySlots = group.hideEmptySlots end
+    if hideEmptySlots == nil then hideEmptySlots = false end
+
+    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots
 end
 
 function Wise:CreateGroup(name, type)
@@ -2480,7 +2484,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
-    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle = Wise:GetGroupDisplaySettings(name)
+    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots = Wise:GetGroupDisplaySettings(name)
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2517,18 +2521,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
             -- Masque Support
             if Wise.MasqueGroup then
-                if iconStyle == "invisible" then
-                    Wise.MasqueGroup:RemoveButton(btn)
-                else
-                    Wise.MasqueGroup:AddButton(btn, {
-                        Icon = btn.icon,
-                        Cooldown = btn.cooldown,
-                        Count = btn.count,
-                        HotKey = btn.keybind,
-                    })
-                end
+                Wise.MasqueGroup:AddButton(btn, {
+                    Icon = btn.icon,
+                    Cooldown = btn.cooldown,
+                    Count = btn.count,
+                    HotKey = btn.keybind,
+                })
             end
-            
+
             -- Tooltip support
             Wise:AddInterfaceTooltip(btn)
 
@@ -2815,7 +2815,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local isValid = isKnown and categoryMatch
         btn.isValid = isValid
         
-        if iconStyle == "invisible" then
+        local isEmptySlot = (aType == "empty")
+        if hideEmptySlots and isEmptySlot then
             btn:EnableMouse(false)
             btn.icon:SetAlpha(0)
             if btn.cooldown then btn.cooldown:SetAlpha(0) end
@@ -2897,7 +2898,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     
     -- Sync Visual Display Buttons
     if f.visualDisplay then
-        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle = Wise:GetGroupDisplaySettings(name)
+        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
         for i, actionInfo in ipairs(actionsToShow) do
              local actionData = actionInfo.data
              local isKnown = actionInfo.known
@@ -2931,16 +2932,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
                  -- Masque Support
                  if Wise.MasqueGroup then
-                        if visualIconStyle == "invisible" then
-                            Wise.MasqueGroup:RemoveButton(vBtn)
-                        else
-                            Wise.MasqueGroup:AddButton(vBtn, {
-                                Icon = vBtn.icon,
-                                Cooldown = vBtn.cooldown,
-                                Count = vBtn.count,
-                                HotKey = vBtn.keybind,
-                            })
-                        end
+                     Wise.MasqueGroup:AddButton(vBtn, {
+                         Icon = vBtn.icon,
+                         Cooldown = vBtn.cooldown,
+                         Count = vBtn.count,
+                         HotKey = vBtn.keybind,
+                     })
                  end
 
                  -- Tooltip support
@@ -2971,7 +2968,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              end
              
              -- Apply Desaturation (same as real button)
-             if visualIconStyle == "invisible" then
+             local vIsEmpty = (actionData.type == "empty")
+             if visualHideEmpty and vIsEmpty then
                  vBtn.icon:SetAlpha(0)
                  if vBtn.cooldown then vBtn.cooldown:SetAlpha(0) end
                  if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(0) end
@@ -4162,8 +4160,10 @@ function Wise:UpdateButtonUsability(btn)
         end
     end
 
-    local _, _, _, _, _, _, _, _, _, _, showGlows, _, iconStyle = Wise:GetGroupDisplaySettings(btn.groupName)
-    if iconStyle == "invisible" then
+    local _, _, _, _, _, _, _, _, _, _, showGlows, _, _, _, _, _, btnHideEmpty = Wise:GetGroupDisplaySettings(btn.groupName)
+    local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
+    local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
+    if btnHideEmpty and btnActionType == "empty" then
         btn.icon:SetAlpha(0)
         if vIcon then vIcon:SetAlpha(0) end
     end

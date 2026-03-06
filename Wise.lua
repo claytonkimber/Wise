@@ -841,6 +841,19 @@ function frame:OnEvent(event, arg1)
         if WiseDB.settings and WiseDB.settings.debug == nil then
             WiseDB.settings.debug = false
         end
+        -- Migrate iconStyle "invisible" to hideEmptySlots
+        if WiseDB.settings and WiseDB.settings.iconStyle == "invisible" then
+            WiseDB.settings.iconStyle = "rounded"
+            WiseDB.settings.hideEmptySlots = true
+        end
+        if WiseDB.groups then
+            for _, g in pairs(WiseDB.groups) do
+                if g.iconStyle == "invisible" then
+                    g.iconStyle = nil
+                    g.hideEmptySlots = true
+                end
+            end
+        end
         -- Initialize modules if needed
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
