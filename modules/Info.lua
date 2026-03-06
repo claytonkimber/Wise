@@ -95,6 +95,10 @@ function Wise:CreateInfoView(parent)
         <p>- <a href="https://www.curseforge.com/wow/addons/cooldownhighlighter">|cff33ccffCooldownHighlighter|r</a> by Owenwilson</p>
         <p>- <a href="https://www.curseforge.com/wow/addons/procglows">|cff33ccffProcGlows|r</a> by muleyo</p>
         <br/>
+        <h2>Beta Testers</h2>
+        <p>And thank you very much to those who have helped shape this addon and find the bugs that I couldn't.</p>
+        <p>- |cff33ccffTilimantu|r</p>
+        <br/>
         <h2>Support Development</h2>
         <p>If you enjoy this addon, consider buying me a coffee!</p>
         <p><a href="https://ko-fi.com/wiseaddon">|cff33ccffhttps://ko-fi.com/wiseaddon|r</a></p>
