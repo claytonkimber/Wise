@@ -2517,20 +2517,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn:SetSize(iconSize, iconSize)
             btn:RegisterForClicks("AnyUp", "AnyDown")
 
-            -- Active state highlight (manually managed, not CheckButton)
-            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
-            btn.activeHighlight:SetAllPoints()
-            btn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-            btn.activeHighlight:SetBlendMode("ADD")
-            btn.activeHighlight:Hide()
-
             -- Icon
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetAllPoints()
+
+            -- Active state highlight (manually managed, not CheckButton)
+            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
+            btn.activeHighlight:SetAllPoints(btn.icon)
+            btn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+            btn.activeHighlight:SetBlendMode("ADD")
+            btn.activeHighlight:Hide()
             
             -- Cooldown frame (standard WoW cooldown sweep)
             btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
             btn.cooldown:SetAllPoints(btn.icon)
+            btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+            if btn.cooldown.SetUseCircularEdge then btn.cooldown:SetUseCircularEdge(false) end
             btn.cooldown:SetDrawEdge(true)
             btn.cooldown:SetDrawSwipe(true)
             btn.cooldown:SetHideCountdownNumbers(false)
@@ -2932,17 +2934,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  vBtn:SetSize(visualIconSize, visualIconSize)
                  vBtn:EnableMouse(false) -- Not clickable
 
-                 -- Active state highlight (manually managed)
-                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
-                 vBtn.activeHighlight:SetAllPoints()
-                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-                 vBtn.activeHighlight:SetBlendMode("ADD")
-                 vBtn.activeHighlight:Hide()
-
                  vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
                  vBtn.icon:SetAllPoints()
+
+                 -- Active state highlight (manually managed)
+                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
+                 vBtn.activeHighlight:SetAllPoints(vBtn.icon)
+                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+                 vBtn.activeHighlight:SetBlendMode("ADD")
+                 vBtn.activeHighlight:Hide()
                  vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn, "CooldownFrameTemplate")
                  vBtn.cooldown:SetAllPoints(vBtn.icon)
+                 vBtn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+                 if vBtn.cooldown.SetUseCircularEdge then vBtn.cooldown:SetUseCircularEdge(false) end
                  vBtn.cooldown:SetDrawEdge(true)
                  vBtn.cooldown:SetDrawSwipe(true)
                  vBtn.cooldown:SetHideCountdownNumbers(false)
@@ -3353,9 +3357,11 @@ function Wise:ApplyIconStyle(btn, style)
     if style == "rounded" then
         -- Default WoW Icon (slightly rounded square)
         btn.icon:SetTexCoord(0, 1, 0, 1)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0, 1, 0, 1) end
     elseif style == "square" then
         -- Zoom in to remove rounded borders
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     elseif style == "round" then
         -- Apply circular mask
         if not btn.styleMask then
@@ -3366,6 +3372,7 @@ function Wise:ApplyIconStyle(btn, style)
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     end
 end
 
