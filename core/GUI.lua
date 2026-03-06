@@ -2790,7 +2790,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- Store in metadata (safe for combat)
         Wise.buttonMeta = Wise.buttonMeta or {}
         Wise.buttonMeta[btn] = {
-            spellID = spellID,
+            baseSpellID = spellID,
+            spellID = Wise:GetOverrideSpellID(spellID),
             itemID = itemID,
             actionType = aType,
             actionValue = aValue,
@@ -3140,7 +3141,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              elseif mType == "item" then
                                  itemID = mVal
                              end
-                             meta.spellID = spellID
+                             meta.baseSpellID = spellID
+                             meta.spellID = Wise:GetOverrideSpellID(spellID)
                              meta.itemID = itemID
 
                              Wise:UpdateButtonCooldown(btn)
@@ -3152,6 +3154,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              local vClone = meta.visualClone or btn.visualClone
                              if vClone and vClone.icon then vClone.icon:SetTexture(defaultIcon) end
 
+                             meta.baseSpellID = nil
                              meta.spellID = nil
                              meta.itemID = nil
 
@@ -3253,7 +3256,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                     local _, mSpellID = C_MountJournal.GetMountInfoByID(state.value)
                                     spellID = mSpellID
                                 end
-                                meta.spellID = spellID
+                                meta.baseSpellID = spellID
+                                meta.spellID = Wise:GetOverrideSpellID(spellID)
                                 meta.itemID = itemID
                                 meta.actionType = state.type
                                 meta.actionValue = state.value
@@ -3752,6 +3756,19 @@ function Wise:UpdateButtonCooldown(btn)
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
     
+    if meta and meta.baseSpellID then
+        local oldSpellID = meta.spellID
+        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+        if oldSpellID ~= meta.spellID and btn.icon then
+            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+            btn.icon:SetTexture(texture)
+            local vClone = meta.visualClone or btn.visualClone
+            if vClone and vClone.icon then
+                vClone.icon:SetTexture(texture)
+            end
+        end
+    end
+
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
@@ -4062,6 +4079,19 @@ function Wise:UpdateButtonUsability(btn)
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
     
+    if meta and meta.baseSpellID then
+        local oldSpellID = meta.spellID
+        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+        if oldSpellID ~= meta.spellID and btn.icon then
+            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+            btn.icon:SetTexture(texture)
+            local vClone = meta.visualClone or btn.visualClone
+            if vClone and vClone.icon then
+                vClone.icon:SetTexture(texture)
+            end
+        end
+    end
+
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
@@ -4137,6 +4167,26 @@ function Wise:UpdateButtonUsability(btn)
     else
         Wise:HideOverlayGlow(btn)
         if visualClone then Wise:HideOverlayGlow(visualClone) end
+    end
+end
+
+function Wise:UpdateAllOverrideIcons()
+    if not Wise.buttonMeta then return end
+    for btn, meta in pairs(Wise.buttonMeta) do
+        if meta.baseSpellID then
+            local newSpellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+            if newSpellID ~= meta.spellID then
+                meta.spellID = newSpellID
+                if btn.icon then
+                    local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+                    btn.icon:SetTexture(texture)
+                    local vClone = meta.visualClone or btn.visualClone
+                    if vClone and vClone.icon then
+                        vClone.icon:SetTexture(texture)
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -4314,9 +4364,11 @@ eventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 -- Usability events
 eventFrame:RegisterEvent("SPELL_UPDATE_USABLE")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("UNIT_AURA") 
+eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
+-- Spell override events (procs that change spell icons, e.g. Maul -> Raze)
+eventFrame:RegisterEvent("SPELL_UPDATE_ICON")
 -- Active state (checked) events
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
@@ -4333,6 +4385,9 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
         Wise:UpdateAllUsability()
         Wise:UpdateAllCooldowns()
     elseif event == "SPELL_UPDATE_USABLE" then
+        Wise:UpdateAllUsability()
+    elseif event == "SPELL_UPDATE_ICON" then
+        Wise:UpdateAllOverrideIcons()
         Wise:UpdateAllUsability()
     elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
         Wise:UpdateAllUsability()

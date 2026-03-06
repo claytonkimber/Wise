@@ -52,9 +52,10 @@ function Wise:AddInterfaceTooltip(btn)
 
             if not spellID then
                 if tonumber(value) then
-                    spellID = tonumber(value)
+                    spellID = Wise:GetOverrideSpellID(tonumber(value)) or tonumber(value)
                 else
-                    local info = C_Spell.GetSpellInfo(value)
+                    local overrideValue = Wise:GetOverrideSpellID(value) or value
+                    local info = C_Spell.GetSpellInfo(overrideValue)
                     if info then spellID = info.spellID end
                 end
             end
