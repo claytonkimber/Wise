@@ -343,6 +343,19 @@ function Wise:RefreshPropertiesPanel()
         tinsert(panel.controls, lockedLabel)
         return
     end
+
+    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+
+    if group and group.isLocked then
+        Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
+        local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lockedLabel:SetPoint("TOPLEFT", 10, -30)
+        lockedLabel:SetWidth(200)
+        lockedLabel:SetJustifyH("LEFT")
+        lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
+        tinsert(panel.controls, lockedLabel)
+        return
+    end
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
     -- Check Validation
@@ -1782,7 +1795,8 @@ function Wise:RenderGroupProperties(panel, group, y)
         local styles = {
             {val="rounded", text="Rounded"},
             {val="square", text="Square"},
-            {val="round", text="Round"}
+            {val="round", text="Round"},
+            {val="invisible", text="Invisible"}
         }
 
         for _, styleMode in ipairs(styles) do

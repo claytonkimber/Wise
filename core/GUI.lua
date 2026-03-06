@@ -2517,12 +2517,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
             -- Masque Support
             if Wise.MasqueGroup then
-                Wise.MasqueGroup:AddButton(btn, {
-                    Icon = btn.icon,
-                    Cooldown = btn.cooldown,
-                    Count = btn.count,
-                    HotKey = btn.keybind,
-                })
+                if iconStyle == "invisible" then
+                    Wise.MasqueGroup:RemoveButton(btn)
+                else
+                    Wise.MasqueGroup:AddButton(btn, {
+                        Icon = btn.icon,
+                        Cooldown = btn.cooldown,
+                        Count = btn.count,
+                        HotKey = btn.keybind,
+                    })
+                end
             end
             
             -- Tooltip support
@@ -2811,13 +2815,30 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local isValid = isKnown and categoryMatch
         btn.isValid = isValid
         
-        if isValid then
-            -- Initial state saturated; Usability check will refine this later
-            btn.icon:SetDesaturated(false)
-            btn.icon:SetAlpha(1)
+        if iconStyle == "invisible" then
+            btn:EnableMouse(false)
+            btn.icon:SetAlpha(0)
+            if btn.cooldown then btn.cooldown:SetAlpha(0) end
+            if btn.activeHighlight then btn.activeHighlight:SetAlpha(0) end
+            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(0) end
+            if btn.count then btn.count:SetAlpha(0) end
+            if btn.keybind then btn.keybind:SetAlpha(0) end
         else
-            btn.icon:SetDesaturated(true)
-            btn.icon:SetAlpha(0.5)
+            btn:EnableMouse(true)
+            if btn.cooldown then btn.cooldown:SetAlpha(1) end
+            if btn.activeHighlight then btn.activeHighlight:SetAlpha(1) end
+            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(1) end
+            if btn.count then btn.count:SetAlpha(1) end
+            if btn.keybind then btn.keybind:SetAlpha(1) end
+
+            if isValid then
+                -- Initial state saturated; Usability check will refine this later
+                btn.icon:SetDesaturated(false)
+                btn.icon:SetAlpha(1)
+            else
+                btn.icon:SetDesaturated(true)
+                btn.icon:SetAlpha(0.5)
+            end
         end
         
         -- Update count (items, consumable spells, and spell charges)
@@ -2910,12 +2931,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
                  -- Masque Support
                  if Wise.MasqueGroup then
-                    Wise.MasqueGroup:AddButton(vBtn, {
-                        Icon = vBtn.icon,
-                        Cooldown = vBtn.cooldown,
-                        Count = vBtn.count,
-                        HotKey = vBtn.keybind,
-                    })
+                        if visualIconStyle == "invisible" then
+                            Wise.MasqueGroup:RemoveButton(vBtn)
+                        else
+                            Wise.MasqueGroup:AddButton(vBtn, {
+                                Icon = vBtn.icon,
+                                Cooldown = vBtn.cooldown,
+                                Count = vBtn.count,
+                                HotKey = vBtn.keybind,
+                            })
+                        end
                  end
 
                  -- Tooltip support
@@ -2946,12 +2971,26 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              end
              
              -- Apply Desaturation (same as real button)
-             if isKnown and categoryMatch then
-                vBtn.icon:SetDesaturated(false)
-                vBtn.icon:SetAlpha(1)
+             if visualIconStyle == "invisible" then
+                 vBtn.icon:SetAlpha(0)
+                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(0) end
+                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(0) end
+                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(0) end
+                 if vBtn.count then vBtn.count:SetAlpha(0) end
+                 if vBtn.keybind then vBtn.keybind:SetAlpha(0) end
              else
-                vBtn.icon:SetDesaturated(true)
-                vBtn.icon:SetAlpha(0.5)
+                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(1) end
+                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(1) end
+                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(1) end
+                 if vBtn.count then vBtn.count:SetAlpha(1) end
+                 if vBtn.keybind then vBtn.keybind:SetAlpha(1) end
+                 if isKnown and categoryMatch then
+                    vBtn.icon:SetDesaturated(false)
+                    vBtn.icon:SetAlpha(1)
+                 else
+                    vBtn.icon:SetDesaturated(true)
+                    vBtn.icon:SetAlpha(0.5)
+                 end
              end
              
              -- Sync count (mirror position, font, and text from real button)
@@ -4123,8 +4162,13 @@ function Wise:UpdateButtonUsability(btn)
         end
     end
 
+    local _, _, _, _, _, _, _, _, _, _, showGlows, _, iconStyle = Wise:GetGroupDisplaySettings(btn.groupName)
+    if iconStyle == "invisible" then
+        btn.icon:SetAlpha(0)
+        if vIcon then vIcon:SetAlpha(0) end
+    end
+
     -- Proc Glow Handling
-    local _, _, _, _, _, _, _, _, _, _, showGlows = Wise:GetGroupDisplaySettings(btn.groupName)
     
     local shouldGlow = false
     if showGlows and spellID then
