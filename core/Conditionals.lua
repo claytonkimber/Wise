@@ -206,9 +206,10 @@ Wise.opieConditionals = {
     { name = "mailbox", desc = "Mailbox is open" },
     { name = "auctionhouse", desc = "Auction House is open" },
 
-    -- Zone / Extra Abilities
+    -- Zone & Extra Abilities
     { type = "header", text = "Zone & Extra Abilities" },
     { name = "zoneability", desc = "Zone ability is available (garrison, covenant, etc)" },
+    { name = "aml:slot name", desc = "Addon Loading Magic slot is active", skipeval = true },
 
     -- Non-Secure (Combat Restricted)
     { type = "header", text = "Non-Secure Conditionals" },
@@ -430,6 +431,8 @@ function Wise:GetConditionalValue(name)
         return page or tostring(GetActionBarPage())
     elseif base == "pet" then
         return UnitName("pet") or "No Pet"
+    elseif base == "aml" then
+        return "Loaded Status"
     end
     
     
@@ -524,6 +527,9 @@ function Wise:ValidateVisibilityCondition(str)
             if token ~= "" then
                 -- Check for 'wise:' prefix (Custom Dependency)
                 if token:match("^wise:") then
+                    -- Valid
+                -- Check for 'aml:' prefix (Addon Loading Magic)
+                elseif token:lower():match("^aml:") then
                     -- Valid
                 -- Check for 'target=' prefix
                 elseif token:lower():match("^target=") then

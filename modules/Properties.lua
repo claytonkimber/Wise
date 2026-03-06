@@ -110,10 +110,20 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
             end
         end
 
-        if data.isSlotBinding then
-            data.group.actions[data.slotIdx].keybind = data.key
+        if data.group then
+            if data.isSlotBinding then
+                data.group.actions[data.slotIdx].keybind = data.key
+            else
+                data.group.binding = data.key
+            end
         else
-            data.group.binding = data.key
+            -- It's an Addon Loading Magic slot or something that manages its own binding via slotIdx
+            if type(data.slotIdx) == "string" and string.match(data.slotIdx, "^addon_magic_(%d+)$") then
+                 local amSlotIdx = tonumber(string.match(data.slotIdx, "^addon_magic_(%d+)$"))
+                 if amSlotIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amSlotIdx] then
+                     WiseDB.addonMagicSlots[amSlotIdx].keybind = data.key
+                 end
+            end
         end
         Wise:UpdateBindings()
         if data.btn then
@@ -124,10 +134,21 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
     OnCancel = function(self, data)
         -- Revert text
         if data.btn then
-            if data.isSlotBinding then
-                data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
+            if data.group then
+                if data.isSlotBinding then
+                    data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
+                else
+                    data.btn:SetText(data.group.binding or "None")
+                end
             else
-                data.btn:SetText(data.group.binding or "None")
+                local defaultText = "None"
+                if type(data.slotIdx) == "string" and string.match(data.slotIdx, "^addon_magic_(%d+)$") then
+                     local amSlotIdx = tonumber(string.match(data.slotIdx, "^addon_magic_(%d+)$"))
+                     if amSlotIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amSlotIdx] then
+                         defaultText = WiseDB.addonMagicSlots[amSlotIdx].keybind or "None"
+                     end
+                end
+                data.btn:SetText(defaultText)
             end
         end
     end,
@@ -327,6 +348,27 @@ function Wise:RefreshPropertiesPanel()
              msgLabel:SetText("Bar Copy module not loaded.")
              tinsert(panel.controls, msgLabel)
         end
+        return
+    end
+
+    -- Special case: Addon Loading Magic Tool
+    if Wise.ADDON_MAGIC_TEMPLATE and Wise.selectedGroup == Wise.ADDON_MAGIC_TEMPLATE then
+        Wise.OptionsFrame.Right.Title:SetText("Addon Loading Magic")
+
+        local y = -30
+
+        if Wise.selectedAMSlot and Wise.CreateAddonMagicPropertiesPanel then
+            y = Wise:CreateAddonMagicPropertiesPanel(panel, Wise.selectedAMSlot, y)
+        else
+            local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            msgLabel:SetPoint("TOPLEFT", 10, y)
+            msgLabel:SetWidth(200)
+            msgLabel:SetJustifyH("LEFT")
+            msgLabel:SetText("Select a slot to configure its addons, or click 'Add New Slot' to create one.")
+            tinsert(panel.controls, msgLabel)
+        end
+
+        panel:SetHeight(math.abs(y) + 50)
         return
     end
 
@@ -774,6 +816,9 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     end
 
     y = y - 10
+
+    -- Legacy addon_magic misc actions are no longer supported here.
+    -- Addon Loading Magic is now a dedicated tool in the Tools section.
 
     -- Show Tooltip checkbox (for Extra Action Button)
     if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability") then

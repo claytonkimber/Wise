@@ -1320,6 +1320,9 @@ function Wise:BuildVisibilityDriver(f, group)
     showStr = Sanitize(showStr)
     hideStr = Sanitize(hideStr)
     
+    showStr = Wise:SanitizeMacroCondition(showStr)
+    hideStr = Wise:SanitizeMacroCondition(hideStr)
+    
     showStr = SanitizeCustom(showStr)
     hideStr = SanitizeCustom(hideStr)
 
@@ -1380,10 +1383,68 @@ end
 
 -- Helper: Compute secure attributes for a given action data table
 -- Returns secureType, secureAttr, secureValue
+function Wise:SanitizeMacroCondition(str)
+    if not str or str == "" then return str end
+    str = str:gsub("%[([^%]]+)%]", function(inner)
+        for token in inner:gmatch("[^,]+") do
+            token = token:match("^%s*(.-)%s*$")
+            local base, arg = token:match("^(.-):(.*)$")
+            if not base then base = token end
+            if base:lower() == "aml" then
+                local isActive = false
+                if WiseDB and WiseDB.addonMagicSlots then
+                    local slotName = (arg or ""):lower()
+                    for _, slot in ipairs(WiseDB.addonMagicSlots) do
+                        if slot.name and slot.name:lower() == slotName then
+                            isActive = true
+                            if slot.addons and #slot.addons > 0 then
+                                for _, a in ipairs(slot.addons) do
+                                    if not C_AddOns.IsAddOnLoaded(a) then
+                                        isActive = false
+                                        break
+                                    end
+                                end
+                            else
+                                isActive = false
+                            end
+                            break
+                        end
+                    end
+                end
+                
+                if not isActive then
+                    return "[actionbar:99]"
+                end
+            end
+        end
+        
+        local cleanInner = inner:gsub("%s*aml:[^,]+,?%s*", "")
+        cleanInner = cleanInner:gsub(",%s*$", "")
+        cleanInner = cleanInner:gsub("^%s*,", "")
+        cleanInner = cleanInner:gsub(",%s*,", ",")
+        
+        if cleanInner:match("^%s*$") then
+            return "[]"
+        end
+        return "[" .. cleanInner .. "]"
+    end)
+    return str
+end
+
 function Wise:GetSecureAttributes(actionData, conditions)
     local aType = actionData.type
     local aValue = actionData.value
     local hasCond = conditions and conditions ~= ""
+    
+    if hasCond then
+        conditions = Wise:SanitizeMacroCondition(conditions)
+        -- If our sanitization wiped it out or replaced it, update hasCond
+        -- "[]" is technically still a condition, but we want it to apply as unconditional
+        if conditions == "[]" then
+            conditions = ""
+            hasCond = false
+        end
+    end
 
     local secureType = "macro"
     local secureAttr = "macrotext"
@@ -3800,6 +3861,29 @@ function Wise:UpdateBindings()
                 if btn:IsShown() then
                     Wise:Text_UpdateKeybind(btn, name, showKeybinds)
                 end
+            end
+        end
+    end
+
+    -- 4. Addon Loading Magic Slot Bindings
+    if WiseDB.addonMagicSlots then
+        for i, slot in ipairs(WiseDB.addonMagicSlots) do
+            if slot.keybind and string.len(slot.keybind) > 0 then
+                local btnName = "WiseAddonMagicBtn_" .. i
+                local btn = _G[btnName]
+                if not btn then
+                    btn = CreateFrame("Button", btnName, UIParent, "SecureActionButtonTemplate")
+                    btn:SetScript("OnClick", function()
+                        if not InCombatLockdown() then
+                            if Wise.ExecuteAddonMagic then
+                                Wise:ExecuteAddonMagic(i)
+                            end
+                        else
+                            print("|cff00ccff[Wise]|r Cannot trigger Addon Loading Magic in combat.")
+                        end
+                    end)
+                end
+                SetOverrideBindingClick(Wise.BindingFrame, true, slot.keybind, btnName)
             end
         end
     end

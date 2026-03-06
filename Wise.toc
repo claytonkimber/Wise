@@ -45,3 +45,4 @@ modules\BugReport.lua
 # Wiser
 wiser\SmartItem.lua
 wiser\BarCopy.lua
+wiser\AddonMagic.lua
