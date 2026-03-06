@@ -1902,25 +1902,67 @@ end
 
 function Wise:UpdateAddonVisibility()
     if not WiseDB or not WiseDB.groups then return end
-    local addonsGroup = WiseDB.groups["Addon visibility"]
+    local addonsGroup = WiseDB.groups[Wise.ADDON_VIS_TEMPLATE]
     if not addonsGroup then return end
-    local parts = {}
+
+    -- Build group-level driver string as fallback
+    local groupParts = {}
     if addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
-        table.insert(parts, addonsGroup.visibilitySettings.customShow .. " show")
+        table.insert(groupParts, addonsGroup.visibilitySettings.customShow .. " show")
     end
     if addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
-        table.insert(parts, addonsGroup.visibilitySettings.customHide .. " hide")
+        table.insert(groupParts, addonsGroup.visibilitySettings.customHide .. " hide")
     end
     local baseState = "show"
     if addonsGroup.visibilitySettings.baseVisibility == "ALWAYS_HIDDEN" or addonsGroup.visibilitySettings.baseVisibility == "COMBAT_ONLY" then
         baseState = "hide"
     end
-    table.insert(parts, baseState)
-    local driverString = table.concat(parts, "; ")
-    for _, action in ipairs(addonsGroup.buttons or {}) do
+    table.insert(groupParts, baseState)
+    local groupDriver = table.concat(groupParts, "; ")
+
+    -- Collect actions from both buttons (legacy) and actions (migrated) lists
+    local actionList = {}
+    if addonsGroup.buttons then
+        for _, btn in ipairs(addonsGroup.buttons) do
+            table.insert(actionList, btn)
+        end
+    end
+    if addonsGroup.actions then
+        for _, slotActions in pairs(addonsGroup.actions) do
+            for _, act in ipairs(slotActions) do
+                table.insert(actionList, act)
+            end
+        end
+    end
+
+    for _, action in ipairs(actionList) do
         if action.type == "addonvisibility" and action.addonFrame and action.addonFrame ~= "" then
             local frame = _G[action.addonFrame]
             if frame then
+                local driverString = groupDriver
+                -- Per-action visibility overrides group-level
+                local avs = action.visibilitySettings
+                if avs then
+                    local hasShow = avs.customShow and avs.customShow ~= ""
+                    local hasHide = avs.customHide and avs.customHide ~= ""
+                    if hasShow or hasHide then
+                        local actionParts = {}
+                        if hasShow then
+                            table.insert(actionParts, avs.customShow .. " show")
+                        end
+                        if hasHide then
+                            table.insert(actionParts, avs.customHide .. " hide")
+                        end
+                        if hasShow and not hasHide then
+                            table.insert(actionParts, "hide")
+                        elseif hasHide and not hasShow then
+                            table.insert(actionParts, "show")
+                        else
+                            table.insert(actionParts, "show")
+                        end
+                        driverString = table.concat(actionParts, "; ")
+                    end
+                end
                 RegisterStateDriver(frame, "visibility", driverString)
             end
         end
@@ -1976,7 +2018,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         else group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN" end
     end
     
-    if name == "Addon visibility" then
+    if Wise.ADDON_VIS_TEMPLATE and name == Wise.ADDON_VIS_TEMPLATE then
         Wise:UpdateAddonVisibility()
     end
 

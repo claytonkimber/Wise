@@ -37,6 +37,233 @@ function Wise:ValidateMouseWheelBinding(group, isSlot)
     return false, "Mouse Wheel inputs can only be used with 'Toggle on Press' (no trigger) or 'On Key Press' trigger methods."
 end
 
+-- Reusable frame picker: click-drag to isolate, then pick from list
+-- callback(frameName) is called when a frame is selected
+function Wise:OpenFramePicker(callback)
+    local pickerSkip = {
+        ["WiseFramePicker"] = true,
+        ["WiseFramePickerList"] = true,
+        ["UIParent"] = true,
+        ["WorldFrame"] = true,
+    }
+
+    local strataOrder = {
+        WORLD = 0, BACKGROUND = 1, LOW = 2, MEDIUM = 3,
+        HIGH = 4, DIALOG = 5, FULLSCREEN = 6,
+        FULLSCREEN_DIALOG = 7, TOOLTIP = 8,
+    }
+
+    local picker = CreateFrame("Frame", "WiseFramePicker", UIParent)
+    picker:SetFrameStrata("TOOLTIP")
+    picker:SetAllPoints()
+    picker:EnableMouse(true)
+    picker:EnableKeyboard(true)
+
+    -- Dim overlay so the user can see what they're targeting
+    local dimTex = picker:CreateTexture(nil, "BACKGROUND")
+    dimTex:SetAllPoints()
+    dimTex:SetColorTexture(0, 0, 0, 0.3)
+
+    local instructionLabel = picker:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    instructionLabel:SetPoint("TOP", UIParent, "TOP", 0, -20)
+    instructionLabel:SetText("Click and drag across the addon frame. Escape to cancel.")
+    instructionLabel:SetTextColor(1, 0.82, 0)
+
+    -- Visual drag rectangle
+    local dragTex = picker:CreateTexture(nil, "OVERLAY")
+    dragTex:SetColorTexture(0, 1, 0, 0.25)
+    dragTex:Hide()
+
+    local dragging = false
+    local startX, startY = 0, 0
+
+    local function GetScaledCursor()
+        local scale = UIParent:GetEffectiveScale()
+        local cx, cy = GetCursorPosition()
+        return cx / scale, cy / scale
+    end
+
+    -- Check if a point (px, py) is inside a frame's bounds
+    local function PointInFrame(f, px, py)
+        local okL, left = pcall(f.GetLeft, f)
+        local okR, right = pcall(f.GetRight, f)
+        local okT, top = pcall(f.GetTop, f)
+        local okB, bottom = pcall(f.GetBottom, f)
+        if not (okL and okR and okT and okB and left and right and top and bottom) then
+            return false
+        end
+        return px >= left and px <= right and py >= bottom and py <= top
+    end
+
+    -- Collect frames that contain BOTH points (start and end of drag)
+    local function CollectFramesInRegion(x1, y1, x2, y2)
+        local frames = {}
+        local seen = {}
+        local f = EnumerateFrames()
+        while f do
+            if f ~= picker and f.GetName then
+                local okV, isVis = pcall(f.IsVisible, f)
+                if okV and isVis then
+                    local name = f:GetName()
+                    if name and name ~= "" and not pickerSkip[name] and not seen[name] then
+                        if PointInFrame(f, x1, y1) and PointInFrame(f, x2, y2) then
+                            seen[name] = true
+                            local okS, st = pcall(f.GetFrameStrata, f)
+                            local okLv, lv = pcall(f.GetFrameLevel, f)
+                            local s = (okS and strataOrder[st]) or 0
+                            local l = (okLv and lv) or 0
+                            -- Compute area — smaller frames are more specific
+                            local okW, w = pcall(f.GetWidth, f)
+                            local okH, h = pcall(f.GetHeight, f)
+                            local area = (okW and okH and w and h) and (w * h) or 999999
+                            table.insert(frames, { name = name, strata = s, level = l, area = area })
+                        end
+                    end
+                end
+            end
+            f = EnumerateFrames(f)
+        end
+        -- Sort by area ascending (smallest/most specific first)
+        table.sort(frames, function(a, b) return a.area < b.area end)
+        return frames
+    end
+
+    local function ShowFrameList(frames)
+        picker:Hide()
+
+        local ROW_HEIGHT = 22
+        local listHeight = math.min(#frames * ROW_HEIGHT + 44, 400)
+        local list = CreateFrame("Frame", "WiseFramePickerList", UIParent, "BackdropTemplate")
+        list:SetFrameStrata("TOOLTIP")
+        list:SetSize(320, listHeight)
+        list:SetPoint("CENTER")
+        list:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        list:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        list:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+        list:EnableMouse(true)
+        list:EnableKeyboard(true)
+        list:SetMovable(true)
+        list:RegisterForDrag("LeftButton")
+        list:SetScript("OnDragStart", function(self) self:StartMoving() end)
+        list:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+
+        local title = list:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        title:SetPoint("TOP", 0, -8)
+        title:SetText("Select Frame (" .. #frames .. " found)")
+        title:SetTextColor(1, 0.82, 0)
+
+        -- Scroll area
+        local scrollParent = CreateFrame("Frame", nil, list)
+        scrollParent:SetPoint("TOPLEFT", 8, -32)
+        scrollParent:SetPoint("BOTTOMRIGHT", -8, 8)
+        scrollParent:SetClipsChildren(true)
+
+        local content = CreateFrame("Frame", nil, scrollParent)
+        content:SetSize(scrollParent:GetWidth(), #frames * ROW_HEIGHT)
+        content:SetPoint("TOPLEFT")
+
+        local scrollOffset = 0
+        local maxScroll = math.max(0, #frames * ROW_HEIGHT - scrollParent:GetHeight())
+
+        scrollParent:EnableMouseWheel(true)
+        scrollParent:SetScript("OnMouseWheel", function(self, delta)
+            scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - delta * ROW_HEIGHT * 3))
+            content:SetPoint("TOPLEFT", 0, scrollOffset)
+        end)
+
+        for i, info in ipairs(frames) do
+            local row = CreateFrame("Button", nil, content)
+            row:SetSize(content:GetWidth(), ROW_HEIGHT)
+            row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
+
+            local rowBg = row:CreateTexture(nil, "BACKGROUND")
+            rowBg:SetAllPoints()
+            if i % 2 == 0 then
+                rowBg:SetColorTexture(1, 1, 1, 0.05)
+            else
+                rowBg:SetColorTexture(0, 0, 0, 0)
+            end
+
+            local rowText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            rowText:SetPoint("LEFT", 6, 0)
+            rowText:SetPoint("RIGHT", -6, 0)
+            rowText:SetJustifyH("LEFT")
+            rowText:SetText(info.name)
+
+            row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+            row:SetScript("OnClick", function()
+                callback(info.name)
+                list:Hide()
+            end)
+        end
+
+        list:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                self:SetPropagateKeyboardInput(false)
+                self:Hide()
+            else
+                self:SetPropagateKeyboardInput(true)
+            end
+        end)
+    end
+
+    picker:SetScript("OnMouseDown", function(self, button)
+        if button == "RightButton" then
+            self:Hide()
+            return
+        end
+        startX, startY = GetScaledCursor()
+        dragging = true
+        dragTex:ClearAllPoints()
+        dragTex:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", startX, startY)
+        dragTex:SetSize(1, 1)
+        dragTex:Show()
+    end)
+
+    picker:SetScript("OnUpdate", function()
+        if not dragging then return end
+        local cx, cy = GetScaledCursor()
+        local left = math.min(startX, cx)
+        local bottom = math.min(startY, cy)
+        local w = math.max(math.abs(cx - startX), 1)
+        local h = math.max(math.abs(cy - startY), 1)
+        dragTex:ClearAllPoints()
+        dragTex:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
+        dragTex:SetSize(w, h)
+    end)
+
+    picker:SetScript("OnMouseUp", function(self, button)
+        if not dragging then return end
+        dragging = false
+        dragTex:Hide()
+
+        local endX, endY = GetScaledCursor()
+        local frames = CollectFramesInRegion(startX, startY, endX, endY)
+        if #frames > 0 then
+            ShowFrameList(frames)
+        else
+            self:Hide()
+        end
+    end)
+
+    picker:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            dragging = false
+            dragTex:Hide()
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+end
+
 local function CreateConditionValidator(editBox, panel)
     local status = CreateFrame("Button", nil, panel)
     status:SetSize(20, 20)
@@ -656,12 +883,12 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         y = y - 20
         local avLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         avLabel:SetPoint("TOPLEFT", 10, y)
-        avLabel:SetText("Addon Frame Name (e.g., ATTClassicFrame):")
+        avLabel:SetText("Addon Frame:")
         tinsert(panel.controls, avLabel)
 
         y = y - 20
         local avEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        avEdit:SetSize(180, 20)
+        avEdit:SetSize(150, 20)
         avEdit:SetPoint("TOPLEFT", 14, y)
         avEdit:SetAutoFocus(false)
         avEdit:SetText(action.addonFrame or "")
@@ -675,7 +902,175 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         avEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
         tinsert(panel.controls, avEdit)
-        y = y - 20
+
+        -- Frame Picker Button
+        local pickFrameBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+        pickFrameBtn:SetSize(50, 22)
+        pickFrameBtn:SetPoint("LEFT", avEdit, "RIGHT", 4, 0)
+        pickFrameBtn:SetText("Pick")
+        pickFrameBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Pick Frame", 1, 1, 1)
+            GameTooltip:AddLine("Click, then mouse over the addon frame you want to control and click it.", nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        pickFrameBtn:SetScript("OnLeave", GameTooltip_Hide)
+        pickFrameBtn:SetScript("OnClick", function()
+            Wise:OpenFramePicker(function(frameName)
+                action.addonFrame = frameName
+                avEdit:SetText(frameName)
+                Wise:UpdateGroupDisplay(Wise.selectedGroup)
+            end)
+        end)
+        tinsert(panel.controls, pickFrameBtn)
+        y = y - 30
+
+        -- Per-Action Visibility Conditionals
+        if not action.visibilitySettings then action.visibilitySettings = {} end
+        local avs = action.visibilitySettings
+
+        local avVisLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        avVisLabel:SetPoint("TOPLEFT", 10, y)
+        avVisLabel:SetText("Addon Visibility (Easy Mode):")
+        tinsert(panel.controls, avVisLabel)
+        y = y - 22
+
+        local function GetActionVisMode()
+            local s = avs.customShow or ""
+            local h = avs.customHide or ""
+            if s == "" and h == "" then return "inherit" end
+            if s == "[always]" and h == "" then return "always" end
+            if h == "[always]" and s == "" then return "hidden" end
+            if s == "[combat]" and h == "" then return "combat" end
+            if s == "[nocombat]" and h == "" then return "nocombat" end
+            return nil -- custom
+        end
+
+        local function SetActionVisMode(mode, enable)
+            avs.customShow = ""
+            avs.customHide = ""
+            if not enable then return end
+            if mode == "inherit" then
+                -- clear both = inherit from group
+            elseif mode == "always" then
+                avs.customShow = "[always]"
+            elseif mode == "hidden" then
+                avs.customHide = "[always]"
+            elseif mode == "combat" then
+                avs.customShow = "[combat]"
+            elseif mode == "nocombat" then
+                avs.customShow = "[nocombat]"
+            end
+        end
+
+        local avCurrentMode = GetActionVisMode()
+
+        local function CreateActionVisCheck(mode, label)
+            local chk = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+            chk:SetPoint("TOPLEFT", 10, y)
+            chk.text = chk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            chk.text:SetPoint("LEFT", chk, "RIGHT", 5, 0)
+            chk.text:SetText(label)
+            chk:SetChecked(avCurrentMode == mode)
+            chk:SetScript("OnClick", function(self)
+                SetActionVisMode(mode, self:GetChecked())
+                Wise:RefreshPropertiesPanel()
+                C_Timer.After(0, function()
+                    if not InCombatLockdown() then
+                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                    end
+                end)
+            end)
+            tinsert(panel.controls, chk)
+            tinsert(panel.controls, chk.text)
+            y = y - 22
+            return chk
+        end
+
+        CreateActionVisCheck("inherit", "Use Group Setting")
+        CreateActionVisCheck("always", "Always Visible")
+        CreateActionVisCheck("hidden", "Always Hidden")
+        CreateActionVisCheck("combat", "Show In Combat")
+        CreateActionVisCheck("nocombat", "Show Out of Combat")
+        y = y - 8
+
+        -- Hard Mode: Custom Show / Hide
+        local avHardLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        avHardLabel:SetPoint("TOPLEFT", 10, y)
+        avHardLabel:SetText("Addon Visibility (Hard Mode):")
+        tinsert(panel.controls, avHardLabel)
+        y = y - 22
+
+        local avShowLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        avShowLabel:SetPoint("TOPLEFT", 10, y)
+        avShowLabel:SetText("Custom Show Condition:")
+        tinsert(panel.controls, avShowLabel)
+        y = y - 18
+
+        local avShowEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        avShowEdit:SetSize(200, 24)
+        avShowEdit:SetPoint("TOPLEFT", 14, y)
+        avShowEdit:SetAutoFocus(false)
+        avShowEdit:SetText(avs.customShow or "")
+        avShowEdit:SetCursorPosition(0)
+
+        local function SaveActionShow(self)
+            local newText = self:GetText()
+            if avs.customShow == newText then return end
+            avs.customShow = newText
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end
+
+        avShowEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        avShowEdit:SetScript("OnEditFocusLost", function(self) SaveActionShow(self) end)
+        avShowEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        tinsert(panel.controls, avShowEdit)
+        tinsert(panel.controls, CreateConditionValidator(avShowEdit, panel))
+        y = y - 35
+
+        local avHideLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        avHideLabel:SetPoint("TOPLEFT", 10, y)
+        avHideLabel:SetText("Custom Hide Condition:")
+        tinsert(panel.controls, avHideLabel)
+        y = y - 18
+
+        local avHideEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        avHideEdit:SetSize(200, 24)
+        avHideEdit:SetPoint("TOPLEFT", 14, y)
+        avHideEdit:SetAutoFocus(false)
+        avHideEdit:SetText(avs.customHide or "")
+        avHideEdit:SetCursorPosition(0)
+
+        local function SaveActionHide(self)
+            local newText = self:GetText()
+            if avs.customHide == newText then return end
+            avs.customHide = newText
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end
+
+        avHideEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        avHideEdit:SetScript("OnEditFocusLost", function(self) SaveActionHide(self) end)
+        avHideEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        tinsert(panel.controls, avHideEdit)
+        tinsert(panel.controls, CreateConditionValidator(avHideEdit, panel))
+        y = y - 30
+
+        local avSpacer = panel:CreateTexture(nil, "ARTWORK")
+        avSpacer:SetColorTexture(1, 1, 1, 0.2)
+        avSpacer:SetSize(200, 1)
+        avSpacer:SetPoint("TOPLEFT", 10, y)
+        tinsert(panel.controls, avSpacer)
+        y = y - 10
     end
 
     -- Category selector (Radial Picker / Radio Buttons)
@@ -1253,8 +1648,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
     -- Rename Interface (Custom Only or Wiser if not suppressed)
     if (not group.isWiser and not suppress.Rename) or (group.isWiser and not suppress.Rename) then
-         -- For standard Wiser, we usually suppress renaming, but let's check flag
-         if not group.isWiser then
+         -- For standard Wiser and Addon Visibility, suppress renaming
+         if not group.isWiser and not group.isAddonVisibility then
              local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
              nameLabel:SetPoint("TOPLEFT", 10, y)
              nameLabel:SetText("Interface Name:")
@@ -1963,8 +2358,10 @@ function Wise:RenderGroupProperties(panel, group, y)
             local minRadius = math.ceil(effectiveIconSize / (2 * math.sin(math.pi / actionCount)))
             if minRadius < effectiveIconSize then minRadius = effectiveIconSize end -- Absolute floor
 
+            local maxRadius = math.max(200, minRadius)
             local currentRadius = group.circleRadius or (effectiveIconSize * 2)
             if currentRadius < minRadius then currentRadius = minRadius end
+            if currentRadius > maxRadius then currentRadius = maxRadius end
 
             local radLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             radLabel:SetPoint("TOPLEFT", 10, y)
@@ -1975,12 +2372,12 @@ function Wise:RenderGroupProperties(panel, group, y)
             local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
             radSlider:SetPoint("TOPLEFT", 37, y)
             radSlider:SetSize(126, 16)
-            radSlider:SetMinMaxValues(minRadius, 200)
+            radSlider:SetMinMaxValues(minRadius, maxRadius)
             radSlider:SetValue(currentRadius)
             radSlider:SetValueStep(1)
             radSlider:SetObeyStepOnDrag(true)
             radSlider.Low:SetText(tostring(minRadius))
-            radSlider.High:SetText("200")
+            radSlider.High:SetText(tostring(maxRadius))
             radSlider.Text:SetText(tostring(currentRadius))
 
 
@@ -1988,7 +2385,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                         local function UpdateRadius(v)
                 v = math.floor(v)
                 if v < minRadius then v = minRadius end
-                if v > 200 then v = 200 end
+                if v > maxRadius then v = maxRadius end
                 group.circleRadius = v
                 radSlider:SetValue(v)
                 radLabel:SetText("Radius: " .. v)

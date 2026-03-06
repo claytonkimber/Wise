@@ -374,6 +374,8 @@ function Wise:RefreshGroupList()
     for name, data in pairs(WiseDB.groups) do
         if data.isWiser then
             table.insert(wiserGroups, name)
+        elseif data.isAddonVisibility then
+            -- Shown in Tools section, skip both lists
         else
             table.insert(customGroups, name)
         end
@@ -890,6 +892,68 @@ function Wise:RefreshGroupList()
     y = y - 42
     btnIndex = btnIndex + 1
 
+    -- Addon Visibility Tool
+    if Wise.ADDON_VIS_TEMPLATE then
+        local avBtn = container.buttons[btnIndex]
+        if not avBtn then
+            avBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
+            avBtn:SetSize(230, 40)
+
+            avBtn.icon = avBtn:CreateTexture(nil, "ARTWORK")
+            avBtn.icon:SetSize(32, 32)
+            avBtn.icon:SetPoint("LEFT", 5, 0)
+
+            avBtn.label = avBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            avBtn.label:SetPoint("LEFT", avBtn.icon, "RIGHT", 10, 0)
+            avBtn.label:SetJustifyH("LEFT")
+            avBtn.label:SetWidth(175)
+            avBtn.label:SetWordWrap(false)
+
+            avBtn.kbLabel = avBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            avBtn.kbLabel:SetPoint("RIGHT", avBtn.icon, "LEFT", -5, 0)
+            avBtn.kbLabel:SetJustifyH("RIGHT")
+            avBtn.kbLabel:SetTextColor(1, 1, 1, 1)
+
+            avBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+            tinsert(container.buttons, avBtn)
+        end
+        avBtn:Show()
+        avBtn:SetPoint("TOPLEFT", 40, y)
+        if avBtn.lockBtn then avBtn.lockBtn:Hide() end
+        if avBtn.errorIcon then avBtn.errorIcon:Hide() end
+
+        avBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Eye_02")
+        avBtn.label:SetText("Addon Visibility")
+        avBtn.kbLabel:Hide()
+
+        if Wise.selectedGroup == Wise.ADDON_VIS_TEMPLATE then
+            avBtn:LockHighlight()
+        else
+            avBtn:UnlockHighlight()
+        end
+
+        avBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Addon Visibility", 1, 1, 1)
+            GameTooltip:AddLine("Control visibility of other addon frames using Wise conditionals.", 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        avBtn:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+
+        avBtn:SetScript("OnClick", function()
+            -- Ensure the group exists before selecting
+            if Wise.EnsureAddonVisGroup then Wise:EnsureAddonVisGroup() end
+            Wise.selectedGroup = Wise.ADDON_VIS_TEMPLATE
+            Wise.selectedSlot = nil
+            Wise.selectedState = nil
+            Wise:UpdateOptionsUI()
+        end)
+
+        y = y - 42
+        btnIndex = btnIndex + 1
+    end
+
     -- Hide unused buttons
     for k = btnIndex, #container.buttons do
          container.buttons[k]:Hide()
@@ -898,7 +962,7 @@ function Wise:RefreshGroupList()
     for k = 4, #container.headers do
         container.headers[k]:Hide()
     end
-    
+
     container:SetHeight(math.abs(y) + 20)
 end
 

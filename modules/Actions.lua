@@ -852,7 +852,7 @@ function Wise:GetInterface(filter)
     if not parentGroup then 
         -- Fallback if no selected group (e.g. testing?), list all
         for name, group in pairs(WiseDB.groups) do
-             if not group.isWiser and (not filter or string.find(string.lower(name), filter, 1, true)) then
+             if not group.isWiser and not group.isAddonVisibility and (not filter or string.find(string.lower(name), filter, 1, true)) then
                  local icon = Wise:GetActionIcon("interface", name)
                  table.insert(items, {type="interface", value=name, name=name, icon=icon, category="Interface"})
              end
@@ -869,7 +869,7 @@ function Wise:GetInterface(filter)
         -- Base Filters:
         -- 1. Not Wiser (Wiser Interfaces can't be selected)
         -- 2. Not Self (Cannot nest inside itself)
-        if not group.isWiser and name ~= parentName then
+        if not group.isWiser and not group.isAddonVisibility and name ~= parentName then
 
             -- Filter by text
             if not filter or string.find(string.lower(name), filter, 1, true) then
@@ -999,6 +999,7 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         if extraData.icon then newAction.icon = extraData.icon end
         if extraData.name then newAction.name = extraData.name end
         if extraData.conditions then newAction.conditions = extraData.conditions end
+        if extraData.addonFrame then newAction.addonFrame = extraData.addonFrame end
     end
     
     if not slotIndex then
@@ -2913,44 +2914,61 @@ function Wise:RefreshActionsView(container)
             addSlotBtn:Disable()
             addSlotBtn:SetScript("OnClick", nil)
         else
+            local group = WiseDB.groups[groupName]
+            local isAddonVis = (Wise.ADDON_VIS_TEMPLATE and groupName == Wise.ADDON_VIS_TEMPLATE)
+
             addSlotBtn:Enable()
+            addSlotBtn:SetText(isAddonVis and "Pick Frame to Add" or "Add New Slot")
             addSlotBtn:SetScript("OnClick", function()
-                -- 1. Determine next slot index
-                local group = WiseDB.groups[groupName]
-                Wise:MigrateGroupToActions(group)
-                
+                local grp = WiseDB.groups[groupName]
+                Wise:MigrateGroupToActions(grp)
+
                 local nextSlot = 0
-                for k in pairs(group.actions) do
+                for k in pairs(grp.actions) do
                     if type(k) == "number" and k > nextSlot then
                         nextSlot = k
                     end
                 end
                 nextSlot = nextSlot + 1
-                
-                -- 2. Create the empty slot immediately
-                if not group.actions[nextSlot] then
-                    group.actions[nextSlot] = {} -- Empty state list
-                end
-                
-                -- 3. Select this new slot
-                Wise.selectedSlot = nextSlot
-                Wise.selectedState = nil
-                
-                -- 4. Refresh View to show the new empty slot
-                Wise:RefreshActionsView(container)
-                
-                -- 5. Open Picker for this new slot
-                Wise.pickingAction = true
-                Wise.PickerCallback = function(type, value, extra)
-                    Wise:AddAction(groupName, nextSlot, type, value, nil, extra)
-                    Wise:RefreshActionsView(container)
-                    Wise:RefreshPropertiesPanel()
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+
+                if isAddonVis and Wise.OpenFramePicker then
+                    -- Addon visibility: use frame picker instead of action picker
+                    Wise:OpenFramePicker(function(frameName)
+                        Wise:AddAction(groupName, nextSlot, "addonvisibility", frameName, nil, {
+                            name = frameName,
+                            icon = "Interface\\Icons\\INV_Misc_Book_09",
+                            addonFrame = frameName,
+                        })
+                        Wise.selectedSlot = nextSlot
+                        Wise.selectedState = nil
+                        Wise:RefreshActionsView(container)
+                        Wise:RefreshPropertiesPanel()
+                        C_Timer.After(0, function()
+                            if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                        end)
                     end)
+                else
+                    -- Normal group: existing action picker flow
+                    if not grp.actions[nextSlot] then
+                        grp.actions[nextSlot] = {}
+                    end
+
+                    Wise.selectedSlot = nextSlot
+                    Wise.selectedState = nil
+                    Wise:RefreshActionsView(container)
+
+                    Wise.pickingAction = true
+                    Wise.PickerCallback = function(type, value, extra)
+                        Wise:AddAction(groupName, nextSlot, type, value, nil, extra)
+                        Wise:RefreshActionsView(container)
+                        Wise:RefreshPropertiesPanel()
+                        C_Timer.After(0, function()
+                            if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                        end)
+                    end
+                    Wise.PickerCurrentCategory = "Spell"
+                    Wise:RefreshPropertiesPanel()
                 end
-                Wise.PickerCurrentCategory = "Spell"
-                Wise:RefreshPropertiesPanel()
             end)
         end
     end
