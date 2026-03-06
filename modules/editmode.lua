@@ -561,8 +561,10 @@ function Wise:EnterEditMode()
                 -- Skip disabled interfaces and mouse-anchored groups in all edit modes
                 if Wise:IsGroupDisabled(group, name) or group.anchorMode == "mouse" then
                     Wise:SetFrameEditMode(f, name, false)
+                    if not InCombatLockdown() then f:SetAttribute("state-editmode", "hide") end
                 else
                     Wise:SetFrameEditMode(f, name, true)
+                    if not InCombatLockdown() then f:SetAttribute("state-editmode", "show") end
                     f:Show()
                     if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
                 end
@@ -580,6 +582,7 @@ function Wise:ExitEditMode()
             local f = Wise.frames[name]
             if f and Wise.SetFrameEditMode then
                 Wise:SetFrameEditMode(f, name, false)
+                if not InCombatLockdown() then f:SetAttribute("state-editmode", "hide") end
             end
             -- Force visibility refresh for ALL frames
             if Wise.UpdateGroupDisplay then
