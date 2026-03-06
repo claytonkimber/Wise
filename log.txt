@@ -1,0 +1,5 @@
+﻿dfa7aeb WIP: attempts at cooldown wiper alignment fix
+ffec004 Fix cooldown wiper alignment to match icon size
+8c16e48 Merge branch 'feature/invisible-icon-style-6723845046601772806'
+7cfa100 Change invisible from icon style to hide-empty-slots checkbox
+5ace1e9 Add invisible icon style for layout placeholders

@@ -2537,6 +2537,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn.cooldown:SetDrawSwipe(true)
             btn.cooldown:SetHideCountdownNumbers(false)
             
+            -- Fix internal template padding: re-anchor swipe texture to fill entire cooldown frame
+            local swipe = btn.cooldown.GetSwipeTexture and btn.cooldown:GetSwipeTexture()
+            if swipe then
+                swipe:ClearAllPoints()
+                swipe:SetAllPoints(btn.cooldown)
+            else
+                for j = 1, btn.cooldown:GetNumRegions() do
+                    local region = select(j, btn.cooldown:GetRegions())
+                    if region and region:GetObjectType() == "Texture" then
+                        region:ClearAllPoints()
+                        region:SetAllPoints(btn.cooldown)
+                    end
+                end
+            end
+            
             -- Text layers (count, keybind, customText) via Text module
             Wise:Text_CreateFontStrings(btn)
             
@@ -2950,6 +2965,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  vBtn.cooldown:SetDrawEdge(true)
                  vBtn.cooldown:SetDrawSwipe(true)
                  vBtn.cooldown:SetHideCountdownNumbers(false)
+                 
+                 -- Fix internal template padding: re-anchor swipe texture to fill entire cooldown frame
+                 local vSwipe = vBtn.cooldown.GetSwipeTexture and vBtn.cooldown:GetSwipeTexture()
+                 if vSwipe then
+                     vSwipe:ClearAllPoints()
+                     vSwipe:SetAllPoints(vBtn.cooldown)
+                 else
+                     for j = 1, vBtn.cooldown:GetNumRegions() do
+                         local region = select(j, vBtn.cooldown:GetRegions())
+                         if region and region:GetObjectType() == "Texture" then
+                             region:ClearAllPoints()
+                             region:SetAllPoints(vBtn.cooldown)
+                         end
+                     end
+                 end
                  
                  -- Text layers via Text module
                  Wise:Text_CreateFontStrings(vBtn)
