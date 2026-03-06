@@ -631,6 +631,7 @@ function Wise:CreateGroupFrame(name, instanceId)
     toggleBtn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
 
     local gatekeeper = [[
+        local editmode = self:GetAttribute("state-editmode") or "hide"
         local game = self:GetAttribute("state-game") or "hide"
         local manual = self:GetAttribute("state-manual") or "hide"
         local custom = self:GetAttribute("state-custom") or "hide"
@@ -638,7 +639,10 @@ function Wise:CreateGroupFrame(name, instanceId)
         local wiseHide = self:GetAttribute("state-wise-hide") or "hide"
 
         local willShow = false
-        if (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
+        if editmode == "show" then
+            willShow = true
+            self:Show()
+        elseif (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
             willShow = true
             self:Show()
         else
@@ -660,6 +664,7 @@ function Wise:CreateGroupFrame(name, instanceId)
     f:SetAttribute("_onstate-custom", gatekeeper)
     f:SetAttribute("_onstate-wise-show", gatekeeper)
     f:SetAttribute("_onstate-wise-hide", gatekeeper)
+    f:SetAttribute("_onstate-editmode", gatekeeper)
     
     -- Support for Nested Keybinds (Active only when shown)
     f:SetAttribute("_onshow", [[
@@ -1987,6 +1992,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     
     -- Gatekeeper Logic: Union of all visibility sources, with wise-hide override
     local gatekeeper = [[
+        local editmode = self:GetAttribute("state-editmode") or "hide"
         local game = self:GetAttribute("state-game") or "hide"
         local manual = self:GetAttribute("state-manual") or "hide"
         local custom = self:GetAttribute("state-custom") or "hide"
@@ -1994,7 +2000,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local wiseHide = self:GetAttribute("state-wise-hide") or "hide"
 
         local willShow = false
-        if (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
+        if editmode == "show" then
+            willShow = true
+            self:Show()
+        elseif (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
             willShow = true
             self:Show()
         else
@@ -2015,12 +2024,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     f:SetAttribute("_onstate-custom", gatekeeper)
     f:SetAttribute("_onstate-wise-show", gatekeeper)
     f:SetAttribute("_onstate-wise-hide", gatekeeper)
+    f:SetAttribute("_onstate-editmode", gatekeeper)
 
     -- Initialize Manual and Wise State if missing (Prevent reset on config update)
     if not InCombatLockdown() then
         if not f:GetAttribute("state-manual") then f:SetAttribute("state-manual", "hide") end
         if not f:GetAttribute("state-wise-show") then f:SetAttribute("state-wise-show", "hide") end
         if not f:GetAttribute("state-wise-hide") then f:SetAttribute("state-wise-hide", "hide") end
+
+        if Wise.editMode and group.anchorMode ~= "mouse" then
+            f:SetAttribute("state-editmode", "show")
+        else
+            f:SetAttribute("state-editmode", "hide")
+        end
     end
 
     -- Custom Visibility Logic (Immediate + Ticker/OnUpdate)
@@ -2209,14 +2225,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
         local wiseShowState = f:GetAttribute("state-wise-show") or "hide"
         local wiseHideState = f:GetAttribute("state-wise-hide") or "hide"
+        local editmodeState = f:GetAttribute("state-editmode") or "hide"
 
         local shouldShow = false
-        if manualState == "show" then shouldShow = true end
-        if customState == "show" then shouldShow = true end
-        if gameState == "show" then shouldShow = true end
-        if wiseShowState == "show" then shouldShow = true end
+        if editmodeState == "show" then
+            shouldShow = true
+        else
+            if manualState == "show" then shouldShow = true end
+            if customState == "show" then shouldShow = true end
+            if gameState == "show" then shouldShow = true end
+            if wiseShowState == "show" then shouldShow = true end
 
-        if wiseHideState == "show" then shouldShow = false end
+            if wiseHideState == "show" then shouldShow = false end
+        end
 
         if shouldShow then
             f:Show()
