@@ -44,6 +44,24 @@ local UnitName = UnitName
 
 Wise.characterInfo = {}
 
+function Wise:GetOverrideSpellID(spellID)
+    if not spellID then return nil end
+    if type(spellID) == "string" then
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+        if info then
+            spellID = info.spellID
+        else
+            return spellID
+        end
+    end
+    if C_Spell and C_Spell.GetOverrideSpell then
+        return C_Spell.GetOverrideSpell(spellID)
+    elseif FindSpellOverrideByID then
+        return FindSpellOverrideByID(spellID)
+    end
+    return spellID
+end
+
 -- Debug Helper
 function Wise:DebugPrint(...)
     if WiseDB and WiseDB.settings and WiseDB.settings.debug then

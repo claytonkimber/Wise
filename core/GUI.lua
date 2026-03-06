@@ -2790,7 +2790,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- Store in metadata (safe for combat)
         Wise.buttonMeta = Wise.buttonMeta or {}
         Wise.buttonMeta[btn] = {
-            spellID = spellID,
+            baseSpellID = spellID,
+            spellID = Wise:GetOverrideSpellID(spellID),
             itemID = itemID,
             actionType = aType,
             actionValue = aValue,
@@ -3140,7 +3141,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              elseif mType == "item" then
                                  itemID = mVal
                              end
-                             meta.spellID = spellID
+                             meta.baseSpellID = spellID
+                             meta.spellID = Wise:GetOverrideSpellID(spellID)
                              meta.itemID = itemID
 
                              Wise:UpdateButtonCooldown(btn)
@@ -3152,6 +3154,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              local vClone = meta.visualClone or btn.visualClone
                              if vClone and vClone.icon then vClone.icon:SetTexture(defaultIcon) end
 
+                             meta.baseSpellID = nil
                              meta.spellID = nil
                              meta.itemID = nil
 
@@ -3253,7 +3256,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                     local _, mSpellID = C_MountJournal.GetMountInfoByID(state.value)
                                     spellID = mSpellID
                                 end
-                                meta.spellID = spellID
+                                meta.baseSpellID = spellID
+                                meta.spellID = Wise:GetOverrideSpellID(spellID)
                                 meta.itemID = itemID
                                 meta.actionType = state.type
                                 meta.actionValue = state.value
@@ -3752,6 +3756,19 @@ function Wise:UpdateButtonCooldown(btn)
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
     
+    if meta and meta.baseSpellID then
+        local oldSpellID = meta.spellID
+        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+        if oldSpellID ~= meta.spellID and btn.icon then
+            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+            btn.icon:SetTexture(texture)
+            local vClone = meta.visualClone or btn.visualClone
+            if vClone and vClone.icon then
+                vClone.icon:SetTexture(texture)
+            end
+        end
+    end
+
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
@@ -4062,6 +4079,19 @@ function Wise:UpdateButtonUsability(btn)
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
     
+    if meta and meta.baseSpellID then
+        local oldSpellID = meta.spellID
+        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+        if oldSpellID ~= meta.spellID and btn.icon then
+            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+            btn.icon:SetTexture(texture)
+            local vClone = meta.visualClone or btn.visualClone
+            if vClone and vClone.icon then
+                vClone.icon:SetTexture(texture)
+            end
+        end
+    end
+
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone

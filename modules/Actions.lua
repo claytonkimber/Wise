@@ -854,13 +854,14 @@ function Wise:GetActionIcon(actionType, value, extraData)
         return 134400
 
     elseif actionType == "spell" then
+        local overrideValue = Wise:GetOverrideSpellID(value) or value
         if C_Spell and C_Spell.GetSpellInfo then
-            local spellInfo = C_Spell.GetSpellInfo(value)
+            local spellInfo = C_Spell.GetSpellInfo(overrideValue)
             if spellInfo and spellInfo.iconID then
                 texture = spellInfo.iconID
             end
         else
-            local _, _, icon = GetSpellInfo(value)
+            local _, _, icon = GetSpellInfo(overrideValue)
             if icon then texture = icon end
         end
         
