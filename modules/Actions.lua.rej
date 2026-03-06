@@ -1,0 +1,22 @@
+--- Actions.lua
++++ Actions.lua
+@@ -1280,6 +1280,8 @@
+         elseif element == "buffs" then eName = "Buffs"
+         elseif element == "debuffs" then eName = "Debuffs"
+         end
+         return (eName or element) .. " [" .. (state or "toggle") .. "]"
++    elseif actionType == "addonvisibility" then
++        return "Addon: " .. (value or "Unknown")
+     elseif actionType == "skyriding" then
+         return "Skyriding: " .. (value == "switch" and "Switch Flight Style" or "Whirling Surge")
+--- /dev/null
++++ /dev/null
+@@ -1421,6 +1423,8 @@
+          elseif element == "buffs" then texture = "Interface\\Icons\\Spell_Magic_LesserInvisibilty"
+          elseif element == "debuffs" then texture = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras"
+          end
++    elseif actionType == "addonvisibility" then
++         texture = "Interface\\Icons\\INV_Misc_Book_09"
+     elseif actionType == "misc" then
+          if value == "hearthstone" then texture = "Interface\\Icons\\INV_Misc_Rune_01"
+          elseif value == "extrabutton" then texture = "Interface\\Icons\\Temp"

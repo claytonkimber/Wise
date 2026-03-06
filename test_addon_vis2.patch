@@ -1,0 +1,7 @@
+--- Wise.toc
++++ Wise.toc
+@@ -34,3 +34,4 @@
+ # Wiser
+ wiser\SmartItem.lua
+ wiser\BarCopy.lua
++wiser\Addons.lua

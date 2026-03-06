@@ -1,0 +1,39 @@
+--- core/GUI.lua
++++ core/GUI.lua
+@@ -1897,29 +1897,29 @@
+     return nil
+ end
+
+ function Wise:UpdateAddonVisibility()
+     if not WiseDB or not WiseDB.groups then return end
+     local addonsGroup = WiseDB.groups["Addon visibility"]
+     if not addonsGroup then return end
+
+     -- Build driver string for this addon based on the same rules
+     local parts = {}
+
+     if addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
+         table.insert(parts, addonsGroup.visibilitySettings.customShow .. " show")
+     end
+
+     if addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
+         table.insert(parts, addonsGroup.visibilitySettings.customHide .. " hide")
+     end
+
+     table.insert(parts, "show") -- Default base? Wait, should probably match the group's baseVisibility
+
+     local driverString = table.concat(parts, "; ")
+
+     for _, action in ipairs(addonsGroup.buttons or {}) do
+-        if action.type == "addonvisibility" and action.value == "AllTheThings" then
+-            if _G.AllTheThingsWindow then
+-                RegisterStateDriver(_G.AllTheThingsWindow, "visibility", driverString)
+-            end
++        if action.type == "addonvisibility" and action.addonFrame and action.addonFrame ~= "" then
++            local frame = _G[action.addonFrame]
++            if frame then
++                RegisterStateDriver(frame, "visibility", driverString)
++            end
+         end
+     end
+ end

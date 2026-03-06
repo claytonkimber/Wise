@@ -156,30 +156,30 @@ end
 function Wise:GetGroupDisplaySettings(groupName)
     local group = groupName and WiseDB.groups[groupName]
     local settings = WiseDB.settings or {}
-    
+
     local globalIconSize = settings.iconSize or 30
     local globalTextSize = settings.textSize or 12
     local globalFont = settings.font or "Fonts\\FRIZQT__.TTF"
     local globalIconStyle = settings.iconStyle or "rounded"
-    
+
     local iconSize = globalIconSize
     local textSize = globalTextSize
     local fontPath = globalFont
     local iconStyle = globalIconStyle
-    
+
     if group then
         if group.iconSize then iconSize = group.iconSize end
         if group.textSize then textSize = group.textSize end
         if group.font then fontPath = group.font end
         if group.iconStyle then iconStyle = group.iconStyle end
     end
-    
+
     local showKeybinds = (group and group.showKeybinds ~= nil and group.showKeybinds) or (group and group.showKeybinds == nil and settings.showKeybinds) or (not group and settings.showKeybinds)
     local keybindPosition = (group and group.keybindPosition) or settings.keybindPosition
     local keybindTextSize = (group and group.keybindTextSize) or settings.keybindTextSize
     local chargeTextSize = (group and group.chargeTextSize) or settings.chargeTextSize or 12
     local chargeTextPosition = (group and group.chargeTextPosition) or settings.chargeTextPosition or "TOP"
-    
+
     local countdownTextSize = (group and group.countdownTextSize) or settings.countdownTextSize or 12
     local countdownTextPosition = (group and group.countdownTextPosition) or settings.countdownTextPosition or "CENTER"
 
@@ -191,7 +191,7 @@ function Wise:GetGroupDisplaySettings(groupName)
     local showBuffs = settings.showBuffs
     if group and group.showBuffs ~= nil then showBuffs = group.showBuffs end
     if showBuffs == nil then showBuffs = false end -- Default false
-    
+
     local showGCD = settings.showGCD
     if group and group.showGCD ~= nil then showGCD = group.showGCD end
     if showGCD == nil then showGCD = true end -- Default true
@@ -218,7 +218,7 @@ function Wise:CreateGroup(name, type)
             keybindSettings = {},
         }
     end
-    
+
     -- Ensure display is created and updated
     Wise:UpdateGroupDisplay(name)
     local f = Wise.frames[name]
@@ -247,11 +247,11 @@ function Wise:DeleteGroup(name)
         -- Unregister events/scripts to stop updates
         f:SetScript("OnUpdate", nil)
         if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
-        
+
         -- Clear from internal frame registry
         Wise.frames[name] = nil
     end
-    
+
     WiseDB.groups[name] = nil
     Wise:UpdateOptionsUI()
 end
@@ -266,21 +266,21 @@ Wise.CooldownUpdateFrame:Hide()
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
     local now = GetTime()
     local hasActive = false
-    
+
     for btn, info in pairs(Wise.ActiveCooldownButtons) do
         hasActive = true
         local start = info.start
         local duration = info.duration
         local groupName = info.groupName
         local isListMode = info.isListMode
-        
+
         local rem = 0
         local success, val = pcall(function() return (start + duration) - now end)
         if success then rem = val end
-        
+
         if rem <= 0 then
             Wise.ActiveCooldownButtons[btn] = nil
-            
+
             -- Cooldown Finished
             if isListMode then
                 if btn.timerLabel then btn.timerLabel:SetText("") end
@@ -305,12 +305,12 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                     if btn.timerLabel then btn.timerLabel:SetText(text) end
                     info.lastText = text
                 end
-                
+
                 local maxWidth = 50 -- Fixed width for now, should be dynamic if possible
-                if btn.redLine then 
+                if btn.redLine then
                      local pct = rem / duration
                      if pct > 1 then pct = 1 end
-                     btn.redLine:SetWidth(maxWidth * pct) 
+                     btn.redLine:SetWidth(maxWidth * pct)
                 end
             else
                 -- Standard Mode
@@ -322,7 +322,7 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                 else
                     text = strformat("%d", ceil(rem))
                 end
-                
+
                 if info.lastText ~= text then
                     Wise:Text_UpdateCountdown(btn, groupName, text)
                     -- Sync Visual Clone
@@ -336,7 +336,7 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
             end
         end
     end
-    
+
     if not hasActive then
         self:Hide()
     end
@@ -590,12 +590,12 @@ WiseStateDriver:SetAttribute("_onattribute-wisesetstate", [[
 function Wise:CreateGroupFrame(name, instanceId)
     local frameKey = instanceId or name
     if Wise.frames[frameKey] then return Wise.frames[frameKey] end
-    
+
     local uiName = "WiseGroup_" .. (instanceId and instanceId:gsub("[: ]", "_") or name)
     local f = CreateFrame("Frame", uiName, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
     f:SetSize(50, 50)
     f:EnableMouse(false) -- Default to click-through (enabled only in Edit Mode)
-    
+
     -- Proxy Anchor Pattern:
     -- Create an insecure anchor frame that we can move freely (even in combat).
     -- The Secure Group is anchored to this proxy.
@@ -603,29 +603,29 @@ function Wise:CreateGroupFrame(name, instanceId)
     f.Anchor = CreateFrame("Frame", nil, UIParent)
     f.Anchor:SetSize(1, 1)
     f.Anchor:SetPoint("CENTER")
-    
+
     f:ClearAllPoints()
-    f:SetPoint("CENTER", f.Anchor, "CENTER") 
+    f:SetPoint("CENTER", f.Anchor, "CENTER")
     f.buttons = {}
-    
+
     -- Visual anchor for Edit Mode
     f.texture = f:CreateTexture(nil, "BACKGROUND")
     f.texture:SetAllPoints()
     f.texture:SetColorTexture(0, 0, 0, 0.5)
     f.texture:Hide()
-    
+
     -- Secure Toggle Button (Hidden)
     -- Secure Toggle Button (Hidden but active)
     -- Must be parented to UIParent (or similar) so it doesn't get hidden when 'f' is hidden by State Driver
     local toggleBtn = CreateFrame("Button", "WiseGroupToggle_"..(instanceId and instanceId:gsub("[: ]", "_") or name), UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
     toggleBtn:RegisterForClicks("AnyDown", "AnyUp")
     -- SecureHandlerAttributeTemplate provides SetFrameRef via SecureHandler_OnLoad mixin
-    
+
     -- Debug Attribute Changes (insecure script, safe to print)
     toggleBtn:SetScript("OnAttributeChanged", function(self, key, value)
         -- Debug Attribute Changes (Cleaned up)
     end)
-    
+
     -- Keep small size to ensure pressAndHoldAction valid
     toggleBtn:SetSize(2, 2)
     toggleBtn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
@@ -649,10 +649,10 @@ function Wise:CreateGroupFrame(name, instanceId)
             willShow = false
             self:Hide()
         end
-        
+
         local groupName = self:GetAttribute("wiseGroupName")
         local driver = self:GetFrameRef("WiseStateDriver")
-        
+
         if driver and groupName then
              local driverState = willShow and "active" or "inactive"
              driver:RunAttribute("SetState", groupName, driverState)
@@ -665,23 +665,23 @@ function Wise:CreateGroupFrame(name, instanceId)
     f:SetAttribute("_onstate-wise-show", gatekeeper)
     f:SetAttribute("_onstate-wise-hide", gatekeeper)
     f:SetAttribute("_onstate-editmode", gatekeeper)
-    
+
     -- Support for Nested Keybinds (Active only when shown)
     f:SetAttribute("_onshow", [[
         local nested = self:GetAttribute("nestedKeybinds")
         if nested then
-            local max = self:GetAttribute("nested_max_keys") or 100 
+            local max = self:GetAttribute("nested_max_keys") or 100
             for i = 1, max do
                 local key = self:GetAttribute("nested_key_" .. i)
                 local btnName = self:GetAttribute("nested_btn_name_" .. i)
-                
+
                 if key and btnName then
                     self:SetBindingClick(true, key, btnName)
                 end
             end
         end
     ]])
-    
+
     f:SetAttribute("_onhide", [[
         self:ClearBindings()
     ]])
@@ -1012,60 +1012,60 @@ function Wise:CreateGroupFrame(name, instanceId)
     f.toggleBtn = toggleBtn
     f.groupName = name  -- Store for animation lookup
     f.isClosing = false -- Flag to track closing animation in progress
-    
 
-    
+
+
     -- OnUpdate for continuous mouse following (when in mouse anchor mode)
     local function MouseFollowOnUpdate(self)
         if self.mouseAnchorLocked then return end -- Locked in place on keydown (for hold/toggle modes)
-        
+
         local group = WiseDB.groups[self.groupName]
         if not group or group.anchorMode ~= "mouse" then return end
-        
+
         local x, y = GetCursorPosition()
         local offsetX = group.mouseOffsetX or 0
         local offsetY = group.mouseOffsetY or 0
-        
+
         -- Position frame at cursor using BOTTOMLEFT (raw pixel coords)
         if not InCombatLockdown() then
             self:ClearAllPoints()
             self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x + offsetX, y + offsetY)
         end
     end
-    
+
     -- Module 2: Blocker Strategy
     -- Prevent "Invisible Walls" by enabling mouse only when shown.
     f:SetScript("OnShow", function(self)
-        if self.isClosing then return end 
-        
+        if self.isClosing then return end
+
         local group = WiseDB.groups[self.groupName]
-        
+
         if group and group.anchorMode == "mouse" then
             -- Position immediately at cursor (works in combat via Proxy Anchor)
-            
+
             -- Get cursor position and correct for UI scale (like UltimateMouseCursor)
             local cursorX, cursorY = GetCursorPosition()
             local uiScale = UIParent:GetScale()
             local frameScale = self:GetScale()
-            
+
             -- Apply scale correction and offsets
             local correctedX = (cursorX / uiScale) / frameScale
             local correctedY = (cursorY / uiScale) / frameScale
             local offsetX = (group.mouseOffsetX or 0) / frameScale
             local offsetY = (group.mouseOffsetY or 0) / frameScale
-            
+
             -- Move the PROXY ANCHOR, not the secure frame
             if self.Anchor and not InCombatLockdown() then
                 self.Anchor:ClearAllPoints()
                 self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
+
             -- Move the SECURE FRAME (Only safe out of combat)
             if not InCombatLockdown() then
                  self:ClearAllPoints()
                  self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
+
             -- For hold/toggle modes, lock position so user can hover over buttons
             -- For "always visible" button mode, keep following mouse
             local layoutType = group.type or "circle"
@@ -1078,7 +1078,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                 self.mouseAnchorLocked = true
             end
         end
-        
+
         -- Nested Interface Positioning (Jump Mode):
         -- Position this child group relative to the parent button that opened it.
         -- Skip nesting behaviors for Wiser interfaces (they are never legitimately nested
@@ -1113,7 +1113,7 @@ function Wise:CreateGroupFrame(name, instanceId)
             end
 
         end
-        
+
         -- Fix for button selection on spawn (OnEnter doesn't fire if appearing under mouse)
         -- Skip if animating, as movement will naturally trigger OnEnter
         if not InCombatLockdown() and self.buttons and not (group and group.animation) then
@@ -1126,11 +1126,11 @@ function Wise:CreateGroupFrame(name, instanceId)
              end
              -- Force update the attribute
              if self.toggleBtn then
-                 self.toggleBtn:SetAttribute("hoveredButton", found) 
+                 self.toggleBtn:SetAttribute("hoveredButton", found)
              end
         end
     end)
-    
+
     f:SetScript("OnHide", function(self)
         -- Cancel nested close-on-leave ticker
         if self.nestedCloseTicker then
@@ -1176,7 +1176,7 @@ function Wise:CreateGroupFrame(name, instanceId)
             end)
         end
     end)
-    
+
     -- Register with WiseStateDriver for cross-interface visibility
     local driver = WiseStateDriver
     f:SetFrameRef("WiseStateDriver", driver)
@@ -1266,12 +1266,12 @@ function Wise:BuildVisibilityDriver(f, group)
     -- [wise:name] is a placeholder for Manual State. We strip it from Driver (so Driver=Hide), letting Manual State control visibility.
     local function Sanitize(str)
         if not str then return "" end
-        
+
         -- 1. Remove solitary [wise:...] blocks entirely FIRST
         -- Handle separators to avoid parsing errors
         -- Replace [wise:...] with nothing, then clean up semicolons
-        str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "") 
-        
+        str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "")
+
         -- Clean up semicolons (e.g. "; ;" -> ";")
         str = str:gsub(";", " ; ") -- padding
         str = str:gsub("%s+", " ") -- normalize spaces
@@ -1279,22 +1279,22 @@ function Wise:BuildVisibilityDriver(f, group)
         str = str:gsub("^;%s*", "") -- remove leading
         str = str:gsub(";%s*$", "") -- remove trailing
         str = str:gsub("; ;", ";") -- remove doubles
-        
+
         -- 2. Strip wise:name content inside mixed brackets (e.g. [mod:shift, wise:dev])
         -- (This handles "AND" logic inside single brackets)
         str = str:gsub("wise:[^,^%]]+,?", "") -- Remove "wise:name," or "wise:name"
         str = str:gsub(",?%s*wise:[^,^%]]+", "") -- Remove ", wise:name"
-        
+
         -- 3. Convert [always] to []
-        str = str:gsub("%[always%]", "[]") 
-        str = str:gsub("%[always, ", "[") 
-        
+        str = str:gsub("%[always%]", "[]")
+        str = str:gsub("%[always, ", "[")
+
         -- Final Clean
         str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-        
+
         return str
     end
-    
+
     local function SanitizeCustom(str)
          if not str then return "" end
          -- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
@@ -1312,10 +1312,10 @@ function Wise:BuildVisibilityDriver(f, group)
          end)
          return str
     end
-    
+
     showStr = Sanitize(showStr)
     hideStr = Sanitize(hideStr)
-    
+
     showStr = SanitizeCustom(showStr)
     hideStr = SanitizeCustom(hideStr)
 
@@ -1347,29 +1347,29 @@ function Wise:BuildVisibilityDriver(f, group)
     -- If user has "Hide in Combat" and "Show on Shift". If I am in Combat+Shift:
     -- If Hide First: [combat] hide; [mod:shift] show; ... -> Hides.
     -- If Show First: [mod:shift] show; [combat] hide; ... -> Shows.
-    -- Given the UI separates them, we need a deterministic order. 
+    -- Given the UI separates them, we need a deterministic order.
     -- Let's do HIDE then SHOW.
-    
+
     local parts = {}
-    
+
     if hideStr ~= "" then
         table.insert(parts, hideStr .. " hide")
     end
-    
+
     -- Only add 'show' if we have a valid condition string (e.g. [mod:shift]) or explicit [always] ([])
     -- If Sanitize returned "", it means we stripped [wise:name] and had nothing left.
     -- In that case, we want the driver to default to HIDE (waiting for manual).
     if showStr ~= "" then
         table.insert(parts, showStr .. " show")
     end
-    
+
     -- Default fallback if nothing matches
     table.insert(parts, "hide")
-    
+
     local driverString = table.concat(parts, "; ")
     -- Note: We don't need to force "; hide" at the end because we explicitly added "hide" to parts list
     -- But just to be safe if table.concat does something weird with empty parts (it doesn't)
-    
+
     RegisterStateDriver(f, "game", driverString)
     return driverString
 end
@@ -1633,8 +1633,6 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
-        elseif aType == "addonvisibility" then
-            -- Addon visibility handled by UpdateAddonVisibility
         elseif aValue:match("^spec_") then
             local val = tonumber(aValue:match("^spec_(%d+)"))
             local specIndex = val
@@ -1900,33 +1898,6 @@ function Wise:GetRotationIcon(btn, childGroupName, nestMode)
 end
 
 
-function Wise:UpdateAddonVisibility()
-    if not WiseDB or not WiseDB.groups then return end
-    local addonsGroup = WiseDB.groups["Addon visibility"]
-    if not addonsGroup then return end
-    local parts = {}
-    if addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
-        table.insert(parts, addonsGroup.visibilitySettings.customShow .. " show")
-    end
-    if addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
-        table.insert(parts, addonsGroup.visibilitySettings.customHide .. " hide")
-    end
-    local baseState = "show"
-    if addonsGroup.visibilitySettings.baseVisibility == "ALWAYS_HIDDEN" or addonsGroup.visibilitySettings.baseVisibility == "COMBAT_ONLY" then
-        baseState = "hide"
-    end
-    table.insert(parts, baseState)
-    local driverString = table.concat(parts, "; ")
-    for _, action in ipairs(addonsGroup.buttons or {}) do
-        if action.type == "addonvisibility" and action.addonFrame and action.addonFrame ~= "" then
-            local frame = _G[action.addonFrame]
-            if frame then
-                RegisterStateDriver(frame, "visibility", driverString)
-            end
-        end
-    end
-end
-
 function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Protect against combat execution (SecureStateDriver, SetPoint, etc.)
     if InCombatLockdown() then
@@ -1937,9 +1908,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
     local group = WiseDB.groups[name]
     if not group then return end
-    
+
     local f = Wise:CreateGroupFrame(name, instanceId)
-    
+
     f.instanceId = instanceId or name
     if overrideOpts and overrideOpts._parentInstanceId then
         f.parentInstanceId = overrideOpts._parentInstanceId
@@ -1954,7 +1925,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         displayType = overrideOpts.nestedInterfaceType
     end
     local mode = group.interaction or "toggle"
-    
+
     -- Check Availability override (Wiser interfaces)
     if not Wise:IsGroupAvailable(name) then
         RegisterStateDriver(f, "visibility", "hide")
@@ -1974,10 +1945,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         elseif group.visibilitySettings.combat then group.visibilitySettings.baseVisibility = "COMBAT_ONLY"
         elseif group.visibilitySettings.nocombat then group.visibilitySettings.baseVisibility = "NO_COMBAT_ONLY"
         else group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN" end
-    end
-    
-    if name == "Addon visibility" then
-        Wise:UpdateAddonVisibility()
     end
 
     -- Ensure defaults
@@ -2022,7 +1989,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     else
         f:SetFrameStrata(baseStrata)
     end
-    
+
     -- Gatekeeper Logic: Union of all visibility sources, with wise-hide override
     local gatekeeper = [[
         local editmode = self:GetAttribute("state-editmode") or "hide"
@@ -2043,10 +2010,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             willShow = false
             self:Hide()
         end
-        
+
         local groupName = self:GetAttribute("wiseGroupName")
         local driver = self:GetFrameRef("WiseStateDriver")
-        
+
         if driver and groupName then
              local driverState = willShow and "active" or "inactive"
              driver:RunAttribute("SetState", groupName, driverState)
@@ -2231,28 +2198,28 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Use raw strings to determine intent
     local rawShow = group.visibilitySettings.customShow or ""
     local rawHide = group.visibilitySettings.customHide or ""
-    
+
     local showInCombat = rawShow:find("%[%]") or rawShow:find("%[always%]") or rawShow:find("%[combat%]")
     local hideInCombat = rawHide:find("%[%]") or rawHide:find("%[always%]") or rawHide:find("%[combat%]")
-    
+
     local isCombatVisible = (showInCombat and not hideInCombat)
     local isAlwaysVisibleMouse = isCombatVisible and (group.anchorMode == "mouse")
 
     local rawShowStr = group.visibilitySettings.customShow or ""
     local groupToken = "wise:" .. name
     local autoHeld = rawShowStr:find(groupToken, 1, true)
-    
+
     if not InCombatLockdown() then
         -- Force correct visibility synchronously
         -- Don't trust f:GetAttribute("state-game") immediately after RegisterStateDriver as it may be stale.
         -- We calculate what it SHOULD be using the driver string we just built.
         local gameResult = SecureCmdOptionParse_Internal and SecureCmdOptionParse_Internal(driverString) or SecureCmdOptionParse(driverString)
         -- Note: driverString is formatted as "cond show; hide". SecureCmdOptionParse returns "show" or "hide" (or nil->hide).
-        
+
         local gameState = (gameResult == "show") and "show" or "hide"
         local manualState = f:GetAttribute("state-manual") or "hide"
         local customState = initialCustomState
-        
+
         local base = group.visibilitySettings.baseVisibility
 
         -- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
@@ -2278,20 +2245,20 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             f:Hide()
         end
     end
-    
+
     -- Setup Visual Mirror (Insecure frame for combat display)
     if not f.visualDisplay then
          f.visualDisplay = CreateFrame("Frame", nil, UIParent)
          f.visualDisplay:SetSize(50, 50) -- Match group size
          f.visualDisplay.buttons = {}
     end
-    
+
     -- Anchor Visual Display to Proxy (so it follows mouse in combat)
     f.visualDisplay:ClearAllPoints()
     f.visualDisplay:SetPoint("CENTER", f.Anchor, "CENTER")
     f.visualDisplay:SetScale(f:GetScale()) -- Sync scale
     f.visualDisplay:SetFrameStrata(f:GetFrameStrata()) -- Sync strata
-    
+
     -- Event Handler to toggle visual display in combat
     -- When [undermouse] is active, the OnUpdate handler manages visualDisplay directly.
     f.visualDisplay:SetScript("OnEvent", function(self, event)
@@ -2316,7 +2283,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     end)
     f.visualDisplay:RegisterEvent("PLAYER_REGEN_DISABLED")
     f.visualDisplay:RegisterEvent("PLAYER_REGEN_ENABLED")
-    
+
     -- Initial State
     if InCombatLockdown() and isAlwaysVisibleMouse then
         f.visualDisplay:Show()
@@ -2325,7 +2292,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         f.visualDisplay:Hide()
         f:SetAlpha(1)
     end
-    
+
     -- ... (Positioning Logic for Proxy Anchor) ...
 
     -- Apply Anchor (only for fixed mode or initial positioning)
@@ -2338,7 +2305,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              f:ClearAllPoints()
              f:SetPoint("CENTER", f.Anchor, "CENTER")
         end
-    
+
         -- Position f.Anchor acting as the actual position holder
         -- Use full 5-parameter SetPoint to preserve the exact coordinate system from edit mode.
         -- After dragging, WoW anchors as TOPLEFT→BOTTOMLEFT (absolute screen coords), so we
@@ -2355,7 +2322,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         f:SetScript("OnUpdate", nil)
     else
         -- Mouse anchor mode: set up continuous mouse tracking
-        
+
         -- Break dependency on f.Anchor so we can move it (and visualDisplay) in combat
         if not InCombatLockdown() then
             f:ClearAllPoints()
@@ -2367,36 +2334,36 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             local correctedY = (cursorY / uiScale) / frameScale
             f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
         end
-        
+
         -- Attach to ANCHOR frame so it runs even if secure frame is hidden (combat)
         local function MouseFollowUpdate()
             -- Closure captures 'f' and 'group'
             if f.mouseAnchorLocked then return end
-            
+
             -- Get cursor position and correct for UI scale (like UltimateMouseCursor)
             local cursorX, cursorY = GetCursorPosition()
             local uiScale = UIParent:GetScale() or 1
             local frameScale = f:GetScale() or 1
-            
+
             -- Apply scale correction and offsets
             local correctedX = (cursorX / uiScale) / frameScale
             local correctedY = (cursorY / uiScale) / frameScale
             local offsetX = (group.mouseOffsetX or 0) / frameScale
             local offsetY = (group.mouseOffsetY or 0) / frameScale
-            
+
             -- Move the PROXY ANCHOR (Insecure, safe to move in combat NOW that f is detached)
             if f.Anchor then
                 f.Anchor:ClearAllPoints()
                 f.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
+
             -- Move the SECURE FRAME (Only safe out of combat)
             if not InCombatLockdown() then
                  f:ClearAllPoints()
                  f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
         end
-        
+
         -- Determine if should lock or follow continuously
         if isAlwaysVisibleMouse then
             -- Always visible: continuously follow mouse
@@ -2410,11 +2377,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 f.mouseAnchorLocked = false
             end
         end
-        
+
         f.Anchor:SetScript("OnUpdate", MouseFollowUpdate)
         f:SetScript("OnUpdate", nil) -- Ensure secure frame doesn't run it
     end
-    
+
     if f.toggleBtn then
         -- Default trigger: release_mouseover (standard ring behavior)
         -- We will support explicit selection in options later, but for now map 'press' correctly.
@@ -2440,22 +2407,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         f.toggleBtn:SetAttribute("layoutType", displayType)
         f.toggleBtn:SetAttribute("openNestedButton", group.nestingOpenButton or "BUTTON1")
 
-        Wise:DebugPrint(string.format("Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'", 
-            name, 
-            derivedTrigger, 
-            tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")), 
+        Wise:DebugPrint(string.format("Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'",
+            name,
+            derivedTrigger,
+            tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")),
             tostring(group.visibilitySettings.toggleOnPress),
             tostring(group.keybindSettings and group.keybindSettings.repeatPrevious)
         ))
     end
 
     -- Build list of actions to display (Slots -> Active State)
-    
+
     -- Ensure data migration (Transform legacy .buttons to .actions if needed)
     if Wise.MigrateGroupToActions then Wise:MigrateGroupToActions(group) end
 
     local actionsToShow = {}
-    
+
     if group.actions then
         -- Gather sorted slots
         local slots = {}
@@ -2472,9 +2439,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             -- This ensures we only generate secure attributes for actions that are valid for this character.
             local validStates = {}
             -- Copy conflictStrategy if present (though usually passed separately)
-            validStates.conflictStrategy = states.conflictStrategy 
+            validStates.conflictStrategy = states.conflictStrategy
             validStates.resetOnCombat = states.resetOnCombat
-            validStates.suppressErrors = states.suppressErrors            
+            validStates.suppressErrors = states.suppressErrors
             for _, state in ipairs(states) do
                 if Wise:IsActionAllowed(state) then
                      table.insert(validStates, state)
@@ -2486,13 +2453,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 local conflictStrategy = validStates.conflictStrategy or "priority"
                 local chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
                 local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
-    
+
                 if actionData then
                     -- Check category metadata filter ONLY for the options UI, not the bar renderer itself.
                     local shouldShow = true
                     -- Check if spell/item is known
                     local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-    
+
                     if group.dynamic then
                         -- For dynamic groups, collapse "Spacer" actions (empty custom macros)
                         -- A spacer is misc/custom_macro with either no name/macrotext or explicitly named "Empty"
@@ -2530,7 +2497,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             end
          end
     end
-    
+
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
@@ -2539,7 +2506,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
         local isKnown = actionInfo.known
-        
+
         local btn = f.buttons[i]
         if not btn then
             btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate")
@@ -2556,17 +2523,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             -- Icon
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetAllPoints()
-            
+
             -- Cooldown frame (standard WoW cooldown sweep)
             btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
             btn.cooldown:SetAllPoints()
             btn.cooldown:SetDrawEdge(true)
             btn.cooldown:SetDrawSwipe(true)
             btn.cooldown:SetHideCountdownNumbers(false)
-            
+
             -- Text layers (count, keybind, customText) via Text module
             Wise:Text_CreateFontStrings(btn)
-            
+
             tinsert(f.buttons, btn)
 
             -- Masque Support
@@ -2578,14 +2545,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     HotKey = btn.keybind,
                 })
             end
-            
+
             -- Tooltip support
             Wise:AddInterfaceTooltip(btn)
 
             -- Secure hover tracking
             SecureHandlerWrapScript(btn, "OnEnter", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", self:GetName()) ]])
             SecureHandlerWrapScript(btn, "OnLeave", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", nil) ]])
-            
+
 
             -- Debug hooks removed to prevent secret value errors
 
@@ -2594,14 +2561,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
             -- Drag and Drop Support
             Wise:DebugPrint("Registering OnReceiveDrag for " .. btn:GetName())
-            
-            -- Ensure button can receive mouse events 
+
+            -- Ensure button can receive mouse events
             btn:EnableMouse(true)
             btn:RegisterForClicks("AnyUp", "AnyDown")
-            
+
             -- Register for drag to be safe
-            btn:RegisterForDrag("LeftButton") 
-            
+            btn:RegisterForDrag("LeftButton")
+
             btn:SetScript("OnReceiveDrag", function(self)
                 Wise:OnDragReceive(name, self.slot)
             end)
@@ -2617,22 +2584,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                      -- print("Wise Debug: OnMouseUp fired (No Cursor)")
                  end
             end)
-            
+
             f.toggleBtn:SetFrameRef(btn:GetName(), btn)
             f.toggleBtn:SetFrameRef("btn" .. i, btn)
         end
-        
+
         -- Explicitly clear btn2 ref if we only have 1 button (to avoid stale refs from recycled frames)
         -- MOVED outside loop for clarity
         -- if #actionsToShow == 1 then
         --      f.toggleBtn:SetAttribute("frameref-btn2", nil)
         -- end
-        
+
         btn:Show()
         btn.slot = actionInfo.slot -- Store slot for binding reference
         -- Always apply current global icon size (for existing buttons too)
         btn:SetSize(iconSize, iconSize)
-        
+
         -- Compute secure attributes via helper
         local aType = actionData.type
         local aValue = actionData.value
@@ -2758,7 +2725,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 local condSnippet = [[
                     local downOnly = self:GetAttribute("isa_action_on_down")
                     if (down and not downOnly) or (not down and downOnly) then return end
-                    
+
                     local _rv_ref = self
                     local _rv_t, _rv_s, _rv_i, _rv_m
                 ]] .. Wise.RESOLVE_BLOCK .. [[
@@ -2791,7 +2758,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             tostring(secureValue):gsub("\n", "\\n"):sub(1, 50),
             stateCount
         ))
-        
+
         -- Update Icon
         local texture = Wise:GetActionIcon(aType, aValue, actionData)
 
@@ -2803,14 +2770,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         end
 
         btn.icon:SetTexture(texture)
-        
+
         Wise:ApplyIconStyle(btn, iconStyle)
 
         -- Store action info for cooldown tracking
         btn.actionType = aType
         btn.actionValue = aValue
         btn.actionData = actionData -- needed for ApplyLayout text
-        
+
         -- Calculate spellID for cooldown tracking
         local spellID, itemID
         if aType == "spell" then
@@ -2840,7 +2807,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 end
             end
         end
-        
+
         -- Store in metadata (safe for combat)
         Wise.buttonMeta = Wise.buttonMeta or {}
         Wise.buttonMeta[btn] = {
@@ -2865,7 +2832,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local categoryMatch = actionInfo.categoryMatch
         local isValid = isKnown and categoryMatch
         btn.isValid = isValid
-        
+
         if isValid then
             -- Initial state saturated; Usability check will refine this later
             btn.icon:SetDesaturated(false)
@@ -2874,7 +2841,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn.icon:SetDesaturated(true)
             btn.icon:SetAlpha(0.5)
         end
-        
+
         -- Update count (items, consumable spells, and spell charges)
         local count = 0
         local isChargeSpell = false
@@ -2885,12 +2852,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              if type(itemVal) == "string" and itemVal:match("^item:(%d+)") then
                  itemVal = tonumber(itemVal:match("^%a+:(%d+)"))
             end
-            
+
             if group.smartSources then
                  local bagCount = GetItemCount(itemVal, false)
                  local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
                  if bankCount < 0 then bankCount = 0 end
-                 
+
                  if group.smartSources.bags then
                      count = count + bagCount
                  end
@@ -2899,7 +2866,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  end
                  -- Warband/Guild counts not generically available via synchronous API yet
             else
-                 count = GetItemCount(itemVal, true) 
+                 count = GetItemCount(itemVal, true)
             end
         elseif aType == "spell" then
             -- Check for spell charges first
@@ -2924,11 +2891,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 isChargeSpell = true
             end
         end
-        
+
         -- Apply charge/count text via Text
         Wise:Text_UpdateCharges(btn, name, count, isChargeSpell)
     end
-    
+
     -- Sync Visual Display Buttons
     if f.visualDisplay then
         local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle = Wise:GetGroupDisplaySettings(name)
@@ -2936,7 +2903,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              local actionData = actionInfo.data
              local isKnown = actionInfo.known
              local categoryMatch = actionInfo.categoryMatch
-             
+
              local vBtn = f.visualDisplay.buttons[i]
              if not vBtn then
                  vBtn = CreateFrame("Button", nil, f.visualDisplay)
@@ -2957,10 +2924,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  vBtn.cooldown:SetDrawEdge(true)
                  vBtn.cooldown:SetDrawSwipe(true)
                  vBtn.cooldown:SetHideCountdownNumbers(false)
-                 
+
                  -- Text layers via Text module
                  Wise:Text_CreateFontStrings(vBtn)
-                 
+
                  tinsert(f.visualDisplay.buttons, vBtn)
 
                  -- Masque Support
@@ -2979,11 +2946,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              vBtn:Show()
              -- Always apply current global icon size
              vBtn:SetSize(visualIconSize, visualIconSize)
-             
+
              -- Apply visuals
              local texture = Wise:GetActionIcon(actionData.type, actionData.value, actionData)
              vBtn.icon:SetTexture(texture)
-             
+
              -- Update action data for tooltips
              vBtn.actionType = actionData.type
              vBtn.actionValue = actionData.value
@@ -2999,7 +2966,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                      Wise.buttonMeta[realBtn].visualClone = vBtn
                  end
              end
-             
+
              -- Apply Desaturation (same as real button)
              if isKnown and categoryMatch then
                 vBtn.icon:SetDesaturated(false)
@@ -3008,7 +2975,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 vBtn.icon:SetDesaturated(true)
                 vBtn.icon:SetAlpha(0.5)
              end
-             
+
              -- Sync count (mirror position, font, and text from real button)
              local realBtn = f.buttons[i]
              if realBtn and realBtn.count and realBtn.count:IsShown() then
@@ -3025,13 +2992,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              else
                  vBtn.count:Hide()
              end
-             
+
              -- Sync keybind
              if realBtn and realBtn.keybind and realBtn.keybind:IsShown() then
                  vBtn.keybind:SetText(realBtn.keybind:GetText())
                  vBtn.keybind:SetFont(realBtn.keybind:GetFont())
                  vBtn.keybind:ClearAllPoints()
-                 
+
                  local p, r, rp, x, y = realBtn.keybind:GetPoint()
                  if p then
                      vBtn.keybind:SetPoint(p, r, rp, x, y)
@@ -3048,11 +3015,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         for i = #actionsToShow + 1, #f.visualDisplay.buttons do
              f.visualDisplay.buttons[i]:Hide()
         end
-        
+
         -- Apply Layout to Visual Display
         Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
     end
-    
+
     -- Hide unused buttons
     for i = #actionsToShow + 1, #f.buttons do
         f.buttons[i]:Hide()
@@ -3071,22 +3038,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         end
     end
     f.toggleBtn:SetAttribute("maxButtonRefs", #actionsToShow)
-    
+
     -- Setup Nested Keybind Attributes (on 'f' - the Show/Hide frame)
     local nested = (group.keybindSettings and group.keybindSettings.nested)
     f:SetAttribute("nestedKeybinds", nested)
-    
+
     -- Always update attributes to keep them in sync
     if nested then
         for i, actionInfo in ipairs(actionsToShow) do
             local btn = f.buttons[i]
             local slotKey = group.actions[actionInfo.slot] and group.actions[actionInfo.slot].keybind
-            
+
             f:SetAttribute("nested_key_"..i, slotKey) -- Set or Clear (if nil)
             f:SetAttribute("nested_btn_name_"..i, btn:GetName())
         end
     end
-    
+
     -- Cleanup Stale Keys
     local maxKeys = f:GetAttribute("nested_max_keys") or 0
     if maxKeys > #actionsToShow then
@@ -3096,7 +3063,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
          end
     end
     f:SetAttribute("nested_max_keys", #actionsToShow)
-    
+
     Wise:ApplyLayout(f, displayType, #actionsToShow, name)
 
     -- Compute undermouse bounding box from button layout (must be after ApplyLayout sets targetX/targetY)
@@ -3135,14 +3102,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     else
         Wise:SetFrameEditMode(f, name, false)
     end
-    
+
     -- Sync Cooldowns, Usability, and Active State once after setup
     for _, btn in ipairs(f.buttons) do
         Wise:UpdateButtonCooldown(btn)
         Wise:UpdateButtonUsability(btn)
         Wise:UpdateButtonState(btn)
     end
-    
+
     -- Condition evaluation ticker for multi-state and interface icon updates
     if f.conditionTicker then f.conditionTicker:Cancel() end
     local needsTicker = false
@@ -3369,7 +3336,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     frame.buttons = frame.buttons or {}
     local buttons = frame.buttons
     local iconSize, _, _, showKeybinds = Wise:GetGroupDisplaySettings(groupName)
-    
+
     -- Try to extract group name if not provided (fallback for legacy/secure frames)
     if not groupName and frame:GetName() then
         groupName = frame:GetName():match("WiseGroup_(.+)")
@@ -3383,15 +3350,15 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     if groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].invertOrder then
         invertOrder = true
     end
-    
+
     -- Ensure all buttons are shown initially
     for i=1, count do
         local btn = buttons[i]
         btn:Show()
-        
+
         -- Update Keybind Display via Text
         Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
-        
+
         -- If this is a visual clone, ensure its keybind text is also synchronized
         if btn.visualClone and btn.visualClone.keybind then
              if btn.keybind and btn.keybind:IsShown() then
@@ -3431,7 +3398,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             end
         end
         local spacing = iconSize + linePadding
-        
+
         local dx, dy = 0, 0
         if growDir == "right" then dx = spacing
         elseif growDir == "left" then dx = -spacing
@@ -3452,7 +3419,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         local boxH = 3
         local boxPaddingX = 5 -- default X padding
         local boxPaddingY = 5 -- default Y padding
-        
+
         if groupName and WiseDB.groups[groupName] then
             local g = WiseDB.groups[groupName]
             fixedAxis = g.fixedAxis or "x"
@@ -3463,7 +3430,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         end
         local spacingX = iconSize + boxPaddingX
         local spacingY = iconSize + boxPaddingY
-        
+
         local cols, rows
         if fixedAxis == "x" then
             cols = math.max(1, boxW) -- Safety
@@ -3473,33 +3440,33 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             cols = math.ceil(count / rows)
         end
         if cols < 1 then cols = 1 end -- Double safety if rows calculation results in 0 cols (count=0)
-        
+
         -- Grid centering logic:
         -- Center the grid around (0,0).
         local totalH = (rows - 1) * spacingY
         local startY = totalH / 2
-        
+
         for i=1, count do
             local posIndex = i - 1
             if invertOrder then posIndex = count - i end
 
             local r = math.floor(posIndex / cols)
             local c = posIndex % cols
-            
+
             local itemsInThisRow = cols
             if r == rows - 1 then
                 local rem = count % cols
                 if rem > 0 then itemsInThisRow = rem end
             end
-            
+
             local rowIdx = c
-            
+
             local rowWidth = (itemsInThisRow - 1) * spacingX
             local startX = -(rowWidth / 2)
-            
+
             buttons[i].targetX = startX + (rowIdx * spacingX)
             buttons[i].targetY = startY - (r * spacingY)
-            
+
             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
         end
     elseif type == "list" then
@@ -3514,7 +3481,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         local lineHeight = contentHeight + listPadding
         local maxTextWidth = 0
         -- groupName is now passed as argument
-        
+
         -- Alignment (Pre-calculate for loop)
         local textAlign = (WiseDB.groups[groupName] and WiseDB.groups[groupName].textAlign) or "right"
 
@@ -3525,28 +3492,28 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             buttons[i].targetY = -idx * lineHeight
             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
             buttons[i]:SetSize(150, lineHeight) -- Wider for text
-            
+
             -- Create or update text label
             if not buttons[i].textLabel then
                 buttons[i].textLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
             end
-            
+
             -- Apply global font settings
             buttons[i].textLabel:SetFont(fontPath, textSize, "")
-            
+
             buttons[i].textLabel:ClearAllPoints()
             buttons[i].icon:ClearAllPoints()
             buttons[i].icon:SetSize(listIconSize, listIconSize)
-            
+
             -- Icon fixed at center (spine) - icons never move regardless of text position
             buttons[i].icon:SetPoint("CENTER", 0, 0)
-            
+
             -- Re-anchor count text to the icon using Text
             if buttons[i].count and buttons[i].groupName then
                 local _, _, _, _, _, _, _, cPos = Wise:GetGroupDisplaySettings(buttons[i].groupName)
                 Wise:Text_ApplyPosition(buttons[i].count, cPos or "TOP")
             end
-            
+
             if textAlign == "right" then
                 -- Text Right (Left Aligned)
                 buttons[i].textLabel:SetPoint("LEFT", buttons[i].icon, "RIGHT", 5, 0)
@@ -3556,7 +3523,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
                 buttons[i].textLabel:SetPoint("RIGHT", buttons[i].icon, "LEFT", -5, 0)
                 buttons[i].textLabel:SetJustifyH("RIGHT")
             end
-            
+
             -- Get action name
             local btn = buttons[i]
             if btn.actionData then
@@ -3564,50 +3531,50 @@ function Wise:ApplyLayout(frame, type, count, groupName)
                 btn.textLabel:SetText(name)
             end
             buttons[i].textLabel:Show()
-            
+
             -- Measure Width (Always measure, maxTextWidth used for sizing)
             local w = buttons[i].textLabel:GetStringWidth()
             if w > maxTextWidth then maxTextWidth = w end
         end
-        
+
         -- Second pass: Align Timers and Lines
         local timerOffset = 0
         if textAlign == "right" then
              -- IconHalf + Gap + Text + Gap
-             timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 40 
+             timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 40
         else
              -- IconHalf + Gap
              timerOffset = (listIconSize / 2) + 40
         end
-        
+
         for i=1, count do
             -- Timer Label
-            if not buttons[i].timerLabel then 
+            if not buttons[i].timerLabel then
                  buttons[i].timerLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
                  buttons[i].timerLabel:SetJustifyH("LEFT")
             end
             -- Apply global font settings to timer label
             buttons[i].timerLabel:SetFont(fontPath, textSize, "")
-            
+
             buttons[i].timerLabel:ClearAllPoints()
             -- Anchor relative to CENTER of button (where Icon is)
             buttons[i].timerLabel:SetPoint("LEFT", buttons[i], "CENTER", timerOffset, 0)
             -- Hide initially
              buttons[i].timerLabel:SetText("")
-            
+
             -- Red Line
             if not buttons[i].redLine then
                 buttons[i].redLine = buttons[i]:CreateTexture(nil, "ARTWORK")
                 buttons[i].redLine:SetColorTexture(1, 0, 0, 0.8)
                 buttons[i].redLine:SetHeight(1) -- Thin line
             end
-            
+
             buttons[i].redLine:ClearAllPoints()
             buttons[i].redLine:SetPoint("RIGHT", buttons[i].timerLabel, "LEFT", -5, 0)
             buttons[i].redLine:SetWidth(0)
             buttons[i].redLine:Hide()
         end
-        
+
         -- Resize button frame to encompass everything
         -- Since Icon is CENTERED, we need width to cover the widest side * 2
         local maxSide = timerOffset + 50 -- Timer is usually furthest right
@@ -3616,9 +3583,9 @@ function Wise:ApplyLayout(frame, type, count, groupName)
              if leftSide > maxSide then maxSide = leftSide end
         end
         local totalWidth = maxSide * 2
-        
+
         for i=1, count do
-             buttons[i]:SetSize(totalWidth, lineHeight) 
+             buttons[i]:SetSize(totalWidth, lineHeight)
         end
     else -- circle
         -- Configurable radius with minimum to prevent overlap
@@ -3652,7 +3619,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             end
         end
     end
-    
+
     -- Reset non-list buttons to normal size
     if type ~= "list" then
         for i=1, count do
@@ -3677,18 +3644,18 @@ end
 function Wise:PlaySlideAnimation(frame, isOpening, onComplete)
     local animatingCount = 0
     local completedCount = 0
-    
+
     for _, btn in ipairs(frame.buttons) do
         if btn:IsShown() or not isOpening then
             animatingCount = animatingCount + 1
-            
+
             if not btn.animGroup then
                 btn.animGroup = btn:CreateAnimationGroup()
                 btn.animTranslate = btn.animGroup:CreateAnimation("Translation")
                 btn.animTranslate:SetDuration(0.15)
                 btn.animTranslate:SetSmoothing("OUT")
             end
-            
+
             if isOpening then
                 -- Opening: slide from center to target position
                 btn:ClearAllPoints()
@@ -3725,7 +3692,7 @@ function Wise:PlaySlideAnimation(frame, isOpening, onComplete)
             btn.animGroup:Play()
         end
     end
-    
+
     -- If no buttons to animate, call callback immediately
     if animatingCount == 0 and onComplete then
         onComplete()
@@ -3735,7 +3702,7 @@ end
 function Wise:ActivateGroup(name)
     local f = Wise.frames[name]
     if not f then Wise:UpdateGroupDisplay(name) f = Wise.frames[name] end
-    
+
     if f.toggleBtn then
         f.toggleBtn:Click()
     else
@@ -3806,10 +3773,10 @@ end
 -- Cooldown Update Functions
 function Wise:UpdateButtonCooldown(btn)
     if not btn or not btn.cooldown then return end
-    
+
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    
+
     if meta and meta.baseSpellID then
         local oldSpellID = meta.spellID
         meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
@@ -3826,9 +3793,9 @@ function Wise:UpdateButtonCooldown(btn)
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
-    
+
     local start, duration = 0, 0
-    
+
     local actionType = (meta and meta.actionType) or btn.actionType
     local actionValue = (meta and meta.actionValue) or btn.actionValue
 
@@ -3863,10 +3830,10 @@ function Wise:UpdateButtonCooldown(btn)
         start = start or 0
         duration = duration or 0
     end
-    
+
     start = start or 0
     duration = duration or 0
-    
+
     -- Buff Duration Override (Cooldown Manager Style)
     local isBuffActive = false
     local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD = Wise:GetGroupDisplaySettings(btn.groupName)
@@ -3908,10 +3875,10 @@ function Wise:UpdateButtonCooldown(btn)
              duration = 0
         end
     end
-    
+
     if showBuffs and spellID then
         local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
-        
+
         -- Fallback: Check by Name if ID fails (common for buffs with different IDs than cast)
         -- Also try iterating if direct lookup fails (sometimes GetPlayerAuraBySpellID is picky)
         if not aura then
@@ -3920,10 +3887,10 @@ function Wise:UpdateButtonCooldown(btn)
                  aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
              end
         end
-        
+
         -- Deprecated: Target Debuff Scanning removed due to taint issues.
         -- We only track player buffs now.
-        
+
         if aura and aura.expirationTime and aura.duration and aura.duration > 0 then
             -- Override cooldown display with buff/debuff duration
             start = aura.expirationTime - aura.duration
@@ -3931,18 +3898,18 @@ function Wise:UpdateButtonCooldown(btn)
             isBuffActive = true
         end
     end
-    
+
     if btn.cooldown.SetSwipeColor then
          btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Reset to default blackish
     end
-    
+
     btn.cooldown:SetCooldown(start, duration)
-    
+
     if visualClone and visualClone.cooldown then
         visualClone.cooldown:SetCooldown(start, duration)
         visualClone.cooldown:Show()
     end
-    
+
     -- Handle Countdown Text
     local parent = btn:GetParent()
     local isListMode = false
@@ -3951,13 +3918,13 @@ function Wise:UpdateButtonCooldown(btn)
         isListMode = (WiseDB.groups[parent.groupName].type == "list")
         if not groupName then groupName = parent.groupName end
     end
-    
+
     -- 1. Hide Standard Blizzard Numbers (All Modes)
     btn.cooldown:SetHideCountdownNumbers(true)
     if visualClone and visualClone.cooldown then
         visualClone.cooldown:SetHideCountdownNumbers(true)
     end
-    
+
     -- Safely check cooldown state
     local isActive = false
     local success, result = pcall(function()
@@ -3979,10 +3946,10 @@ function Wise:UpdateButtonCooldown(btn)
              lastText = ""
          }
          Wise.CooldownUpdateFrame:Show()
-         
+
          if isListMode then
              btn.cooldown:SetAlpha(0) -- Hide swipe in list mode
-             if btn.timerLabel then 
+             if btn.timerLabel then
                 btn.timerLabel:Show()
                 if isBuffActive then
                     btn.timerLabel:SetTextColor(0, 1, 0) -- Green text for buffs
@@ -3990,8 +3957,8 @@ function Wise:UpdateButtonCooldown(btn)
                     btn.timerLabel:SetTextColor(1, 1, 1) -- White text for cooldowns
                 end
              end
-             if btn.redLine then 
-                btn.redLine:Show() 
+             if btn.redLine then
+                btn.redLine:Show()
                 if isBuffActive then
                     btn.redLine:SetVertexColor(0, 1, 0) -- Green line for buffs
                 else
@@ -4007,11 +3974,11 @@ function Wise:UpdateButtonCooldown(btn)
     else
          -- Not Active / Finished
          Wise.ActiveCooldownButtons[btn] = nil
-         
+
          if isListMode then
              if btn.timerLabel then btn.timerLabel:SetText("") end
              if btn.redLine then btn.redLine:SetWidth(0); btn.redLine:Hide() end
-             btn.cooldown:SetAlpha(0) 
+             btn.cooldown:SetAlpha(0)
          else
              btn.cooldown:SetAlpha(1)
              Wise:Text_UpdateCountdown(btn, groupName, "")
@@ -4032,11 +3999,11 @@ function Wise:UpdateAllCooldowns()
             Wise.frames[name] = nil
         elseif frame.buttons then
             for _, btn in ipairs(frame.buttons) do
-                -- Check visibility safely. 
+                -- Check visibility safely.
                 -- Note: btn:IsShown() on secure frame is safe.
                 local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
                 local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
+
                 if btn:IsShown() or (visualClone and visualClone:IsShown()) then
                     Wise:UpdateButtonCooldown(btn)
                 end
@@ -4048,27 +4015,27 @@ end
 -- Charge Count Update Functions
 function Wise:UpdateButtonCharges(btn)
     if not btn or not btn.count then return end
-    
+
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
     if not meta then return end
-    
+
     local spellID = meta.spellID
     local actionType = meta.actionType
-    
+
     -- Only update charge-based spells
     if actionType ~= "spell" or not spellID then return end
-    
+
     local chargeInfo = C_Spell.GetSpellCharges(spellID)
     local isValidCharge = false
     local currentCharges = 0
-    
+
     local success = pcall(function()
         if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
             isValidCharge = true
             currentCharges = chargeInfo.currentCharges
         end
     end)
-    
+
     if success and isValidCharge then
         -- Re-apply position and font via Text (ensures settings changes are reflected)
         local groupName = btn.groupName
@@ -4085,10 +4052,10 @@ function Wise:UpdateButtonCharges(btn)
             Wise:Text_ApplyPosition(btn.count, chargeTextPosition or "TOP")
             btn.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
         end
-        
+
         btn.count:SetText(currentCharges)
         btn.count:Show()
-        
+
         -- Sync visual clone
         local visualClone = (meta and meta.visualClone) or btn.visualClone
         if visualClone and visualClone.count then
@@ -4113,7 +4080,7 @@ function Wise:UpdateAllCharges()
             for _, btn in ipairs(frame.buttons) do
                 local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
                 local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
+
                 if btn:IsShown() or (visualClone and visualClone:IsShown()) then
                     Wise:UpdateButtonCharges(btn)
                 end
@@ -4126,13 +4093,13 @@ end
 -- Usability Update Functions
 function Wise:UpdateButtonUsability(btn)
     if not btn or not btn.icon then return end
-    
+
     -- If permanently disabled (filtered/unknown), do not touch
     if btn.isValid == false then return end
-    
+
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    
+
     if meta and meta.baseSpellID then
         local oldSpellID = meta.spellID
         meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
@@ -4150,9 +4117,9 @@ function Wise:UpdateButtonUsability(btn)
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
     local vIcon = visualClone and visualClone.icon
-    
+
     local isUsable, noMana = true, false
-    
+
     local actionType = (meta and meta.actionType) or btn.actionType
     local actionValue = (meta and meta.actionValue) or btn.actionValue
 
@@ -4209,12 +4176,12 @@ function Wise:UpdateButtonUsability(btn)
 
     -- Proc Glow Handling
     local _, _, _, _, _, _, _, _, _, _, showGlows = Wise:GetGroupDisplaySettings(btn.groupName)
-    
+
     local shouldGlow = false
     if showGlows and spellID then
         shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID)
     end
-    
+
     if shouldGlow then
         Wise:ShowOverlayGlow(btn)
         if visualClone then Wise:ShowOverlayGlow(visualClone) end
@@ -4254,7 +4221,7 @@ function Wise:UpdateAllUsability()
                 -- Check visibility safely
                 local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
                 local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
+
                 if btn:IsShown() or (visualClone and visualClone:IsShown()) then
                     Wise:UpdateButtonUsability(btn)
                 end
@@ -4510,7 +4477,7 @@ pendingFrame:SetScript("OnEvent", function(self, event)
     if Wise.pendingUpdates then
         local updates = Wise.pendingUpdates
         Wise.pendingUpdates = nil -- Clear first to avoid loops if errors occur
-        
+
 
         for name, _ in pairs(updates) do
             Wise:UpdateGroupDisplay(name)
@@ -4522,7 +4489,7 @@ end)
 
 function Wise:ResetSequences()
     if InCombatLockdown() or not Wise.buttonMeta then return end
-    
+
     for btn, meta in pairs(Wise.buttonMeta) do
         if meta.conflictStrategy == "sequence" and meta.resetOnCombat then
             btn:SetAttribute("isa_seq", 1)
@@ -4537,7 +4504,7 @@ function Wise:ResetSequences()
                         btn.actionType = state.type
                         btn.actionValue = state.value
                         btn.actionData = state
-                        
+
                         local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
                         btn:SetAttribute("type", nil)
                         btn:SetAttribute("spell", nil)

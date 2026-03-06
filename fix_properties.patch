@@ -1,0 +1,35 @@
+--- modules/Properties.lua
++++ modules/Properties.lua
+@@ -628,6 +628,32 @@
+
+     y = y - 5
+
++    if action.type == "addonvisibility" then
++        y = y - 20
++        local avLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
++        avLabel:SetPoint("TOPLEFT", 10, y)
++        avLabel:SetText("Addon Frame Name (e.g., ATTClassicFrame):")
++        tinsert(panel.controls, avLabel)
++
++        y = y - 20
++        local avEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
++        avEdit:SetSize(180, 20)
++        avEdit:SetPoint("TOPLEFT", 14, y)
++        avEdit:SetAutoFocus(false)
++        avEdit:SetText(action.addonFrame or "")
++        avEdit:SetCursorPosition(0)
++
++        avEdit:SetScript("OnEditFocusLost", function(self)
++            action.addonFrame = self:GetText()
++            Wise:UpdateGroupDisplay(Wise.selectedGroup)
++        end)
++        avEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
++        avEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
++
++        tinsert(panel.controls, avEdit)
++        y = y - 20
++    end
++
+     -- Category selector (Radial Picker / Radio Buttons)
+     local catLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+     catLabel:SetPoint("TOPLEFT", 10, y)

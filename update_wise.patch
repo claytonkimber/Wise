@@ -1,0 +1,29 @@
+--- Wise.lua
++++ Wise.lua
+@@ -125,6 +125,7 @@
+     -- Update Wiser Interfaces whenever character info changes (e.g. spec change updates Specs list)
+     if Wise.UpdateWiserInterfaces then
+         local isSpecChange = (sourceEvent == "PLAYER_SPECIALIZATION_CHANGED")
+         Wise:UpdateWiserInterfaces(isSpecChange)
++        if Wise.UpdateAddonsWiserInterface then Wise:UpdateAddonsWiserInterface() end
+     end
+ end
+
+@@ -382,6 +383,10 @@
+     if Wise.frames["Specs"] and Wise.frames["Specs"]:IsShown() then
+          Wise:UpdateGroupDisplay("Specs")
+     end
++
++    if Wise.UpdateAddonsWiserInterface then
++        Wise:UpdateAddonsWiserInterface()
++    end
+
+     -- Refresh Options UI if open to show new/updated groups
+     if Wise.UpdateOptionsUI then
+--- Wise.toc
++++ Wise.toc
+@@ -34,3 +34,4 @@
+ # Wiser
+ wiser\SmartItem.lua
+ wiser\BarCopy.lua
++wiser\Addons.lua

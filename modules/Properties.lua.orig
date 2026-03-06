@@ -356,32 +356,6 @@ function Wise:RefreshPropertiesPanel()
         tinsert(panel.controls, lockedLabel)
         return
     end
-
-    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
-
-    if group and group.isLocked then
-        Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
-        local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockedLabel:SetPoint("TOPLEFT", 10, -30)
-        lockedLabel:SetWidth(200)
-        lockedLabel:SetJustifyH("LEFT")
-        lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
-        tinsert(panel.controls, lockedLabel)
-        return
-    end
-
-    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
-
-    if group and group.isLocked then
-        Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
-        local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockedLabel:SetPoint("TOPLEFT", 10, -30)
-        lockedLabel:SetWidth(200)
-        lockedLabel:SetJustifyH("LEFT")
-        lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
-        tinsert(panel.controls, lockedLabel)
-        return
-    end
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
     -- Check Validation
@@ -600,7 +574,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         excCheck.text = excCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         excCheck.text:SetPoint("LEFT", excCheck, "RIGHT", 5, 0)
         excCheck.text:SetText("Exclusive condition")
-        
+
         excCheck:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText("Exclusive Condition", 1, 1, 1)
@@ -608,7 +582,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             GameTooltip:Show()
         end)
         excCheck:SetScript("OnLeave", GameTooltip_Hide)
-        
+
         excCheck:SetScript("OnClick", function(self)
             action.exclusive = self:GetChecked() and true or false
             Wise:RefreshPropertiesPanel()
@@ -621,7 +595,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         tinsert(panel.controls, excCheck)
         tinsert(panel.controls, excCheck.text)
         y = y - 26
-        
+
         -- Compute inherited exclusions to show greyed out
         local states = group.actions[slotIdx]
         local exclusions = {}
@@ -651,32 +625,6 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     end
 
     y = y - 5
-
-    if action.type == "addonvisibility" then
-        y = y - 20
-        local avLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        avLabel:SetPoint("TOPLEFT", 10, y)
-        avLabel:SetText("Addon Frame Name (e.g., ATTClassicFrame):")
-        tinsert(panel.controls, avLabel)
-
-        y = y - 20
-        local avEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        avEdit:SetSize(180, 20)
-        avEdit:SetPoint("TOPLEFT", 14, y)
-        avEdit:SetAutoFocus(false)
-        avEdit:SetText(action.addonFrame or "")
-        avEdit:SetCursorPosition(0)
-
-        avEdit:SetScript("OnEditFocusLost", function(self)
-            action.addonFrame = self:GetText()
-            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-        end)
-        avEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        avEdit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-
-        tinsert(panel.controls, avEdit)
-        y = y - 20
-    end
 
     -- Category selector (Radial Picker / Radio Buttons)
     local catLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -2450,7 +2398,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             group.showChargeText = self:GetChecked()
             UpdateDisplayStatus() -- Updates Reset Button
             Wise:RefreshPropertiesPanel() -- To update label (Custom)
-            C_Timer.After(0.1, function() 
+            C_Timer.After(0.1, function()
                 if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
                 if Wise.UpdateAllCharges then Wise:UpdateAllCharges() end
             end)
@@ -2572,7 +2520,7 @@ function Wise:RenderGroupProperties(panel, group, y)
             group.showCountdownText = self:GetChecked()
             UpdateDisplayStatus() -- Updates Reset Button
             Wise:RefreshPropertiesPanel() -- To update label (Custom)
-            C_Timer.After(0.1, function() 
+            C_Timer.After(0.1, function()
                 if not InCombatLockdown() and Wise.UpdateAllCooldowns then Wise:UpdateAllCooldowns() end
             end)
         end)

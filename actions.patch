@@ -1,0 +1,30 @@
+--- modules/Actions.lua
++++ modules/Actions.lua
+@@ -506,7 +506,7 @@
+
+ Wise.ActionTypes = {
+     "spell", "item", "macro", "toy", "mount",
+-    "battlepet", "equipmentset", "raidmarker", "uipanel", "uivisibility", "skyriding", "professions", "misc"
++    "battlepet", "equipmentset", "raidmarker", "uipanel", "uivisibility", "skyriding", "professions", "misc", "addonvisibility"
+ }
+
+ -- Category constants
+@@ -1280,6 +1280,8 @@
+         elseif element == "buffs" then eName = "Buffs"
+         elseif element == "debuffs" then eName = "Debuffs"
+         end
+         return (eName or element) .. " [" .. (state or "toggle") .. "]"
++    elseif actionType == "addonvisibility" then
++        return "Addon: " .. (value or "Unknown")
+     elseif actionType == "skyriding" then
+         return "Skyriding: " .. (value == "switch" and "Switch Flight Style" or "Whirling Surge")
+     elseif actionType == "professions" then
+@@ -1421,6 +1423,8 @@
+          elseif element == "buffs" then texture = "Interface\\Icons\\Spell_Magic_LesserInvisibilty"
+          elseif element == "debuffs" then texture = "Interface\\Icons\\Spell_Shadow_CurseOfSargeras"
+          end
++    elseif actionType == "addonvisibility" then
++         texture = "Interface\\Icons\\INV_Misc_Book_09"
+     elseif actionType == "misc" then
+          if value == "hearthstone" then texture = "Interface\\Icons\\INV_Misc_Rune_01"
+          elseif value == "extrabutton" then texture = "Interface\\Icons\\Temp"
