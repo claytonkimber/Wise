@@ -3766,6 +3766,29 @@ function Wise:UpdateBindings()
             end
         end
     end
+
+    -- 4. Addon Magic Slot Bindings
+    if WiseDB.addonMagicSlots then
+        for i, slot in ipairs(WiseDB.addonMagicSlots) do
+            if slot.keybind and string.len(slot.keybind) > 0 then
+                local btnName = "WiseAddonMagicBtn_" .. i
+                local btn = _G[btnName]
+                if not btn then
+                    btn = CreateFrame("Button", btnName, UIParent, "SecureActionButtonTemplate")
+                    btn:SetScript("OnClick", function()
+                        if not InCombatLockdown() then
+                            if Wise.ExecuteAddonMagic then
+                                Wise:ExecuteAddonMagic(i)
+                            end
+                        else
+                            print("|cff00ccff[Wise]|r Cannot trigger Addon Magic in combat.")
+                        end
+                    end)
+                end
+                SetOverrideBindingClick(Wise.BindingFrame, true, slot.keybind, btnName)
+            end
+        end
+    end
 end
 
 

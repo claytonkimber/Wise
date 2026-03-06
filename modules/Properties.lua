@@ -330,6 +330,27 @@ function Wise:RefreshPropertiesPanel()
         return
     end
 
+    -- Special case: Addon Magic Tool
+    if Wise.ADDON_MAGIC_TEMPLATE and Wise.selectedGroup == Wise.ADDON_MAGIC_TEMPLATE then
+        Wise.OptionsFrame.Right.Title:SetText("Addon Magic")
+
+        local y = -30
+
+        if Wise.selectedAMSlot and Wise.CreateAddonMagicPropertiesPanel then
+            y = Wise:CreateAddonMagicPropertiesPanel(panel, Wise.selectedAMSlot, y)
+        else
+            local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            msgLabel:SetPoint("TOPLEFT", 10, y)
+            msgLabel:SetWidth(200)
+            msgLabel:SetJustifyH("LEFT")
+            msgLabel:SetText("Select a slot to configure its addons, or click 'Add New Slot' to create one.")
+            tinsert(panel.controls, msgLabel)
+        end
+
+        panel:SetHeight(math.abs(y) + 50)
+        return
+    end
+
 
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
@@ -775,9 +796,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 10
 
-    if action.type == "misc" and action.value == "addon_magic" and Wise.CreateAddonMagicPropertiesPanel then
-        y = Wise:CreateAddonMagicPropertiesPanel(panel, action, y)
-    end
+    -- Legacy addon_magic misc actions are no longer supported here.
+    -- Addon Magic is now a dedicated tool in the Tools section.
 
     -- Show Tooltip checkbox (for Extra Action Button)
     if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability") then
