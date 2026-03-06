@@ -179,7 +179,7 @@ function Wise:PopulateSettingsView(panel)
     exportAllBtn:SetScript("OnClick", function()
         local names = {}
         for name, group in pairs(WiseDB.groups) do
-            if not group.isWiser then
+            if not group.isWiser and not group.isAddonVisibility then
                 names[#names+1] = name
             end
         end

@@ -67,13 +67,13 @@ function Wise:DebugPrint(...)
     if WiseDB and WiseDB.settings and WiseDB.settings.debug then
         local msg = string.format(...)
         print("|cff00ccff[Wise Debug]|r", msg)
-        
+
         if Wise.LogFrame then
             local timestamp = date("%H:%M:%S")
             local current = Wise.LogFrame:GetText() or ""
             -- Basic truncation to avoid memory issues (keep last 5000 chars roughly)
-            if #current > 10000 then 
-                 current = current:sub(-5000) 
+            if #current > 10000 then
+                 current = current:sub(-5000)
             end
             Wise.LogFrame:SetText(current .. "\n[" .. timestamp .. "] " .. msg)
             -- Auto scroll to bottom
@@ -88,13 +88,13 @@ end
 function Wise:UpdateCharacterInfo(sourceEvent)
     local _, className = UnitClass("player")
     self.characterInfo.class = className
-    
+
     local specIndex = GetSpecialization()
     if specIndex then
         local specID = GetSpecializationInfo(specIndex)
         self.characterInfo.specID = specID
     end
-    
+
     -- Get active talent loadout name
     if C_ClassTalents and C_ClassTalents.GetActiveConfigID then
         if C_ClassTalents.GetStarterBuildActive and C_ClassTalents.GetStarterBuildActive() then
@@ -103,16 +103,16 @@ function Wise:UpdateCharacterInfo(sourceEvent)
             local specID = GetSpecialization()
             local specInfoID = specID and GetSpecializationInfo(specID)
             local configID = C_ClassTalents.GetLastSelectedSavedConfigID and specInfoID and C_ClassTalents.GetLastSelectedSavedConfigID(specInfoID)
-            
+
             if not configID then
                 configID = C_ClassTalents.GetLastSelectedConfigID and specInfoID and C_ClassTalents.GetLastSelectedConfigID(specInfoID)
             end
-            
+
             -- Fallback to currently active config ID if no last selected ID found
             if not configID then
                 configID = C_ClassTalents.GetActiveConfigID()
             end
-            
+
             if configID then
                 local configInfo = C_Traits.GetConfigInfo(configID)
                 if configInfo and configInfo.name then
@@ -121,7 +121,7 @@ function Wise:UpdateCharacterInfo(sourceEvent)
             end
         end
     end
-    
+
     -- Update Wiser Interfaces whenever character info changes (e.g. spec change updates Specs list)
     if Wise.UpdateWiserInterfaces then
         local isSpecChange = (sourceEvent == "PLAYER_SPECIALIZATION_CHANGED")
@@ -162,7 +162,7 @@ end
 
 function Wise:IsActionAllowed(action)
     local category = action.category or "global"
-    
+
     if category == "global" then
         return true
     elseif category == "class" then
@@ -183,7 +183,7 @@ function Wise:IsActionAllowed(action)
         local charKey = UnitName("player") .. "-" .. GetRealmName()
         return checkChar == charKey
     end
-    
+
     return true
 end
 
@@ -219,7 +219,7 @@ function Wise:ShouldLoadAction(action, group)
     if not group.dynamic then
         return true
     end
-    
+
     return self:IsActionAllowed(action)
 end
 
@@ -246,7 +246,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
             created = true
         end
         local g = WiseDB.groups[name]
-        
+
         if created and defaults then
             if type(defaults) == "function" then
                 defaults(g)
@@ -270,12 +270,12 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         g.isWiser = true -- Mark as Wiser
         g.buttons = {} -- Clear for rebuild
         g.actions = nil -- Clear actions to force migration from new buttons list
-        
+
         -- Store metadata for context (helper for debugging/future features)
         local _, className = UnitClass("player")
         g.class = className
         g.specID = GetSpecializationInfo(GetSpecialization())
-        
+
         return g
     end
 
@@ -290,7 +290,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
                 local macroText = string.format("/run local i=C_TradeSkillUI.GetBaseProfessionInfo(); if i and i.professionID==%d then C_TradeSkillUI.CloseTradeSkill() else C_TradeSkillUI.OpenTradeSkill(%d) end", skillLine, skillLine)
 
                 table.insert(profGroup.buttons, {
-                    type = "macro", 
+                    type = "macro",
                     value = macroText,
                     name = name, -- Store name for tooltip/display
                     icon = icon, -- Explicit icon since macro won't have it by default
@@ -363,7 +363,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     local specGroup = EnsureWiserGroup("Specs", "circle")
     local numSpecs = GetNumSpecializations()
     local currentSpecIndex = GetSpecialization()
-    
+
     for i = 1, numSpecs do
         if i ~= currentSpecIndex then
             local id, name, _, icon = GetSpecializationInfo(i)
@@ -380,10 +380,6 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     end
     if Wise.frames["Specs"] and Wise.frames["Specs"]:IsShown() then
          Wise:UpdateGroupDisplay("Specs")
-    end
-    
-    if Wise.UpdateAddonsWiserInterface then
-        Wise:UpdateAddonsWiserInterface()
     end
 
     -- Refresh Options UI if open to show new/updated groups
@@ -403,12 +399,12 @@ function Wise:Initialize()
     end
 
     print("|cff00ccffWise|r Loaded. Type /wise to open options.")
-    
+
     -- Cache current character info
     if Wise.UpdateCharacterInfo then
         Wise:UpdateCharacterInfo()
     end
-    
+
     -- Cleanup deprecated Wiser Interfaces
     if WiseDB and WiseDB.groups then
         if WiseDB.groups["Cooldowns"] and WiseDB.groups["Cooldowns"].isWiser then
@@ -418,7 +414,7 @@ function Wise:Initialize()
             WiseDB.groups["Utilities"] = nil
         end
     end
-    
+
     -- Restore Groups
     if WiseDB.groups then
         for name, data in pairs(WiseDB.groups) do
@@ -428,7 +424,7 @@ function Wise:Initialize()
             end
         end
     end
-    
+
     if Wise.UpdateBindings then Wise:UpdateBindings() end
 
     -- Track Known Characters
@@ -441,7 +437,7 @@ function Wise:Initialize()
     if Wise.InitializeMinimap then
         Wise:InitializeMinimap()
     end
-    
+
     -- Fix for the "Hider" Bug in 11.0.1+
     -- If default Blizzard buff/debuff trackers are hidden, the game stops scanning auras for AddOns.
     -- We keep them functionally "active" but set Alpha to 0 so they scan invisibly.
@@ -864,19 +860,6 @@ function frame:OnEvent(event, arg1)
         if WiseDB.settings and WiseDB.settings.debug == nil then
             WiseDB.settings.debug = false
         end
-        -- Migrate iconStyle "invisible" to hideEmptySlots
-        if WiseDB.settings and WiseDB.settings.iconStyle == "invisible" then
-            WiseDB.settings.iconStyle = "rounded"
-            WiseDB.settings.hideEmptySlots = true
-        end
-        if WiseDB.groups then
-            for _, g in pairs(WiseDB.groups) do
-                if g.iconStyle == "invisible" then
-                    g.iconStyle = nil
-                    g.hideEmptySlots = true
-                end
-            end
-        end
         -- Initialize modules if needed
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
@@ -1193,7 +1176,7 @@ function Wise:UpdateBlizzardUI()
             end
         end
     end
-    
+
     if MainActionBar then
         if hideAB1 then
             MainActionBar:SetAlpha(0)
@@ -1242,7 +1225,7 @@ end
 SLASH_WISE1 = "/wise"
 SlashCmdList["WISE"] = function(msg)
     local cmd, arg = msg:match("^(%S*)%s*(.*)")
-    
+
     if cmd == "hidebars" then
         if not WiseDB.settings.minimap then WiseDB.settings.minimap = { hide = true } end
         local newState = true -- Default toggle on
@@ -1304,9 +1287,9 @@ SlashCmdList["WISE"] = function(msg)
                 local toggleName = "WiseGroupToggle_" .. name
                 local key = GetBindingKey("CLICK " .. toggleName .. ":LeftButton")
                 print(string.format("Group '%s': ToggleButton='%s' Key='%s'", name, toggleName, tostring(key)))
-                
+
                 -- Check for keybind properties directly
-                print(string.format("  Props: bind='%s' keybind='%s' hotkey='%s' trigger='%s'", 
+                print(string.format("  Props: bind='%s' keybind='%s' hotkey='%s' trigger='%s'",
                     tostring(group.bind), tostring(group.keybind), tostring(group.hotkey), tostring(group.trigger)))
             end
         end
@@ -1358,11 +1341,11 @@ end
 function Wise:ValidateGroup(groupName)
     local group = WiseDB.groups[groupName]
     if not group then return false, "Reference missing" end
-    
+
     -- Check basic types
     if type(group) ~= "table" then return false, "Corrupted Data (Not a table)" end
     if type(group.type) ~= "string" then return false, "Missing 'type'" end
-    
+
     -- Check structure
     if group.buttons and not group.actions then
         if group.isWiser then
@@ -1371,23 +1354,23 @@ function Wise:ValidateGroup(groupName)
             return false, "Old Data (Migration Needed)"
         end
     end
-    
+
     if type(group.actions) ~= "table" then
         return false, "Missing 'actions' table"
     end
-    
+
     -- Check for mixed keys in actions (indicative of corruption)
     -- Also ensure anchor is valid
     if not group.anchor or type(group.anchor) ~= "table" then
         return false, "Missing anchor data"
     end
-    
+
     -- Validate Slots
     for k, v in pairs(group.actions) do
         if type(k) == "number" and type(v) ~= "table" then
             return false, "Corrupted Slot " .. k
         end
     end
-    
+
     return true
 end

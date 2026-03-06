@@ -1,0 +1,11 @@
+--- modules/Actions.lua
++++ modules/Actions.lua
+@@ -1045,6 +1045,9 @@
+     elseif actionType == "uivisibility" then
+         -- For generic UI visibility elements, use macro text to handle the action.
+         return string.format("/click %s %s", "Wise_UIVisibility", actionValue)
++    elseif actionType == "addonvisibility" then
++        return "" -- Don't return click action since addon visibility is handled natively by the frame state driver
+     elseif actionType == "macrotext" then
+         -- Not a built-in macro, but inline macro text
+         -- Use directly (note: might exceed 255 chars if very long, handled elsewhere ideally)

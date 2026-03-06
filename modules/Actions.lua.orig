@@ -488,7 +488,7 @@ function Wise:ShouldShowAction(action)
     if filter == "class" then
         return true
     end
-    
+
     -- "Spec" button -> Show Global + Class + Spec (Current Spec Only)
     if filter == "spec" then
         local currentSpecIndex = GetSpecialization()
@@ -500,12 +500,12 @@ function Wise:ShouldShowAction(action)
         end
         return true
     end
-    
+
     return cat == filter
 end
 
 Wise.ActionTypes = {
-    "spell", "item", "macro", "toy", "mount", 
+    "spell", "item", "macro", "toy", "mount",
     "battlepet", "equipmentset", "raidmarker", "uipanel", "uivisibility", "skyriding", "professions", "misc", "addonvisibility"
 }
 
@@ -567,12 +567,12 @@ end
 function Wise:GetSkyriding(filter)
     local spells = {}
     local seen = {}
-    
+
     -- Iterate General Spellbook Tab to find Skyriding spells dynamically
-    -- Skyriding spells are usually in the "General" tab 
+    -- Skyriding spells are usually in the "General" tab
     -- Alternatively, they might be marked with a specific label or category in C_SpellBook?
     -- For now, let's combine a known list with a scan of the General tab for keywords.
-    
+
     local targetSpells = {
         "Switch Flight Style",
         "Skyward Ascent",
@@ -584,7 +584,7 @@ function Wise:GetSkyriding(filter)
         "Lightning Rush",
         "Aerial Halt"
     }
-    
+
     -- Add from hardcoded list first
     for _, spellName in ipairs(targetSpells) do
         local info = C_Spell.GetSpellInfo(spellName)
@@ -595,7 +595,7 @@ function Wise:GetSkyriding(filter)
             end
         end
     end
-    
+
     -- Scan General Tab (Skill Line 1 usually)
     -- This helps find racial specific ones like Soar (Dracthyr) if they are in General
     local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
@@ -612,7 +612,7 @@ function Wise:GetSkyriding(filter)
                      -- Heuristic: Check if known skyriding spell but missed by list?
                      -- hard to detect generically without a "Skyriding" tag.
                      -- For now, trust the list + "Switch Flight Style".
-                     
+
                      -- Check for "Ride" or "Sky" in name? Too risky.
                      -- Let's stick to the list + ensuring Dracthyr Soar is there.
                      if sName == "Soar" or sName == "Lift Off" then
@@ -843,16 +843,16 @@ end
 
 function Wise:GetInterface(filter)
     local items = {}
-    
+
     -- Context: Who is the parent?
     -- Wise.selectedGroup is the interface we are editing (the parent)
     local parentName = Wise.selectedGroup
     local parentGroup = parentName and WiseDB.groups[parentName]
-    
-    if not parentGroup then 
+
+    if not parentGroup then
         -- Fallback if no selected group (e.g. testing?), list all
         for name, group in pairs(WiseDB.groups) do
-             if not group.isWiser and not group.isAddonVisibility and (not filter or string.find(string.lower(name), filter, 1, true)) then
+             if not group.isWiser and (not filter or string.find(string.lower(name), filter, 1, true)) then
                  local icon = Wise:GetActionIcon("interface", name)
                  table.insert(items, {type="interface", value=name, name=name, icon=icon, category="Interface"})
              end
@@ -860,16 +860,16 @@ function Wise:GetInterface(filter)
         table.sort(items, function(a, b) return a.name < b.name end)
         return items
     end
-    
+
     local parentType = parentGroup.type or "circle"
     -- Check fixedAxis for "Line" determination
-    local parentAxis = parentGroup.fixedAxis or "x" 
-    
+    local parentAxis = parentGroup.fixedAxis or "x"
+
     for name, group in pairs(WiseDB.groups) do
         -- Base Filters:
         -- 1. Not Wiser (Wiser Interfaces can't be selected)
         -- 2. Not Self (Cannot nest inside itself)
-        if not group.isWiser and not group.isAddonVisibility and name ~= parentName then
+        if not group.isWiser and name ~= parentName then
 
             -- Filter by text
             if not filter or string.find(string.lower(name), filter, 1, true) then
@@ -890,7 +890,7 @@ function Wise:GetInterface(filter)
             end
         end
     end
-    
+
     table.sort(items, function(a, b) return a.name < b.name end)
     return items
 end
@@ -918,9 +918,9 @@ end
 function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData, insertIndex)
     local group = WiseDB.groups[groupName]
     if not group then return end
-    
+
     Wise:MigrateGroupToActions(group)
-    
+
     -- Capture Metadata
     local _, playerClass = UnitClass("player")
     local currentSpec = GetSpecialization()
@@ -938,20 +938,20 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
                 local specID_val = GetSpecialization()
                 local specInfoID = specID_val and GetSpecializationInfo(specID_val)
                 local configID = C_ClassTalents.GetLastSelectedSavedConfigID and specInfoID and C_ClassTalents.GetLastSelectedSavedConfigID(specInfoID)
-                
+
                 if not configID then
                     configID = C_ClassTalents.GetLastSelectedConfigID and specInfoID and C_ClassTalents.GetLastSelectedConfigID(specInfoID)
                 end
-                
+
                 if not configID then
                     configID = C_ClassTalents.GetActiveConfigID()
                 end
-                
+
                 if configID and C_Traits and C_Traits.GetConfigInfo then
                     local configInfo = C_Traits.GetConfigInfo(configID)
                     -- Ensure configInfo is a valid table before accessing .name
-                    if type(configInfo) == "table" and configInfo.name then 
-                        talentBuildName = configInfo.name 
+                    if type(configInfo) == "table" and configInfo.name then
+                        talentBuildName = configInfo.name
                     end
                 end
             end
@@ -961,7 +961,7 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
     if Wise.DebugPrint then
         Wise:DebugPrint("Wise:AddAction - TalentBuild cached: " .. tostring(Wise.characterInfo and Wise.characterInfo.talentBuild) .. " | Used: " .. tostring(talentBuildName) .. " | ActionValue: " .. tostring(actionValue))
     end
-    
+
     -- Resolve Category and Spec Source
     -- Default to Global if not provided
     local resolvedCategory = "global"
@@ -999,9 +999,8 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         if extraData.icon then newAction.icon = extraData.icon end
         if extraData.name then newAction.name = extraData.name end
         if extraData.conditions then newAction.conditions = extraData.conditions end
-        if extraData.addonFrame then newAction.addonFrame = extraData.addonFrame end
     end
-    
+
     if not slotIndex then
         -- Find next available slot
         slotIndex = 1
@@ -1009,18 +1008,18 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
             slotIndex = slotIndex + 1
         end
     end
-    
+
     -- Ensure slot exists
     if not group.actions[slotIndex] then
         group.actions[slotIndex] = {}
     end
-    
+
     if insertIndex then
         table.insert(group.actions[slotIndex], insertIndex, newAction)
     else
         table.insert(group.actions[slotIndex], newAction)
     end
-    
+
     return slotIndex
 end
 
@@ -1029,14 +1028,14 @@ function Wise:RemoveSlot(groupName, slotIndex)
     if group and group.actions then
         -- Remove the slot
         group.actions[slotIndex] = nil
-        
+
         -- Shift subsequent slots down to fill the gap
         -- Find the highest index to know when to stop
         local maxSlot = 0
         for k in pairs(group.actions) do
             if type(k) == "number" and k > maxSlot then maxSlot = k end
         end
-        
+
         for i = slotIndex, maxSlot do
             if group.actions[i+1] then
                 group.actions[i] = group.actions[i+1]
@@ -1200,7 +1199,7 @@ function Wise:GetActionName(actionType, value, extraData)
         end
         local name = GetSpellInfo(overrideValue)
         return name or value
-        
+
     elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
         if C_Item and C_Item.GetItemInfo then
              local name = C_Item.GetItemInfo(value)
@@ -1208,26 +1207,26 @@ function Wise:GetActionName(actionType, value, extraData)
         end
         local name = GetItemInfo(value)
         return name or value
-        
+
     elseif actionType == "macro" then
         local name = GetMacroInfo(value)
         return name or value
-        
+
     elseif actionType == "equipmentset" then
         return value -- Name is the value
-        
+
     elseif actionType == "mount" then
         if C_MountJournal then
             local name = C_MountJournal.GetMountInfoByID(value)
             return name or value
         end
-        
+
     elseif actionType == "battlepet" then
         if C_PetJournal then
              local _, _, _, _, _, _, _, name = C_PetJournal.GetPetInfoByPetID(value)
              return name or value
         end
-        
+
     elseif actionType == "misc" then
         if value == "extrabutton" then return "Extra Button" end
         if value == "zoneability" then return "Zone Ability" end
@@ -1278,8 +1277,6 @@ function Wise:GetActionName(actionType, value, extraData)
             return eName .. ": " .. sName
         end
         return value
-    elseif actionType == "addonvisibility" then
-        return "Addon: " .. (value or "Unknown")
 
     elseif actionType == "uipanel" then
         local names = {
@@ -1326,14 +1323,14 @@ function Wise:GetActionName(actionType, value, extraData)
             garrison = "Garrison Report",
         }
         return names[value] or value
-        
+
     elseif actionType == "interface" then
         return value -- The value is the interface name
 
     elseif actionType == "empty" then
         return "Empty Slot"
     end
-    
+
     return value
 end
 
@@ -1361,17 +1358,17 @@ function Wise:GetActionIcon(actionType, value, extraData)
             local _, _, icon = GetSpellInfo(overrideValue)
             if icon then texture = icon end
         end
-        
+
     elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
         local icon = nil
         if C_Item and C_Item.GetItemIconByID then
              icon = C_Item.GetItemIconByID(value)
         end
         if not icon then
-             icon = GetItemIcon(value) 
+             icon = GetItemIcon(value)
         end
         if icon then texture = icon end
-        
+
         if actionType == "equipped" and type(value) == "number" and value <= 19 then
              local itemIcon = GetInventoryItemTexture("player", value)
              if itemIcon then texture = itemIcon end
@@ -1380,19 +1377,19 @@ function Wise:GetActionIcon(actionType, value, extraData)
     elseif actionType == "macro" then
         local _, icon = GetMacroInfo(value)
         if icon then texture = icon end
-        
+
     elseif actionType == "mount" then
          if C_MountJournal then
              local name, spellID, icon = C_MountJournal.GetMountInfoByID(value)
              if icon then texture = icon end
          end
-         
+
     elseif actionType == "battlepet" then
         if C_PetJournal then
              local _, _, _, _, _, _, _, _, icon = C_PetJournal.GetPetInfoByPetID(value)
              if icon then texture = icon end
         end
-    
+
     elseif actionType == "equipmentset" then
         if C_EquipmentSet then
             if type(value) == "string" then
@@ -1403,10 +1400,10 @@ function Wise:GetActionIcon(actionType, value, extraData)
                 end
             end
         end
-        
+
     elseif actionType == "raidmarker" then
          texture = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. value
-         
+
     elseif actionType == "uivisibility" then
          -- Generic Icons based on element
          local element = string.match(value, "^(.-):")
@@ -1422,8 +1419,6 @@ function Wise:GetActionIcon(actionType, value, extraData)
          elseif element == "buffs" then texture = "Interface\\Icons\\Spell_Holy_WordFortitude"
          elseif element == "debuffs" then texture = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
          else texture = "Interface\\Icons\\INV_Misc_QuestionMark" end
-    elseif actionType == "addonvisibility" then
-         texture = "Interface\\Icons\\INV_Misc_Book_09"
 
     elseif actionType == "uipanel" then
          local icons = {
@@ -1476,10 +1471,10 @@ function Wise:GetActionIcon(actionType, value, extraData)
           texture = "Interface\\Icons\\INV_Misc_Folder01" -- Default Folder Icon
           if WiseDB and WiseDB.groups and WiseDB.groups[value] then
               local group = WiseDB.groups[value]
-              
+
               -- Migrate if needed
               if Wise.MigrateGroupToActions then Wise:MigrateGroupToActions(group) end
-    
+
               if group.actions then
                    -- Identify the first valid slot (usually slot 1)
                    -- We need to find the lowest index
@@ -1488,7 +1483,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
                        if type(k) == "number" then table.insert(slots, k) end
                    end
                    table.sort(slots)
-                   
+
                    for _, slotIdx in ipairs(slots) do
                        local states = group.actions[slotIdx]
                        if states and #states > 0 then
@@ -1500,7 +1495,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
                                    table.insert(validStates, state)
                                end
                            end
-                           
+
                            if #validStates > 0 then
                                 -- Evaluate Conditions to find active state
                                 local conflictStrategy = validStates.conflictStrategy or "priority"
@@ -1509,7 +1504,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
                                      chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
                                 end
                                 local actionData = validStates[chosenIdx] or validStates[1]
-                                
+
                                 if actionData then
                                      texture = Wise:GetActionIcon(actionData.type, actionData.value, actionData)
                                      break -- Found our icon
@@ -1521,7 +1516,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
                   texture = Wise:GetActionIcon(group.buttons[1].type, group.buttons[1].value)
               end
           end
-         
+
     elseif actionType == "misc" then
         if value == "extrabutton" then
             local extraBtn = _G["ExtraActionButton1"]
@@ -1568,7 +1563,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
     elseif actionType == "empty" then
          return nil
     end
-    
+
     return texture
 end
 
@@ -1585,10 +1580,10 @@ function Wise:IsActionKnown(actionType, value)
             end
         end
         if not spellID or type(spellID) ~= "number" then return false end
-        
+
         local currentSpec = GetSpecialization()
         local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
-        
+
         if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
             local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
             for i = 1, numSkillLines do
@@ -1613,47 +1608,47 @@ function Wise:IsActionKnown(actionType, value)
                 end
             end
         end
-        
+
         if IsPlayerSpell and type(spellID) == "number" and IsPlayerSpell(spellID) then return true end
         return false
-        
+
     elseif actionType == "item" then
         if type(value) == "number" or type(value) == "string" then
             local count = GetItemCount(value, true)
             return count and count > 0
         end
-    
+
     elseif actionType == "toy" then
         if C_ToyBox and C_ToyBox.IsToyUsable then
             if C_ToyBox.IsToyUsable(value) then return true end
         end
         if PlayerHasToy then return PlayerHasToy(value) end
-        
+
     elseif actionType == "mount" then
         if C_MountJournal then
             local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(value)
             return isCollected or false
         end
-        
+
     elseif actionType == "battlepet" then
         if C_PetJournal then
             local speciesID = C_PetJournal.GetPetInfoByPetID(value)
             return speciesID ~= nil
         end
-        
+
     elseif actionType == "macro" then
         if type(value) == "string" and string.sub(value, 1, 1) == "/" then return true end
         return GetMacroInfo(value) ~= nil
-        
+
     elseif actionType == "equipmentset" then
         if C_EquipmentSet then return C_EquipmentSet.GetEquipmentSetID(value) ~= nil end
-    
+
     elseif actionType == "equipped" then
         return GetInventoryItemID("player", value) ~= nil
-        
+
     elseif actionType == "raidmarker" or actionType == "uipanel" or actionType == "misc" then
         return true
-        
+
     elseif actionType == "interface" then
         return WiseDB and WiseDB.groups and WiseDB.groups[value] ~= nil
 
@@ -1663,7 +1658,7 @@ function Wise:IsActionKnown(actionType, value)
     elseif actionType == "empty" then
         return true
     end
-    
+
     return true
 end
 
@@ -1875,7 +1870,7 @@ function Wise:CreateEmbeddedPicker(parent)
     -- ep.CategoryBtn:SetWidth(200) -- Rmoved fixed width
     ep.CategoryBtn:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
     ep.CategoryBtn:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
-    
+
     ep.CategoryBtn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1922,7 +1917,7 @@ function Wise:CreateEmbeddedPicker(parent)
         -- Width will be set dynamically or anchored to left/right
         btn:SetPoint("LEFT", 6, 0)
         btn:SetPoint("RIGHT", -6, 0)
-        
+
         if prevItem then
             btn:SetPoint("TOP", prevItem, "BOTTOM", 0, 0)
         else
@@ -2048,15 +2043,15 @@ function Wise:CreateEmbeddedPicker(parent)
     -- ep.Search:SetSize(210, 20) -- Width dynamic now
     ep.Search:SetPoint("TOPLEFT", ep.FilterFrame, "BOTTOMLEFT", 5, -6) -- Indent slightly for search icon? Standard SearchBox has inset.
     -- Actually standard SearchBoxTemplate usually usually needs some width.
-    -- Let's stick to sticking to left. 
+    -- Let's stick to sticking to left.
     -- The SearchBoxTemplate has the magnifying glass on the left.
     -- If we align TOPLEFT to FilterFrame BOTTOMLEFT, it should be fine.
-    
-    -- Correction: SearchBoxTemplate texture often extends a bit. 
+
+    -- Correction: SearchBoxTemplate texture often extends a bit.
     -- Let's just use 0,-6.
-    ep.Search:SetPoint("TOPLEFT", ep.FilterFrame, "BOTTOMLEFT", 0, -4) 
+    ep.Search:SetPoint("TOPLEFT", ep.FilterFrame, "BOTTOMLEFT", 0, -4)
     ep.Search:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
-    
+
     local function UpdateSearchInstructions(self)
         local instr = self.Instructions
         if not instr then
@@ -2318,7 +2313,7 @@ end
 -- ============================================================================
 -- Picker Data Sources (Ported from Picker.lua)
 -- ============================================================================
--- NOTE: I am abbreviating these slightly for brevity if they are identical, 
+-- NOTE: I am abbreviating these slightly for brevity if they are identical,
 -- but I will copy the logic 1:1.
 
 function Wise:GetSpell(filter)
@@ -2326,7 +2321,7 @@ function Wise:GetSpell(filter)
     local seen = {}
     local currentSpec = GetSpecialization()
     local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
-    
+
     local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
     for i = 1, numSkillLines do
         local info = C_SpellBook.GetSpellBookSkillLineInfo(i)
@@ -2335,7 +2330,7 @@ function Wise:GetSpell(filter)
             local count = info.numSpellBookItems
             local skillLineName = info.name
             local specID = info.specID
-            
+
             local displayCategory = "Global"
             local realCategory = "global"
             local sourceSpecID = nil
@@ -2357,10 +2352,10 @@ function Wise:GetSpell(filter)
                 displayCategory = "In-Spec"
                 realCategory = "class"
             end
-            
+
             local showSpell = false
             if Wise.PickerSpellFilter == displayCategory then showSpell = true end
-            
+
             if showSpell then
                 for j = 1, count do
                     local index = offset + j
@@ -2421,7 +2416,7 @@ function Wise:GetSpell(filter)
         end
     end
 
-    
+
     -- Class-specific hidden/replacement spells
     local _, playerClass = UnitClass("player")
     local classSpells = {
@@ -2477,7 +2472,7 @@ function Wise:GetSpell(filter)
              end
         end
     end
-    
+
     table.sort(spells, function(a, b) return a.name < b.name end)
     return spells
 end
@@ -2539,8 +2534,8 @@ end
 function Wise:GetEquipped(filter)
     local items = {}
     local slots = {
-        "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot", 
-        "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot", 
+        "HeadSlot", "NeckSlot", "ShoulderSlot", "BackSlot", "ChestSlot", "ShirtSlot", "TabardSlot",
+        "WristSlot", "HandsSlot", "WaistSlot", "LegsSlot", "FeetSlot", "Finger0Slot", "Finger1Slot",
         "Trinket0Slot", "Trinket1Slot", "MainHandSlot", "SecondaryHandSlot"
     }
     for _, slotName in ipairs(slots) do
@@ -2898,7 +2893,7 @@ end
 -- This is the new "Middle" panel logic replacing RefreshActionList in Options.lua
 function Wise:RefreshActionsView(container)
     local groupName = Wise.selectedGroup
-    
+
     -- Cleanup
     if container.slots then
         for _, slot in ipairs(container.slots) do slot:Hide() end
@@ -2908,67 +2903,50 @@ function Wise:RefreshActionsView(container)
 
     -- Update the sticky AddSlotBtn script to use current groupName
     local addSlotBtn = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.AddSlotBtn
-    
+
     if addSlotBtn then
         if not groupName or not WiseDB.groups[groupName] then
             addSlotBtn:Disable()
             addSlotBtn:SetScript("OnClick", nil)
         else
-            local group = WiseDB.groups[groupName]
-            local isAddonVis = (Wise.ADDON_VIS_TEMPLATE and groupName == Wise.ADDON_VIS_TEMPLATE)
-
             addSlotBtn:Enable()
-            addSlotBtn:SetText(isAddonVis and "Pick Frame to Add" or "Add New Slot")
             addSlotBtn:SetScript("OnClick", function()
-                local grp = WiseDB.groups[groupName]
-                Wise:MigrateGroupToActions(grp)
+                -- 1. Determine next slot index
+                local group = WiseDB.groups[groupName]
+                Wise:MigrateGroupToActions(group)
 
                 local nextSlot = 0
-                for k in pairs(grp.actions) do
+                for k in pairs(group.actions) do
                     if type(k) == "number" and k > nextSlot then
                         nextSlot = k
                     end
                 end
                 nextSlot = nextSlot + 1
 
-                if isAddonVis and Wise.OpenFramePicker then
-                    -- Addon visibility: use frame picker instead of action picker
-                    Wise:OpenFramePicker(function(frameName)
-                        Wise:AddAction(groupName, nextSlot, "addonvisibility", frameName, nil, {
-                            name = frameName,
-                            icon = "Interface\\Icons\\INV_Misc_Book_09",
-                            addonFrame = frameName,
-                        })
-                        Wise.selectedSlot = nextSlot
-                        Wise.selectedState = nil
-                        Wise:RefreshActionsView(container)
-                        Wise:RefreshPropertiesPanel()
-                        C_Timer.After(0, function()
-                            if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                        end)
-                    end)
-                else
-                    -- Normal group: existing action picker flow
-                    if not grp.actions[nextSlot] then
-                        grp.actions[nextSlot] = {}
-                    end
-
-                    Wise.selectedSlot = nextSlot
-                    Wise.selectedState = nil
-                    Wise:RefreshActionsView(container)
-
-                    Wise.pickingAction = true
-                    Wise.PickerCallback = function(type, value, extra)
-                        Wise:AddAction(groupName, nextSlot, type, value, nil, extra)
-                        Wise:RefreshActionsView(container)
-                        Wise:RefreshPropertiesPanel()
-                        C_Timer.After(0, function()
-                            if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                        end)
-                    end
-                    Wise.PickerCurrentCategory = "Spell"
-                    Wise:RefreshPropertiesPanel()
+                -- 2. Create the empty slot immediately
+                if not group.actions[nextSlot] then
+                    group.actions[nextSlot] = {} -- Empty state list
                 end
+
+                -- 3. Select this new slot
+                Wise.selectedSlot = nextSlot
+                Wise.selectedState = nil
+
+                -- 4. Refresh View to show the new empty slot
+                Wise:RefreshActionsView(container)
+
+                -- 5. Open Picker for this new slot
+                Wise.pickingAction = true
+                Wise.PickerCallback = function(type, value, extra)
+                    Wise:AddAction(groupName, nextSlot, type, value, nil, extra)
+                    Wise:RefreshActionsView(container)
+                    Wise:RefreshPropertiesPanel()
+                    C_Timer.After(0, function()
+                        if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                    end)
+                end
+                Wise.PickerCurrentCategory = "Spell"
+                Wise:RefreshPropertiesPanel()
             end)
         end
     end
@@ -2985,7 +2963,7 @@ function Wise:RefreshActionsView(container)
     for k, v in pairs(group.actions) do
         if type(k) == "number" and k > maxSlot then maxSlot = k end
     end
-    
+
     if maxSlot == 0 then
         if not container.emptyLabel then
              container.emptyLabel = container:CreateFontString(nil, "OVERLAY", "GameFontDisable")
@@ -2995,24 +2973,24 @@ function Wise:RefreshActionsView(container)
         container.emptyLabel:Show()
         return
     end
-    
+
     -- Render Slots 1 to Max
     -- (User might have gaps if they deleted slot 2 but kept 3. We show them spaced or just iterate?)
     -- "clearly delineated divider between each number."
-    
-    local slotIndex = 0 
-    
+
+    local slotIndex = 0
+
     -- Sort keys to iterate
     local keys = {}
     for k in pairs(group.actions) do tinsert(keys, k) end
     table.sort(keys)
-    
+
     for _, sIdx in ipairs(keys) do
         local actions = group.actions[sIdx]
-        
+
         slotIndex = slotIndex + 1
         local slotFrame = container.slots[slotIndex]
-        
+
         if not slotFrame then
             slotFrame = CreateFrame("Button", nil, container, "BackdropTemplate")
             slotFrame:SetBackdrop({
@@ -3023,14 +3001,14 @@ function Wise:RefreshActionsView(container)
             })
             slotFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
             slotFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-            
+
             slotFrame.Header = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             slotFrame.Header:SetPoint("TOPLEFT", 5, -5)
 
             slotFrame.kbLabel = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             slotFrame.kbLabel:SetPoint("TOPRIGHT", -5, -5)
             slotFrame.kbLabel:SetTextColor(1, 1, 1, 1) -- White
-            
+
             -- State container
             slotFrame.ActionButtons = {}
 
@@ -3038,23 +3016,23 @@ function Wise:RefreshActionsView(container)
             slotFrame.AddStateBtn = CreateFrame("Button", nil, slotFrame, "GameMenuButtonTemplate")
             slotFrame.AddStateBtn:SetSize(20, 20)
             slotFrame.AddStateBtn:SetText("+")
-            
+
             tinsert(container.slots, slotFrame)
         end
         slotFrame:Show()
         slotFrame.slotID = sIdx
         slotFrame.AddStateBtn.slotID = sIdx
-        
+
         slotFrame.AddStateBtn.slotID = sIdx
-        
-        
+
+
         -- Selection Highlight
         if Wise.selectedSlot == sIdx then
             slotFrame:SetBackdropBorderColor(1, 0.8, 0, 1) -- Gold Selected
         else
             slotFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
         end
-        
+
         -- Slot Drag-to-Reorder (mousedown + movement threshold)
         local capturedVisualIdx = slotIndex
         slotFrame:SetScript("OnMouseDown", function(self, button)
@@ -3133,7 +3111,7 @@ function Wise:RefreshActionsView(container)
                 Wise:RefreshPropertiesPanel()
             end
         end)
-        
+
         slotFrame.Header:SetText("Slot " .. sIdx)
 
         -- Keybind
@@ -3144,13 +3122,13 @@ function Wise:RefreshActionsView(container)
         else
             slotFrame.kbLabel:Hide()
         end
-        
+
         -- Render States
         local innerY = -25
-        
+
         -- Cleanup inner buttons
         for _, b in ipairs(slotFrame.ActionButtons) do b:Hide() end
-        
+
         local totalStates = #actions
         for aIdx, action in ipairs(actions) do
              local btn = slotFrame.ActionButtons[aIdx]
@@ -3198,7 +3176,7 @@ function Wise:RefreshActionsView(container)
              if Wise:ShouldShowAction(action) then
                  btn:Show()
                  btn:SetPoint("TOPLEFT", 10, innerY)
-                 
+
                  local isValidCond, condErr = Wise:ValidateVisibilityCondition(action.conditions)
                  if isValidCond then
                      btn.errorIcon:Hide()
@@ -3210,7 +3188,7 @@ function Wise:RefreshActionsView(container)
 
                  local icon = Wise:GetActionIcon(action.type, action.value, action)
                  local name = Wise:GetActionName(action.type, action.value, action)
-                 
+
                  btn.icon:SetTexture(icon)
 
                  -- Build suffix text from category
@@ -3273,14 +3251,14 @@ function Wise:RefreshActionsView(container)
                      btn.suffix:SetText("")
                      btn.suffix:Hide()
                  end
-                 
+
                  -- Click to Select (for properties)
                  if Wise.selectedSlot == sIdx and Wise.selectedState == aIdx then
                      btn:SetBackdropColor(0.5, 0.5, 0.2, 1)
                  else
                      btn:SetBackdropColor(0.2, 0.2, 0.2, 1)
                  end
-                 
+
                  local capturedSlotForDrag = sIdx
                  local capturedStateForDrag = aIdx
 
@@ -3350,12 +3328,12 @@ function Wise:RefreshActionsView(container)
                  btn:Hide()
              end
         end
-        
+
         -- "+" Button at bottom of slot
         slotFrame.AddStateBtn:ClearAllPoints()
         slotFrame.AddStateBtn:SetPoint("TOP", 0, innerY)
         innerY = innerY - 25
-        
+
         -- Sizing
         local slotHeight = math.abs(innerY) + 5
         slotFrame:SetSize(260, slotHeight)
@@ -3364,10 +3342,10 @@ function Wise:RefreshActionsView(container)
         slotFrame:SetPoint("TOPLEFT", 0, y)
         y = y - slotHeight - 10
     end
-    
+
     -- Hide unused slots
     for k = slotIndex + 1, #container.slots do container.slots[k]:Hide() end
-    
+
     container:SetHeight(math.abs(y) + 50)
 end
 
@@ -3399,7 +3377,7 @@ function Wise:CreateIconPicker(parent)
         Wise:RefreshPropertiesPanel()
     end)
     -- Start with this button hidden if we want cleaner init, but parent logic handles it
-    
+
     -- Container for OPie IconSelector
     ip.Frame = CreateFrame("Frame", nil, parent)
     ip.Frame:SetPoint("TOPLEFT", 10, -50)
@@ -3424,7 +3402,7 @@ function Wise:CreateIconPicker(parent)
         isd:SetGridSize(rows, cols)
         isd:SetManualInputHintText("Search icons...")
         isd:Show() -- Ensure it is visible (factory hides it by default)
-        
+
         isd:SetScript("OnIconSelect", function(_, asset)
             if Wise.PickerCallback then
                 Wise.PickerCallback("icon", asset)
@@ -3432,7 +3410,7 @@ function Wise:CreateIconPicker(parent)
                 Wise:RefreshPropertiesPanel()
             end
         end)
-        
+
         -- Hide the close button built into IconSelector if we want to rely on our Back button
         -- or keep it. The sample code hides it often.
         if isd.closeButton then isd.closeButton:Hide() end

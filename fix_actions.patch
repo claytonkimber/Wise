@@ -1,0 +1,20 @@
+--- modules/Actions.lua
++++ modules/Actions.lua
+@@ -1277,6 +1277,8 @@
+             return eName .. ": " .. sName
+         end
+         return value
++    elseif actionType == "addonvisibility" then
++        return "Addon: " .. (value or "Unknown")
+
+     elseif actionType == "skyriding" then
+         if value == "switch" then
+@@ -1419,6 +1421,8 @@
+          elseif element == "buffs" then texture = "Interface\\Icons\\Spell_Holy_WordFortitude"
+          elseif element == "debuffs" then texture = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
+          else texture = "Interface\\Icons\\INV_Misc_QuestionMark" end
++    elseif actionType == "addonvisibility" then
++         texture = "Interface\\Icons\\INV_Misc_Book_09"
+
+     elseif actionType == "skyriding" then
+          if value == "switch" then

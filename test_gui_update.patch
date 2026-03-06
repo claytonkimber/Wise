@@ -1,0 +1,47 @@
+--- core/GUI.lua
++++ core/GUI.lua
+@@ -1900,6 +1900,34 @@
+     return nil
+ end
+
++function Wise:UpdateAddonVisibility()
++    if not WiseDB or not WiseDB.groups then return end
++    local addonsGroup = WiseDB.groups["Addon visibility"]
++    if not addonsGroup then return end
++
++    -- Build driver string for this addon based on the same rules
++    local parts = {}
++
++    if addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
++        table.insert(parts, addonsGroup.visibilitySettings.customShow .. " show")
++    end
++
++    if addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
++        table.insert(parts, addonsGroup.visibilitySettings.customHide .. " hide")
++    end
++
++    table.insert(parts, "show") -- Default base? Wait, should probably match the group's baseVisibility
++
++    local driverString = table.concat(parts, "; ")
++
++    for _, action in ipairs(addonsGroup.buttons or {}) do
++        if action.type == "addonvisibility" and action.value == "AllTheThings" then
++            if _G.AllTheThingsWindow then
++                RegisterStateDriver(_G.AllTheThingsWindow, "visibility", driverString)
++            end
++        end
++    end
++end
+
+ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
+     -- Protect against combat execution (SecureStateDriver, SetPoint, etc.)
+@@ -1949,6 +1977,10 @@
+         else group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN" end
+     end
+
++    if name == "Addon visibility" then
++        Wise:UpdateAddonVisibility()
++    end
++
+     -- Ensure defaults
+     group.keybindSettings = group.keybindSettings or { trigger = "press" }

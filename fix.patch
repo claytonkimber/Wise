@@ -1,0 +1,13 @@
+--- Wise.lua
++++ Wise.lua
+@@ -386,6 +386,10 @@
+          Wise:UpdateGroupDisplay("Specs")
+     end
+
++    if Wise.UpdateAddonsWiserInterface then
++        Wise:UpdateAddonsWiserInterface()
++    end
++
+     -- Refresh Options UI if open to show new/updated groups
+     if Wise.UpdateOptionsUI then
+         Wise:UpdateOptionsUI()

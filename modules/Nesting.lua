@@ -100,6 +100,9 @@ function Wise:IsNestingAllowed(parentGroup, childGroup)
     if childGroup.isWiser then
         return false, "Wiser interfaces cannot be nested."
     end
+    if childGroup.isAddonVisibility then
+        return false, "Addon Visibility cannot be nested."
+    end
 
     local parentType = parentGroup.type or "circle"
     local childType = childGroup.type or "circle"
