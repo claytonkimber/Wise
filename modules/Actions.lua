@@ -1232,6 +1232,7 @@ function Wise:GetActionName(actionType, value, extraData)
         if value == "zoneability" then return "Zone Ability" end
         if value == "leave_vehicle" then return "Leave Vehicle" end
         if value == "custom_macro" then return "Custom Macro" end
+        if value == "addon_magic" then return "Addon Magic" end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
             local val = tonumber(string.sub(value, 6))
             if val then
@@ -2869,6 +2870,7 @@ function Wise:GetMiscellaneous(filter)
          {name="Leave Vehicle", val="leave_vehicle", icon="Interface\\Icons\\Spell_Shadow_SacrificialPact"},
          {name="Extra Action Button 1", val="extrabutton", icon="Interface\\Icons\\Temp"},
          {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
+         {name="Addon Magic", val="addon_magic", icon="Interface\\Icons\\INV_Misc_EngGizmos_11"},
     }
     local numSpecs = GetNumSpecializations()
     for i = 1, numSpecs do
