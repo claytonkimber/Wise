@@ -31,6 +31,13 @@ function Wise:AddInterfaceTooltip(btn)
         -- Check setting
         if not WiseDB.settings.showTooltips then return end
 
+        -- Check if button is invisible
+        local groupName = self.groupName or (self:GetParent() and self:GetParent().groupName)
+        if groupName and Wise.GetGroupDisplaySettings then
+            local _, _, _, _, _, _, _, _, _, _, _, _, iconStyle = Wise:GetGroupDisplaySettings(groupName)
+            if iconStyle == "invisible" then return end
+        end
+
         -- Determine Anchor
         -- Using ANCHOR_CURSOR to avoid obscuring other ring buttons
         GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
