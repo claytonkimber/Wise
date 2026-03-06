@@ -3,13 +3,13 @@ local addonName, Wise = ...
 local tinsert = table.insert
 
 -- Tool template name (appears in sidebar Tools section)
-Wise.ADDON_MAGIC_TEMPLATE = "Addon Magic"
+Wise.ADDON_MAGIC_TEMPLATE = "Addon Loading Magic"
 
 -- ============================================================================
 -- Data Initialization
 -- ============================================================================
 
--- Addon Magic stores its slots in WiseDB.addonMagicSlots
+-- Addon Loading Magic stores its slots in WiseDB.addonMagicSlots
 -- Each slot: { addons = {"AddonName1", "AddonName2"}, name = "My Bundle" }
 local function EnsureData()
     if not WiseDB then return end
@@ -24,6 +24,20 @@ function Wise:ExecuteAddonMagic(slotIndex)
     EnsureData()
     local slot = WiseDB.addonMagicSlots[slotIndex]
     if not slot or not slot.addons or #slot.addons == 0 then return end
+
+    local allLoaded = true
+    for _, addon in ipairs(slot.addons) do
+        addon = strtrim(addon)
+        if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
+            allLoaded = false
+            break
+        end
+    end
+
+    if allLoaded then
+        ReloadUI()
+        return
+    end
 
     local addonsToDisable = {}
     local playerChar = UnitName("player")
@@ -59,7 +73,7 @@ f:SetScript("OnEvent", function(self, event)
 end)
 
 -- ============================================================================
--- Middle Panel: Addon Magic Slots View
+-- Middle Panel: Addon Loading Magic Slots View
 -- ============================================================================
 
 function Wise:RefreshAddonMagicSlotsView(container)
@@ -392,7 +406,7 @@ function Wise:CreateAddonMagicPropertiesPanel(panel, slotIndex, y)
 end
 
 -- ============================================================================
--- Hook RefreshActionsView to show Addon Magic slots
+-- Hook RefreshActionsView to show Addon Loading Magic slots
 -- ============================================================================
 
 local origRefreshActionsView = Wise.RefreshActionsView

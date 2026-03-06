@@ -890,7 +890,7 @@ function Wise:RefreshGroupList()
     y = y - 42
     btnIndex = btnIndex + 1
 
-    -- Addon Magic Tool
+    -- Addon Loading Magic Tool
     if Wise.ADDON_MAGIC_TEMPLATE then
         local amBtn = container.buttons[btnIndex]
         if not amBtn then
@@ -933,7 +933,7 @@ function Wise:RefreshGroupList()
 
         amBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Addon Magic", 1, 1, 1)
+            GameTooltip:SetText("Addon Loading Magic", 1, 1, 1)
             GameTooltip:AddLine("Temporarily load addons on demand.\nCreate slots with addon bundles, then trigger them to enable & reload.", 0.8, 0.8, 0.8, true)
             GameTooltip:Show()
         end)
