@@ -1,7 +1,0 @@
-﻿core/GUI.lua:617:    f.texture:SetAllPoints()
-core/GUI.lua:2522:            btn.activeHighlight:SetAllPoints()
-core/GUI.lua:2529:            btn.icon:SetAllPoints()
-core/GUI.lua:2937:                 vBtn.activeHighlight:SetAllPoints()
-core/GUI.lua:2943:                 vBtn.icon:SetAllPoints()
-core/GUI.lua:3653:            buttons[i].icon:SetAllPoints()
-core/GUI.lua:3665:            buttons[i].icon:SetAllPoints()

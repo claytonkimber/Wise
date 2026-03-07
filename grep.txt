@@ -1,3 +1,0 @@
-﻿core/GUI.lua:2778:        Wise:ApplyIconStyle(btn, iconStyle)
-core/GUI.lua:2981:             Wise:ApplyIconStyle(vBtn, visualIconStyle)
-core/GUI.lua:3339:function Wise:ApplyIconStyle(btn, style)

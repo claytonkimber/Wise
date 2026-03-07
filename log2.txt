@@ -1,3 +1,0 @@
-﻿dfa7aeb WIP: attempts at cooldown wiper alignment fix
-ffec004 Fix cooldown wiper alignment to match icon size
-8c16e48 Merge branch 'feature/invisible-icon-style-6723845046601772806'
