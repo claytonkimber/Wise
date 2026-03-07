@@ -1230,6 +1230,8 @@ function Wise:GetActionName(actionType, value, extraData)
     elseif actionType == "misc" then
         if value == "extrabutton" then return "Extra Button" end
         if value == "zoneability" then return "Zone Ability" end
+        if value == "overridebar" then return "Override Bar" end
+        if value == "possessbar" then return "Possess Bar" end
         if value == "leave_vehicle" then return "Leave Vehicle" end
         if value == "custom_macro" then return "Custom Macro" end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
@@ -1341,8 +1343,10 @@ function Wise:GetActionIcon(actionType, value, extraData)
     local texture = 134400 -- Default Question Mark
 
     if actionType == "action" then
-        if tonumber(value) then
-            local icon = GetActionTexture(tonumber(value))
+        local aID = tonumber(value)
+        if aID then
+            local realID = Wise:ResolveBarActionID(aID)
+            local icon = GetActionTexture(realID)
             if icon then return icon end
         end
         return 134400
@@ -1533,6 +1537,14 @@ function Wise:GetActionIcon(actionType, value, extraData)
                 if info then texture = info.iconID end
             end
             texture = texture or "Interface\\Icons\\Temp"
+        end
+        if value == "overridebar" then
+            local realID = Wise:ResolveBarActionID(133)
+            texture = GetActionTexture(realID) or "Interface\\Icons\\Temp"
+        end
+        if value == "possessbar" then
+            local realID = Wise:ResolveBarActionID(121)
+            texture = GetActionTexture(realID) or "Interface\\Icons\\Temp"
         end
         if value == "leave_vehicle" then texture = "Interface\\Icons\\Spell_Shadow_SacrificialPact" end
         if value == "custom_macro" then texture = 134400 end
@@ -2869,6 +2881,8 @@ function Wise:GetMiscellaneous(filter)
          {name="Leave Vehicle", val="leave_vehicle", icon="Interface\\Icons\\Spell_Shadow_SacrificialPact"},
          {name="Extra Action Button 1", val="extrabutton", icon="Interface\\Icons\\Temp"},
          {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
+         {name="Override Bar", val="overridebar", icon="Interface\\Icons\\Temp"},
+         {name="Possess Bar", val="possessbar", icon="Interface\\Icons\\Temp"},
     }
     local numSpecs = GetNumSpecializations()
     for i = 1, numSpecs do

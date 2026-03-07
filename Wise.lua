@@ -1124,8 +1124,11 @@ local hiddenParent = CreateFrame("Frame", nil, UIParent)
 hiddenParent:Hide()
 
 -- Frames that taint when hidden via RegisterStateDriver (e.g. PetActionBar calls SetShownBase)
+-- OverrideActionBar has its own show/hide animations and state driver that conflict with RegisterStateDriver,
+-- causing a pulsing effect. Reparenting avoids this.
 local reparentFrames = {
     PetActionBar = true,
+    OverrideActionBar = true,
 }
 
 function Wise:UpdateBlizzardUI()

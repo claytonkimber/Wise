@@ -49,8 +49,10 @@ function Wise:AddInterfaceTooltip(btn)
         local data = (meta and meta.actionData) or self.actionData
 
         if type == "action" then
-            if tonumber(value) then
-                GameTooltip:SetAction(tonumber(value))
+            local aID = tonumber(value)
+            if aID then
+                local realID = Wise:ResolveBarActionID(aID)
+                GameTooltip:SetAction(realID)
             else
                 GameTooltip:SetText("Unknown Action", 1, 1, 1)
             end
@@ -151,12 +153,26 @@ function Wise:AddInterfaceTooltip(btn)
                      GameTooltip:SetSpellByID(zoneBtn.spellID)
                      hasAction = true
                  end
+             elseif value == "overridebar" and data and data.showTooltip then
+                 local realID = Wise:ResolveBarActionID(133)
+                 if HasOverrideActionBar and HasOverrideActionBar() then
+                     GameTooltip:SetAction(realID)
+                     hasAction = true
+                 end
+             elseif value == "possessbar" and data and data.showTooltip then
+                 local realID = Wise:ResolveBarActionID(121)
+                 if HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() or HasVehicleActionBar and HasVehicleActionBar() then
+                     GameTooltip:SetAction(realID)
+                     hasAction = true
+                 end
              end
              if not hasAction then
              local label = value
              if value == "hearthstone" then label = "Hearthstone"
              elseif value == "extrabutton" then label = "Extra Action Button"
              elseif value == "zoneability" then label = "Zone Ability"
+             elseif value == "overridebar" then label = "Override Bar"
+             elseif value == "possessbar" then label = "Possess Bar"
              elseif value == "leave_vehicle" then label = "Leave Vehicle"
              elseif value:match("^spec_") then
                  local val = tonumber(value:match("^spec_(%d+)"))

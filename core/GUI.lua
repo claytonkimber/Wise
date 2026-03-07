@@ -64,6 +64,24 @@ function Wise:GetZoneAbilitySpellButton()
     return GetZoneAbilitySpellButton()
 end
 
+-- Resolve the real action ID for override/possess bar slots.
+-- OverrideActionBarButton frames compute the actual action via ActionButton_CalculateAction,
+-- so raw action IDs 133-144 / 121-132 may not return correct textures/cooldowns directly.
+function Wise:ResolveBarActionID(aID)
+    if aID >= 133 and aID <= 144 then
+        local overrideBtn = _G["OverrideActionBarButton" .. (aID - 132)]
+        if overrideBtn and HasOverrideActionBar and HasOverrideActionBar() then
+            return overrideBtn.action or aID
+        end
+    elseif aID >= 121 and aID <= 132 then
+        local possessBtn = _G["ActionButton" .. (aID - 120)]
+        if possessBtn and (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() or HasVehicleActionBar and HasVehicleActionBar()) then
+            return possessBtn.action or aID
+        end
+    end
+    return aID
+end
+
 -- Returns true if a zone ability is active (has a valid spell), regardless of
 -- whether ZoneAbilityFrame is hidden (e.g. by Wise's "Hide Zone Ability" setting).
 local function IsZoneAbilityActive()
@@ -1699,6 +1717,21 @@ function Wise:GetSecureAttributes(actionData, conditions)
             if zoneBtn then
                 secureValue = zoneBtn
             end
+        elseif aValue == "overridebar" then
+            secureType = "click"
+            secureAttr = "clickbutton"
+            local overrideBtn = _G["OverrideActionBarButton1"]
+            if overrideBtn then
+                secureValue = overrideBtn
+            end
+        elseif aValue == "possessbar" then
+            secureType = "click"
+            secureAttr = "clickbutton"
+            -- Possess bar maps to ActionButton1 when possess is active
+            local possessBtn = _G["ActionButton1"]
+            if possessBtn then
+                secureValue = possessBtn
+            end
         elseif aValue == "leave_vehicle" then
             secureType = "macro"
             secureAttr = "macrotext"
@@ -3234,7 +3267,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     needsTicker = true
                     break
                 end
-                if (meta.actionType == "misc" and (meta.actionValue == "custom_macro" or meta.actionValue == "extrabutton" or meta.actionValue == "zoneability")) or meta.actionType == "action" then
+                if (meta.actionType == "misc" and (meta.actionValue == "custom_macro" or meta.actionValue == "extrabutton" or meta.actionValue == "zoneability" or meta.actionValue == "overridebar" or meta.actionValue == "possessbar")) or meta.actionType == "action" then
                     needsTicker = true
                     break
                 end
@@ -3251,7 +3284,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     elseif meta.actionType == "action" then
                          local aID = tonumber(meta.actionValue)
                          if aID then
-                             local tex = GetActionTexture(aID) or 134400
+                             local realID = Wise:ResolveBarActionID(aID)
+                             local tex = GetActionTexture(realID) or 134400
                              btn.icon:SetTexture(tex)
                              local vClone = meta.visualClone or btn.visualClone
                              if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
@@ -3319,6 +3353,34 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          -- Rebind clickbutton when the spell button changes (e.g. entering garrison)
                          if canSetAttrs and zoneBtn then
                              btn:SetAttribute("clickbutton", zoneBtn)
+                         end
+                         Wise:UpdateButtonCooldown(btn)
+                         Wise:UpdateButtonUsability(btn)
+                    elseif meta.actionType == "misc" and meta.actionValue == "overridebar" then
+                         -- Update Override Bar icon dynamically
+                         local realID = Wise:ResolveBarActionID(133)
+                         local tex = GetActionTexture(realID) or "Interface\\Icons\\Temp"
+                         btn.icon:SetTexture(tex)
+                         local vClone = meta.visualClone or btn.visualClone
+                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         -- Rebind clickbutton in case override bar appeared
+                         local overrideBtn = _G["OverrideActionBarButton1"]
+                         if canSetAttrs and overrideBtn then
+                             btn:SetAttribute("clickbutton", overrideBtn)
+                         end
+                         Wise:UpdateButtonCooldown(btn)
+                         Wise:UpdateButtonUsability(btn)
+                    elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
+                         -- Update Possess Bar icon dynamically
+                         local realID = Wise:ResolveBarActionID(121)
+                         local tex = GetActionTexture(realID) or "Interface\\Icons\\Temp"
+                         btn.icon:SetTexture(tex)
+                         local vClone = meta.visualClone or btn.visualClone
+                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         -- Rebind clickbutton in case possess bar appeared
+                         local possessBtn = _G["ActionButton1"]
+                         if canSetAttrs and possessBtn then
+                             btn:SetAttribute("clickbutton", possessBtn)
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
@@ -3935,7 +3997,8 @@ function Wise:UpdateButtonCooldown(btn)
     local actionValue = (meta and meta.actionValue) or btn.actionValue
 
     if actionType == "action" and tonumber(actionValue) then
-        start, duration = GetActionCooldown(tonumber(actionValue))
+        local realID = Wise:ResolveBarActionID(tonumber(actionValue))
+        start, duration = GetActionCooldown(realID)
         start = start or 0
         duration = duration or 0
     elseif actionType == "misc" and actionValue == "extrabutton" then
@@ -3954,6 +4017,16 @@ function Wise:UpdateButtonCooldown(btn)
                 duration = cooldownInfo.duration or 0
             end
         end
+    elseif actionType == "misc" and actionValue == "overridebar" then
+        local realID = Wise:ResolveBarActionID(133)
+        start, duration = GetActionCooldown(realID)
+        start = start or 0
+        duration = duration or 0
+    elseif actionType == "misc" and actionValue == "possessbar" then
+        local realID = Wise:ResolveBarActionID(121)
+        start, duration = GetActionCooldown(realID)
+        start = start or 0
+        duration = duration or 0
     elseif spellID then
         local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
         if cooldownInfo then
@@ -4243,7 +4316,8 @@ function Wise:UpdateButtonUsability(btn)
 
     -- Module 4: API Compatibility (Polyfill)
     if actionType == "action" and tonumber(actionValue) then
-        isUsable, noMana = IsUsableAction(tonumber(actionValue))
+        local realID = Wise:ResolveBarActionID(tonumber(actionValue))
+        isUsable, noMana = IsUsableAction(realID)
     elseif actionType == "misc" and actionValue == "extrabutton" then
         local extraBtn = _G["ExtraActionButton1"]
         if extraBtn and extraBtn:IsShown() and extraBtn.action then
@@ -4254,6 +4328,12 @@ function Wise:UpdateButtonUsability(btn)
         if zoneBtn and zoneBtn.spellID then
             isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
         end
+    elseif actionType == "misc" and actionValue == "overridebar" then
+        local realID = Wise:ResolveBarActionID(133)
+        isUsable, noMana = IsUsableAction(realID)
+    elseif actionType == "misc" and actionValue == "possessbar" then
+        local realID = Wise:ResolveBarActionID(121)
+        isUsable, noMana = IsUsableAction(realID)
     elseif spellID then
         isUsable, noMana = Wise:IsSpellUsable(spellID)
     elseif itemID then

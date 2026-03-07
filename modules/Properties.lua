@@ -821,7 +821,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     -- Addon Loading Magic is now a dedicated tool in the Tools section.
 
     -- Show Tooltip checkbox (for Extra Action Button)
-    if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability") then
+    if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability" or action.value == "overridebar" or action.value == "possessbar") then
         local tipCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         tipCheck:SetPoint("TOPLEFT", 10, y)
         tipCheck:SetChecked(action.showTooltip or false)
