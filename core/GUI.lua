@@ -1,6 +1,15 @@
 -- GUI.lua
 local addonName, Wise = ...
 
+-- Wise Logo Color Palette:
+-- ID 1: Gold - #e6ba3e / RGB: 230, 186, 62
+-- ID 2: Amber - #d58221 / RGB: 213, 130, 33
+-- ID 3: Burnt Orange - #c0550d / RGB: 192, 85, 13
+-- ID 4: Rust - #973707 / RGB: 151, 55, 7
+-- ID 5: Dark Brown - #501903 / RGB: 80, 25, 3
+-- ID 6: Bright Green - #9fe870 / RGB: 159, 232, 112
+-- ID 7: Forest Green - #163300 / RGB: 22, 51, 0
+
 -- Helper: Resolve per-group display settings with fallback to global
 local _G = _G
 local GetTime = GetTime
