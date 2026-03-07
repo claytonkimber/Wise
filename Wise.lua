@@ -1077,7 +1077,8 @@ function Wise:OpenMacroPopupPicker(callback)
         -- Hide triggers OnHide which calls RestoreState
         MacroPopupFrame:Hide()
 
-        if callback and iconTexture then
+        if callback then
+            -- Note: iconTexture can be nil, which means the '?' (Dynamic/Default) icon was selected.
             callback("icon", iconTexture)
         end
     end

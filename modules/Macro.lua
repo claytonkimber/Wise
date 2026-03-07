@@ -84,8 +84,9 @@ function Wise:CreateMacroEditor(panel, action, y)
     
     iconBtn:SetScript("OnClick", function()
         Wise:OpenIconPicker(function(type, value)
-            -- The icon picker returns "icon" as type and the texture path/ID as value
-            if type == "icon" and value then
+            -- The icon picker returns "icon" as type and the texture path/ID as value.
+            -- A nil value means resetting to the default/dynamic icon.
+            if type == "icon" then
                 action.icon = value
                 UpdateIconDisplay()
                 Wise:UpdateGroupDisplay(Wise.selectedGroup)

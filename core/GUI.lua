@@ -2833,7 +2833,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local resolvedType, resolvedValue, resolvedIcon
         if aType == "misc" and aValue == "custom_macro" then
              resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
-             if resolvedIcon then texture = resolvedIcon end
+             -- Priority: Only use dynamic resolved icon if no manual icon override is present
+             if resolvedIcon and not actionData.icon then texture = resolvedIcon end
         end
 
         btn.icon:SetTexture(texture)
@@ -3251,13 +3252,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     elseif meta.actionType == "misc" and meta.actionValue == "custom_macro" then
                          -- Update Custom Macro
                          local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
-                         if mType then
-                             btn.icon:SetTexture(mIcon)
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then
-                                 vClone.icon:SetTexture(mIcon)
-                             end
+                         
+                         -- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark
+                         local displayIcon = meta.actionData.icon or mIcon or 134400
+                         btn.icon:SetTexture(displayIcon)
+                         local vClone = meta.visualClone or btn.visualClone
+                         if vClone and vClone.icon then vClone.icon:SetTexture(displayIcon) end
 
+                         if mType then
                              local spellID, itemID
                              if mType == "spell" then
                                  local info = C_Spell.GetSpellInfo(mVal)
@@ -3272,12 +3274,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                              Wise:UpdateButtonCooldown(btn)
                              Wise:UpdateButtonUsability(btn)
                          else
-                             -- Reset to default
-                             local defaultIcon = 134400 -- Question Mark
-                             btn.icon:SetTexture(defaultIcon)
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:SetTexture(defaultIcon) end
-
+                             -- Reset dynamic metadata (base icon handled above via displayIcon)
                              meta.baseSpellID = nil
                              meta.spellID = nil
                              meta.itemID = nil
