@@ -1,0 +1,1 @@
+﻿core/GUI.lua:3357:        -- Zoom in to remove rounded borders

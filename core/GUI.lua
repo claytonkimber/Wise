@@ -2578,20 +2578,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn:SetSize(iconSize, iconSize)
             btn:RegisterForClicks("AnyUp", "AnyDown")
 
-            -- Active state highlight (manually managed, not CheckButton)
-            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
-            btn.activeHighlight:SetAllPoints()
-            btn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-            btn.activeHighlight:SetBlendMode("ADD")
-            btn.activeHighlight:Hide()
-
             -- Icon
             btn.icon = btn:CreateTexture(nil, "ARTWORK")
             btn.icon:SetAllPoints()
+
+            -- Active state highlight (manually managed, not CheckButton)
+            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
+            btn.activeHighlight:SetAllPoints(btn.icon)
+            btn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+            btn.activeHighlight:SetBlendMode("ADD")
+            btn.activeHighlight:Hide()
             
-            -- Cooldown frame (standard WoW cooldown sweep)
-            btn.cooldown = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
-            btn.cooldown:SetAllPoints()
+            -- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
+            btn.cooldown = CreateFrame("Cooldown", nil, btn)
+            btn.cooldown:SetAllPoints(btn.icon)
+            btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+            btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
             btn.cooldown:SetDrawEdge(true)
             btn.cooldown:SetDrawSwipe(true)
             btn.cooldown:SetHideCountdownNumbers(false)
@@ -2993,17 +2995,20 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  vBtn:SetSize(visualIconSize, visualIconSize)
                  vBtn:EnableMouse(false) -- Not clickable
 
-                 -- Active state highlight (manually managed)
-                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
-                 vBtn.activeHighlight:SetAllPoints()
-                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-                 vBtn.activeHighlight:SetBlendMode("ADD")
-                 vBtn.activeHighlight:Hide()
-
                  vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
                  vBtn.icon:SetAllPoints()
-                 vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn, "CooldownFrameTemplate")
-                 vBtn.cooldown:SetAllPoints()
+
+                 -- Active state highlight (manually managed)
+                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
+                 vBtn.activeHighlight:SetAllPoints(vBtn.icon)
+                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+                 vBtn.activeHighlight:SetBlendMode("ADD")
+                 vBtn.activeHighlight:Hide()
+                 -- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
+                 vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn)
+                 vBtn.cooldown:SetAllPoints(vBtn.icon)
+                 vBtn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+                 vBtn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
                  vBtn.cooldown:SetDrawEdge(true)
                  vBtn.cooldown:SetDrawSwipe(true)
                  vBtn.cooldown:SetHideCountdownNumbers(false)
@@ -3414,9 +3419,11 @@ function Wise:ApplyIconStyle(btn, style)
     if style == "rounded" then
         -- Default WoW Icon (slightly rounded square)
         btn.icon:SetTexCoord(0, 1, 0, 1)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0, 1, 0, 1) end
     elseif style == "square" then
         -- Zoom in to remove rounded borders
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     elseif style == "round" then
         -- Apply circular mask
         if not btn.styleMask then
@@ -3427,6 +3434,7 @@ function Wise:ApplyIconStyle(btn, style)
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     end
 end
 
@@ -3954,49 +3962,31 @@ function Wise:UpdateButtonCooldown(btn)
     
     start = start or 0
     duration = duration or 0
-    
-    -- Buff Duration Override (Cooldown Manager Style)
-    local isBuffActive = false
+    -- GCD Detection and Handling
     local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD = Wise:GetGroupDisplaySettings(btn.groupName)
+    local isGCD = false
+    local _, gcdDuration = 0, 0
+    if GetSpellCooldown then
+        _, gcdDuration = GetSpellCooldown(61304)
+    elseif C_Spell.GetSpellCooldown then
+        local info = C_Spell.GetSpellCooldown(61304)
+        if info then gcdDuration = info.duration or 0 end
+    end
 
-    -- GCD Check (Hide if showGCD is false)
-    if not showGCD then
-        local isGCD = false
-
-        -- Use Global API for GCD reference (sometimes cleaner regarding struct/table taint)
-        local gcdStart, gcdDuration = 0, 0
-        local gcdMS = 0
-        if GetSpellBaseCooldown then
-            local _cdMS, _gcdMS = GetSpellBaseCooldown(spellID)
-            gcdMS = _gcdMS or 0
-        end
-        if GetSpellCooldown then
-             gcdStart, gcdDuration = GetSpellCooldown(61304)
-        elseif C_Spell.GetSpellCooldown then
-             local info = C_Spell.GetSpellCooldown(61304)
-             if info then gcdStart, gcdDuration = info.startTime, info.duration end
-        end
-
-        -- Wrap logic in pcall to avoid "secret number" comparison errors (e.g. start > 0)
-        local success = pcall(function()
-            if start > 0 and duration > 0 then
-                if gcdDuration and gcdDuration > 0 then
-                    -- Only check duration match. Ignore start time (avoids secret number diff/taint)
-                    -- Start time is the protected value in combat; duration is typically safe.
-                    if math.abs(duration - gcdDuration) < 0.1 then
-                        isGCD = true
-                    end
-                end
+    local success = pcall(function()
+        if start > 0 and duration > 0 and gcdDuration and gcdDuration > 0 then
+            if math.abs(duration - gcdDuration) < 0.1 then
+                isGCD = true
             end
-        end)
-
-        -- If pcall failed or check succeeded
-        if success and isGCD then
-             start = 0
-             duration = 0
         end
+    end)
+
+    if isGCD and not showGCD then
+        start = 0
+        duration = 0
     end
     
+    local isBuffActive = false
     if showBuffs and spellID then
         local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
         
@@ -4009,9 +3999,6 @@ function Wise:UpdateButtonCooldown(btn)
              end
         end
         
-        -- Deprecated: Target Debuff Scanning removed due to taint issues.
-        -- We only track player buffs now.
-        
         if aura and aura.expirationTime and aura.duration and aura.duration > 0 then
             -- Override cooldown display with buff/debuff duration
             start = aura.expirationTime - aura.duration
@@ -4021,7 +4008,11 @@ function Wise:UpdateButtonCooldown(btn)
     end
     
     if btn.cooldown.SetSwipeColor then
-         btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Reset to default blackish
+        if isGCD then
+            btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6) -- Custom GCD color (lighter)
+        else
+            btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
+        end
     end
     
     btn.cooldown:SetCooldown(start, duration)
