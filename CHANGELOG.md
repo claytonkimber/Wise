@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.20260307] - 2026-03-07
+
+- [Feature] Implement Addon Loading Magic (AML) for conditional addon loading and state management
+- [Feature] Add `[aml:slotname]` conditional support for interface visibility and action slots
+- [Feature] Add "Invisible" icon style for layout placeholders to allow cleaner UI designs
+- [Fix] Macro icon selector now correctly opens manual selection when clicking the question mark icon
+- [Fix] Remove 10px inset from cooldown wipers (GCD animation) for seamless edge-to-edge rendering
+- [Fix] Improved state persistence and reload behavior for Addon Loading Magic slots
+
 ## [1.0.20260306] - 2026-03-06
 
 - [Feature] Replace hardcoded class spells with programmatic spell override resolution (e.g. Maul→Raze) across all UI surfaces
