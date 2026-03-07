@@ -1279,7 +1279,9 @@ function Wise:GetActionName(actionType, value, extraData)
         end
         return value
     elseif actionType == "addonvisibility" then
-        return "Addon: " .. (value or "Unknown")
+        local v = value or "Unknown"
+        if v:find(":") then return v end
+        return "Addon: " .. v
 
     elseif actionType == "uipanel" then
         local names = {
@@ -2931,9 +2933,9 @@ function Wise:RefreshActionsView(container)
                 end
                 nextSlot = nextSlot + 1
 
-                if isAddonVis and Wise.OpenFramePicker then
-                    -- Addon visibility: use frame picker instead of action picker
-                    Wise:OpenFramePicker(function(frameName)
+                if isAddonVis then
+                    -- Addon visibility: show detected frames + manual picker option
+                    Wise:OpenAddonFrameSelector(function(frameName)
                         Wise:AddAction(groupName, nextSlot, "addonvisibility", frameName, nil, {
                             name = frameName,
                             icon = "Interface\\Icons\\INV_Misc_Book_09",

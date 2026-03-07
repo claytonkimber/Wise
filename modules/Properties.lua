@@ -264,6 +264,167 @@ function Wise:OpenFramePicker(callback)
     end)
 end
 
+-- Addon Frame Selector: shows auto-detected frames from resolvers + manual pick option
+-- callback(frameName) is called when a frame is selected
+function Wise:OpenAddonFrameSelector(callback)
+    local detected = Wise:GetDetectedAddonFrames()
+
+    -- If no auto-detected frames, fall back to manual picker
+    if #detected == 0 then
+        if Wise.OpenFramePicker then
+            Wise:OpenFramePicker(callback)
+        end
+        return
+    end
+
+    local ROW_HEIGHT = 24
+    local totalRows = #detected + 1 -- +1 for the manual pick option
+    local listHeight = math.min(totalRows * ROW_HEIGHT + 60, 450)
+
+    local list = CreateFrame("Frame", "WiseAddonFrameSelector", UIParent, "BackdropTemplate")
+    list:SetFrameStrata("DIALOG")
+    list:SetSize(340, listHeight)
+    list:SetPoint("CENTER")
+    list:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    list:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    list:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    list:EnableMouse(true)
+    list:EnableKeyboard(true)
+    list:SetMovable(true)
+    list:RegisterForDrag("LeftButton")
+    list:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    list:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+
+    local title = list:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -8)
+    title:SetText("Select Addon Frame")
+    title:SetTextColor(1, 0.82, 0)
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, list, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -2, -2)
+
+    -- Scroll area
+    local scrollParent = CreateFrame("Frame", nil, list)
+    scrollParent:SetPoint("TOPLEFT", 8, -32)
+    scrollParent:SetPoint("BOTTOMRIGHT", -8, 8)
+    scrollParent:SetClipsChildren(true)
+
+    local content = CreateFrame("Frame", nil, scrollParent)
+    content:SetSize(scrollParent:GetWidth(), totalRows * ROW_HEIGHT)
+    content:SetPoint("TOPLEFT")
+
+    local scrollOffset = 0
+    local maxScroll = math.max(0, totalRows * ROW_HEIGHT - scrollParent:GetHeight())
+
+    scrollParent:EnableMouseWheel(true)
+    scrollParent:SetScript("OnMouseWheel", function(self, delta)
+        scrollOffset = math.max(0, math.min(maxScroll, scrollOffset - delta * ROW_HEIGHT * 3))
+        content:SetPoint("TOPLEFT", 0, scrollOffset)
+    end)
+
+    -- Detected addon frames
+    for i, info in ipairs(detected) do
+        local row = CreateFrame("Button", nil, content)
+        row:SetSize(content:GetWidth(), ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
+
+        local rowBg = row:CreateTexture(nil, "BACKGROUND")
+        rowBg:SetAllPoints()
+        if i % 2 == 0 then
+            rowBg:SetColorTexture(1, 1, 1, 0.05)
+        else
+            rowBg:SetColorTexture(0, 0, 0, 0)
+        end
+
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(18, 18)
+        icon:SetPoint("LEFT", 6, 0)
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+
+        local rowText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        rowText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+        rowText:SetPoint("RIGHT", -6, 0)
+        rowText:SetJustifyH("LEFT")
+        rowText:SetText(info.name)
+
+        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+        if info.deferred then
+            rowText:SetTextColor(0.7, 0.7, 0.7)
+        end
+
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(info.name, 1, 1, 1)
+            GameTooltip:AddLine("Addon: " .. info.addon, 0.5, 0.8, 1)
+            if info.deferred then
+                GameTooltip:AddLine("Window not yet opened — will be controlled once opened.", 0.8, 0.8, 0.4, true)
+            end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", GameTooltip_Hide)
+
+        row:SetScript("OnClick", function()
+            callback(info.name)
+            list:Hide()
+        end)
+    end
+
+    -- Separator
+    local sepIndex = #detected
+    local sep = content:CreateTexture(nil, "ARTWORK")
+    sep:SetSize(content:GetWidth() - 20, 1)
+    sep:SetPoint("TOP", 0, -(sepIndex * ROW_HEIGHT) - ROW_HEIGHT / 2 + 1)
+    sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
+
+    -- Manual pick option
+    local manualRow = CreateFrame("Button", nil, content)
+    manualRow:SetSize(content:GetWidth(), ROW_HEIGHT)
+    manualRow:SetPoint("TOPLEFT", 0, -sepIndex * ROW_HEIGHT)
+
+    local manualIcon = manualRow:CreateTexture(nil, "ARTWORK")
+    manualIcon:SetSize(18, 18)
+    manualIcon:SetPoint("LEFT", 6, 0)
+    manualIcon:SetTexture("Interface\\Icons\\INV_Misc_Eye_02")
+
+    local manualText = manualRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    manualText:SetPoint("LEFT", manualIcon, "RIGHT", 6, 0)
+    manualText:SetText("Pick frame manually...")
+    manualText:SetTextColor(0.7, 0.7, 0.7)
+
+    manualRow:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+    manualRow:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Manual Frame Picker", 1, 1, 1)
+        GameTooltip:AddLine("Click and drag across any visible addon frame to select it.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    manualRow:SetScript("OnLeave", GameTooltip_Hide)
+
+    manualRow:SetScript("OnClick", function()
+        list:Hide()
+        if Wise.OpenFramePicker then
+            Wise:OpenFramePicker(callback)
+        end
+    end)
+
+    list:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+end
+
 local function CreateConditionValidator(editBox, panel)
     local status = CreateFrame("Button", nil, panel)
     status:SetSize(20, 20)
@@ -916,7 +1077,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         end)
         pickFrameBtn:SetScript("OnLeave", GameTooltip_Hide)
         pickFrameBtn:SetScript("OnClick", function()
-            Wise:OpenFramePicker(function(frameName)
+            Wise:OpenAddonFrameSelector(function(frameName)
                 action.addonFrame = frameName
                 avEdit:SetText(frameName)
                 Wise:UpdateGroupDisplay(Wise.selectedGroup)

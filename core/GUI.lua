@@ -1905,20 +1905,45 @@ function Wise:UpdateAddonVisibility()
     local addonsGroup = WiseDB.groups[Wise.ADDON_VIS_TEMPLATE]
     if not addonsGroup then return end
 
-    -- Build group-level driver string as fallback
+    -- Cancel previous addon visibility ticker and restore any suppressed frames
+    if Wise._addonVisTicker then
+        Wise._addonVisTicker:Cancel()
+        Wise._addonVisTicker = nil
+    end
+    if Wise._addonVisSuppressed then
+        for _, frame in ipairs(Wise._addonVisSuppressed) do
+            if frame._wiseShowSuppressed then
+                frame._wiseShowSuppressed = nil
+                if frame._wiseOrigShow then
+                    frame.Show = frame._wiseOrigShow
+                end
+            end
+        end
+        Wise._addonVisSuppressed = nil
+    end
+
+    -- Sanitize Wise pseudo-conditionals to real WoW macro syntax
+    -- [always] -> [] (empty brackets = always true in WoW)
+    local function SanitizeDriver(str)
+        str = str:gsub("%[always%]", "[]")
+        str = str:gsub("%[always,", "[")
+        return str
+    end
+
+    -- Build group-level driver string
     local groupParts = {}
-    if addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
+    if addonsGroup.visibilitySettings and addonsGroup.visibilitySettings.customShow and addonsGroup.visibilitySettings.customShow ~= "" then
         table.insert(groupParts, addonsGroup.visibilitySettings.customShow .. " show")
     end
-    if addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
+    if addonsGroup.visibilitySettings and addonsGroup.visibilitySettings.customHide and addonsGroup.visibilitySettings.customHide ~= "" then
         table.insert(groupParts, addonsGroup.visibilitySettings.customHide .. " hide")
     end
     local baseState = "show"
-    if addonsGroup.visibilitySettings.baseVisibility == "ALWAYS_HIDDEN" or addonsGroup.visibilitySettings.baseVisibility == "COMBAT_ONLY" then
+    if addonsGroup.visibilitySettings and (addonsGroup.visibilitySettings.baseVisibility == "ALWAYS_HIDDEN" or addonsGroup.visibilitySettings.baseVisibility == "COMBAT_ONLY") then
         baseState = "hide"
     end
     table.insert(groupParts, baseState)
-    local groupDriver = table.concat(groupParts, "; ")
+    local groupDriver = SanitizeDriver(table.concat(groupParts, "; "))
 
     -- Collect actions from both buttons (legacy) and actions (migrated) lists
     local actionList = {}
@@ -1935,38 +1960,84 @@ function Wise:UpdateAddonVisibility()
         end
     end
 
+    -- Build list of {action, driverString} pairs for the ticker
+    local targets = {}
     for _, action in ipairs(actionList) do
         if action.type == "addonvisibility" and action.addonFrame and action.addonFrame ~= "" then
-            local frame = _G[action.addonFrame]
-            if frame then
-                local driverString = groupDriver
-                -- Per-action visibility overrides group-level
-                local avs = action.visibilitySettings
-                if avs then
-                    local hasShow = avs.customShow and avs.customShow ~= ""
-                    local hasHide = avs.customHide and avs.customHide ~= ""
-                    if hasShow or hasHide then
-                        local actionParts = {}
-                        if hasShow then
-                            table.insert(actionParts, avs.customShow .. " show")
-                        end
-                        if hasHide then
-                            table.insert(actionParts, avs.customHide .. " hide")
-                        end
-                        if hasShow and not hasHide then
-                            table.insert(actionParts, "hide")
-                        elseif hasHide and not hasShow then
-                            table.insert(actionParts, "show")
-                        else
-                            table.insert(actionParts, "show")
-                        end
-                        driverString = table.concat(actionParts, "; ")
+            local driverString = groupDriver
+            -- Per-action visibility overrides group-level
+            local avs = action.visibilitySettings
+            if avs then
+                local hasShow = avs.customShow and avs.customShow ~= ""
+                local hasHide = avs.customHide and avs.customHide ~= ""
+                if hasShow or hasHide then
+                    local actionParts = {}
+                    if hasShow then
+                        table.insert(actionParts, avs.customShow .. " show")
                     end
+                    if hasHide then
+                        table.insert(actionParts, avs.customHide .. " hide")
+                    end
+                    if hasShow and not hasHide then
+                        table.insert(actionParts, "hide")
+                    elseif hasHide and not hasShow then
+                        table.insert(actionParts, "show")
+                    else
+                        table.insert(actionParts, "show")
+                    end
+                    driverString = table.concat(actionParts, "; ")
                 end
-                RegisterStateDriver(frame, "visibility", driverString)
+            end
+            table.insert(targets, { action = action, driver = SanitizeDriver(driverString) })
+        end
+    end
+
+    if #targets == 0 then return end
+
+    -- Track suppressed frames for cleanup
+    Wise._addonVisSuppressed = {}
+
+    -- Hook a frame's Show so ATT (or any addon) can't override Wise's hide.
+    -- We store the original Show and replace it with a no-op when suppressed.
+    local function SuppressShow(frame)
+        if frame._wiseShowSuppressed then return end
+        frame._wiseShowSuppressed = true
+        if not frame._wiseOrigShow then
+            frame._wiseOrigShow = frame.Show
+        end
+        frame.Show = function(self)
+            -- blocked by Wise visibility control
+        end
+        frame:Hide()
+        table.insert(Wise._addonVisSuppressed, frame)
+    end
+
+    local function RestoreShow(frame)
+        if not frame._wiseShowSuppressed then return end
+        frame._wiseShowSuppressed = nil
+        if frame._wiseOrigShow then
+            frame.Show = frame._wiseOrigShow
+        end
+    end
+
+    -- Apply visibility immediately, then start ticker for ongoing evaluation
+    local function ApplyAddonVisibility()
+        for _, t in ipairs(targets) do
+            local frame = Wise:ResolveAddonFrame(t.action)
+            if frame then
+                local result = SecureCmdOptionParse(t.driver)
+                local shouldShow = (result == "show")
+                if shouldShow then
+                    RestoreShow(frame)
+                else
+                    SuppressShow(frame)
+                end
             end
         end
     end
+
+    ApplyAddonVisibility()
+    Wise._addonVisTicker = C_Timer.NewTicker(0.3, ApplyAddonVisibility)
 end
 
 function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
@@ -1979,9 +2050,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
     local group = WiseDB.groups[name]
     if not group then return end
-    
+
+    -- Addon visibility operates on external frames, not Wise frames.
+    -- Must run before the availability check which may early-return.
+    if Wise.ADDON_VIS_TEMPLATE and name == Wise.ADDON_VIS_TEMPLATE then
+        if not group.visibilitySettings then group.visibilitySettings = {} end
+        Wise:UpdateAddonVisibility()
+        return
+    end
+
     local f = Wise:CreateGroupFrame(name, instanceId)
-    
+
     f.instanceId = instanceId or name
     if overrideOpts and overrideOpts._parentInstanceId then
         f.parentInstanceId = overrideOpts._parentInstanceId
@@ -1996,7 +2075,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         displayType = overrideOpts.nestedInterfaceType
     end
     local mode = group.interaction or "toggle"
-    
+
     -- Check Availability override (Wiser interfaces)
     if not Wise:IsGroupAvailable(name) then
         RegisterStateDriver(f, "visibility", "hide")
@@ -2016,10 +2095,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         elseif group.visibilitySettings.combat then group.visibilitySettings.baseVisibility = "COMBAT_ONLY"
         elseif group.visibilitySettings.nocombat then group.visibilitySettings.baseVisibility = "NO_COMBAT_ONLY"
         else group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN" end
-    end
-    
-    if Wise.ADDON_VIS_TEMPLATE and name == Wise.ADDON_VIS_TEMPLATE then
-        Wise:UpdateAddonVisibility()
     end
 
     -- Ensure defaults

@@ -869,6 +869,7 @@ function frame:OnEvent(event, arg1)
     elseif event == "PLAYER_LOGIN" then
         if Wise.Initialize then Wise:Initialize() end
         if Wise.UpdateBlizzardUI then Wise:UpdateBlizzardUI() end
+        if Wise.HookAddonWindowCreation then Wise:HookAddonWindowCreation() end
         -- Trigger Demo if first time
         if not WiseDB.tutorialComplete and Wise.Demo then
              C_Timer.After(2, function() Wise.Demo:Start() end)
