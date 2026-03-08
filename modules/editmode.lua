@@ -302,6 +302,7 @@ local function CreateSelectionPopup()
                 if Wise.GetGrowthInfo then
                     local _, _, _, _, text = Wise:GetGrowthInfo(name)
                     popup.growthLabel:SetText("Growth: " .. text)
+                    popup:SetHeight(230 + popup.growthLabel:GetStringHeight())
                 end
             end)
         end
@@ -370,6 +371,7 @@ local function ShowSelectionPopup(f, name)
     if popup.growthLabel and Wise.GetGrowthInfo then
         local _, _, _, _, text = Wise:GetGrowthInfo(name)
         popup.growthLabel:SetText("Growth: " .. text)
+                    popup:SetHeight(230 + popup.growthLabel:GetStringHeight())
     end
 
     -- Position popup near the selected frame
