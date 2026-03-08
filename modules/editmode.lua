@@ -207,9 +207,11 @@ local function CreateSelectionPopup()
             -- Active state indicator (Gold ring)
             local ct = btn:CreateTexture(nil, "OVERLAY")
             ct:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-            ct:SetSize(36, 36) -- Twice as big
-            ct:SetPoint("CENTER", btn, "CENTER", 0, 0)
-            ct:SetTexCoord(0, 0.81, 0, 0.81) -- Center the ring within the texture
+            ct:SetSize(28, 28) -- Scaled to fit perfectly over the 24x24 button
+            -- The MiniMap-TrackingBorder texture has its visual center slightly offset.
+            -- To center it visually, we apply a specific coordinate mapping and a small physical offset.
+            ct:SetTexCoord(0.05, 0.65, 0.05, 0.65)
+            ct:SetPoint("CENTER", btn, "CENTER", -1, 1)
             ct:SetVertexColor(1, 0.82, 0, 1) -- Brighter
             ct:SetBlendMode("ADD")
             ct:Hide()
@@ -424,9 +426,12 @@ local function CreateEditModeOverlay(f, name)
     indicator:SetSize(16, 16) -- A bit bigger
     indicator:SetVertexColor(1, 0.82, 0, 1) -- Brighter Gold
     indicator:SetBlendMode("ADD")
-    indicator:SetTexCoord(0, 0.81, 0, 0.81) -- Center the ring within the texture
+    -- Use the same aggressive crop as the popup to ensure it's visually centered
+    indicator:SetTexCoord(0.05, 0.65, 0.05, 0.65)
 
-    -- Anchor interior to the interface
+    -- The user explicitly wants it strictly inside.
+    -- Setting point(Anchor, frame, Anchor) puts the texture entirely inside the frame bounds.
+    -- e.g. SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT") means the bottom-right of the ring touches the bottom-right of the box.
     indicator:SetPoint(currentAnchor, overlay, currentAnchor)
     overlay.anchorIndicator = indicator
     -- Group Name Label
