@@ -3569,28 +3569,47 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             end
         end
     elseif type == "line" then
-        local growDir = "right"
         local linePadding = 5 -- default padding between buttons
+        local anchorPoint = "CENTER"
         if groupName and WiseDB.groups[groupName] then
-            growDir = WiseDB.groups[groupName].growthDirection or "right"
             if WiseDB.groups[groupName].padding then
                 linePadding = WiseDB.groups[groupName].padding
+            end
+            if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
+                anchorPoint = WiseDB.groups[groupName].anchor.point
             end
         end
         local spacing = iconSize + linePadding
         
         local dx, dy = 0, 0
-        if growDir == "right" then dx = spacing
-        elseif growDir == "left" then dx = -spacing
-        elseif growDir == "up" then dy = spacing
-        elseif growDir == "down" then dy = -spacing
+        local startX, startY = 0, 0
+
+        if anchorPoint == "TOP" then
+            dy = -spacing
+        elseif anchorPoint == "BOTTOM" then
+            dy = spacing
+        elseif anchorPoint == "LEFT" then
+            dx = spacing
+        elseif anchorPoint == "RIGHT" then
+            dx = -spacing
+        elseif anchorPoint == "TOPLEFT" then
+            dx = spacing
+        elseif anchorPoint == "TOPRIGHT" then
+            dx = -spacing
+        elseif anchorPoint == "BOTTOMLEFT" then
+            dx = spacing
+        elseif anchorPoint == "BOTTOMRIGHT" then
+            dx = -spacing
+        else -- CENTER
+            dx = spacing
+            startX = - (math.max(count - 1, 0) * spacing) / 2
         end
 
         for i=1, count do
             local idx = i - 1
             if invertOrder then idx = count - i end
-            buttons[i].targetX = idx * dx
-            buttons[i].targetY = idx * dy
+            buttons[i].targetX = startX + idx * dx
+            buttons[i].targetY = startY + idx * dy
             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
         end
     elseif type == "box" then
@@ -3599,6 +3618,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         local boxH = 3
         local boxPaddingX = 5 -- default X padding
         local boxPaddingY = 5 -- default Y padding
+        local anchorPoint = "CENTER"
         
         if groupName and WiseDB.groups[groupName] then
             local g = WiseDB.groups[groupName]
@@ -3607,6 +3627,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             boxH = g.boxHeight or 3
             if g.paddingX then boxPaddingX = g.paddingX end
             if g.paddingY then boxPaddingY = g.paddingY end
+            if g.anchor and g.anchor.point then anchorPoint = g.anchor.point end
         end
         local spacingX = iconSize + boxPaddingX
         local spacingY = iconSize + boxPaddingY
@@ -3621,10 +3642,25 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         end
         if cols < 1 then cols = 1 end -- Double safety if rows calculation results in 0 cols (count=0)
         
-        -- Grid centering logic:
-        -- Center the grid around (0,0).
         local totalH = (rows - 1) * spacingY
-        local startY = totalH / 2
+        local dirX = 1
+        local dirY = -1 -- Default grow down (negative Y)
+
+        if anchorPoint:find("RIGHT") then
+            dirX = -1
+        end
+        if anchorPoint:find("BOTTOM") then
+            dirY = 1
+        end
+
+        local startY = 0
+        if anchorPoint:find("TOP") then
+            startY = 0
+        elseif anchorPoint:find("BOTTOM") then
+            startY = 0
+        else -- CENTER vertically
+            startY = (dirY == -1) and (totalH / 2) or (-totalH / 2)
+        end
         
         for i=1, count do
             local posIndex = i - 1
@@ -3640,12 +3676,19 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             end
             
             local rowIdx = c
-            
             local rowWidth = (itemsInThisRow - 1) * spacingX
-            local startX = -(rowWidth / 2)
             
-            buttons[i].targetX = startX + (rowIdx * spacingX)
-            buttons[i].targetY = startY - (r * spacingY)
+            local startX = 0
+            if anchorPoint:find("LEFT") then
+                startX = 0
+            elseif anchorPoint:find("RIGHT") then
+                startX = 0
+            else -- CENTER horizontally
+                startX = (dirX == 1) and (-rowWidth / 2) or (rowWidth / 2)
+            end
+
+            buttons[i].targetX = startX + (rowIdx * spacingX * dirX)
+            buttons[i].targetY = startY + (r * spacingY * dirY)
             
             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
         end
@@ -3653,8 +3696,14 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         -- Vertical text-based list
         local iconSize, textSize, fontPath = Wise:GetGroupDisplaySettings(groupName)
         local listPadding = 8 -- default line padding
-        if groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].padding then
-            listPadding = WiseDB.groups[groupName].padding
+        local anchorPoint = "CENTER"
+        if groupName and WiseDB.groups[groupName] then
+            if WiseDB.groups[groupName].padding then
+                listPadding = WiseDB.groups[groupName].padding
+            end
+            if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
+                anchorPoint = WiseDB.groups[groupName].anchor.point
+            end
         end
         local listIconSize = iconSize
         local contentHeight = math.max(textSize, listIconSize)
@@ -3665,11 +3714,26 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         -- Alignment (Pre-calculate for loop)
         local textAlign = (WiseDB.groups[groupName] and WiseDB.groups[groupName].textAlign) or "right"
 
+        local dy = -lineHeight
+        local startY = 0
+        local totalH = math.max(count - 1, 0) * lineHeight
+
+        if anchorPoint:find("BOTTOM") then
+            dy = lineHeight
+            startY = 0
+        elseif anchorPoint:find("TOP") then
+            dy = -lineHeight
+            startY = 0
+        else -- CENTER vertically
+            dy = -lineHeight
+            startY = totalH / 2
+        end
+
         for i=1, count do
             local idx = i - 1
             if invertOrder then idx = count - i end
             buttons[i].targetX = 0
-            buttons[i].targetY = -idx * lineHeight
+            buttons[i].targetY = startY + idx * dy
             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
             buttons[i]:SetSize(150, lineHeight) -- Wider for text
             

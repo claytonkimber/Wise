@@ -1551,45 +1551,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         y = y - 30
 
-        if group.type == "line" then
-             local dirLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             dirLabel:SetPoint("TOPLEFT", 10, y)
-             dirLabel:SetText("Growth Direction:")
-             tinsert(panel.controls, dirLabel)
-
-             y = y - 22
-
-             -- Radial Picker for Growth Direction (Radio Buttons)
-             local currentDir = group.growthDirection or "right"
-             local dirTypes = {
-                 { value = "right", label = "Right" },
-                 { value = "left",  label = "Left" },
-                 { value = "up",    label = "Up" },
-                 { value = "down",  label = "Down" },
-             }
-
-             for _, dirInfo in ipairs(dirTypes) do
-                 local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                 radio:SetPoint("TOPLEFT", 10, y)
-                 radio:SetChecked(currentDir == dirInfo.value)
-                 radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                 radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                 radio.text:SetText(dirInfo.label)
-
-                 radio:SetScript("OnClick", function(self)
-                     group.growthDirection = dirInfo.value
-                     Wise:RefreshPropertiesPanel()
-                     C_Timer.After(0, function()
-                         if not InCombatLockdown() then
-                             Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                         end
-                     end)
-                 end)
-                 tinsert(panel.controls, radio)
-                 tinsert(panel.controls, radio.text)
-                 y = y - 22
-             end
-        elseif group.type == "list" then
+        if group.type == "list" then
              local alignLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
              alignLabel:SetPoint("TOPLEFT", 10, y)
              alignLabel:SetText("Text Position:")
