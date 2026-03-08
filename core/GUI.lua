@@ -3534,7 +3534,7 @@ function Wise:GetGrowthInfo(groupName)
             text = "Down"
         else
             dy = 0 -- 0 means bidirectional/centered
-            text = "Centered (Vertical)"
+            text = "Centered\n(Vertical)"
         end
         return 0, dy, false, true, text
     elseif type == "line" then
@@ -3550,7 +3550,7 @@ function Wise:GetGrowthInfo(groupName)
                 text = "Right"
             else
                 dx = 0 -- 0 means bidirectional/centered
-                text = "Centered (Horizontal)"
+                text = "Centered\n(Horizontal)"
             end
             return dx, 0, true, false, text
         else
@@ -3564,7 +3564,7 @@ function Wise:GetGrowthInfo(groupName)
                 text = "Down"
             else
                 dy = 0 -- 0 means bidirectional/centered
-                text = "Centered (Vertical)"
+                text = "Centered\n(Vertical)"
             end
             return 0, dy, false, true, text
         end
@@ -3579,7 +3579,7 @@ function Wise:GetGrowthInfo(groupName)
             tX = "Left"
         elseif not anchorPoint:find("LEFT") then
             dirX = 0
-            tX = "Centered (Horizontal)"
+            tX = "Centered\n(Horizontal)"
         end
 
         if anchorPoint:find("BOTTOM") then
@@ -3587,13 +3587,13 @@ function Wise:GetGrowthInfo(groupName)
             tY = "Up"
         elseif not anchorPoint:find("TOP") then
             dirY = 0
-            tY = "Centered (Vertical)"
+            tY = "Centered\n(Vertical)"
         end
 
         local text = ""
         local primaryAxis = group.fixedAxis or "x"
         if anchorPoint == "CENTER" then
-            text = "Centered (Both)"
+            text = "Centered\n(Both)"
         else
             if primaryAxis == "x" then
                  text = tY .. " & " .. tX .. " (Row-First)"
