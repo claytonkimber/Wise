@@ -60,7 +60,7 @@ local function CreateSelectionPopup()
     if selectionPopup then return selectionPopup end
 
     local popup = CreateFrame("Frame", "WiseEditModePopup", UIParent, "BackdropTemplate")
-    popup:SetSize(150, 130)
+    popup:SetSize(150, 240)
     popup:SetFrameStrata("TOOLTIP")
     popup:SetFrameLevel(200)
     popup:SetMovable(true)
@@ -178,6 +178,115 @@ local function CreateSelectionPopup()
         ApplyOffsetFromPopup()
     end)
 
+    -- Anchor Picker Grid
+    local anchorLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    anchorLabel:SetPoint("TOPLEFT", controlsX, yLabelY - 44)
+    anchorLabel:SetText("Anchor")
+    anchorLabel:SetTextColor(0.8, 0.8, 0.8)
+
+    local anchorGrid = CreateFrame("Frame", nil, popup)
+    anchorGrid:SetSize(80, 80)
+    anchorGrid:SetPoint("TOP", popup, "TOP", 0, yLabelY - 58)
+    popup.anchorGrid = anchorGrid
+
+    local positions = {
+        {"TOPLEFT", "TOP", "TOPRIGHT"},
+        {"LEFT", "CENTER", "RIGHT"},
+        {"BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT"}
+    }
+
+    popup.anchorBtns = {}
+    for row = 1, 3 do
+        for col = 1, 3 do
+            local pos = positions[row][col]
+            local btn = CreateFrame("Button", nil, anchorGrid, "UIPanelButtonTemplate")
+            btn:SetSize(24, 24)
+            btn:SetPoint("TOPLEFT", (col - 1) * 26 + 1, -(row - 1) * 26 - 1)
+            btn.pos = pos
+
+            -- Active state indicator (Gold overlay)
+            local ct = btn:CreateTexture(nil, "OVERLAY")
+            ct:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+            ct:SetSize(16, 16)
+            ct:SetPoint("CENTER")
+            ct:SetVertexColor(1, 0.82, 0, 0.8)
+            ct:Hide()
+            btn.activeTexture = ct
+
+            popup.anchorBtns[pos] = btn
+
+            btn:SetScript("OnClick", function(self)
+                local name = selectedEditName
+                local f = selectedEditFrame
+                local group = WiseDB.groups[name]
+                if not group or not f then return end
+
+                -- Restrict circle to center only
+                if group.type == "circle" and pos ~= "CENTER" then
+                    print("|cffff0000Wise:|r Circle interfaces must use CENTER anchor.")
+                    return
+                end
+
+                -- Visual update
+                for _, b in pairs(popup.anchorBtns) do
+                    b.activeTexture:Hide()
+                end
+                self.activeTexture:Show()
+
+                -- Math for re-anchoring
+                local cx, cy = f:GetCenter()
+                if not cx or not cy then return end
+
+                local eff = f:GetEffectiveScale()
+                local uEff = UIParent:GetEffectiveScale()
+
+                local left = f:GetLeft()
+                local right = f:GetRight()
+                local top = f:GetTop()
+                local bottom = f:GetBottom()
+
+                local uiW = UIParent:GetWidth()
+                local uiH = UIParent:GetHeight()
+
+                local scaledLeft = (left * eff) / uEff
+                local scaledRight = (right * eff) / uEff
+                local scaledTop = (top * eff) / uEff
+                local scaledBottom = (bottom * eff) / uEff
+                local scaledCx = (cx * eff) / uEff
+                local scaledCy = (cy * eff) / uEff
+
+                local newX, newY = 0, 0
+                if pos:find("LEFT") then newX = scaledLeft
+                elseif pos:find("RIGHT") then newX = scaledRight - uiW
+                else newX = scaledCx - (uiW / 2) end
+
+                if pos:find("BOTTOM") then newY = scaledBottom
+                elseif pos:find("TOP") then newY = scaledTop - uiH
+                else newY = scaledCy - (uiH / 2) end
+
+                group.anchor = { point = pos, relativePoint = pos, x = newX, y = newY }
+
+                -- Update proxy
+                if f.Anchor then
+                    f.Anchor:ClearAllPoints()
+                    f.Anchor:SetPoint(pos, UIParent, pos, newX, newY)
+                    f:ClearAllPoints()
+                    f:SetPoint(pos, f.Anchor, pos)
+                end
+
+                -- Update visual indicator on overlay
+                if f.EditModeOverlay and f.EditModeOverlay.anchorIndicator then
+                    f.EditModeOverlay.anchorIndicator:ClearAllPoints()
+                    f.EditModeOverlay.anchorIndicator:SetPoint("CENTER", f.EditModeOverlay, pos)
+                end
+
+                -- Sync coordinates fields in popup
+                popup.xBox:SetText(tostring(math.floor(newX)))
+                popup.yBox:SetText(tostring(math.floor(newY)))
+            end)
+        end
+    end
+
     -- Arrow key nudging support
     popup:SetPropagateKeyboardInput(true)
     popup:SetScript("OnKeyDown", function(self, key)
@@ -219,6 +328,24 @@ local function ShowSelectionPopup(f, name)
     popup.xBox:SetText(tostring(floor(anchor.x or 0)))
     popup.yBox:SetText(tostring(floor(anchor.y or 0)))
     popup.title:SetText(name)
+
+    local currentAnchor = anchor.point or "CENTER"
+    if popup.anchorBtns then
+        for pos, btn in pairs(popup.anchorBtns) do
+            if pos == currentAnchor then
+                btn.activeTexture:Show()
+            else
+                btn.activeTexture:Hide()
+            end
+
+            -- Visual lock for circle
+            if group and group.type == "circle" and pos ~= "CENTER" then
+                btn:SetAlpha(0.3)
+            else
+                btn:SetAlpha(1.0)
+            end
+        end
+    end
 
     -- Position popup near the selected frame
     popup:ClearAllPoints()
@@ -286,157 +413,16 @@ local function CreateEditModeOverlay(f, name)
     overlay:SetBackdropBorderColor(0, 1, 1, 0.8) -- Cyan border
 
     -- Anchor Points
-    overlay.anchors = {}
-    local anchorPositions = {
-        "TOPLEFT", "TOP", "TOPRIGHT",
-        "LEFT", "CENTER", "RIGHT",
-        "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT"
-    }
-
+    -- Current Anchor Indicator (Non-interactive)
     local group = WiseDB.groups[name]
-    local isCircle = group and group.type == "circle"
     local currentAnchor = (group and group.anchor and group.anchor.point) or "CENTER"
 
-    for _, pos in ipairs(anchorPositions) do
-        if not isCircle or pos == "CENTER" then
-            local btn = CreateFrame("Button", nil, overlay)
-            btn:SetSize(12, 12)
-            btn:SetPoint("CENTER", overlay, pos)
-            btn:SetFrameLevel(overlay:GetFrameLevel() + 5)
-
-            -- Normal texture (ring)
-            local nt = btn:CreateTexture(nil, "BACKGROUND")
-            nt:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-            nt:SetPoint("CENTER", 0, 0)
-            nt:SetSize(36, 36)
-            nt:SetVertexColor(1, 0.82, 0) -- Gold
-            btn:SetNormalTexture(nt)
-
-            -- Checked/Active texture (filled)
-            local ct = btn:CreateTexture(nil, "OVERLAY")
-            ct:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-            ct:SetSize(10, 10)
-            ct:SetPoint("CENTER", 0, 0)
-            ct:SetVertexColor(1, 0.82, 0, 0.8) -- Gold filled
-            btn.activeTexture = ct
-
-            if currentAnchor == pos then
-                ct:Show()
-            else
-                ct:Hide()
-            end
-
-            -- Highlight texture
-            local ht = btn:CreateTexture(nil, "HIGHLIGHT")
-            ht:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-            ht:SetBlendMode("ADD")
-            ht:SetAllPoints(nt)
-            btn:SetHighlightTexture(ht)
-
-            btn.pos = pos
-            overlay.anchors[pos] = btn
-
-            btn:SetScript("OnClick", function(self)
-                local grp = WiseDB.groups[name]
-                if not grp then return end
-
-                -- Update active state visually
-                for _, a in pairs(overlay.anchors) do
-                    a.activeTexture:Hide()
-                end
-                self.activeTexture:Show()
-
-                -- We need to keep the frame in the same visual location when changing its anchor.
-                -- Calculate the current visual center.
-                local cx, cy = f:GetCenter()
-                if not cx or not cy then return end
-                local ux, uy = UIParent:GetCenter()
-
-                local eff = f:GetEffectiveScale()
-                local uEff = UIParent:GetEffectiveScale()
-
-                local xOfs = ((cx * eff) - (ux * uEff)) / uEff
-                local yOfs = ((cy * eff) - (uy * uEff)) / uEff
-
-                local point = pos
-                local relativePoint = pos
-
-                -- First we place f.Anchor exactly at the new relativePoint coordinate
-                -- and adjust x/y offset so its center is still at cx, cy visually
-                -- Wait, a better way is to keep f.Anchor at its current center-based position,
-                -- and just change how 'f' anchors to 'f.Anchor'.
-                -- Let's stick to WoW's standard: f.Anchor represents the relative coordinate on UIParent.
-                -- Actually, if point=relativePoint, xOfs and yOfs calculated relative to center aren't right.
-                -- Let's just update how f anchors to f.Anchor.
-                -- Wait, the standard in this file is:
-                -- f.Anchor is attached to UIParent
-                -- f is attached to f.Anchor.
-
-                -- Let's look at OnDragStop in editmode.lua:
-                -- It sets f:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
-                -- and then f.Anchor:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
-                -- and then f:SetPoint("CENTER", f.Anchor, "CENTER") -- This was hardcoded to CENTER!
-                -- Wait, the original OnDragStop in editmode.lua hardcodes:
-                -- local point, relativeTo, relativePoint = "CENTER", UIParent, "CENTER"
-                -- So the anchor is ALWAYS CENTER to CENTER in the original code, it never supported other points.
-
-                -- To support this, we should just let the user change the *internal* anchor of f relative to f.Anchor.
-                -- Wait, in OnDragStop:
-                -- f.Anchor:SetPoint("CENTER", UIParent, "CENTER", xOfs, yOfs)
-                -- f:SetPoint(pos, f.Anchor, "CENTER")
-
-                -- Let's just update the DB with the new anchor point, and we'll apply it.
-                -- Actually we just want the frame to grow from 'pos' instead of 'CENTER'.
-                -- And we want to maintain its visual position, so we should recalculate the x/y offset based on the new point.
-
-                local left = f:GetLeft()
-                local right = f:GetRight()
-                local top = f:GetTop()
-                local bottom = f:GetBottom()
-
-                local uiW = UIParent:GetWidth()
-                local uiH = UIParent:GetHeight()
-
-                local newX, newY = 0, 0
-                -- Recalculate x/y offsets relative to the new point so the frame stays in the same visual location.
-
-                local scaledLeft = (left * eff) / uEff
-                local scaledRight = (right * eff) / uEff
-                local scaledTop = (top * eff) / uEff
-                local scaledBottom = (bottom * eff) / uEff
-                local scaledCx = (cx * eff) / uEff
-                local scaledCy = (cy * eff) / uEff
-
-                if pos:find("LEFT") then newX = scaledLeft
-                elseif pos:find("RIGHT") then newX = scaledRight - uiW
-                else newX = scaledCx - (uiW / 2) end
-
-                if pos:find("BOTTOM") then newY = scaledBottom
-                elseif pos:find("TOP") then newY = scaledTop - uiH
-                else newY = scaledCy - (uiH / 2) end
-
-                grp.anchor = { point = pos, relativePoint = pos, x = newX, y = newY }
-
-                if f.Anchor then
-                    f.Anchor:ClearAllPoints()
-                    f.Anchor:SetPoint(pos, UIParent, pos, newX, newY)
-                    f:ClearAllPoints()
-                    -- Anchor the frame to the Anchor proxy using the same point
-                    f:SetPoint(pos, f.Anchor, pos)
-                end
-
-                -- Sync popup if shown
-                if selectionPopup and selectedEditFrame == f and selectionPopup:IsShown() then
-                    SyncPopupAfterDrag(f, name)
-                end
-            end)
-
-            -- Prevent clicks from falling through to overlay drag
-            btn:SetScript("OnMouseDown", function() end)
-            btn:SetScript("OnMouseUp", function() end)
-        end
-    end
-
+    local indicator = overlay:CreateTexture(nil, "OVERLAY")
+    indicator:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    indicator:SetSize(9, 9) -- Shrunk by ~75%
+    indicator:SetVertexColor(1, 0.82, 0) -- Gold
+    indicator:SetPoint("CENTER", overlay, currentAnchor)
+    overlay.anchorIndicator = indicator
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.label:SetText(name)
