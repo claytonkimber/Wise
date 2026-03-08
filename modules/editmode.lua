@@ -204,12 +204,14 @@ local function CreateSelectionPopup()
             btn:SetPoint("TOPLEFT", (col - 1) * 26 + 1, -(row - 1) * 26 - 1)
             btn.pos = pos
 
-            -- Active state indicator (Gold overlay)
+            -- Active state indicator (Gold ring)
             local ct = btn:CreateTexture(nil, "OVERLAY")
-            ct:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-            ct:SetSize(16, 16)
-            ct:SetPoint("CENTER")
-            ct:SetVertexColor(1, 0.82, 0, 0.8)
+            ct:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            ct:SetSize(36, 36) -- Twice as big
+            ct:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            ct:SetTexCoord(0, 0.81, 0, 0.81) -- Center the ring within the texture
+            ct:SetVertexColor(1, 0.82, 0, 1) -- Brighter
+            ct:SetBlendMode("ADD")
             ct:Hide()
             btn.activeTexture = ct
 
@@ -277,7 +279,7 @@ local function CreateSelectionPopup()
                 -- Update visual indicator on overlay
                 if f.EditModeOverlay and f.EditModeOverlay.anchorIndicator then
                     f.EditModeOverlay.anchorIndicator:ClearAllPoints()
-                    f.EditModeOverlay.anchorIndicator:SetPoint("CENTER", f.EditModeOverlay, pos)
+                    f.EditModeOverlay.anchorIndicator:SetPoint(pos, f.EditModeOverlay, pos)
                 end
 
                 -- Sync coordinates fields in popup
@@ -419,9 +421,13 @@ local function CreateEditModeOverlay(f, name)
 
     local indicator = overlay:CreateTexture(nil, "OVERLAY")
     indicator:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    indicator:SetSize(9, 9) -- Shrunk by ~75%
-    indicator:SetVertexColor(1, 0.82, 0) -- Gold
-    indicator:SetPoint("CENTER", overlay, currentAnchor)
+    indicator:SetSize(16, 16) -- A bit bigger
+    indicator:SetVertexColor(1, 0.82, 0, 1) -- Brighter Gold
+    indicator:SetBlendMode("ADD")
+    indicator:SetTexCoord(0, 0.81, 0, 0.81) -- Center the ring within the texture
+
+    -- Anchor interior to the interface
+    indicator:SetPoint(currentAnchor, overlay, currentAnchor)
     overlay.anchorIndicator = indicator
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
