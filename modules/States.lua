@@ -47,21 +47,19 @@ local function GetConditionParts(condStr)
     local parts = {}
     for part in cleaned:gmatch("[^,]+") do
         part = part:match("^%s*(.-)%s*$") -- trim
-        parts[part] = true
+        if part ~= "" then
+            local negation = part:sub(1, 2) == "no" and part:sub(3) or ("no" .. part)
+            parts[part] = negation
+        end
     end
     return parts
 end
 
 -- Check if two sets of conditions are mutually exclusive
 local function AreMutuallyExclusive(partsA, partsB)
-    -- They are exclusive if A has a condition whose negation is in B, or vice-versa
-    for condA in pairs(partsA) do
-        local negation = condA:sub(1, 2) == "no" and condA:sub(3) or ("no" .. condA)
-        if partsB[negation] then return true end
-    end
-    for condB in pairs(partsB) do
-        local negation = condB:sub(1, 2) == "no" and condB:sub(3) or ("no" .. condB)
-        if partsA[negation] then return true end
+    -- They are exclusive if A has a condition whose negation is in B
+    for condA, negationA in pairs(partsA) do
+        if partsB[negationA] then return true end
     end
     return false
 end
@@ -81,20 +79,23 @@ function Wise:HasConflictingConditionals(actions)
     
     if #allowedActions <= 1 then return false end
 
-    -- Check if any pair of actions is NOT mutually exclusive
-    local hasConflict = false
+    -- Pre-calculate condition parts for all allowed actions
+    local actionParts = {}
     for i = 1, #allowedActions do
-        local partsA = GetConditionParts(allowedActions[i].conditions)
+        actionParts[i] = GetConditionParts(allowedActions[i].conditions)
+    end
+
+    -- Check if any pair of actions is NOT mutually exclusive
+    for i = 1, #allowedActions do
+        local partsA = actionParts[i]
         for j = i + 1, #allowedActions do
-            local partsB = GetConditionParts(allowedActions[j].conditions)
+            local partsB = actionParts[j]
             if not AreMutuallyExclusive(partsA, partsB) then
-                hasConflict = true
-                break
+                return true
             end
         end
-        if hasConflict then break end
     end
-    return hasConflict
+    return false
 end
 
 function Wise:ComputeEffectiveConditions(states, stateIdx)
@@ -257,23 +258,24 @@ function Wise:CreateStateConfigurationFrame(parent, group, slotIndex)
     end
 
     local suggestions = {}
+    local actionParts = {}
     for i = 1, #allowedActions do
-        local a = allowedActions[i]
-        local partsA = GetConditionParts(a.action.conditions)
+        actionParts[i] = GetConditionParts(allowedActions[i].action.conditions)
+    end
+
+    for i = 1, #allowedActions do
+        local partsA = actionParts[i]
         
         for j = 1, #allowedActions do
             if i ~= j then
-                local b = allowedActions[j]
-                local partsB = GetConditionParts(b.action.conditions)
+                local partsB = actionParts[j]
                 
                 if not AreMutuallyExclusive(partsA, partsB) then
-                    -- Suggest negating A's unique conditions in B if A comes first or if B is empty
-                    -- For now, let's just suggest negating whatever is in A that isn't in B
-                    for condA in pairs(partsA) do
-                        local negation = condA:sub(1, 2) == "no" and condA:sub(3) or ("no" .. condA)
-                        if not partsB[negation] then
+                    -- Suggest negating A's unique conditions in B
+                    for condA, negationA in pairs(partsA) do
+                        if not partsB[negationA] then
                             suggestions[j] = suggestions[j] or {}
-                            suggestions[j][negation] = true
+                            suggestions[j][negationA] = true
                         end
                     end
                 end
