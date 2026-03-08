@@ -116,14 +116,6 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
             else
                 data.group.binding = data.key
             end
-        else
-            -- It's an Addon Loading Magic slot or something that manages its own binding via slotIdx
-            if type(data.slotIdx) == "string" and string.match(data.slotIdx, "^addon_magic_(%d+)$") then
-                 local amSlotIdx = tonumber(string.match(data.slotIdx, "^addon_magic_(%d+)$"))
-                 if amSlotIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amSlotIdx] then
-                     WiseDB.addonMagicSlots[amSlotIdx].keybind = data.key
-                 end
-            end
         end
         Wise:UpdateBindings()
         if data.btn then
@@ -141,14 +133,7 @@ StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
                     data.btn:SetText(data.group.binding or "None")
                 end
             else
-                local defaultText = "None"
-                if type(data.slotIdx) == "string" and string.match(data.slotIdx, "^addon_magic_(%d+)$") then
-                     local amSlotIdx = tonumber(string.match(data.slotIdx, "^addon_magic_(%d+)$"))
-                     if amSlotIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amSlotIdx] then
-                         defaultText = WiseDB.addonMagicSlots[amSlotIdx].keybind or "None"
-                     end
-                end
-                data.btn:SetText(defaultText)
+                data.btn:SetText("None")
             end
         end
     end,
@@ -351,28 +336,6 @@ function Wise:RefreshPropertiesPanel()
         return
     end
 
-    -- Special case: Addon Loading Magic Tool
-    if Wise.ADDON_MAGIC_TEMPLATE and Wise.selectedGroup == Wise.ADDON_MAGIC_TEMPLATE then
-        Wise.OptionsFrame.Right.Title:SetText("Addon Loading Magic")
-
-        local y = -30
-
-        if Wise.selectedAMSlot and Wise.CreateAddonMagicPropertiesPanel then
-            y = Wise:CreateAddonMagicPropertiesPanel(panel, Wise.selectedAMSlot, y)
-        else
-            local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            msgLabel:SetPoint("TOPLEFT", 10, y)
-            msgLabel:SetWidth(200)
-            msgLabel:SetJustifyH("LEFT")
-            msgLabel:SetText("Select a slot to configure its addons, or click 'Add New Slot' to create one.")
-            tinsert(panel.controls, msgLabel)
-        end
-
-        panel:SetHeight(math.abs(y) + 50)
-        return
-    end
-
-
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
     if group and group.isLocked then
@@ -478,6 +441,20 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     if not group.actions[slotIdx] then return y end
     local action = group.actions[slotIdx][stateIdx]
     if not action then return y end
+
+    -- Special case: Addon Loading Magic actions — show the addon picker
+    if action.type == "misc" and action.value and tostring(action.value):match("^addon_magic_(%d+)$") then
+        local amSlotIdx = tonumber(tostring(action.value):match("^addon_magic_(%d+)$"))
+        if amSlotIdx and Wise.CreateAddonMagicPropertiesPanel then
+            local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            headerLabel:SetPoint("TOPLEFT", 10, y)
+            headerLabel:SetText("Addon Loading Magic Slot:")
+            tinsert(panel.controls, headerLabel)
+            y = y - 20
+            y = Wise:CreateAddonMagicPropertiesPanel(panel, amSlotIdx, y)
+            return y
+        end
+    end
 
     local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     label:SetPoint("TOPLEFT", 10, y)
@@ -817,8 +794,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 10
 
-    -- Legacy addon_magic misc actions are no longer supported here.
-    -- Addon Loading Magic is now a dedicated tool in the Tools section.
+    -- addon_magic misc actions are handled via the Wiser interface system.
+    -- When selected, RenderActionProperties redirects to CreateAddonMagicPropertiesPanel.
 
     -- Show Tooltip checkbox (for Extra Action Button)
     if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability" or action.value == "overridebar" or action.value == "possessbar") then

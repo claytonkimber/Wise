@@ -4,10 +4,13 @@
 
 - [Feature] Implement Addon Loading Magic (AML) for conditional addon loading and state management
 - [Feature] Add `[aml:slotname]` conditional support for interface visibility and action slots
+- [Feature] Wise Logo Color Palette added for design consistency in GUI modules
 - [Feature] Add "Invisible" icon style for layout placeholders to allow cleaner UI designs
+- [Fix] Resolved action icon and visibility issues for overrides and PossessBar/Vehicle states
 - [Fix] Macro icon selector now correctly opens manual selection when clicking the question mark icon
 - [Fix] Remove 10px inset from cooldown wipers (GCD animation) for seamless edge-to-edge rendering
 - [Fix] Improved state persistence and reload behavior for Addon Loading Magic slots
+- [Fix] Corrected tooltip resolution for vehicle and overridden actions
 
 ## [1.0.20260306] - 2026-03-06
 

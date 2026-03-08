@@ -1773,6 +1773,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetLootSpecialization or SetLootSpecialization; if func then func(" .. specID .. ") else print('[Wise] SetLootSpecialization API not found') end"
+        elseif aValue:match("^addon_magic_") then
+            local slotIdx = tonumber(aValue:match("^addon_magic_(%d+)"))
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run if Wise and Wise.ExecuteAddonMagic then Wise:ExecuteAddonMagic(" .. (slotIdx or 1) .. ") end"
         end
     elseif aType == "interface" then
         -- Toggle the target interface via its secure toggle button.
@@ -3941,28 +3946,6 @@ function Wise:UpdateBindings()
         end
     end
 
-    -- 4. Addon Loading Magic Slot Bindings
-    if WiseDB.addonMagicSlots then
-        for i, slot in ipairs(WiseDB.addonMagicSlots) do
-            if slot.keybind and string.len(slot.keybind) > 0 then
-                local btnName = "WiseAddonMagicBtn_" .. i
-                local btn = _G[btnName]
-                if not btn then
-                    btn = CreateFrame("Button", btnName, UIParent, "SecureActionButtonTemplate")
-                    btn:SetScript("OnClick", function()
-                        if not InCombatLockdown() then
-                            if Wise.ExecuteAddonMagic then
-                                Wise:ExecuteAddonMagic(i)
-                            end
-                        else
-                            print("|cff00ccff[Wise]|r Cannot trigger Addon Loading Magic in combat.")
-                        end
-                    end)
-                end
-                SetOverrideBindingClick(Wise.BindingFrame, true, slot.keybind, btnName)
-            end
-        end
-    end
 end
 
 
@@ -4334,6 +4317,23 @@ function Wise:UpdateButtonUsability(btn)
     elseif actionType == "misc" and actionValue == "possessbar" then
         local realID = Wise:ResolveBarActionID(121)
         isUsable, noMana = IsUsableAction(realID)
+    elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
+        local amIdx = tonumber(actionValue:sub(13))
+        if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+            local slot = WiseDB.addonMagicSlots[amIdx]
+            if slot.addons and #slot.addons > 0 then
+                isUsable = true
+                for _, addon in ipairs(slot.addons) do
+                    addon = strtrim(addon)
+                    if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
+                        isUsable = false
+                        break
+                    end
+                end
+            else
+                isUsable = false -- No addons selected
+            end
+        end
     elseif spellID then
         isUsable, noMana = Wise:IsSpellUsable(spellID)
     elseif itemID then

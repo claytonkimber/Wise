@@ -381,6 +381,42 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
          Wise:UpdateGroupDisplay("Specs")
     end
     
+    -- 5. Addon Loading Magic
+    local amGroup = EnsureWiserGroup("Addon Loading Magic", "circle")
+    WiseDB.addonMagicSlots = WiseDB.addonMagicSlots or {}
+    for i, slot in ipairs(WiseDB.addonMagicSlots) do
+        local slotName = slot.name or ("Slot " .. i)
+        local addonCount = slot.addons and #slot.addons or 0
+        local subText
+        if addonCount == 0 then
+            subText = "No addons selected"
+        elseif addonCount == 1 then
+            subText = slot.addons[1]
+        else
+            subText = addonCount .. " addons"
+        end
+        table.insert(amGroup.buttons, {
+            type = "misc",
+            value = "addon_magic_" .. i,
+            name = slotName,
+            icon = "Interface\\Icons\\INV_Misc_EngGizmos_11",
+            category = "global"
+        })
+    end
+    -- Immediately migrate buttons to actions so keybinds can be restored
+    if Wise.MigrateGroupToActions then
+        Wise:MigrateGroupToActions(amGroup)
+    end
+    -- Restore per-slot keybinds from canonical storage (WiseDB.addonMagicSlots)
+    for i, slot in ipairs(WiseDB.addonMagicSlots) do
+        if slot.keybind and slot.keybind ~= "" and amGroup.actions[i] then
+            amGroup.actions[i].keybind = slot.keybind
+        end
+    end
+    if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
+        Wise:UpdateGroupDisplay("Addon Loading Magic")
+    end
+
     -- Refresh Options UI if open to show new/updated groups
     if Wise.UpdateOptionsUI then
         Wise:UpdateOptionsUI()

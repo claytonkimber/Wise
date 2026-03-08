@@ -1234,6 +1234,13 @@ function Wise:GetActionName(actionType, value, extraData)
         if value == "possessbar" then return "Possess Bar" end
         if value == "leave_vehicle" then return "Leave Vehicle" end
         if value == "custom_macro" then return "Custom Macro" end
+        if type(value) == "string" and string.sub(value, 1, 12) == "addon_magic_" then
+            local slotIdx = tonumber(string.sub(value, 13))
+            if slotIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[slotIdx] then
+                return WiseDB.addonMagicSlots[slotIdx].name or ("Slot " .. slotIdx)
+            end
+            return "AM Slot " .. (slotIdx or "?")
+        end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
             local val = tonumber(string.sub(value, 6))
             if val then
@@ -3225,6 +3232,21 @@ function Wise:RefreshActionsView(container)
                          char = string.match(char, "^(.-)%-")
                      end
                      suffixText = char
+                 end
+
+                 -- Addon Magic: show addon count as suffix
+                 if action.type == "misc" and type(action.value) == "string" and action.value:sub(1, 12) == "addon_magic_" then
+                     local amIdx = tonumber(action.value:sub(13))
+                     if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+                         local count = WiseDB.addonMagicSlots[amIdx].addons and #WiseDB.addonMagicSlots[amIdx].addons or 0
+                         if count == 0 then
+                             suffixText = "No addons selected"
+                         elseif count == 1 then
+                             suffixText = "1 addon"
+                         else
+                             suffixText = count .. " addons"
+                         end
+                     end
                  end
 
                  -- Handle Layout & Cast Text

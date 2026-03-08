@@ -194,9 +194,29 @@ function Wise:AddInterfaceTooltip(btn)
                      _, name = GetSpecializationInfoByID(id)
                  end
                  label = "Set Loot Spec: " .. (name or (id or "?"))
+             elseif value:match("^addon_magic_") then
+                 local amIdx = tonumber(value:match("^addon_magic_(%d+)"))
+                 if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+                     local slot = WiseDB.addonMagicSlots[amIdx]
+                     label = slot.name or ("Slot " .. amIdx)
+                     GameTooltip:SetText(label, 1, 0.82, 0)
+                     local count = slot.addons and #slot.addons or 0
+                     if count == 0 then
+                         GameTooltip:AddLine("No addons selected", 0.6, 0.6, 0.6)
+                     elseif count == 1 then
+                         GameTooltip:AddLine("1 addon", 0.8, 0.8, 0.8)
+                     else
+                         GameTooltip:AddLine(count .. " addons", 0.8, 0.8, 0.8)
+                     end
+                     hasAction = true
+                 else
+                     label = "Addon Magic Slot"
+                 end
              end
 
-             GameTooltip:SetText(label, 1, 1, 1)
+             if not hasAction then
+                 GameTooltip:SetText(label, 1, 1, 1)
+             end
              end -- hasAction
 
         else
