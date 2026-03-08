@@ -3533,7 +3533,7 @@ function Wise:GetGrowthInfo(groupName)
             dy = -1
             text = "Down"
         else
-            dy = -1
+            dy = 0 -- 0 means bidirectional/centered
             text = "Centered (Vertical)"
         end
         return 0, dy, false, true, text

@@ -671,17 +671,21 @@ function Wise:SetFrameEditMode(f, name, enabled)
         f:SetScript("OnDragStop", function(self)
             self:StopMovingOrSizing()
 
-            -- To avoid anchor drifting due to WOW's StopMoving resolving
-            -- randomly to TOPLEFT/BOTTOMLEFT etc., we force the anchor
-            -- to represent the exact CENTER relative to UIParent's CENTER.
+            -- Use the un-clamped anchor proxy's position if available, or math
             local cx, cy = self:GetCenter()
+
+            -- Because center anchors can offset buttons left/right within the f frame bounds,
+            -- we need to calculate offset based on the Anchor (origin), not the dynamic bounded frame box.
+            if self.Anchor then
+                cx, cy = self.Anchor:GetCenter()
+            end
+
+            if not cx or not cy then return end
+
             local ux, uy = UIParent:GetCenter()
             
             local eff = self:GetEffectiveScale()
             local uEff = UIParent:GetEffectiveScale()
-            
-            local xOfs = ((cx * eff) - (ux * uEff)) / uEff
-            local yOfs = ((cy * eff) - (uy * uEff)) / uEff
             
             -- Instead of hardcoding CENTER, retrieve the current anchor point from DB
             local group = WiseDB.groups[name]
@@ -689,11 +693,22 @@ function Wise:SetFrameEditMode(f, name, enabled)
             local relativeTo = UIParent
             local relativePoint = point
 
-            -- Recalculate x/y offset based on the selected point
-            local left = self:GetLeft()
-            local right = self:GetRight()
-            local top = self:GetTop()
-            local bottom = self:GetBottom()
+            -- Recalculate x/y offset based on the selected point using the proxy Anchor
+            local left, bottom, width, height
+            if self.Anchor then
+                left = self.Anchor:GetLeft()
+                bottom = self.Anchor:GetBottom()
+                width = self.Anchor:GetWidth()
+                height = self.Anchor:GetHeight()
+            else
+                left = self:GetLeft()
+                bottom = self:GetBottom()
+                width = self:GetWidth()
+                height = self:GetHeight()
+            end
+
+            local right = left + width
+            local top = bottom + height
 
             local uiW = UIParent:GetWidth()
             local uiH = UIParent:GetHeight()
