@@ -195,6 +195,11 @@ local function CreateSelectionPopup()
         {"BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT"}
     }
 
+    local growthLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    growthLabel:SetPoint("TOP", anchorGrid, "BOTTOM", 0, -10)
+    growthLabel:SetText("Growth: Auto")
+    popup.growthLabel = growthLabel
+
     popup.anchorBtns = {}
     for row = 1, 3 do
         for col = 1, 3 do
@@ -284,9 +289,20 @@ local function CreateSelectionPopup()
                     f.EditModeOverlay.anchorIndicator:SetPoint(pos, f.EditModeOverlay, pos)
                 end
 
+                -- Update arrows
+                if f.EditModeOverlay and f.EditModeOverlay.UpdateArrows then
+                    f.EditModeOverlay:UpdateArrows(name)
+                end
+
                 -- Sync coordinates fields in popup
                 popup.xBox:SetText(tostring(math.floor(newX)))
                 popup.yBox:SetText(tostring(math.floor(newY)))
+
+                -- Update growth label
+                if Wise.GetGrowthInfo then
+                    local _, _, _, _, text = Wise:GetGrowthInfo(name)
+                    popup.growthLabel:SetText("Growth: " .. text)
+                end
             end)
         end
     end
@@ -349,6 +365,11 @@ local function ShowSelectionPopup(f, name)
                 btn:SetAlpha(1.0)
             end
         end
+    end
+
+    if popup.growthLabel and Wise.GetGrowthInfo then
+        local _, _, _, _, text = Wise:GetGrowthInfo(name)
+        popup.growthLabel:SetText("Growth: " .. text)
     end
 
     -- Position popup near the selected frame
@@ -434,6 +455,61 @@ local function CreateEditModeOverlay(f, name)
     -- e.g. SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT") means the bottom-right of the ring touches the bottom-right of the box.
     indicator:SetPoint(currentAnchor, overlay, currentAnchor)
     overlay.anchorIndicator = indicator
+
+    local function CreateArrow(texPath, w, h, point, relPoint, x, y)
+        local arrow = overlay:CreateTexture(nil, "OVERLAY")
+        arrow:SetTexture(texPath)
+        arrow:SetSize(w, h)
+        arrow:SetPoint(point, indicator, relPoint, x, y)
+        arrow:SetVertexColor(0, 1, 1, 1)
+        arrow:Hide()
+        return arrow
+    end
+
+    overlay.arrowRight = CreateArrow("Interface\\ChatFrame\\ChatFrameExpandArrow", 16, 16, "LEFT", "RIGHT", -4, 0)
+    overlay.arrowLeft = CreateArrow("Interface\\ChatFrame\\ChatFrameExpandArrow", 16, 16, "RIGHT", "LEFT", 4, 0)
+    overlay.arrowLeft:SetTexCoord(1, 0, 0, 1) -- flip horizontally
+
+    overlay.arrowDown = CreateArrow("Interface\\ChatFrame\\ChatFrameExpandArrow", 16, 16, "TOP", "BOTTOM", 0, 4)
+    -- Rotation for down arrow requires a different approach if texture doesn't support it natively, but ChatFrameExpandArrow can be rotated
+    overlay.arrowDown:SetRotation(-math.pi/2)
+
+    overlay.arrowUp = CreateArrow("Interface\\ChatFrame\\ChatFrameExpandArrow", 16, 16, "BOTTOM", "TOP", 0, -4)
+    overlay.arrowUp:SetRotation(math.pi/2)
+
+    overlay.UpdateArrows = function(self, groupName)
+        self.arrowRight:Hide()
+        self.arrowLeft:Hide()
+        self.arrowUp:Hide()
+        self.arrowDown:Hide()
+
+        if Wise.GetGrowthInfo then
+            local dirX, dirY, growsX, growsY = Wise:GetGrowthInfo(groupName)
+            if growsX then
+                if dirX == 1 then
+                    self.arrowRight:Show()
+                elseif dirX == -1 then
+                    self.arrowLeft:Show()
+                elseif dirX == 0 then
+                    self.arrowRight:Show()
+                    self.arrowLeft:Show()
+                end
+            end
+            if growsY then
+                if dirY == -1 then
+                    self.arrowDown:Show()
+                elseif dirY == 1 then
+                    self.arrowUp:Show()
+                elseif dirY == 0 then
+                    self.arrowUp:Show()
+                    self.arrowDown:Show()
+                end
+            end
+        end
+    end
+
+    overlay:UpdateArrows(name)
+
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.label:SetText(name)

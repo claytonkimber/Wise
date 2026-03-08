@@ -3512,6 +3512,102 @@ function Wise:ApplyIconStyle(btn, style)
     end
 end
 
+function Wise:GetGrowthInfo(groupName)
+    local group = WiseDB.groups[groupName]
+    if not group then return 0, 0, false, false, "Unknown" end
+
+    local type = group.type or "circle"
+    local anchorPoint = (group.anchor and group.anchor.point) or "CENTER"
+
+    if type == "circle" then
+        return 0, 0, true, true, "Radial"
+    elseif type == "button" then
+        return 0, 0, false, false, "None"
+    elseif type == "list" then
+        local dy = -1
+        local text = "Down"
+        if anchorPoint:find("BOTTOM") then
+            dy = 1
+            text = "Up"
+        elseif anchorPoint:find("TOP") then
+            dy = -1
+            text = "Down"
+        else
+            dy = -1
+            text = "Centered (Vertical)"
+        end
+        return 0, dy, false, true, text
+    elseif type == "line" then
+        local orientation = group.lineOrientation or "horizontal"
+        if orientation == "horizontal" then
+            local dx = 1
+            local text = "Right"
+            if anchorPoint:find("RIGHT") then
+                dx = -1
+                text = "Left"
+            elseif anchorPoint:find("LEFT") then
+                dx = 1
+                text = "Right"
+            else
+                dx = 0 -- 0 means bidirectional/centered
+                text = "Centered (Horizontal)"
+            end
+            return dx, 0, true, false, text
+        else
+            local dy = -1
+            local text = "Down"
+            if anchorPoint:find("BOTTOM") then
+                dy = 1
+                text = "Up"
+            elseif anchorPoint:find("TOP") then
+                dy = -1
+                text = "Down"
+            else
+                dy = 0 -- 0 means bidirectional/centered
+                text = "Centered (Vertical)"
+            end
+            return 0, dy, false, true, text
+        end
+    elseif type == "box" then
+        local dirX = 1
+        local dirY = -1
+        local tX = "Right"
+        local tY = "Down"
+
+        if anchorPoint:find("RIGHT") then
+            dirX = -1
+            tX = "Left"
+        elseif not anchorPoint:find("LEFT") then
+            dirX = 0
+            tX = "Centered (Horizontal)"
+        end
+
+        if anchorPoint:find("BOTTOM") then
+            dirY = 1
+            tY = "Up"
+        elseif not anchorPoint:find("TOP") then
+            dirY = 0
+            tY = "Centered (Vertical)"
+        end
+
+        local text = ""
+        local primaryAxis = group.fixedAxis or "x"
+        if anchorPoint == "CENTER" then
+            text = "Centered (Both)"
+        else
+            if primaryAxis == "x" then
+                 text = tY .. " & " .. tX .. " (Row-First)"
+            else
+                 text = tX .. " & " .. tY .. " (Column-First)"
+            end
+        end
+
+        return dirX, dirY, true, true, text
+    end
+
+    return 0, 0, false, false, "Unknown"
+end
+
 function Wise:ApplyLayout(frame, type, count, groupName)
     frame.buttons = frame.buttons or {}
     local buttons = frame.buttons
@@ -3571,6 +3667,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     elseif type == "line" then
         local linePadding = 5 -- default padding between buttons
         local anchorPoint = "CENTER"
+        local orientation = "horizontal" -- or "vertical"
         if groupName and WiseDB.groups[groupName] then
             if WiseDB.groups[groupName].padding then
                 linePadding = WiseDB.groups[groupName].padding
@@ -3578,31 +3675,33 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
                 anchorPoint = WiseDB.groups[groupName].anchor.point
             end
+            if WiseDB.groups[groupName].lineOrientation then
+                orientation = WiseDB.groups[groupName].lineOrientation
+            end
         end
         local spacing = iconSize + linePadding
         
         local dx, dy = 0, 0
         local startX, startY = 0, 0
 
-        if anchorPoint == "TOP" then
-            dy = -spacing
-        elseif anchorPoint == "BOTTOM" then
-            dy = spacing
-        elseif anchorPoint == "LEFT" then
-            dx = spacing
-        elseif anchorPoint == "RIGHT" then
-            dx = -spacing
-        elseif anchorPoint == "TOPLEFT" then
-            dx = spacing
-        elseif anchorPoint == "TOPRIGHT" then
-            dx = -spacing
-        elseif anchorPoint == "BOTTOMLEFT" then
-            dx = spacing
-        elseif anchorPoint == "BOTTOMRIGHT" then
-            dx = -spacing
-        else -- CENTER
-            dx = spacing
-            startX = - (math.max(count - 1, 0) * spacing) / 2
+        if orientation == "horizontal" then
+            if anchorPoint:find("RIGHT") then
+                dx = -spacing
+            elseif anchorPoint:find("LEFT") then
+                dx = spacing
+            else -- Center horizontally
+                dx = spacing
+                startX = - (math.max(count - 1, 0) * spacing) / 2
+            end
+        else -- vertical
+            if anchorPoint:find("BOTTOM") then
+                dy = spacing
+            elseif anchorPoint:find("TOP") then
+                dy = -spacing
+            else -- Center vertically
+                dy = -spacing -- default grow down for center vertical
+                startY = (math.max(count - 1, 0) * spacing) / 2
+            end
         end
 
         for i=1, count do
