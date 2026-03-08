@@ -52,7 +52,7 @@ local function ApplyOffsetFromPopup()
         f.Anchor:ClearAllPoints()
         f.Anchor:SetPoint(point, UIParent, point, x, y)
         f:ClearAllPoints()
-        f:SetPoint("CENTER", f.Anchor, "CENTER")
+        f:SetPoint(point, f.Anchor, point)
     end
 end
 
@@ -60,7 +60,7 @@ local function CreateSelectionPopup()
     if selectionPopup then return selectionPopup end
 
     local popup = CreateFrame("Frame", "WiseEditModePopup", UIParent, "BackdropTemplate")
-    popup:SetSize(150, 130)
+    popup:SetSize(150, 240)
     popup:SetFrameStrata("TOOLTIP")
     popup:SetFrameLevel(200)
     popup:SetMovable(true)
@@ -178,6 +178,119 @@ local function CreateSelectionPopup()
         ApplyOffsetFromPopup()
     end)
 
+    -- Anchor Picker Grid
+    local anchorLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    anchorLabel:SetPoint("TOPLEFT", controlsX, yLabelY - 44)
+    anchorLabel:SetText("Anchor")
+    anchorLabel:SetTextColor(0.8, 0.8, 0.8)
+
+    local anchorGrid = CreateFrame("Frame", nil, popup)
+    anchorGrid:SetSize(80, 80)
+    anchorGrid:SetPoint("TOP", popup, "TOP", 0, yLabelY - 58)
+    popup.anchorGrid = anchorGrid
+
+    local positions = {
+        {"TOPLEFT", "TOP", "TOPRIGHT"},
+        {"LEFT", "CENTER", "RIGHT"},
+        {"BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT"}
+    }
+
+    popup.anchorBtns = {}
+    for row = 1, 3 do
+        for col = 1, 3 do
+            local pos = positions[row][col]
+            local btn = CreateFrame("Button", nil, anchorGrid, "UIPanelButtonTemplate")
+            btn:SetSize(24, 24)
+            btn:SetPoint("TOPLEFT", (col - 1) * 26 + 1, -(row - 1) * 26 - 1)
+            btn.pos = pos
+
+            -- Active state indicator (Gold ring)
+            local ct = btn:CreateTexture(nil, "OVERLAY")
+            ct:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            ct:SetSize(16, 16) -- Exactly the same size as the overlay ring
+            -- The MiniMap-TrackingBorder texture has its visual center in the top left quadrant
+            ct:SetTexCoord(0.0, 0.6, 0.0, 0.6)
+            -- Offset slightly if needed to make it perfectly centered over the red button
+            ct:SetPoint("CENTER", btn, "CENTER", 0, -2)
+            ct:SetVertexColor(1, 0.82, 0, 1) -- Brighter
+            ct:SetBlendMode("ADD")
+            ct:Hide()
+            btn.activeTexture = ct
+
+            popup.anchorBtns[pos] = btn
+
+            btn:SetScript("OnClick", function(self)
+                local name = selectedEditName
+                local f = selectedEditFrame
+                local group = WiseDB.groups[name]
+                if not group or not f then return end
+
+                -- Restrict circle to center only
+                if group.type == "circle" and pos ~= "CENTER" then
+                    print("|cffff0000Wise:|r Circle interfaces must use CENTER anchor.")
+                    return
+                end
+
+                -- Visual update
+                for _, b in pairs(popup.anchorBtns) do
+                    b.activeTexture:Hide()
+                end
+                self.activeTexture:Show()
+
+                -- Math for re-anchoring
+                local cx, cy = f:GetCenter()
+                if not cx or not cy then return end
+
+                local eff = f:GetEffectiveScale()
+                local uEff = UIParent:GetEffectiveScale()
+
+                local left = f:GetLeft()
+                local right = f:GetRight()
+                local top = f:GetTop()
+                local bottom = f:GetBottom()
+
+                local uiW = UIParent:GetWidth()
+                local uiH = UIParent:GetHeight()
+
+                local scaledLeft = (left * eff) / uEff
+                local scaledRight = (right * eff) / uEff
+                local scaledTop = (top * eff) / uEff
+                local scaledBottom = (bottom * eff) / uEff
+                local scaledCx = (cx * eff) / uEff
+                local scaledCy = (cy * eff) / uEff
+
+                local newX, newY = 0, 0
+                if pos:find("LEFT") then newX = scaledLeft
+                elseif pos:find("RIGHT") then newX = scaledRight - uiW
+                else newX = scaledCx - (uiW / 2) end
+
+                if pos:find("BOTTOM") then newY = scaledBottom
+                elseif pos:find("TOP") then newY = scaledTop - uiH
+                else newY = scaledCy - (uiH / 2) end
+
+                group.anchor = { point = pos, relativePoint = pos, x = newX, y = newY }
+
+                -- Update proxy
+                if f.Anchor then
+                    f.Anchor:ClearAllPoints()
+                    f.Anchor:SetPoint(pos, UIParent, pos, newX, newY)
+                    f:ClearAllPoints()
+                    f:SetPoint(pos, f.Anchor, pos)
+                end
+
+                -- Update visual indicator on overlay
+                if f.EditModeOverlay and f.EditModeOverlay.anchorIndicator then
+                    f.EditModeOverlay.anchorIndicator:ClearAllPoints()
+                    f.EditModeOverlay.anchorIndicator:SetPoint(pos, f.EditModeOverlay, pos)
+                end
+
+                -- Sync coordinates fields in popup
+                popup.xBox:SetText(tostring(math.floor(newX)))
+                popup.yBox:SetText(tostring(math.floor(newY)))
+            end)
+        end
+    end
+
     -- Arrow key nudging support
     popup:SetPropagateKeyboardInput(true)
     popup:SetScript("OnKeyDown", function(self, key)
@@ -219,6 +332,24 @@ local function ShowSelectionPopup(f, name)
     popup.xBox:SetText(tostring(floor(anchor.x or 0)))
     popup.yBox:SetText(tostring(floor(anchor.y or 0)))
     popup.title:SetText(name)
+
+    local currentAnchor = anchor.point or "CENTER"
+    if popup.anchorBtns then
+        for pos, btn in pairs(popup.anchorBtns) do
+            if pos == currentAnchor then
+                btn.activeTexture:Show()
+            else
+                btn.activeTexture:Hide()
+            end
+
+            -- Visual lock for circle
+            if group and group.type == "circle" and pos ~= "CENTER" then
+                btn:SetAlpha(0.3)
+            else
+                btn:SetAlpha(1.0)
+            end
+        end
+    end
 
     -- Position popup near the selected frame
     popup:ClearAllPoints()
@@ -285,23 +416,24 @@ local function CreateEditModeOverlay(f, name)
     overlay:SetBackdropColor(0, 0, 0, 0.6)
     overlay:SetBackdropBorderColor(0, 1, 1, 0.8) -- Cyan border
 
-    -- Center Lines (Crosshair)
-    local lineThickness = 1
+    -- Anchor Points
+    -- Current Anchor Indicator (Non-interactive)
+    local group = WiseDB.groups[name]
+    local currentAnchor = (group and group.anchor and group.anchor.point) or "CENTER"
 
-    -- Horizontal Line
-    overlay.hLine = overlay:CreateTexture(nil, "OVERLAY")
-    overlay.hLine:SetColorTexture(0, 1, 1, 0.5)
-    overlay.hLine:SetHeight(lineThickness)
-    overlay.hLine:SetPoint("LEFT", overlay, "LEFT", 0, 0)
-    overlay.hLine:SetPoint("RIGHT", overlay, "RIGHT", 0, 0)
+    local indicator = overlay:CreateTexture(nil, "OVERLAY")
+    indicator:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    indicator:SetSize(16, 16) -- Matches popup size
+    indicator:SetVertexColor(1, 0.82, 0, 1) -- Brighter Gold
+    indicator:SetBlendMode("ADD")
+    -- Use the exact same crop as the popup
+    indicator:SetTexCoord(0.0, 0.6, 0.0, 0.6)
 
-    -- Vertical Line
-    overlay.vLine = overlay:CreateTexture(nil, "OVERLAY")
-    overlay.vLine:SetColorTexture(0, 1, 1, 0.5)
-    overlay.vLine:SetWidth(lineThickness)
-    overlay.vLine:SetPoint("TOP", overlay, "TOP", 0, 0)
-    overlay.vLine:SetPoint("BOTTOM", overlay, "BOTTOM", 0, 0)
-
+    -- The user explicitly wants it strictly inside.
+    -- Setting point(Anchor, frame, Anchor) puts the texture entirely inside the frame bounds.
+    -- e.g. SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT") means the bottom-right of the ring touches the bottom-right of the box.
+    indicator:SetPoint(currentAnchor, overlay, currentAnchor)
+    overlay.anchorIndicator = indicator
     -- Group Name Label
     overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     overlay.label:SetText(name)
@@ -475,7 +607,39 @@ function Wise:SetFrameEditMode(f, name, enabled)
             local xOfs = ((cx * eff) - (ux * uEff)) / uEff
             local yOfs = ((cy * eff) - (uy * uEff)) / uEff
             
-            local point, relativeTo, relativePoint = "CENTER", UIParent, "CENTER"
+            -- Instead of hardcoding CENTER, retrieve the current anchor point from DB
+            local group = WiseDB.groups[name]
+            local point = (group and group.anchor and group.anchor.point) or "CENTER"
+            local relativeTo = UIParent
+            local relativePoint = point
+
+            -- Recalculate x/y offset based on the selected point
+            local left = self:GetLeft()
+            local right = self:GetRight()
+            local top = self:GetTop()
+            local bottom = self:GetBottom()
+
+            local uiW = UIParent:GetWidth()
+            local uiH = UIParent:GetHeight()
+
+            local scaledLeft = (left * eff) / uEff
+            local scaledRight = (right * eff) / uEff
+            local scaledTop = (top * eff) / uEff
+            local scaledBottom = (bottom * eff) / uEff
+            local scaledCx = (cx * eff) / uEff
+            local scaledCy = (cy * eff) / uEff
+
+            local newX, newY = 0, 0
+            if point:find("LEFT") then newX = scaledLeft
+            elseif point:find("RIGHT") then newX = scaledRight - uiW
+            else newX = scaledCx - (uiW / 2) end
+
+            if point:find("BOTTOM") then newY = scaledBottom
+            elseif point:find("TOP") then newY = scaledTop - uiH
+            else newY = scaledCy - (uiH / 2) end
+
+            local xOfs = newX
+            local yOfs = newY
 
             -- Grid Snapping Logic (skip in Wise-only edit mode where no grid is shown)
             local snapped = false
@@ -492,8 +656,8 @@ function Wise:SetFrameEditMode(f, name, enabled)
             self:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
 
             -- Update Saved Variables (include relativePoint for accurate restoration)
-            if WiseDB.groups[name] and WiseDB.groups[name].anchorMode ~= "mouse" then
-                WiseDB.groups[name].anchor = {point=point, relativePoint=relativePoint, x=xOfs, y=yOfs}
+            if group and group.anchorMode ~= "mouse" then
+                group.anchor = {point=point, relativePoint=relativePoint, x=xOfs, y=yOfs}
             end
 
             -- Sync Anchor frame to new position (snapped or not)
@@ -502,7 +666,7 @@ function Wise:SetFrameEditMode(f, name, enabled)
                 self.Anchor:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
 
                 self:ClearAllPoints()
-                self:SetPoint("CENTER", self.Anchor, "CENTER")
+                self:SetPoint(point, self.Anchor, point)
             end
 
             -- Sync popup values if showing for this frame
