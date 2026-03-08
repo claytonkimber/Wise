@@ -207,11 +207,11 @@ local function CreateSelectionPopup()
             -- Active state indicator (Gold ring)
             local ct = btn:CreateTexture(nil, "OVERLAY")
             ct:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-            ct:SetSize(28, 28) -- Scaled to fit perfectly over the 24x24 button
-            -- The MiniMap-TrackingBorder texture has its visual center slightly offset.
-            -- To center it visually, we apply a specific coordinate mapping and a small physical offset.
-            ct:SetTexCoord(0.05, 0.65, 0.05, 0.65)
-            ct:SetPoint("CENTER", btn, "CENTER", -1, 1)
+            ct:SetSize(16, 16) -- Exactly the same size as the overlay ring
+            -- The MiniMap-TrackingBorder texture has its visual center in the top left quadrant
+            ct:SetTexCoord(0.0, 0.6, 0.0, 0.6)
+            -- Offset slightly if needed to make it perfectly centered over the red button
+            ct:SetPoint("CENTER", btn, "CENTER", -2, 2)
             ct:SetVertexColor(1, 0.82, 0, 1) -- Brighter
             ct:SetBlendMode("ADD")
             ct:Hide()
@@ -423,11 +423,11 @@ local function CreateEditModeOverlay(f, name)
 
     local indicator = overlay:CreateTexture(nil, "OVERLAY")
     indicator:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    indicator:SetSize(16, 16) -- A bit bigger
+    indicator:SetSize(16, 16) -- Matches popup size
     indicator:SetVertexColor(1, 0.82, 0, 1) -- Brighter Gold
     indicator:SetBlendMode("ADD")
-    -- Use the same aggressive crop as the popup to ensure it's visually centered
-    indicator:SetTexCoord(0.05, 0.65, 0.05, 0.65)
+    -- Use the exact same crop as the popup
+    indicator:SetTexCoord(0.0, 0.6, 0.0, 0.6)
 
     -- The user explicitly wants it strictly inside.
     -- Setting point(Anchor, frame, Anchor) puts the texture entirely inside the frame bounds.
