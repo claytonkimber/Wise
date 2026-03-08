@@ -1554,18 +1554,16 @@ function Wise:RenderGroupProperties(panel, group, y)
         if group.type == "line" then
              local dirLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
              dirLabel:SetPoint("TOPLEFT", 10, y)
-             dirLabel:SetText("Growth Direction:")
+             dirLabel:SetText("Line Orientation:")
              tinsert(panel.controls, dirLabel)
 
              y = y - 22
 
              -- Radial Picker for Growth Direction (Radio Buttons)
-             local currentDir = group.growthDirection or "right"
+             local currentDir = group.lineOrientation or "horizontal"
              local dirTypes = {
-                 { value = "right", label = "Right" },
-                 { value = "left",  label = "Left" },
-                 { value = "up",    label = "Up" },
-                 { value = "down",  label = "Down" },
+                 { value = "horizontal", label = "Horizontal" },
+                 { value = "vertical",  label = "Vertical" },
              }
 
              for _, dirInfo in ipairs(dirTypes) do
@@ -1577,7 +1575,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                  radio.text:SetText(dirInfo.label)
 
                  radio:SetScript("OnClick", function(self)
-                     group.growthDirection = dirInfo.value
+                     group.lineOrientation = dirInfo.value
                      Wise:RefreshPropertiesPanel()
                      C_Timer.After(0, function()
                          if not InCombatLockdown() then
