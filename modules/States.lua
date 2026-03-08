@@ -30,10 +30,12 @@ function Wise:NegateConditional(cond)
     local results = {}
     for part in cleaned:gmatch("[^,]+") do
         part = part:match("^%s*(.-)%s*$") -- trim
-        if part:sub(1, 2) == "no" then
-            table.insert(results, part:sub(3))
-        else
-            table.insert(results, "no" .. part)
+        if not string.find(part, "@") then
+            if part:sub(1, 2) == "no" then
+                table.insert(results, part:sub(3))
+            else
+                table.insert(results, "no" .. part)
+            end
         end
     end
     
@@ -47,7 +49,7 @@ local function GetConditionParts(condStr)
     local parts = {}
     for part in cleaned:gmatch("[^,]+") do
         part = part:match("^%s*(.-)%s*$") -- trim
-        if part ~= "" then
+        if part ~= "" and not string.find(part, "@") then
             local negation = part:sub(1, 2) == "no" and part:sub(3) or ("no" .. part)
             parts[part] = negation
         end
@@ -265,12 +267,13 @@ function Wise:CreateStateConfigurationFrame(parent, group, slotIndex)
 
     for i = 1, #allowedActions do
         local partsA = actionParts[i]
+        local isExclusive = allowedActions[i].action.exclusive
         
         for j = 1, #allowedActions do
             if i ~= j then
                 local partsB = actionParts[j]
                 
-                if not AreMutuallyExclusive(partsA, partsB) then
+                if not AreMutuallyExclusive(partsA, partsB) and not isExclusive then
                     -- Suggest negating A's unique conditions in B
                     for condA, negationA in pairs(partsA) do
                         if not partsB[negationA] then
