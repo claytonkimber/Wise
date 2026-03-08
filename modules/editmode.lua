@@ -211,7 +211,7 @@ local function CreateSelectionPopup()
             -- The MiniMap-TrackingBorder texture has its visual center in the top left quadrant
             ct:SetTexCoord(0.0, 0.6, 0.0, 0.6)
             -- Offset slightly if needed to make it perfectly centered over the red button
-            ct:SetPoint("CENTER", btn, "CENTER", -2, 2)
+            ct:SetPoint("CENTER", btn, "CENTER", 0, -2)
             ct:SetVertexColor(1, 0.82, 0, 1) -- Brighter
             ct:SetBlendMode("ADD")
             ct:Hide()
