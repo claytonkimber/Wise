@@ -2412,10 +2412,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     if group.anchorMode ~= "mouse" then
         -- Static Mode: Restore anchor to f.Anchor
         if not InCombatLockdown() then
-             -- Ensure f is anchored to f.Anchor
+             -- Ensure f is anchored to f.Anchor using the group's point
              -- (We might have detached it in Mouse mode)
              f:ClearAllPoints()
-             f:SetPoint("CENTER", f.Anchor, "CENTER")
+             local point = (group.anchor and group.anchor.point) or "CENTER"
+             f:SetPoint(point, f.Anchor, point)
         end
     
         -- Position f.Anchor acting as the actual position holder
