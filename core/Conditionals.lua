@@ -293,7 +293,50 @@ function Wise:UpdateConditionalsTab()
     end
 
     -- Select List
-    local list = (Wise.conditionalsSubTab == "wise") and Wise.opieConditionals or Wise.builtinConditionals
+    local list
+    if Wise.conditionalsSubTab == "wise" then
+        list = {}
+        for _, item in ipairs(Wise.opieConditionals) do
+            table.insert(list, item)
+        end
+
+        -- Append dynamically generated interface conditionals
+        local hasInterfaceConditionals = false
+
+        if WiseDB and WiseDB.groups then
+            for groupName, groupData in pairs(WiseDB.groups) do
+                if not hasInterfaceConditionals then
+                    table.insert(list, { type = "header", text = "Interface conditionals" })
+                    hasInterfaceConditionals = true
+                end
+                table.insert(list, {
+                    name = "wise:" .. groupName,
+                    desc = "Interface: " .. groupName,
+                    isInterface = true,
+                    groupName = groupName
+                })
+            end
+        end
+
+        if WiseDB and WiseDB.addonMagicSlots then
+            for _, slot in ipairs(WiseDB.addonMagicSlots) do
+                if slot.name then
+                    if not hasInterfaceConditionals then
+                        table.insert(list, { type = "header", text = "Interface conditionals" })
+                        hasInterfaceConditionals = true
+                    end
+                    table.insert(list, {
+                        name = "aml:" .. slot.name,
+                        desc = "Addon Loading Magic: " .. slot.name,
+                        isAddonMagic = true,
+                        slotName = slot.name
+                    })
+                end
+            end
+        end
+    else
+        list = Wise.builtinConditionals
+    end
     container.conditionalsList = list
 
     -- Create/Update Rows
@@ -611,6 +654,30 @@ function Wise:UpdateConditionalsValues()
 
             if item.combatRestricted and inCombat then
                 isRestricted = true
+            elseif item.isInterface then
+                local frame = Wise.frames and Wise.frames[item.groupName]
+                isActive = frame and frame:IsShown()
+            elseif item.isAddonMagic then
+                isActive = false
+                if WiseDB and WiseDB.addonMagicSlots then
+                    for _, slot in ipairs(WiseDB.addonMagicSlots) do
+                        if slot.name == item.slotName and slot.addons then
+                            local allLoaded = true
+                            if #slot.addons > 0 then
+                                for _, addon in ipairs(slot.addons) do
+                                    if not C_AddOns.IsAddOnLoaded(addon) then
+                                        allLoaded = false
+                                        break
+                                    end
+                                end
+                            else
+                                allLoaded = false
+                            end
+                            isActive = allLoaded
+                            break
+                        end
+                    end
+                end
             elseif item.skipeval then
                 local val = Wise:GetConditionalValue(item.name)
                 if val then
