@@ -267,12 +267,13 @@ function Wise:CreateStateConfigurationFrame(parent, group, slotIndex)
 
     for i = 1, #allowedActions do
         local partsA = actionParts[i]
+        local isExclusive = allowedActions[i].action.exclusive
         
         for j = 1, #allowedActions do
             if i ~= j then
                 local partsB = actionParts[j]
                 
-                if not AreMutuallyExclusive(partsA, partsB) then
+                if not AreMutuallyExclusive(partsA, partsB) and not isExclusive then
                     -- Suggest negating A's unique conditions in B
                     for condA, negationA in pairs(partsA) do
                         if not partsB[negationA] then
