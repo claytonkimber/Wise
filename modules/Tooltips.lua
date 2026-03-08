@@ -95,7 +95,6 @@ function Wise:AddInterfaceTooltip(btn)
             if _G.type(value) == "string" and string.sub(value, 1, 1) == "/" then
                 local title = (data and data.name) or (meta and meta.name) or "Macro"
                 GameTooltip:SetText(title, 1, 1, 1)
-                GameTooltip:AddLine(value, 0.8, 0.8, 0.8, true)
             else
                 GameTooltip:SetText("Macro: " .. tostring(value), 1, 1, 1)
                 local name, icon, body = GetMacroInfo(value)
