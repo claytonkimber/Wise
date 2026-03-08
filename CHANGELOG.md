@@ -1,11 +1,18 @@
 # Changelog
 
-## [1.0.20260307] - 2026-03-07
+## [1.0.20260308] - 2026-03-08
 
+- [Feature] Implement automatic layout growth direction based on anchor point
+- [Feature] Replace center crosshairs with interactive 9-point anchor circles in edit mode
+- [Feature] Add Interface conditionals to Conditionals tab
 - [Feature] Implement Addon Loading Magic (AML) for conditional addon loading and state management
 - [Feature] Add `[aml:slotname]` conditional support for interface visibility and action slots
 - [Feature] Wise Logo Color Palette added for design consistency in GUI modules
 - [Feature] Add "Invisible" icon style for layout placeholders to allow cleaner UI designs
+- [Fix] Correct layout offset drift and refine UI growth indicators
+- [Fix] Correctly align, perfectly center, and scale anchor indicator rings
+- [Fix] Handle invalid negations for `@` targeting conditionals and optimize condition exclusivity checks
+- [Fix] Remove raw macro command from inline macro tooltips and display correct names for tradeskill tooltips
 - [Fix] Resolved action icon and visibility issues for overrides and PossessBar/Vehicle states
 - [Fix] Macro icon selector now correctly opens manual selection when clicking the question mark icon
 - [Fix] Remove 10px inset from cooldown wipers (GCD animation) for seamless edge-to-edge rendering
