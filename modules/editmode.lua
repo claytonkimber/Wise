@@ -859,7 +859,11 @@ local function CreateExitEditModeFrame()
     exitBtn:SetPoint("LEFT", iconBtn, "RIGHT", 8, 0)
     exitBtn:SetText("Exit Edit Mode")
     exitBtn:SetScript("OnClick", function()
-        Wise:ExitEditMode()
+        if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+            HideUIPanel(EditModeManagerFrame)
+        else
+            Wise:ExitEditMode()
+        end
     end)
 
     f:Hide()
