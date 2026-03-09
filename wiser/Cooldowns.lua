@@ -1,0 +1,93 @@
+local addonName, Wise = ...
+
+-- Register property hook for CooldownWiser interfaces
+function Wise:InitializeCooldownWiser()
+    -- Initialize hook for CooldownWiser
+    Wise.PropertyHooks = Wise.PropertyHooks or {}
+    Wise.PropertyHooks["CooldownWiser"] = {
+        suppress = {
+            Actions = false, -- We want to allow editing actions to add decimal slots
+            Rename = true, -- Usually shouldn't rename Wiser interfaces
+        },
+        inject = {}
+    }
+end
+
+-- Initialize the property hook
+local initFrame = CreateFrame("Frame")
+initFrame:RegisterEvent("PLAYER_LOGIN")
+initFrame:SetScript("OnEvent", function(self, event)
+    Wise:InitializeCooldownWiser()
+end)
+
+function Wise:UpdateCooldownWiser(groupName, viewerName)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+
+    local viewer = _G[viewerName]
+    if not viewer then return end
+
+    local spells = {}
+    if viewer.GetChildren then
+        local children = { viewer:GetChildren() }
+        table.sort(children, function(a, b)
+            return (a.layoutIndex or 0) < (b.layoutIndex or 0)
+        end)
+
+        for _, child in ipairs(children) do
+            if child:IsShown() then
+                 local spellID = child.spellID
+                 if not spellID and child.cooldownID and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
+                     local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(child.cooldownID)
+                     if info then spellID = info.spellID end
+                 end
+
+                 if spellID then
+                      local alreadyExists = false
+                      for _, s in ipairs(spells) do
+                          if s == spellID then alreadyExists = true break end
+                      end
+                      if not alreadyExists then
+                          table.insert(spells, spellID)
+                      end
+                 end
+            end
+        end
+    end
+
+    if Wise.MigrateGroupToActions then
+        Wise:MigrateGroupToActions(group)
+    end
+
+    group.actions = group.actions or {}
+    group.dynamic = true
+    group.propertyType = "CooldownWiser"
+
+    -- Iterate through the integer slots and replace them with the imported spells
+    local numSpells = #spells
+    for i = 1, numSpells do
+        local spellID = spells[i]
+        local info = C_Spell.GetSpellInfo(spellID)
+        local name = info and info.name or tostring(spellID)
+        group.actions[i] = {
+            { type = "spell", value = name, category = "global" }
+        }
+    end
+
+    -- Remove any extra integer slots that are greater than the number of spells
+    -- But preserve decimal slots
+    local keysToRemove = {}
+    for slotIdx, _ in pairs(group.actions) do
+        if type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and slotIdx > numSpells then
+            table.insert(keysToRemove, slotIdx)
+        end
+    end
+
+    for _, slotIdx in ipairs(keysToRemove) do
+        group.actions[slotIdx] = nil
+    end
+
+    if Wise.UpdateGroupDisplay and Wise.frames[groupName] and Wise.frames[groupName]:IsShown() then
+        Wise:UpdateGroupDisplay(groupName)
+    end
+end

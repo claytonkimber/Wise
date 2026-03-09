@@ -210,11 +210,11 @@ end
 
 function Wise:GetPropertyHook(group)
     if group.isSmartItem then return Wise.PropertyHooks["SmartItem"] end
-    if group.isWiser then return Wise.PropertyHooks["Wiser"] end
-    -- Check for custom type property?
+    -- Check for custom type property before isWiser so we can override Wiser properties
     if group.propertyType and Wise.PropertyHooks[group.propertyType] then
         return Wise.PropertyHooks[group.propertyType]
     end
+    if group.isWiser then return Wise.PropertyHooks["Wiser"] end
     return nil
 end
 

@@ -416,6 +416,19 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
         Wise:UpdateGroupDisplay("Addon Loading Magic")
     end
+    -- 6. Cooldowns
+    local cooldownsGroup = EnsureWiserGroup("Cooldowns", "circle")
+    if Wise.UpdateCooldownWiser then
+        Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
+    end
+
+    -- 7. Utilities
+    local utilitiesGroup = EnsureWiserGroup("Utilities", "circle")
+    if Wise.UpdateCooldownWiser then
+        Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")
+    end
+
+
 
     -- Refresh Options UI if open to show new/updated groups
     if Wise.UpdateOptionsUI then
@@ -440,15 +453,7 @@ function Wise:Initialize()
         Wise:UpdateCharacterInfo()
     end
     
-    -- Cleanup deprecated Wiser Interfaces
-    if WiseDB and WiseDB.groups then
-        if WiseDB.groups["Cooldowns"] and WiseDB.groups["Cooldowns"].isWiser then
-            WiseDB.groups["Cooldowns"] = nil
-        end
-        if WiseDB.groups["Utilities"] and WiseDB.groups["Utilities"].isWiser then
-            WiseDB.groups["Utilities"] = nil
-        end
-    end
+
     
     -- Restore Groups
     if WiseDB.groups then
