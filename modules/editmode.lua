@@ -809,6 +809,77 @@ function Wise:ToggleWiseOnlyEditMode()
     end
 end
 
+
+-- ============================================================
+-- Exit Edit Mode Floating Frame
+-- ============================================================
+
+local function CreateExitEditModeFrame()
+    if Wise.ExitEditModeFrame then return Wise.ExitEditModeFrame end
+
+    local f = CreateFrame("Frame", "WiseExitEditModeFrame", UIParent, "BackdropTemplate")
+    f:SetSize(160, 40)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -20)
+    f:SetFrameStrata("HIGH")
+    f:SetFrameLevel(200)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets = { left = 5, right = 5, top = 5, bottom = 5 }
+    })
+    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+
+    -- Icon button
+    local iconBtn = CreateFrame("Button", nil, f)
+    iconBtn:SetSize(28, 28)
+    iconBtn:SetPoint("LEFT", 10, 0)
+    local tex = iconBtn:CreateTexture(nil, "BACKGROUND")
+    tex:SetAllPoints()
+    tex:SetTexture("Interface\\AddOns\\Wise\\Media\\WiseLogo")
+    tex:SetTexCoord(-0.031, 1.051, -0.020, 1.062)
+    iconBtn:SetScript("OnClick", function()
+        if not Wise.OptionsFrame then
+            Wise:CreateOptionsFrame()
+        end
+        if Wise.OptionsFrame and not Wise.OptionsFrame:IsShown() then
+            Wise.OptionsFrame:Show()
+        end
+    end)
+
+    -- Text Button
+    local exitBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    exitBtn:SetSize(100, 24)
+    exitBtn:SetPoint("LEFT", iconBtn, "RIGHT", 8, 0)
+    exitBtn:SetText("Exit Edit Mode")
+    exitBtn:SetScript("OnClick", function()
+        if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+            HideUIPanel(EditModeManagerFrame)
+        else
+            Wise:ExitEditMode()
+        end
+    end)
+
+    f:Hide()
+    Wise.ExitEditModeFrame = f
+    return f
+end
+
+function Wise:UpdateExitEditModeFrameVisibility()
+    if Wise.editMode and (not Wise.OptionsFrame or not Wise.OptionsFrame:IsShown()) then
+        local f = CreateExitEditModeFrame()
+        f:Show()
+    elseif Wise.ExitEditModeFrame then
+        Wise.ExitEditModeFrame:Hide()
+    end
+end
+
 function Wise:EnterEditMode()
     Wise.editMode = true
     if WiseDB and WiseDB.groups then
@@ -828,6 +899,7 @@ function Wise:EnterEditMode()
             end
         end
     end
+    Wise:UpdateExitEditModeFrameVisibility()
 end
 
 function Wise:ExitEditMode()
@@ -847,6 +919,7 @@ function Wise:ExitEditMode()
             end
         end
     end
+    Wise:UpdateExitEditModeFrameVisibility()
 end
 
 function Wise:ToggleEditMode()
