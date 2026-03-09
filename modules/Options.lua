@@ -29,6 +29,19 @@ function Wise:CreateOptionsFrame()
     Wise.OptionsFrame = f
     -- Note: NOT added to UISpecialFrames so it stays open when other panels are opened
 
+    -- Hook visibility for Edit Mode exit frame
+    f:HookScript("OnShow", function()
+        if Wise.UpdateExitEditModeFrameVisibility then
+            Wise:UpdateExitEditModeFrameVisibility()
+        end
+    end)
+    f:HookScript("OnHide", function()
+        if Wise.UpdateExitEditModeFrameVisibility then
+            Wise:UpdateExitEditModeFrameVisibility()
+        end
+    end)
+
+
     -- 1. Sidebar (Group List)
     f.Sidebar = CreateFrame("Frame", nil, f, "InsetFrameTemplate")
     f.Sidebar:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -60)
