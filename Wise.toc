@@ -43,6 +43,7 @@ modules\Demo.lua
 modules\BugReport.lua
 
 # Wiser
+wiser\Cooldowns.lua
 wiser\SmartItem.lua
 wiser\BarCopy.lua
 wiser\AddonMagic.lua

@@ -386,35 +386,103 @@ FinalizeSlotReorder = function()
     local srcVis = reorderDrag.sourceVisualIdx
     if not srcVis or srcVis < 1 or srcVis > #keys then CleanupDrag(container); return end
 
-    -- Build ordered list of action table references
-    local ordered = {}
-    for i, k in ipairs(keys) do
-        ordered[i] = group.actions[k]
-    end
+    if group.propertyType == "CooldownWiser" then
+        -- CooldownWiser: preserve integer slot keys, assign decimal keys for moved custom slots
+        local sourceKey = keys[srcVis]
+        local movedData = group.actions[sourceKey]
 
-    -- Remove source from ordered list
-    local movedData = table.remove(ordered, srcVis)
+        -- Only allow reordering custom (decimal) slots, not imported integer slots
+        if sourceKey == math.floor(sourceKey) then
+            CleanupDrag(container)
+            return
+        end
 
-    -- Adjust target for removal shift
-    local insertAt = targetVis
-    if targetVis > srcVis then insertAt = insertAt - 1 end
+        -- Remove the source slot
+        group.actions[sourceKey] = nil
 
-    -- Clamp
-    if insertAt < 1 then insertAt = 1 end
-    if insertAt > #ordered + 1 then insertAt = #ordered + 1 end
+        -- Determine the new decimal key based on target visual position
+        -- Adjust target for removal shift
+        local adjustedTarget = targetVis
+        if targetVis > srcVis then adjustedTarget = adjustedTarget - 1 end
+        if adjustedTarget < 1 then adjustedTarget = 1 end
 
-    table.insert(ordered, insertAt, movedData)
+        -- Rebuild sorted keys without the source
+        local remainingKeys = {}
+        for k in pairs(group.actions) do remainingKeys[#remainingKeys + 1] = k end
+        table.sort(remainingKeys)
 
-    -- Rebuild group.actions with sequential keys
-    local newActions = {}
-    for i, data in ipairs(ordered) do
-        newActions[i] = data
-    end
-    group.actions = newActions
+        -- Find the neighboring keys at the insertion point
+        local prevKey, nextKey
+        if adjustedTarget <= #remainingKeys then
+            nextKey = remainingKeys[adjustedTarget]
+        end
+        if adjustedTarget > 1 then
+            prevKey = remainingKeys[adjustedTarget - 1]
+        end
 
-    -- Update selection tracking
-    if Wise.selectedSlot == reorderDrag.sourceSlotID then
-        Wise.selectedSlot = insertAt
+        -- Compute the new decimal key between prevKey and nextKey
+        local newKey
+        if not prevKey then
+            -- Inserting before everything: use half of the first key
+            newKey = (nextKey or 1) - 0.5
+            if newKey <= 0 then newKey = 0.1 end
+        elseif not nextKey then
+            -- Inserting after everything
+            local baseInt = math.floor(prevKey)
+            local decimal = 1
+            while group.actions[baseInt + decimal * 0.1] do
+                decimal = decimal + 1
+            end
+            newKey = baseInt + decimal * 0.1
+        else
+            -- Insert between prevKey and nextKey
+            newKey = (prevKey + nextKey) / 2
+            -- If that key already exists, nudge it
+            local attempts = 0
+            while group.actions[newKey] and attempts < 100 do
+                newKey = newKey + 0.01
+                attempts = attempts + 1
+            end
+        end
+
+        group.actions[newKey] = movedData
+
+        -- Update selection tracking
+        if Wise.selectedSlot == sourceKey then
+            Wise.selectedSlot = newKey
+        end
+    else
+        -- Standard groups: rebuild with sequential integer keys
+        -- Build ordered list of action table references
+        local ordered = {}
+        for i, k in ipairs(keys) do
+            ordered[i] = group.actions[k]
+        end
+
+        -- Remove source from ordered list
+        local movedData = table.remove(ordered, srcVis)
+
+        -- Adjust target for removal shift
+        local insertAt = targetVis
+        if targetVis > srcVis then insertAt = insertAt - 1 end
+
+        -- Clamp
+        if insertAt < 1 then insertAt = 1 end
+        if insertAt > #ordered + 1 then insertAt = #ordered + 1 end
+
+        table.insert(ordered, insertAt, movedData)
+
+        -- Rebuild group.actions with sequential keys
+        local newActions = {}
+        for i, data in ipairs(ordered) do
+            newActions[i] = data
+        end
+        group.actions = newActions
+
+        -- Update selection tracking
+        if Wise.selectedSlot == reorderDrag.sourceSlotID then
+            Wise.selectedSlot = insertAt
+        end
     end
 
     CleanupDrag(container)
@@ -1028,14 +1096,18 @@ function Wise:RemoveSlot(groupName, slotIndex)
     if group and group.actions then
         -- Remove the slot
         group.actions[slotIndex] = nil
-        
-        -- Shift subsequent slots down to fill the gap
-        -- Find the highest index to know when to stop
+
+        -- CooldownWiser: don't shift slots — integer keys are import-stable, decimals are custom
+        if group.propertyType == "CooldownWiser" then
+            return
+        end
+
+        -- Standard groups: shift subsequent slots down to fill the gap
         local maxSlot = 0
         for k in pairs(group.actions) do
             if type(k) == "number" and k > maxSlot then maxSlot = k end
         end
-        
+
         for i = slotIndex, maxSlot do
             if group.actions[i+1] then
                 group.actions[i] = group.actions[i+1]
@@ -2935,14 +3007,36 @@ function Wise:RefreshActionsView(container)
                 -- 1. Determine next slot index
                 local group = WiseDB.groups[groupName]
                 Wise:MigrateGroupToActions(group)
-                
-                local nextSlot = 0
-                for k in pairs(group.actions) do
-                    if type(k) == "number" and k > nextSlot then
-                        nextSlot = k
+
+                local nextSlot
+                if group.propertyType == "CooldownWiser" then
+                    -- CooldownWiser: insert decimal slot after the selected slot (or last slot)
+                    -- e.g., selected slot 2 → insert 2.1 (between slot 2 and 3)
+                    local baseSlot = Wise.selectedSlot
+                    if not baseSlot or not group.actions[baseSlot] then
+                        -- No selection: use last integer slot
+                        baseSlot = 0
+                        for k in pairs(group.actions) do
+                            if type(k) == "number" and k == math.floor(k) and k > baseSlot then
+                                baseSlot = k
+                            end
+                        end
                     end
+                    local baseInt = math.floor(baseSlot)
+                    local decimal = 1
+                    while group.actions[baseInt + decimal * 0.1] do
+                        decimal = decimal + 1
+                    end
+                    nextSlot = baseInt + decimal * 0.1
+                else
+                    nextSlot = 0
+                    for k in pairs(group.actions) do
+                        if type(k) == "number" and k > nextSlot then
+                            nextSlot = k
+                        end
+                    end
+                    nextSlot = nextSlot + 1
                 end
-                nextSlot = nextSlot + 1
                 
                 -- 2. Create the empty slot immediately
                 if not group.actions[nextSlot] then
@@ -3133,7 +3227,12 @@ function Wise:RefreshActionsView(container)
             end
         end)
         
-        slotFrame.Header:SetText("Slot " .. sIdx)
+        -- Format slot header (clean decimal display for CooldownWiser custom slots)
+        if sIdx ~= math.floor(sIdx) then
+            slotFrame.Header:SetText("Slot " .. string.format("%.1f", sIdx) .. " |cff66ccff(custom)|r")
+        else
+            slotFrame.Header:SetText("Slot " .. sIdx)
+        end
 
         -- Keybind
         local keyText = Wise:GetKeybind(groupName, sIdx)

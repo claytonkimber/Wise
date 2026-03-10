@@ -673,41 +673,27 @@ function Wise:SetFrameEditMode(f, name, enabled)
         f:SetScript("OnDragStop", function(self)
             self:StopMovingOrSizing()
 
-            -- Use the un-clamped anchor proxy's position if available, or math
+            -- Read the frame's actual post-drag position (StartMoving detaches from anchors,
+            -- so self:GetCenter/GetLeft etc. reflect where the user dragged the frame to).
+            -- Do NOT read from self.Anchor here — it hasn't moved during the drag.
             local cx, cy = self:GetCenter()
-
-            -- Because center anchors can offset buttons left/right within the f frame bounds,
-            -- we need to calculate offset based on the Anchor (origin), not the dynamic bounded frame box.
-            if self.Anchor then
-                cx, cy = self.Anchor:GetCenter()
-            end
 
             if not cx or not cy then return end
 
-            local ux, uy = UIParent:GetCenter()
-            
             local eff = self:GetEffectiveScale()
             local uEff = UIParent:GetEffectiveScale()
-            
+
             -- Instead of hardcoding CENTER, retrieve the current anchor point from DB
             local group = WiseDB.groups[name]
             local point = (group and group.anchor and group.anchor.point) or "CENTER"
             local relativeTo = UIParent
             local relativePoint = point
 
-            -- Recalculate x/y offset based on the selected point using the proxy Anchor
-            local left, bottom, width, height
-            if self.Anchor then
-                left = self.Anchor:GetLeft()
-                bottom = self.Anchor:GetBottom()
-                width = self.Anchor:GetWidth()
-                height = self.Anchor:GetHeight()
-            else
-                left = self:GetLeft()
-                bottom = self:GetBottom()
-                width = self:GetWidth()
-                height = self:GetHeight()
-            end
+            -- Recalculate x/y offset based on the frame's dragged position
+            local left = self:GetLeft()
+            local bottom = self:GetBottom()
+            local width = self:GetWidth()
+            local height = self:GetHeight()
 
             local right = left + width
             local top = bottom + height
@@ -744,7 +730,7 @@ function Wise:SetFrameEditMode(f, name, enabled)
                     snapped = true
                 end
             end
-            
+
             self:ClearAllPoints()
             self:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
 
@@ -753,7 +739,7 @@ function Wise:SetFrameEditMode(f, name, enabled)
                 group.anchor = {point=point, relativePoint=relativePoint, x=xOfs, y=yOfs}
             end
 
-            -- Sync Anchor frame to new position (snapped or not)
+            -- Sync Anchor proxy to the new position
             if self.Anchor then
                 self.Anchor:ClearAllPoints()
                 self.Anchor:SetPoint(point, relativeTo, relativePoint, xOfs, yOfs)
@@ -887,7 +873,9 @@ function Wise:EnterEditMode()
             local f = Wise.frames[name]
             if f and Wise.SetFrameEditMode then
                 -- Skip disabled interfaces and mouse-anchored groups in all edit modes
-                if Wise:IsGroupDisabled(group, name) or group.anchorMode == "mouse" then
+                -- Wiser interfaces are never "disabled" for edit mode purposes (they manage their own visibility)
+                local isDisabled = Wise:IsGroupDisabled(group, name) and not group.isWiser
+                if isDisabled or group.anchorMode == "mouse" then
                     Wise:SetFrameEditMode(f, name, false)
                     if not InCombatLockdown() then f:SetAttribute("state-editmode", "hide") end
                 else
