@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.20260310] - 2026-03-10
+
+- [Feature] Reimplement Cooldowns and Utilities Wiser Interfaces
+- [Feature] Add floating Exit Edit Mode button for quicker workflow
+- [Feature] Add decimal slots and box defaults for Cooldowns/Utilities
+- [Fix] Prevent UI disappearance after WoW-forced interface hides (quest dialogues, cutscenes, dungeon transitions)
+- [Fix] Close native Edit Mode from floating exit button
+- [Fix] Fix edit mode dragging for Cooldowns/Utilities
+
 ## [1.0.20260308] - 2026-03-08
 
 - [Feature] Implement automatic layout growth direction based on anchor point
