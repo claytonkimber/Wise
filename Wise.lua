@@ -266,6 +266,18 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
             g.migrated_defaults_v1 = true
         end
 
+        -- Migration: Force Cooldowns/Utilities to box layout if not already migrated
+        if (name == "Cooldowns" or name == "Utilities") and not g.migrated_box_v1 then
+            if defaults then
+                if type(defaults) == "function" then
+                    defaults(g)
+                else
+                    for k,v in pairs(defaults) do g[k] = v end
+                end
+            end
+            g.migrated_box_v1 = true
+        end
+
         g.isWiser = true -- Mark as Wiser
         g.buttons = {} -- Clear for rebuild
         g.actions = nil -- Clear actions to force migration from new buttons list
@@ -416,14 +428,14 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
         Wise:UpdateGroupDisplay("Addon Loading Magic")
     end
-    -- 6. Cooldowns
-    local cooldownsGroup = EnsureWiserGroup("Cooldowns", "circle")
+    -- 6. Cooldowns (default: box layout, width 4, fixed anchor)
+    local cooldownsGroup = EnsureWiserGroup("Cooldowns", "box", {type = "box", boxWidth = 4})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
     end
 
-    -- 7. Utilities
-    local utilitiesGroup = EnsureWiserGroup("Utilities", "circle")
+    -- 7. Utilities (default: box layout, width 2, fixed anchor)
+    local utilitiesGroup = EnsureWiserGroup("Utilities", "box", {type = "box", boxWidth = 2})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")
     end

@@ -1474,8 +1474,26 @@ function Wise:RenderGroupProperties(panel, group, y)
         staticLabel:SetText("Static")
         tinsert(panel.controls, staticLabel)
 
+        -- CooldownWiser interfaces must remain dynamic (imported slots are spec-dependent)
+        local isCooldownWiser = group.propertyType == "CooldownWiser"
+        if isCooldownWiser then
+            group.dynamic = true
+            dynamicCheck:SetChecked(true)
+            dynamicCheck:Disable()
+            staticCheck:SetChecked(false)
+            staticCheck:Disable()
+            staticLabel:SetTextColor(0.5, 0.5, 0.5)
+            dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
+
+            local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            lockNote:SetPoint("TOPLEFT", 10, y - 18)
+            lockNote:SetText("Cooldown interfaces must be dynamic.")
+            tinsert(panel.controls, lockNote)
+        end
+
         -- Logic for mutually exclusive checkboxes
         dynamicCheck:SetScript("OnClick", function(self)
+            if isCooldownWiser then self:SetChecked(true); return end
             if self:GetChecked() then
                 group.dynamic = true
                 staticCheck:SetChecked(false)
@@ -1495,6 +1513,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         end)
 
         staticCheck:SetScript("OnClick", function(self)
+            if isCooldownWiser then self:SetChecked(false); return end
             if self:GetChecked() then
                 group.dynamic = false
                 dynamicCheck:SetChecked(false)
@@ -3237,7 +3256,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                         if Wise.editMode then
                             local f = Wise.frames[Wise.selectedGroup]
                             if f and Wise.SetFrameEditMode then
-                                local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                                local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
                                 Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                             end
                         end
@@ -3422,7 +3441,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                     if Wise.editMode then
                         local f = Wise.frames[Wise.selectedGroup]
                         if f and Wise.SetFrameEditMode then
-                            local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                            local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
                             Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                         end
                     end
@@ -3471,7 +3490,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                     if Wise.editMode then
                         local f = Wise.frames[Wise.selectedGroup]
                         if f and Wise.SetFrameEditMode then
-                            local shouldShow = not Wise:IsGroupDisabled(group, Wise.selectedGroup) and group.anchorMode ~= "mouse"
+                            local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
                             Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
                         end
                     end
