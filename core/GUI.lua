@@ -1067,8 +1067,19 @@ function Wise:CreateGroupFrame(name, instanceId)
     -- Module 2: Blocker Strategy
     -- Prevent "Invisible Walls" by enabling mouse only when shown.
     f:SetScript("OnShow", function(self)
-        if self.isClosing then return end 
-        
+        if self.isClosing then
+            -- Safety: if isClosing is stuck (e.g. WoW forced hide during close animation),
+            -- reset it so the frame can re-show properly
+            if not self._closingAnimActive then
+                self.isClosing = false
+            else
+                return
+            end
+        end
+
+        -- Stop any lingering animations from a previous show/hide cycle
+        Wise:StopSlideAnimations(self)
+
         local group = WiseDB.groups[self.groupName]
         
         if group and group.anchorMode == "mouse" then
@@ -1193,15 +1204,34 @@ function Wise:CreateGroupFrame(name, instanceId)
         if self.isClosing then
             -- This is the final hide after animation completed - allow it and reset flag
             self.isClosing = false
+            self._closingAnimActive = false
             return
         end
 
         local group = WiseDB.groups[self.groupName]
         if group and group.animation and not InCombatLockdown() then
-            -- Intercept hide: show again, animate close, then truly hide
+            -- Detect WoW-forced UI hide (quest dialogues, cutscenes, etc.)
+            -- UIParent is hidden during these events; fighting it with Show() causes
+            -- animation state corruption that leaves frames permanently invisible.
+            if not UIParent:IsShown() then
+                -- WoW forced the hide — stop any in-flight animations and reset buttons
+                Wise:StopSlideAnimations(self)
+                for _, btn in ipairs(self.buttons or {}) do
+                    if not InCombatLockdown() then
+                        btn:ClearAllPoints()
+                        btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
+                    end
+                end
+                self.isClosing = false
+                self._closingAnimActive = false
+                return
+            end
+            -- User-initiated hide: animate close, then truly hide
             self.isClosing = true
+            self._closingAnimActive = true
             self:Show()
             Wise:PlaySlideAnimation(self, false, function()
+                self._closingAnimActive = false
                 -- isClosing stays true so the Hide() call below passes through OnHide
                 self:Hide()
             end)
@@ -3984,21 +4014,32 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     end
 end
 
+function Wise:StopSlideAnimations(frame)
+    for _, btn in ipairs(frame.buttons or {}) do
+        if btn.animGroup and btn.animGroup:IsPlaying() then
+            btn.animGroup:Stop()
+        end
+    end
+end
+
 function Wise:PlaySlideAnimation(frame, isOpening, onComplete)
+    -- Stop any in-flight animations to prevent closure/callback corruption
+    Wise:StopSlideAnimations(frame)
+
     local animatingCount = 0
     local completedCount = 0
-    
+
     for _, btn in ipairs(frame.buttons) do
         if btn:IsShown() or not isOpening then
             animatingCount = animatingCount + 1
-            
+
             if not btn.animGroup then
                 btn.animGroup = btn:CreateAnimationGroup()
                 btn.animTranslate = btn.animGroup:CreateAnimation("Translation")
                 btn.animTranslate:SetDuration(0.15)
                 btn.animTranslate:SetSmoothing("OUT")
             end
-            
+
             if isOpening then
                 -- Opening: slide from center to target position
                 btn:ClearAllPoints()
@@ -4035,7 +4076,7 @@ function Wise:PlaySlideAnimation(frame, isOpening, onComplete)
             btn.animGroup:Play()
         end
     end
-    
+
     -- If no buttons to animate, call callback immediately
     if animatingCount == 0 and onComplete then
         onComplete()
