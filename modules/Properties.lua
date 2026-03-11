@@ -3849,6 +3849,11 @@ function Wise:RenderGroupProperties(panel, group, y)
                         local g = WiseDB.groups[Wise.selectedGroup]
                         if g then g.buttons = {} end
 
+                        if Wise.selectedGroup == "Demo bar" then
+                            WiseDB.groups["Demo bar"] = Wise.GetDemoBarGroup and Wise:GetDemoBarGroup() or {}
+                            Wise.selectedGroup = "Demo bar" -- Re-select it just in case
+                        end
+
                         Wise:UpdateWiserInterfaces()
 
                         C_Timer.After(0.5, function()

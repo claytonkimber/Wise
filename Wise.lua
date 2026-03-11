@@ -866,7 +866,9 @@ function frame:OnEvent(event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         if not WiseDB then
             WiseDB = {
-                groups = {},
+                groups = {
+                    ["Demo bar"] = Wise.GetDemoBarGroup and Wise:GetDemoBarGroup() or {}
+                },
                 settings = {
                     minimap = { hide = true },
                     debug = false,
