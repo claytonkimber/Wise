@@ -976,5 +976,37 @@ function Wise:PopulateSettingsView(panel)
     table.insert(panel.children, showGCD.text)
     ry = ry - 40
 
+    local wipeStyleHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, wipeStyleHeader, rx, ry)
+    wipeStyleHeader:SetText("Cooldown Wipe Style")
+    ry = ry - 20
+
+    local styles = {
+        {val="spiral", text="Spiral Wipe"},
+        {val="border", text="Border Wipe"}
+    }
+    local startY = ry
+    for i, styleMode in ipairs(styles) do
+        local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+        local col = (i-1) % 2
+        AddToContent(rightContent, radio, rx + (col * 120), startY)
+        radio:SetChecked((WiseDB.settings.cooldownStyle or "spiral") == styleMode.val)
+        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+        radio.text:SetText(styleMode.text)
+
+        radio:SetScript("OnClick", function(self)
+            WiseDB.settings.cooldownStyle = styleMode.val
+            Wise:PopulateSettingsView(panel)
+            C_Timer.After(0.1, function()
+               if not InCombatLockdown() then
+                   for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+               end
+            end)
+        end)
+        table.insert(panel.children, radio.text)
+    end
+    ry = ry - 40
+
     rightContent:SetHeight(math.abs(ry) + 20)
 end
