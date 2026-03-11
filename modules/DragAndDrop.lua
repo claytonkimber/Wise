@@ -10,6 +10,12 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
 
     if WiseDB.groups[groupName] and WiseDB.groups[groupName].isLocked then return end
 
+    if (groupName == "Cooldowns" or groupName == "Utilities") and slotIndex then
+        if math.floor(slotIndex) == slotIndex then
+            return -- Prevent dropping onto integer/default slots for these groups
+        end
+    end
+
     -- Helper: route to append, replace-state, or replace-slot
     local function applyAction(actionType, actionValue, category, extra)
         if isAppend then
@@ -89,11 +95,19 @@ function Wise:StartDragHighlight()
         if f:IsShown() and f.buttons then
              for _, btn in ipairs(f.buttons) do
                  if btn:IsShown() and not (WiseDB.groups[groupName] and WiseDB.groups[groupName].isLocked) then
-                     Wise:ShowOverlayGlow(btn)
-                     -- Optional: set a distinct color or texture?
-                     -- For now, reusing the existing "proc glow" is easiest,
-                     -- but ideally we'd use a different visual to distinguish "drop target" vs "proc".
-                     -- Let's stick to the glow for now as requested.
+                     local skipHighlight = false
+                     if (groupName == "Cooldowns" or groupName == "Utilities") and btn.slot then
+                         if math.floor(btn.slot) == btn.slot then
+                             skipHighlight = true
+                         end
+                     end
+                     if not skipHighlight then
+                         if WiseDB.groups[groupName] and WiseDB.groups[groupName].type == "list" and btn.icon then
+                             Wise:ShowOverlayGlow(btn, btn.icon)
+                         else
+                             Wise:ShowOverlayGlow(btn)
+                         end
+                     end
                  end
              end
         end
@@ -101,20 +115,22 @@ function Wise:StartDragHighlight()
 
     -- Options Interface Highlight
     if Wise.OptionsFrame and Wise.OptionsFrame:IsShown() and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.Content and Wise.OptionsFrame.Middle.Content.slots then
+        local isRestrictedGroup = (Wise.selectedGroup == "Cooldowns" or Wise.selectedGroup == "Utilities")
         for _, slot in ipairs(Wise.OptionsFrame.Middle.Content.slots) do
             if slot:IsShown() then
-                slot:SetBackdropBorderColor(0, 1, 0, 1) -- Green outline for slots
-                if slot.ActionButtons then
-                    for _, btn in ipairs(slot.ActionButtons) do
-                        if btn:IsShown() then
-                            -- maybe glow the buttons? or just the slot is fine.
-                            -- Let's glow the buttons to be explicit
-                            Wise:ShowOverlayGlow(btn)
+                local isRestrictedSlot = isRestrictedGroup and slot.slotID and (math.floor(slot.slotID) == slot.slotID)
+
+                if not isRestrictedSlot then
+                    if slot.ActionButtons then
+                        for _, btn in ipairs(slot.ActionButtons) do
+                            if btn:IsShown() then
+                                Wise:ShowOverlayGlow(btn)
+                            end
                         end
                     end
-                end
-                if slot.AddStateBtn and slot.AddStateBtn:IsShown() then
-                     Wise:ShowOverlayGlow(slot.AddStateBtn)
+                    if slot.AddStateBtn and slot.AddStateBtn:IsShown() then
+                         Wise:ShowOverlayGlow(slot.AddStateBtn)
+                    end
                 end
             end
         end
