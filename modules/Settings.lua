@@ -983,12 +983,13 @@ function Wise:PopulateSettingsView(panel)
 
     local styles = {
         {val="spiral", text="Spiral Wipe"},
-        {val="border", text="Border Wipe"}
+        {val="border", text="Border Wipe"},
+        {val="tracer", text="Tracer"}
     }
     local startY = ry
     for i, styleMode in ipairs(styles) do
         local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
-        local col = (i-1) % 2
+        local col = (i-1) % 3
         AddToContent(rightContent, radio, rx + (col * 120), startY)
         radio:SetChecked((WiseDB.settings.cooldownStyle or "spiral") == styleMode.val)
         radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1006,7 +1007,41 @@ function Wise:PopulateSettingsView(panel)
         end)
         table.insert(panel.children, radio.text)
     end
-    ry = ry - 40
+    ry = ry - 30
+
+    if WiseDB.settings.cooldownStyle == "tracer" then
+        local tracerModeHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        AddToContent(rightContent, tracerModeHeader, rx, ry)
+        tracerModeHeader:SetText("Tracer Mode")
+        ry = ry - 20
+
+        local tModes = {
+            {val="relative", text="Relative (1 lap = duration)"},
+            {val="absolute", text="Absolute (1 lap = 60 sec)"}
+        }
+        local tStartY = ry
+        for i, tMode in ipairs(tModes) do
+            local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+            local col = (i-1) % 2
+            AddToContent(rightContent, radio, rx + (col * 180), tStartY)
+            radio:SetChecked((WiseDB.settings.tracerMode or "relative") == tMode.val)
+            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+            radio.text:SetText(tMode.text)
+
+            radio:SetScript("OnClick", function(self)
+                WiseDB.settings.tracerMode = tMode.val
+                Wise:PopulateSettingsView(panel)
+                C_Timer.After(0.1, function()
+                   if not InCombatLockdown() then
+                       for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+                   end
+                end)
+            end)
+            table.insert(panel.children, radio.text)
+        end
+        ry = ry - 30
+    end
 
     local thickHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, thickHeader, rx, ry)

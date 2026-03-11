@@ -247,7 +247,11 @@ function Wise:GetGroupDisplaySettings(groupName)
     if group and group.borderWipeColor ~= nil then borderWipeColor = group.borderWipeColor end
     if borderWipeColor == nil then borderWipeColor = "default" end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor
+    local tracerMode = settings.tracerMode
+    if group and group.tracerMode ~= nil then tracerMode = group.tracerMode end
+    if tracerMode == nil then tracerMode = "relative" end
+
+    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor, tracerMode
 end
 
 function Wise:CreateGroup(name, type)
@@ -331,11 +335,13 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                 if btn.cooldown then btn.cooldown:SetAlpha(0) end
             else
                 Wise:Text_UpdateCountdown(btn, groupName, "")
+                if btn.tracer then btn.tracer:Hide() end
                 -- Sync Visual Clone
                 local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
                 local vClone = (meta and meta.visualClone) or btn.visualClone
                 if vClone then
                      Wise:Text_UpdateCountdown(vClone, groupName, "")
+                     if vClone.tracer then vClone.tracer:Hide() end
                 end
             end
         else
@@ -375,6 +381,66 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                         Wise:Text_UpdateCountdown(vClone, groupName, text)
                     end
                     info.lastText = text
+                end
+
+                -- Tracer logic
+                if info.cooldownStyle == "tracer" and duration > 0 then
+                    if btn.tracer then btn.tracer:Show() end
+                    local vClone = (Wise.buttonMeta and Wise.buttonMeta[btn] and Wise.buttonMeta[btn].visualClone) or btn.visualClone
+                    if vClone and vClone.tracer then vClone.tracer:Show() end
+
+                    local progress = 0
+                    local elapsedCD = duration - rem
+                    if info.tracerMode == "absolute" then
+                        progress = (elapsedCD % 60) / 60
+                    else -- relative
+                        progress = elapsedCD / duration
+                    end
+
+                    -- progress 0 to 1 (clockwise starting at 12 o'clock)
+                    -- For a square (rounded or square):
+                    -- perimeter = 4 sides
+                    -- 0.0 to 0.125: Top side, moving right (from center to top-right corner)
+                    -- 0.125 to 0.375: Right side, moving down
+                    -- 0.375 to 0.625: Bottom side, moving left
+                    -- 0.625 to 0.875: Left side, moving up
+                    -- 0.875 to 1.0: Top side, moving right (from top-left corner to center)
+                    local cx, cy = 0, 0
+                    local w = btn:GetWidth() / 2
+                    local isRound = (info.iconStyle == "round")
+
+                    if isRound then
+                        local angle = (0.25 - progress) * (math.pi * 2)
+                        cx = math.cos(angle) * w
+                        cy = math.sin(angle) * w
+                    else
+                        local p = progress
+                        if p < 0.125 then
+                            cx = w * (p / 0.125)
+                            cy = w
+                        elseif p < 0.375 then
+                            cx = w
+                            cy = w - (w * 2) * ((p - 0.125) / 0.25)
+                        elseif p < 0.625 then
+                            cx = w - (w * 2) * ((p - 0.375) / 0.25)
+                            cy = -w
+                        elseif p < 0.875 then
+                            cx = -w
+                            cy = -w + (w * 2) * ((p - 0.625) / 0.25)
+                        else
+                            cx = -w + w * ((p - 0.875) / 0.125)
+                            cy = w
+                        end
+                    end
+
+                    if btn.tracer then
+                        btn.tracer:ClearAllPoints()
+                        btn.tracer:SetPoint("CENTER", btn, "CENTER", cx, cy)
+                    end
+                    if vClone and vClone.tracer then
+                        vClone.tracer:ClearAllPoints()
+                        vClone.tracer:SetPoint("CENTER", vClone, "CENTER", cx, cy)
+                    end
                 end
             end
         end
@@ -2656,7 +2722,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
-    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor = Wise:GetGroupDisplaySettings(name)
+    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor, tracerMode = Wise:GetGroupDisplaySettings(name)
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2692,6 +2758,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn.innerIcon = btn:CreateTexture(nil, "ARTWORK")
             btn.innerIcon:SetDrawLayer("ARTWORK", 2)
             btn.innerIcon:Hide()
+
+            btn.tracer = btn:CreateTexture(nil, "OVERLAY")
+            btn.tracer:SetTexture("Interface\\Buttons\\WHITE8x8")
+            btn.tracer:SetSize(4, 4)
+            btn.tracer:Hide()
 
             -- Text layers (count, keybind, customText) via Text module
             Wise:Text_CreateFontStrings(btn)
@@ -3138,6 +3209,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  vBtn.innerIcon = vBtn:CreateTexture(nil, "ARTWORK")
                  vBtn.innerIcon:SetDrawLayer("ARTWORK", 2)
                  vBtn.innerIcon:Hide()
+
+                 vBtn.tracer = vBtn:CreateTexture(nil, "OVERLAY")
+                 vBtn.tracer:SetTexture("Interface\\Buttons\\WHITE8x8")
+                 vBtn.tracer:SetSize(4, 4)
+                 vBtn.tracer:Hide()
 
                  -- Text layers via Text module
                  Wise:Text_CreateFontStrings(vBtn)
@@ -4397,33 +4473,56 @@ function Wise:UpdateButtonCooldown(btn)
         end
     end
     
+    local _, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, _, cooldownStyle, borderWipeThickness, borderWipeColor, tracerMode = Wise:GetGroupDisplaySettings(btn.groupName)
+
+    local function GetBorderColor(colorName)
+        if colorName == "class" then
+            local _, class = UnitClass("player")
+            local color = RAID_CLASS_COLORS[class]
+            if color then return color.r, color.g, color.b, 0.8 end
+        elseif colorName == "red" then
+            return 1, 0, 0, 0.8
+        elseif colorName == "gold" then
+            return 1, 0.8, 0, 0.8
+        end
+        return 0, 0, 0, 0.8
+    end
+
     if btn.cooldown.SetSwipeColor then
         if isGCD then
             btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6) -- Custom GCD color (lighter)
         else
-            local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, cooldownStyle, _, borderWipeColor = Wise:GetGroupDisplaySettings(btn.groupName)
             if cooldownStyle == "border" then
-                if borderWipeColor == "class" then
-                    local _, class = UnitClass("player")
-                    local color = RAID_CLASS_COLORS[class]
-                    if color then
-                        btn.cooldown:SetSwipeColor(color.r, color.g, color.b, 0.8)
-                    else
-                        btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
-                    end
-                elseif borderWipeColor == "red" then
-                    btn.cooldown:SetSwipeColor(1, 0, 0, 0.8)
-                elseif borderWipeColor == "gold" then
-                    btn.cooldown:SetSwipeColor(1, 0.8, 0, 0.8)
-                else
-                    btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
-                end
+                local r, g, b, a = GetBorderColor(borderWipeColor)
+                btn.cooldown:SetSwipeColor(r, g, b, a)
             else
                 btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
             end
         end
     end
     
+    if cooldownStyle == "tracer" then
+        btn.cooldown:SetAlpha(0)
+        if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(0) end
+
+        local r, g, b = GetBorderColor(borderWipeColor)
+        if btn.tracer then
+            btn.tracer:SetVertexColor(r, g, b, 1)
+            btn.tracer:SetSize(borderWipeThickness * 2, borderWipeThickness * 2)
+            if borderWipeColor == "default" then btn.tracer:SetVertexColor(1, 1, 1, 1) end -- White default tracer
+        end
+        if visualClone and visualClone.tracer then
+            visualClone.tracer:SetVertexColor(r, g, b, 1)
+            visualClone.tracer:SetSize(borderWipeThickness * 2, borderWipeThickness * 2)
+            if borderWipeColor == "default" then visualClone.tracer:SetVertexColor(1, 1, 1, 1) end
+        end
+    else
+        btn.cooldown:SetAlpha(1)
+        if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(1) end
+        if btn.tracer then btn.tracer:Hide() end
+        if visualClone and visualClone.tracer then visualClone.tracer:Hide() end
+    end
+
     btn.cooldown:SetCooldown(start, duration)
     
     if visualClone and visualClone.cooldown then
@@ -4464,7 +4563,10 @@ function Wise:UpdateButtonCooldown(btn)
              groupName = groupName,
              isListMode = isListMode,
              isBuffActive = isBuffActive,
-             lastText = ""
+             lastText = "",
+             cooldownStyle = cooldownStyle,
+             tracerMode = tracerMode,
+             iconStyle = iconStyle
          }
          Wise.CooldownUpdateFrame:Show()
          
