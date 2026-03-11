@@ -2019,11 +2019,13 @@ function Wise:CreateEmbeddedPicker(parent)
     ep.CategoryMenu:SetPoint("TOPRIGHT", ep.CategoryBtn, "BOTTOMRIGHT", 0, 0)
     ep.CategoryMenu:SetFrameLevel(parent:GetFrameLevel() + 20)
     ep.CategoryMenu:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
+    ep.CategoryMenu:SetBackdropColor(0.15, 0.15, 0.15, 1)
+    ep.CategoryMenu:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
     ep.CategoryMenu:Hide()
     tinsert(parent.controls, ep.CategoryMenu)
 
