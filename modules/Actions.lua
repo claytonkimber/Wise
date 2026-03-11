@@ -1631,10 +1631,10 @@ function Wise:GetActionIcon(actionType, value, extraData)
         end
         if value == "leave_vehicle" then texture = "Interface\\Icons\\Spell_Shadow_SacrificialPact" end
         if value == "custom_macro" then texture = 134400 end
-        if value == "toggle_sound" then texture = "Interface\\Icons\\INV_Misc_Horn_01" end
-        if value == "toggle_sfx" then texture = "Interface\\Icons\\INV_Misc_Bomb_04" end
-        if value == "vol_up" then texture = "Interface\\Icons\\Spell_ChargePositive" end
-        if value == "vol_down" then texture = "Interface\\Icons\\Spell_ChargeNegative" end
+        if value == "toggle_sound" then texture = "Interface\\AddOns\\Wise\\Media\\SoundToggle.tga" end
+        if value == "toggle_sfx" then texture = "Interface\\AddOns\\Wise\\Media\\SFXToggle.tga" end
+        if value == "vol_up" then texture = "Interface\\AddOns\\Wise\\Media\\VolUp.tga" end
+        if value == "vol_down" then texture = "Interface\\AddOns\\Wise\\Media\\VolDown.tga" end
         if type(value) == "string" and string.sub(value, 1, 5) == "spec_" then
             local specIndex = tonumber(string.sub(value, 6))
             if specIndex then
@@ -2970,10 +2970,10 @@ function Wise:GetMiscellaneous(filter)
          {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
          {name="Override Bar", val="overridebar", icon="Interface\\Icons\\Temp"},
          {name="Possess Bar", val="possessbar", icon="Interface\\Icons\\Temp"},
-         {name="Toggle Sound", val="toggle_sound", icon="Interface\\Icons\\INV_Misc_Horn_01"},
-         {name="Toggle Sound Effects", val="toggle_sfx", icon="Interface\\Icons\\INV_Misc_Bomb_04"},
-         {name="Volume Up", val="vol_up", icon="Interface\\Icons\\Spell_ChargePositive"},
-         {name="Volume Down", val="vol_down", icon="Interface\\Icons\\Spell_ChargeNegative"},
+         {name="Toggle Sound", val="toggle_sound", icon="Interface\\AddOns\\Wise\\Media\\SoundToggle.tga"},
+         {name="Toggle Sound Effects", val="toggle_sfx", icon="Interface\\AddOns\\Wise\\Media\\SFXToggle.tga"},
+         {name="Volume Up", val="vol_up", icon="Interface\\AddOns\\Wise\\Media\\VolUp.tga"},
+         {name="Volume Down", val="vol_down", icon="Interface\\AddOns\\Wise\\Media\\VolDown.tga"},
     }
     local numSpecs = GetNumSpecializations()
     for i = 1, numSpecs do
