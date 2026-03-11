@@ -80,7 +80,7 @@ function Wise:CreateOptionsFrame()
     -- Parent to f so they aren't clipped or inside the inset.
     
     local filters = {"global", "class", "spec", "talent", "character"}
-    local labels = {global="Global", class="Class", spec="Spec", talent="Build", character="Char"}
+    local labels = {global="Global", class="Class", spec="Spec", talent="Talents", character="Char"}
     
     for i, filter in ipairs(filters) do
         local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")

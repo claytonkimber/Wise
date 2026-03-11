@@ -583,7 +583,7 @@ Wise.CategoryLabels = {
     global = "Global",
     class = "Class",
     spec = "Spec",
-    talent = "Build",
+    talent = "Talents",
     character = "Character"
 }
 
@@ -3342,7 +3342,20 @@ function Wise:RefreshActionsView(container)
                  elseif cat == "talent" then
                      if type(action.talentRequirements) == "table" then
                          local numReqs = #action.talentRequirements
-                         suffixText = numReqs .. (numReqs == 1 and " Talent" or " Talents")
+                         if numReqs > 0 then
+                             local talentNames = {}
+                             for _, spellID in ipairs(action.talentRequirements) do
+                                 local spellInfo = C_Spell.GetSpellInfo(spellID)
+                                 if spellInfo and spellInfo.name then
+                                     table.insert(talentNames, spellInfo.name)
+                                 else
+                                     table.insert(talentNames, tostring(spellID))
+                                 end
+                             end
+                             suffixText = table.concat(talentNames, ", ")
+                         else
+                             suffixText = "0 Talents"
+                         end
                      else
                          suffixText = action.talentRequirements or "Talent"
                      end

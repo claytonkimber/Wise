@@ -751,7 +751,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                     suffix = select(2, GetSpecializationInfo(specIdx))
                 end
             elseif catValue == "talent" then
-                -- No default suffix here anymore since it's going to be manually picked
+                suffix = {} -- Initialize as empty table so the 0 Talents logic triggers if they haven't picked anything yet
             elseif catValue == "character" then
                 suffix = UnitName("player")
             end
@@ -761,10 +761,25 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             -- For talent, suffix might be a table (if existing logic left it there), so just handle it nicely
             if type(suffix) == "table" then
                 local numReqs = #suffix
-                labelText = labelText .. " |cffff8800(" .. numReqs .. (numReqs == 1 and " Talent" or " Talents") .. ")|r"
+                if numReqs > 0 then
+                    local talentNames = {}
+                    for _, spellID in ipairs(suffix) do
+                        local spellInfo = C_Spell.GetSpellInfo(spellID)
+                        if spellInfo and spellInfo.name then
+                            table.insert(talentNames, spellInfo.name)
+                        else
+                            table.insert(talentNames, tostring(spellID))
+                        end
+                    end
+                    labelText = labelText .. " |cffff8800(" .. table.concat(talentNames, ", ") .. ")|r"
+                else
+                    labelText = labelText .. " |cffff8800(0 Talents)|r"
+                end
             else
                 labelText = labelText .. " |cffff8800(" .. tostring(suffix) .. ")|r"
             end
+        elseif catValue == "talent" and type(suffix) == "table" and #suffix == 0 then
+            labelText = labelText .. " |cffff8800(0 Talents)|r"
         end
         radio.text:SetText(labelText)
 
