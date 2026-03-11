@@ -239,7 +239,15 @@ function Wise:GetGroupDisplaySettings(groupName)
     if group and group.cooldownStyle ~= nil then cooldownStyle = group.cooldownStyle end
     if cooldownStyle == nil then cooldownStyle = "spiral" end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, cooldownStyle
+    local borderWipeThickness = settings.borderWipeThickness
+    if group and group.borderWipeThickness ~= nil then borderWipeThickness = group.borderWipeThickness end
+    if borderWipeThickness == nil then borderWipeThickness = 2 end
+
+    local borderWipeColor = settings.borderWipeColor
+    if group and group.borderWipeColor ~= nil then borderWipeColor = group.borderWipeColor end
+    if borderWipeColor == nil then borderWipeColor = "default" end
+
+    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor
 end
 
 function Wise:CreateGroup(name, type)
@@ -2648,7 +2656,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
-    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots, cooldownStyle = Wise:GetGroupDisplaySettings(name)
+    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots, cooldownStyle, borderWipeThickness, borderWipeColor = Wise:GetGroupDisplaySettings(name)
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2930,8 +2938,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         Wise:ApplyIconStyle(btn, iconStyle)
 
         if cooldownStyle == "border" then
-            btn.innerIcon:SetPoint("TOPLEFT", btn.icon, "TOPLEFT", 2, -2)
-            btn.innerIcon:SetPoint("BOTTOMRIGHT", btn.icon, "BOTTOMRIGHT", -2, 2)
+            btn.innerIcon:SetPoint("TOPLEFT", btn.icon, "TOPLEFT", borderWipeThickness, -borderWipeThickness)
+            btn.innerIcon:SetPoint("BOTTOMRIGHT", btn.icon, "BOTTOMRIGHT", -borderWipeThickness, borderWipeThickness)
             btn.innerIcon:Show()
             -- Elevate innerIcon frame level so it sits above cooldown
             -- Since innerIcon is a texture, we must adjust the cooldown's draw layer
@@ -3096,7 +3104,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     
     -- Sync Visual Display Buttons
     if f.visualDisplay then
-        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
+        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty, vCooldownStyle, vBorderWipeThickness, vBorderWipeColor = Wise:GetGroupDisplaySettings(name)
         for i, actionInfo in ipairs(actionsToShow) do
              local actionData = actionInfo.data
              local isKnown = actionInfo.known
@@ -3165,9 +3173,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
              Wise:ApplyIconStyle(vBtn, visualIconStyle)
 
-             if cooldownStyle == "border" then
-                 vBtn.innerIcon:SetPoint("TOPLEFT", vBtn.icon, "TOPLEFT", 2, -2)
-                 vBtn.innerIcon:SetPoint("BOTTOMRIGHT", vBtn.icon, "BOTTOMRIGHT", -2, 2)
+             if vCooldownStyle == "border" then
+                 vBtn.innerIcon:SetPoint("TOPLEFT", vBtn.icon, "TOPLEFT", vBorderWipeThickness, -vBorderWipeThickness)
+                 vBtn.innerIcon:SetPoint("BOTTOMRIGHT", vBtn.icon, "BOTTOMRIGHT", -vBorderWipeThickness, vBorderWipeThickness)
                  vBtn.innerIcon:Show()
                  if not vBtn.innerIconFrame then
                      vBtn.innerIconFrame = CreateFrame("Frame", nil, vBtn)
@@ -4393,7 +4401,26 @@ function Wise:UpdateButtonCooldown(btn)
         if isGCD then
             btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6) -- Custom GCD color (lighter)
         else
-            btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
+            local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, cooldownStyle, _, borderWipeColor = Wise:GetGroupDisplaySettings(btn.groupName)
+            if cooldownStyle == "border" then
+                if borderWipeColor == "class" then
+                    local _, class = UnitClass("player")
+                    local color = RAID_CLASS_COLORS[class]
+                    if color then
+                        btn.cooldown:SetSwipeColor(color.r, color.g, color.b, 0.8)
+                    else
+                        btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+                    end
+                elseif borderWipeColor == "red" then
+                    btn.cooldown:SetSwipeColor(1, 0, 0, 0.8)
+                elseif borderWipeColor == "gold" then
+                    btn.cooldown:SetSwipeColor(1, 0.8, 0, 0.8)
+                else
+                    btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
+                end
+            else
+                btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
+            end
         end
     end
     

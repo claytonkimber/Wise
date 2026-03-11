@@ -1008,5 +1008,74 @@ function Wise:PopulateSettingsView(panel)
     end
     ry = ry - 40
 
+    local thickHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, thickHeader, rx, ry)
+    thickHeader:SetText("Border Wipe Thickness")
+    ry = ry - 20
+
+    local thickSlider = CreateFrame("Slider", "WiseSettingsBorderThickSlider", rightContent, "OptionsSliderTemplate")
+    AddToContent(rightContent, thickSlider, rx, ry - 5)
+    thickSlider:SetWidth(180)
+    thickSlider:SetMinMaxValues(1, 20)
+    thickSlider:SetValueStep(1)
+    thickSlider:SetObeyStepOnDrag(true)
+
+    local currentThick = WiseDB.settings.borderWipeThickness or 2
+    thickSlider:SetValue(currentThick)
+
+    _G[thickSlider:GetName() .. "Low"]:SetText("1")
+    _G[thickSlider:GetName() .. "High"]:SetText("20")
+    _G[thickSlider:GetName() .. "Text"]:SetText(tostring(currentThick) .. "px")
+
+    thickSlider:SetScript("OnValueChanged", function(self, value)
+        local val = math.floor(value + 0.5)
+        WiseDB.settings.borderWipeThickness = val
+        _G[self:GetName() .. "Text"]:SetText(tostring(val) .. "px")
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then
+                for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+            end
+        end)
+    end)
+    table.insert(panel.children, thickSlider)
+    ry = ry - 40
+
+    local colorHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, colorHeader, rx, ry)
+    colorHeader:SetText("Border Wipe Color")
+    ry = ry - 20
+
+    local colors = {
+        {val="default", text="Default/Dark"},
+        {val="class", text="Class Color"},
+        {val="red", text="Red"},
+        {val="gold", text="Gold"}
+    }
+
+    local currentColor = WiseDB.settings.borderWipeColor or "default"
+    local colorStartY = ry
+    for i, mode in ipairs(colors) do
+        local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+        local col = (i-1) % 2
+        local row = math.floor((i-1) / 2)
+        AddToContent(rightContent, radio, rx + (col * 120), colorStartY - (row * 25))
+        radio:SetChecked(currentColor == mode.val)
+        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+        radio.text:SetText(mode.text)
+
+        radio:SetScript("OnClick", function(self)
+            WiseDB.settings.borderWipeColor = mode.val
+            Wise:PopulateSettingsView(panel)
+            C_Timer.After(0.1, function()
+                if not InCombatLockdown() then
+                    if Wise.UpdateAllCooldowns then Wise:UpdateAllCooldowns() end
+                end
+            end)
+        end)
+        table.insert(panel.children, radio.text)
+    end
+    ry = ry - (math.ceil(#colors/2) * 25) - 10
+
     rightContent:SetHeight(math.abs(ry) + 20)
 end
