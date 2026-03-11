@@ -23,6 +23,7 @@ Wise.lua
 core\Polyfill.lua
 core\Text.lua
 core\Bindings.lua
+core\Dispatcher.lua
 core\GUI.lua
 core\Conditionals.lua
 
