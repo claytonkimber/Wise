@@ -1617,6 +1617,8 @@ function Wise:GetSecureAttributes(actionData, conditions)
     elseif aType == "equipmentset" then
         secureValue = "/equipset " .. (aValue or "")
     elseif aType == "raidmarker" then
+        secureValue = "/tm " .. (aValue or 0)
+    elseif aType == "worldmarker" then
         secureValue = "/wm " .. (aValue or 0)
     elseif aType == "uivisibility" then
         secureType = "macro"

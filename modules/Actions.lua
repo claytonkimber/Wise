@@ -574,7 +574,7 @@ end
 
 Wise.ActionTypes = {
     "spell", "item", "macro", "toy", "mount", 
-    "battlepet", "equipmentset", "raidmarker", "uipanel", "uivisibility", "skyriding", "professions", "misc"
+    "battlepet", "equipmentset", "raidmarker", "worldmarker", "uipanel", "uivisibility", "skyriding", "professions", "misc"
 }
 
 -- Category constants
@@ -1284,6 +1284,23 @@ function Wise:GetActionName(actionType, value, extraData)
         local name = GetMacroInfo(value)
         return name or value
         
+    elseif actionType == "raidmarker" then
+        local names = {"Star (Unit)", "Circle (Unit)", "Diamond (Unit)", "Triangle (Unit)", "Moon (Unit)", "Square (Unit)", "Cross (Unit)", "Skull (Unit)"}
+        return names[value] or "Marker " .. value
+
+    elseif actionType == "worldmarker" then
+        local wmNames = {
+            [1] = "Square (Ground)",
+            [2] = "Triangle (Ground)",
+            [3] = "Diamond (Ground)",
+            [4] = "Cross (Ground)",
+            [5] = "Star (Ground)",
+            [6] = "Circle (Ground)",
+            [7] = "Moon (Ground)",
+            [8] = "Skull (Ground)"
+        }
+        return wmNames[value] or "Ground Marker " .. value
+
     elseif actionType == "equipmentset" then
         return value -- Name is the value
         
@@ -1487,6 +1504,21 @@ function Wise:GetActionIcon(actionType, value, extraData)
     elseif actionType == "raidmarker" then
          texture = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. value
          
+    elseif actionType == "worldmarker" then
+         -- Map back from /wm index to the UI-RaidTargetingIcon index for the icon
+         -- /wm mapping: 1=Square(6), 2=Triangle(4), 3=Diamond(3), 4=Cross(7), 5=Star(1), 6=Circle(2), 7=Moon(5), 8=Skull(8)
+         local iconIndex = value
+         if value == 1 then iconIndex = 6
+         elseif value == 2 then iconIndex = 4
+         elseif value == 3 then iconIndex = 3
+         elseif value == 4 then iconIndex = 7
+         elseif value == 5 then iconIndex = 1
+         elseif value == 6 then iconIndex = 2
+         elseif value == 7 then iconIndex = 5
+         elseif value == 8 then iconIndex = 8
+         end
+         texture = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_" .. iconIndex
+
     elseif actionType == "uivisibility" then
          -- Generic Icons based on element
          local element = string.match(value, "^(.-):")
@@ -1737,7 +1769,7 @@ function Wise:IsActionKnown(actionType, value)
     elseif actionType == "equipped" then
         return GetInventoryItemID("player", value) ~= nil
         
-    elseif actionType == "raidmarker" or actionType == "uipanel" or actionType == "misc" then
+    elseif actionType == "raidmarker" or actionType == "worldmarker" or actionType == "uipanel" or actionType == "misc" then
         return true
         
     elseif actionType == "interface" then
@@ -2695,10 +2727,31 @@ end
 function Wise:GetRaidmarkers(filter)
     local items = {}
     local markers = {"Star", "Circle", "Diamond", "Triangle", "Moon", "Square", "Cross", "Skull"}
+    -- Map each marker to its corresponding World Marker (/wm) index
+    -- WoW /wm indexes: 1=Square, 2=Triangle, 3=Diamond, 4=Cross, 5=Star, 6=Circle, 7=Moon, 8=Skull
+    local wmMap = {
+        ["Star"] = 5,
+        ["Circle"] = 6,
+        ["Diamond"] = 3,
+        ["Triangle"] = 2,
+        ["Moon"] = 7,
+        ["Square"] = 1,
+        ["Cross"] = 4,
+        ["Skull"] = 8
+    }
+
     local iconPath = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_"
     for i, name in ipairs(markers) do
-        if not filter or string.find(string.lower(name), filter, 1, true) then
-            table.insert(items, {type="raidmarker", value=i, name=name, icon=iconPath..i})
+        local unitName = name .. " (Unit)"
+        local groundName = name .. " (Ground)"
+
+        if not filter or string.find(string.lower(unitName), filter, 1, true) then
+            table.insert(items, {type="raidmarker", value=i, name=unitName, icon=iconPath..i})
+        end
+
+        if not filter or string.find(string.lower(groundName), filter, 1, true) then
+            local wmIndex = wmMap[name]
+            table.insert(items, {type="worldmarker", value=wmIndex, name=groundName, icon=iconPath..i})
         end
     end
     return items
