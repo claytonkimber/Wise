@@ -3141,6 +3141,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              vBtn.actionType = actionData.type
              vBtn.actionValue = actionData.value
              vBtn.actionData = actionData
+             vBtn.slot = actionInfo.slot -- Required for keybind lookups
 
              Wise:ApplyIconStyle(vBtn, visualIconStyle)
 
