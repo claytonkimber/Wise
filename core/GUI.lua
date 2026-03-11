@@ -1769,6 +1769,22 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = "/leavevehicle"
+        elseif aValue == "toggle_sound" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_EnableAllSound\" local v=GetCVar(c) local n=v==\"1\" and \"0\" or \"1\" SetCVar(c, n) print(\"Wise toggle sound \" .. (n==\"1\" and \"on\" or \"off\"))"
+        elseif aValue == "toggle_sfx" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_EnableSFX\" local v=GetCVar(c) local n=v==\"1\" and \"0\" or \"1\" SetCVar(c, n) print(\"Wise toggle sound effects \" .. (n==\"1\" and \"on\" or \"off\"))"
+        elseif aValue == "vol_up" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then local n=math.min(1, v+0.1) SetCVar(c, tostring(n)) print(\"Wise volume set to \" .. math.floor(n*100) .. \"%\") end"
+        elseif aValue == "vol_down" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then local n=math.max(0, v-0.1) SetCVar(c, tostring(n)) print(\"Wise volume set to \" .. math.floor(n*100) .. \"%\") end"
         elseif aValue == "custom_macro" then
             secureType = "macro"
             secureAttr = "macrotext"
