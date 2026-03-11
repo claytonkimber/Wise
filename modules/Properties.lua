@@ -1423,7 +1423,8 @@ function Wise:RenderGroupProperties(panel, group, y)
             radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
 
             local label = modeInfo.label
-            if modeInfo.value == "circle" and C_AddOns and C_AddOns.IsAddOnLoaded("Masque") then
+            local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+            if modeInfo.value == "circle" and masqueActive then
                 label = label .. " |cffff8800(Masque)|r"
             end
             radio.text:SetText(label)
@@ -1820,7 +1821,8 @@ function Wise:RenderGroupProperties(panel, group, y)
         piStyleLabel:SetPoint("TOPLEFT", 10, y)
 
         local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
-        if C_AddOns and C_AddOns.IsAddOnLoaded("Masque") then
+        local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+        if masqueActive then
             piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
         else
             piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"
@@ -1902,7 +1904,8 @@ function Wise:RenderGroupProperties(panel, group, y)
             displayHint:SetText(over and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
 
             local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
-            if C_AddOns and C_AddOns.IsAddOnLoaded("Masque") then
+            local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+            if masqueActive then
                 piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
             else
                 piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"

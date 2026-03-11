@@ -305,7 +305,8 @@ function Wise:PopulateSettingsView(panel)
     local styleLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, styleLabel, rx, ry)
     local styleLabelText = "Icon Style:"
-    if C_AddOns and C_AddOns.IsAddOnLoaded("Masque") then
+    local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+    if masqueActive then
         styleLabelText = styleLabelText .. " |cffff0000(being overridden by Masque)|r"
     else
         styleLabelText = styleLabelText .. " |cffaaaaaa(more with Masque addon)|r"

@@ -3509,8 +3509,8 @@ Wise.buttonMeta = {}
 function Wise:ApplyIconStyle(btn, style)
     if not btn or not btn.icon then return end
 
-    -- Skip Wise styling if Masque is loaded
-    if Wise.MasqueGroup then return end
+    -- Skip Wise styling if Masque is loaded and active for this group
+    if Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled) then return end
 
     style = style or "rounded"
 
@@ -3532,9 +3532,9 @@ function Wise:ApplyIconStyle(btn, style)
         -- Apply circular mask
         if not btn.styleMask then
             btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
             btn.styleMask:SetAllPoints(btn.icon)
         end
+        btn.styleMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -3542,9 +3542,9 @@ function Wise:ApplyIconStyle(btn, style)
     elseif style == "hexagon" then
         if not btn.styleMask then
             btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
             btn.styleMask:SetAllPoints(btn.icon)
         end
+        btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -3552,9 +3552,9 @@ function Wise:ApplyIconStyle(btn, style)
     elseif style == "octagon" then
         if not btn.styleMask then
             btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
             btn.styleMask:SetAllPoints(btn.icon)
         end
+        btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
