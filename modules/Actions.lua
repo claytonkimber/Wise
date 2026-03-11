@@ -578,12 +578,12 @@ Wise.ActionTypes = {
 }
 
 -- Category constants
-Wise.Categories = {"global", "class", "spec", "talent_build", "character"}
+Wise.Categories = {"global", "class", "spec", "talent", "character"}
 Wise.CategoryLabels = {
     global = "Global",
     class = "Class",
     spec = "Spec",
-    talent_build = "Build",
+    talent = "Talents",
     character = "Character"
 }
 
@@ -979,6 +979,22 @@ function Wise:MigrateGroupToActions(group)
         -- group.buttons = nil -- Keep for safety for now?
     end
     group.actions = group.actions or {}
+
+    -- Migrate old talent/build restrictions
+    for _, slotStates in pairs(group.actions) do
+        for _, action in ipairs(slotStates) do
+            if action.category == "talent_build" or action.category == "build" then
+                action.category = "talent"
+            end
+            if action.addedByTalentBuild then
+                action.talentRequirements = action.addedByTalentBuild
+                action.addedByTalentBuild = nil
+            elseif action.talentBuildRestriction then
+                action.talentRequirements = action.talentBuildRestriction
+                action.talentBuildRestriction = nil
+            end
+        end
+    end
 end
 
 -- Add an action to a specific slot (and state index)
@@ -1060,7 +1076,7 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         addedByCharacter = UnitName("player") .. "-" .. GetRealmName(),
         addedByClass = playerClass,
         addedBySpec = resolvedSpecID,
-        addedByTalentBuild = talentBuildName,
+        talentRequirements = talentBuildName,
     }
 
     if extraData then
@@ -3390,8 +3406,26 @@ function Wise:RefreshActionsView(container)
                          local _, specName = GetSpecializationInfoByID(action.addedBySpec)
                          suffixText = specName or "Spec"
                      end
-                 elseif cat == "talent_build" then
-                     suffixText = action.addedByTalentBuild or "Build"
+                 elseif cat == "talent" then
+                     if type(action.talentRequirements) == "table" then
+                         local numReqs = #action.talentRequirements
+                         if numReqs > 0 then
+                             local talentNames = {}
+                             for _, spellID in ipairs(action.talentRequirements) do
+                                 local spellInfo = C_Spell.GetSpellInfo(spellID)
+                                 if spellInfo and spellInfo.name then
+                                     table.insert(talentNames, spellInfo.name)
+                                 else
+                                     table.insert(talentNames, tostring(spellID))
+                                 end
+                             end
+                             suffixText = table.concat(talentNames, ", ")
+                         else
+                             suffixText = "0 Talents"
+                         end
+                     else
+                         suffixText = action.talentRequirements or "Talent"
+                     end
                  elseif cat == "character" then
                      local char = action.addedByCharacter or ""
                      if string.find(char, "-") then

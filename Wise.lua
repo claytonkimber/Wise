@@ -172,10 +172,25 @@ function Wise:IsActionAllowed(action)
         local checkSpec = action.addedBySpec or action.specRestriction
         if not checkSpec then return true end
         return checkSpec == self.characterInfo.specID
-    elseif category == "talent_build" or category == "build" then
-        local checkBuild = action.addedByTalentBuild or action.talentBuildRestriction
-        if not checkBuild then return true end
-        return checkBuild == self.characterInfo.talentBuild
+    elseif category == "talent" or category == "build" then
+        local reqs = action.talentRequirements
+        if not reqs then return true end
+
+        -- If it's a legacy string (from old addedByTalentBuild), fallback to the old comparison behavior
+        if type(reqs) == "string" then
+            return reqs == self.characterInfo.talentBuild
+        end
+
+        -- If it's a table of spellIDs, verify all are known
+        if type(reqs) == "table" then
+            for _, spellID in ipairs(reqs) do
+                -- Use IsPlayerSpell to correctly verify passive and active talents
+                if not IsPlayerSpell(spellID) and not IsSpellKnownOrOverridesKnown(spellID) then
+                    return false
+                end
+            end
+        end
+        return true
     elseif category == "character" then
         local checkChar = action.addedByCharacter or action.characterRestriction
         if not checkChar then return true end
