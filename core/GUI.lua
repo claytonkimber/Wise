@@ -537,7 +537,8 @@ local function GetOverlayGlow()
     return overlay
 end
 
-function Wise:ShowOverlayGlow(frame)
+function Wise:ShowOverlayGlow(frame, targetRegion)
+    targetRegion = targetRegion or frame
     if frame.__WiseOverlay then
         if frame.__WiseOverlay.animOut:IsPlaying() then
             frame.__WiseOverlay.animOut:Stop()
@@ -545,14 +546,14 @@ function Wise:ShowOverlayGlow(frame)
         end
     else
         local overlay = GetOverlayGlow()
-        local frameWidth, frameHeight = frame:GetSize()
+        local targetWidth, targetHeight = targetRegion:GetSize()
         overlay:SetParent(frame)
         overlay:SetFrameLevel(frame:GetFrameLevel() + 5)
         overlay:ClearAllPoints()
         --Make the height/width available before the next frame:
-        overlay:SetSize(frameWidth * 1.4, frameHeight * 1.4)
-        overlay:SetPoint("TOPLEFT", frame, "TOPLEFT", -frameWidth * 0.2, frameHeight * 0.2)
-        overlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", frameWidth * 0.2, -frameHeight * 0.2)
+        overlay:SetSize(targetWidth * 1.4, targetHeight * 1.4)
+        overlay:SetPoint("TOPLEFT", targetRegion, "TOPLEFT", -targetWidth * 0.2, targetHeight * 0.2)
+        overlay:SetPoint("BOTTOMRIGHT", targetRegion, "BOTTOMRIGHT", targetWidth * 0.2, -targetHeight * 0.2)
         overlay.animIn:Play()
         frame.__WiseOverlay = overlay
     end
