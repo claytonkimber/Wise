@@ -165,9 +165,26 @@ function Wise:CreateInfoView(parent)
     demoBtn:SetText("Play Tutorial")
     demoBtn:SetPoint("BOTTOMLEFT", 20, 10)
     demoBtn:SetScript("OnClick", function()
-        if Wise.Demo then 
+        if Wise.Demo then
             -- Force stop to reset state in case it's stuck or finished
             Wise.Demo:Stop()
+
+            -- Recreate Demo bar at center with [always] visible for the tutorial
+            if Wise.GetDemoBarGroup then
+                -- Tear down existing Demo bar frame
+                local existingFrame = Wise.frames and Wise.frames["Demo bar"]
+                if existingFrame then
+                    existingFrame:Hide()
+                    if existingFrame.toggleBtn then existingFrame.toggleBtn:Hide() end
+                    if existingFrame.visualDisplay then existingFrame.visualDisplay:Hide() end
+                    existingFrame:SetScript("OnUpdate", nil)
+                    if existingFrame.Anchor then existingFrame.Anchor:SetScript("OnUpdate", nil) end
+                    Wise.frames["Demo bar"] = nil
+                end
+                -- Replace with fresh default and rebuild
+                WiseDB.groups["Demo bar"] = Wise:GetDemoBarGroup()
+                Wise:UpdateGroupDisplay("Demo bar")
+            end
 
             -- Close options to ensure Step 1 (Welcome on UIParent) is visible and makes sense
             if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end

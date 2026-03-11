@@ -66,15 +66,15 @@ end
 
 -- Resolve the real action ID for override/possess bar slots.
 -- OverrideActionBarButton frames compute the actual action via ActionButton_CalculateAction,
--- so raw action IDs 133-144 / 121-132 may not return correct textures/cooldowns directly.
+-- so raw action IDs 133-144 / 145-156 may not return correct textures/cooldowns directly.
 function Wise:ResolveBarActionID(aID)
     if aID >= 133 and aID <= 144 then
         local overrideBtn = _G["OverrideActionBarButton" .. (aID - 132)]
         if overrideBtn and HasOverrideActionBar and HasOverrideActionBar() then
             return overrideBtn.action or aID
         end
-    elseif aID >= 121 and aID <= 132 then
-        local possessBtn = _G["ActionButton" .. (aID - 120)]
+    elseif aID >= 145 and aID <= 156 then
+        local possessBtn = _G["ActionButton" .. (aID - 144)]
         if possessBtn and (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() or HasVehicleActionBar and HasVehicleActionBar()) then
             return possessBtn.action or aID
         end
@@ -3408,7 +3408,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          Wise:UpdateButtonUsability(btn)
                     elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
                          -- Update Possess Bar icon dynamically
-                         local realID = Wise:ResolveBarActionID(121)
+                         local realID = Wise:ResolveBarActionID(145)
                          local tex = GetActionTexture(realID) or "Interface\\Icons\\Temp"
                          btn.icon:SetTexture(tex)
                          local vClone = meta.visualClone or btn.visualClone
@@ -4211,7 +4211,7 @@ function Wise:UpdateButtonCooldown(btn)
         start = start or 0
         duration = duration or 0
     elseif actionType == "misc" and actionValue == "possessbar" then
-        local realID = Wise:ResolveBarActionID(121)
+        local realID = Wise:ResolveBarActionID(145)
         start, duration = GetActionCooldown(realID)
         start = start or 0
         duration = duration or 0
@@ -4520,7 +4520,7 @@ function Wise:UpdateButtonUsability(btn)
         local realID = Wise:ResolveBarActionID(133)
         isUsable, noMana = IsUsableAction(realID)
     elseif actionType == "misc" and actionValue == "possessbar" then
-        local realID = Wise:ResolveBarActionID(121)
+        local realID = Wise:ResolveBarActionID(145)
         isUsable, noMana = IsUsableAction(realID)
     elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
         local amIdx = tonumber(actionValue:sub(13))

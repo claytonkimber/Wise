@@ -2936,9 +2936,8 @@ function Wise:GetOverridebars(filter)
     for i = 1, 8 do
         local name = possessBarName .. i
         if not filter or string.find(string.lower(name), filter, 1, true) then
-            -- Possess bar usually maps over ActionButton1-12 which map to 1-12 or 121-132
-            -- Let's use 121-132 for explicit possess bar slots
-            local actionID = 120 + i
+            -- Possess bar maps over ActionButton1-12; action IDs 145-156 for possess bar slots
+            local actionID = 144 + i
             table.insert(items, {
                 type = "action",
                 value = actionID,
