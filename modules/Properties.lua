@@ -229,11 +229,13 @@ function Wise:RefreshPropertiesPanel()
     panel.controls = panel.controls or {}
 
     -- Embedded picker mode: show picker in the right panel
-    if Wise.pickingAction or Wise.pickingTalents then
+    if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs then
         if Wise.pickingAction then
             Wise.OptionsFrame.Right.Title:SetText("Choose Action")
-        else
+        elseif Wise.pickingTalents then
             Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
+        else
+            Wise.OptionsFrame.Right.Title:SetText("Choose Specs")
         end
 
         -- Hide the main scroll frame
