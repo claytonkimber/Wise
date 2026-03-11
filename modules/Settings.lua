@@ -316,17 +316,31 @@ function Wise:PopulateSettingsView(panel)
     local styles = {
         {val="rounded", text="Rounded"},
         {val="square", text="Square"},
-        {val="round", text="Round"}
+        {val="round", text="Round"},
+        {val="hexagon", text="Hexagon", tooltip="bestagon"},
+        {val="octagon", text="Octagon", tooltip="secondbestagon"}
     }
     local startY = ry
     for i, styleMode in ipairs(styles) do
         local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
         local col = (i-1) % 3
-        AddToContent(rightContent, radio, rx + (col * 80), startY)
+        local row = math.floor((i-1) / 3)
+        AddToContent(rightContent, radio, rx + (col * 80), startY - (row * 20))
         radio:SetChecked((WiseDB.settings.iconStyle or "rounded") == styleMode.val)
         radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
         radio.text:SetText(styleMode.text)
+
+        if styleMode.tooltip then
+            radio:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(styleMode.tooltip, nil, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            radio:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+        end
 
         radio:SetScript("OnClick", function(self)
             WiseDB.settings.iconStyle = styleMode.val
@@ -339,7 +353,7 @@ function Wise:PopulateSettingsView(panel)
         end)
         table.insert(panel.children, radio.text)
     end
-    ry = ry - 30
+    ry = ry - 50
 
     -- Hide Empty Slots Checkbox
     local hideEmptyCheck = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")

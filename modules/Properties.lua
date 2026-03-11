@@ -1835,6 +1835,8 @@ function Wise:RenderGroupProperties(panel, group, y)
             {val="rounded", text="Rounded"},
             {val="square", text="Square"},
             {val="round", text="Round"},
+            {val="hexagon", text="Hexagon", tooltip="bestagon"},
+            {val="octagon", text="Octagon", tooltip="secondbestagon"}
         }
 
         for _, styleMode in ipairs(styles) do
@@ -1844,6 +1846,17 @@ function Wise:RenderGroupProperties(panel, group, y)
              radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
              radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
              radio.text:SetText(styleMode.text)
+
+             if styleMode.tooltip then
+                 radio:SetScript("OnEnter", function(self)
+                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                     GameTooltip:SetText(styleMode.tooltip, nil, nil, nil, nil, true)
+                     GameTooltip:Show()
+                 end)
+                 radio:SetScript("OnLeave", function(self)
+                     GameTooltip:Hide()
+                 end)
+             end
 
              radio:SetScript("OnClick", function(self)
                  group.iconStyle = styleMode.val

@@ -3539,6 +3539,26 @@ function Wise:ApplyIconStyle(btn, style)
         btn.icon:AddMaskTexture(btn.styleMask)
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    elseif style == "hexagon" then
+        if not btn.styleMask then
+            btn.styleMask = btn:CreateMaskTexture()
+            btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
+            btn.styleMask:SetAllPoints(btn.icon)
+        end
+        btn.styleMask:Show()
+        btn.icon:AddMaskTexture(btn.styleMask)
+        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    elseif style == "octagon" then
+        if not btn.styleMask then
+            btn.styleMask = btn:CreateMaskTexture()
+            btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
+            btn.styleMask:SetAllPoints(btn.icon)
+        end
+        btn.styleMask:Show()
+        btn.icon:AddMaskTexture(btn.styleMask)
+        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     end
 end
 
