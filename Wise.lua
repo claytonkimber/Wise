@@ -184,8 +184,8 @@ function Wise:IsActionAllowed(action)
         -- If it's a table of spellIDs, verify all are known
         if type(reqs) == "table" then
             for _, spellID in ipairs(reqs) do
-                -- Use IsSpellKnownOrOverridesKnown (or C_Spell if available) to check if talent is active
-                if not IsSpellKnownOrOverridesKnown(spellID) then
+                -- Use IsPlayerSpell to correctly verify passive and active talents
+                if not IsPlayerSpell(spellID) and not IsSpellKnownOrOverridesKnown(spellID) then
                     return false
                 end
             end
