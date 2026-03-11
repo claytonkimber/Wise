@@ -79,8 +79,8 @@ function Wise:CreateOptionsFrame()
     -- f.Middle is an InsetFrame. We anchor to its TOPLEFT but shift up.
     -- Parent to f so they aren't clipped or inside the inset.
     
-    local filters = {"global", "class", "spec", "talent_build", "character"}
-    local labels = {global="Global", class="Class", spec="Spec", talent_build="Build", character="Char"}
+    local filters = {"global", "class", "spec", "talent", "character"}
+    local labels = {global="Global", class="Class", spec="Spec", talent="Build", character="Char"}
     
     for i, filter in ipairs(filters) do
         local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")

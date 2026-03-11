@@ -229,8 +229,12 @@ function Wise:RefreshPropertiesPanel()
     panel.controls = panel.controls or {}
 
     -- Embedded picker mode: show picker in the right panel
-    if Wise.pickingAction then
-        Wise.OptionsFrame.Right.Title:SetText("Choose Action")
+    if Wise.pickingAction or Wise.pickingTalents then
+        if Wise.pickingAction then
+            Wise.OptionsFrame.Right.Title:SetText("Choose Action")
+        else
+            Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
+        end
 
         -- Hide the main scroll frame
         if Wise.OptionsFrame.Right.Scroll then
@@ -249,10 +253,16 @@ function Wise:RefreshPropertiesPanel()
         -- Clear/Hide existing host controls
         if Wise.OptionsFrame.Right.PickerHost.controls then
             for _, ctrl in ipairs(Wise.OptionsFrame.Right.PickerHost.controls) do ctrl:Hide() end
+        else
+            Wise.OptionsFrame.Right.PickerHost.controls = {}
         end
         Wise.OptionsFrame.Right.PickerHost:Show()
 
-        Wise:CreateEmbeddedPicker(Wise.OptionsFrame.Right.PickerHost)
+        if Wise.pickingAction then
+            Wise:CreateEmbeddedPicker(Wise.OptionsFrame.Right.PickerHost)
+        elseif Wise.pickingTalents then
+            Wise:CreateEmbeddedTalentPicker(Wise.OptionsFrame.Right.PickerHost, Wise.pickingTalentsAction)
+        end
         return
     else
         -- Normal mode: Show scroll frame (if not picking icon)
@@ -721,8 +731,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                      local _, specName = GetSpecializationInfoByID(action.addedBySpec)
                      suffix = specName
                  end
-            elseif catValue == "talent_build" then
-                suffix = action.addedByTalentBuild
+            elseif catValue == "talent" then
+                suffix = action.talentRequirements
             elseif catValue == "character" then
                 suffix = action.addedByCharacter
                 if suffix and string.find(suffix, "-") then
@@ -740,29 +750,21 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                 if specIdx then
                     suffix = select(2, GetSpecializationInfo(specIdx))
                 end
-            elseif catValue == "talent_build" then
-                suffix = (Wise.characterInfo and Wise.characterInfo.talentBuild) or ""
-                if (not suffix or suffix == "" or suffix == select(2, GetSpecializationInfo(GetSpecialization()))) then
-                     -- If cached suffix is missing or just the spec name, try a fresh direct lookup
-                     if C_ClassTalents and C_ClassTalents.GetStarterBuildActive and C_ClassTalents.GetStarterBuildActive() then
-                         suffix = "Starter Build"
-                     else
-                         local specID = GetSpecialization()
-                         local specInfoID = specID and GetSpecializationInfo(specID)
-                         local configID = C_ClassTalents and C_ClassTalents.GetLastSelectedConfigID and specInfoID and C_ClassTalents.GetLastSelectedConfigID(specInfoID)
-                         if configID then
-                             local configInfo = C_Traits.GetConfigInfo(configID)
-                             if configInfo then suffix = configInfo.name end
-                         end
-                     end
-                end
+            elseif catValue == "talent" then
+                -- No default suffix here anymore since it's going to be manually picked
             elseif catValue == "character" then
                 suffix = UnitName("player")
             end
         end
 
         if suffix and suffix ~= "" then
-            labelText = labelText .. " |cffff8800(" .. suffix .. ")|r"
+            -- For talent, suffix might be a table (if existing logic left it there), so just handle it nicely
+            if type(suffix) == "table" then
+                local numReqs = #suffix
+                labelText = labelText .. " |cffff8800(" .. numReqs .. (numReqs == 1 and " Talent" or " Talents") .. ")|r"
+            else
+                labelText = labelText .. " |cffff8800(" .. tostring(suffix) .. ")|r"
+            end
         end
         radio.text:SetText(labelText)
 
@@ -775,8 +777,10 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             action.addedByCharacter = UnitName("player") .. "-" .. GetRealmName()
             local sIdx = GetSpecialization()
             action.addedBySpec = sIdx and GetSpecializationInfo(sIdx) or nil
-            if Wise.characterInfo then
-                action.addedByTalentBuild = Wise.characterInfo.talentBuild
+
+            -- If user switches back to talent, make sure we initialize it
+            if catValue == "talent" and type(action.talentRequirements) ~= "table" then
+                action.talentRequirements = {}
             end
 
             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
@@ -790,6 +794,21 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         tinsert(panel.controls, radio)
         tinsert(panel.controls, radio.text)
         y = y - 22
+
+        -- If talent is selected, show "Select Talents" button
+        if catValue == "talent" and currentCat == "talent" then
+            local talentBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            talentBtn:SetSize(120, 22)
+            talentBtn:SetPoint("TOPLEFT", 30, y)
+            talentBtn:SetText("Select Talents")
+            talentBtn:SetScript("OnClick", function()
+                Wise.pickingTalents = true
+                Wise.pickingTalentsAction = action
+                Wise:RefreshPropertiesPanel()
+            end)
+            tinsert(panel.controls, talentBtn)
+            y = y - 25
+        end
     end
 
     y = y - 10
@@ -3897,4 +3916,191 @@ function Wise:RenderGroupProperties(panel, group, y)
     end
 
     return y
+end
+
+function Wise:CreateEmbeddedTalentPicker(parent, action)
+    local ep = Wise.EmbeddedTalentPicker
+
+    if ep and ep.parent == parent then
+        ep.CancelBtn:Show()
+        ep.titleLabel:Show()
+        ep.descLabel:Show()
+        ep.Scroll:Show()
+    else
+        -- Build new picker UI into parent
+        ep = {}
+        Wise.EmbeddedTalentPicker = ep
+        ep.parent = parent
+
+        -- Cancel / Back button
+        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+        ep.CancelBtn:SetSize(80, 22)
+        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+        ep.CancelBtn:SetText("< Back")
+        ep.CancelBtn:SetScript("OnClick", function()
+            Wise.pickingTalents = false
+            Wise.pickingTalentsAction = nil
+            Wise:RefreshPropertiesPanel()
+
+            -- Update display
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+
+        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+        ep.titleLabel:SetText("Select Required Talents")
+
+        -- Description
+        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+        ep.descLabel:SetJustifyH("LEFT")
+        ep.descLabel:SetText("Action will only be visible if ALL selected talents are active.")
+
+        -- ScrollFrame
+        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+
+        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+        ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
+        ep.Scroll:SetScrollChild(ep.Content)
+
+        ep.buttons = {}
+    end
+
+    tinsert(parent.controls, ep.CancelBtn)
+    tinsert(parent.controls, ep.titleLabel)
+    tinsert(parent.controls, ep.descLabel)
+    tinsert(parent.controls, ep.Scroll)
+
+    for _, btn in pairs(ep.buttons) do
+        btn:Hide()
+    end
+
+    -- Collect Talents
+    local items = {}
+
+    local configID = C_ClassTalents.GetActiveConfigID()
+    if configID then
+        local configInfo = C_Traits.GetConfigInfo(configID)
+        if configInfo then
+            for _, treeID in ipairs(configInfo.treeIDs) do
+                local nodes = C_Traits.GetTreeNodes(treeID)
+                for _, nodeID in ipairs(nodes) do
+                    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+                    if nodeInfo and nodeInfo.entryIDs then
+                        -- Iterate all entries in this node
+                        for _, entryID in ipairs(nodeInfo.entryIDs) do
+                            local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                            if entryInfo and entryInfo.definitionID then
+                                local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+                                if defInfo and defInfo.spellID then
+                                    local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
+                                    if spellInfo then
+                                        -- Deduplicate by spellID
+                                        local exists = false
+                                        for _, item in ipairs(items) do
+                                            if item.spellID == spellInfo.spellID then
+                                                exists = true
+                                                break
+                                            end
+                                        end
+                                        if not exists then
+                                            table.insert(items, {
+                                                spellID = spellInfo.spellID,
+                                                name = spellInfo.name,
+                                                icon = spellInfo.iconID
+                                            })
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Sort by name
+    table.sort(items, function(a, b) return a.name < b.name end)
+
+    -- Ensure talentRequirements is a table
+    if type(action.talentRequirements) ~= "table" then
+        action.talentRequirements = {}
+    end
+
+    local selectedMap = {}
+    for _, id in ipairs(action.talentRequirements) do
+        selectedMap[id] = true
+    end
+
+    local y = 0
+    local btnWidth = ep.Content:GetWidth() - 10
+    if btnWidth < 100 then btnWidth = 200 end
+
+    for i, data in ipairs(items) do
+        local btn = ep.buttons[i]
+        if not btn then
+            btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
+
+            -- Checkbox
+            local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+            chk:SetSize(24, 24)
+            chk:SetPoint("LEFT", 0, 0)
+            btn.chk = chk
+
+            -- Icon
+            local icon = btn:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(20, 20)
+            icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            btn.icon = icon
+
+            -- Name
+            local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+            nameLabel:SetPoint("RIGHT", 0, 0)
+            nameLabel:SetJustifyH("LEFT")
+            btn.nameLabel = nameLabel
+
+            -- Make row clickable to toggle checkbox
+            btn:SetScript("OnClick", function(self)
+                self.chk:SetChecked(not self.chk:GetChecked())
+                self.chk:GetScript("OnClick")(self.chk)
+            end)
+
+            table.insert(ep.buttons, btn)
+        end
+
+        btn:SetSize(btnWidth, 24)
+        btn:SetPoint("TOPLEFT", 4, y)
+        btn:Show()
+
+        btn.icon:SetTexture(data.icon)
+        btn.nameLabel:SetText(data.name)
+        btn.chk:SetChecked(selectedMap[data.spellID] or false)
+
+        btn.chk:SetScript("OnClick", function(self)
+            local isChecked = self:GetChecked()
+            selectedMap[data.spellID] = isChecked
+
+            -- Rebuild talentRequirements
+            action.talentRequirements = {}
+            for id, selected in pairs(selectedMap) do
+                if selected then
+                    table.insert(action.talentRequirements, id)
+                end
+            end
+        end)
+
+        y = y - 24
+    end
+
+    ep.Content:SetHeight(math.abs(y))
 end
