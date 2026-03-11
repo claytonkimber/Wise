@@ -87,16 +87,28 @@ local function FindPickerButton(namePattern)
 end
 
 -- Glow helpers (safe nil checks)
+local activeGlows = {}
+
 local function Glow(frame)
     if frame and frame.IsObjectType and frame:IsObjectType("Frame") and Wise.ShowOverlayGlow then
         Wise:ShowOverlayGlow(frame)
+        activeGlows[frame] = true
     end
 end
 
 local function Unglow(frame)
     if frame and frame.IsObjectType and frame:IsObjectType("Frame") and Wise.HideOverlayGlow then
         Wise:HideOverlayGlow(frame)
+        activeGlows[frame] = nil
     end
+end
+
+local function ClearAllGlows()
+    if not Wise.HideOverlayGlow then return end
+    for frame in pairs(activeGlows) do
+        Wise:HideOverlayGlow(frame)
+    end
+    wipe(activeGlows)
 end
 
 --------------------------------------------------------------------------------
@@ -946,6 +958,7 @@ function Wise.Demo:Stop(finished)
     if timerTicker then timerTicker:Cancel() end
     HelpTip:HideAllSystem("WiseDemo")
     HideScrollIndicator()
+    ClearAllGlows()
 
     if overlayFrame then overlayFrame:Hide() end
 
