@@ -1766,6 +1766,22 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = "/leavevehicle"
+        elseif aValue == "toggle_sound" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_EnableAllSound\" local v=GetCVar(c) SetCVar(c, v==\"1\" and \"0\" or \"1\")"
+        elseif aValue == "toggle_sfx" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_EnableSFX\" local v=GetCVar(c) SetCVar(c, v==\"1\" and \"0\" or \"1\")"
+        elseif aValue == "vol_up" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then SetCVar(c, tostring(math.min(1, v+0.1))) end"
+        elseif aValue == "vol_down" then
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then SetCVar(c, tostring(math.max(0, v-0.1))) end"
         elseif aValue == "custom_macro" then
             secureType = "macro"
             secureAttr = "macrotext"
