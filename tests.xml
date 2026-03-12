@@ -23,4 +23,13 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_3" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Cooldowns Decimal Slots Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that adding a decimal slot to the Cooldowns interface persists across logins.\n1. Enable the Cooldowns interface.\n2. Open actions for Cooldowns and add a slot like 1.5 with any ability.\n3. Reload the UI (/reload).\n4. Verify that the decimal slot and ability are still present in the Cooldowns interface." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].visibilitySettings = WiseDB.groups['Cooldowns'].visibilitySettings or {}; WiseDB.groups['Cooldowns'].visibilitySettings.customShow = '[always]'; Wise:UpdateGroupDisplay('Cooldowns')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].visibilitySettings.customShow = ''; Wise:UpdateGroupDisplay('Cooldowns')" type="string"/>
+        </KeyValues>
+    </Frame>
+
 </Ui>

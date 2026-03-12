@@ -282,8 +282,10 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         end
 
         g.isWiser = true -- Mark as Wiser
-        g.buttons = {} -- Clear for rebuild
-        g.actions = nil -- Clear actions to force migration from new buttons list
+        if name ~= "Cooldowns" and name ~= "Utilities" then
+            g.buttons = {} -- Clear for rebuild
+            g.actions = nil -- Clear actions to force migration from new buttons list
+        end
         
         -- Store metadata for context (helper for debugging/future features)
         local _, className = UnitClass("player")
