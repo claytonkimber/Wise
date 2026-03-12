@@ -1534,9 +1534,11 @@ function Wise:RenderGroupProperties(panel, group, y)
         dynamicLabel:SetText("Dynamic")
         tinsert(panel.controls, dynamicLabel)
 
+        y = y - 25
+
         -- Static Checkbox
         local staticCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        staticCheck:SetPoint("LEFT", dynamicLabel, "RIGHT", 25, 0)
+        staticCheck:SetPoint("TOPLEFT", 10, y)
         staticCheck:SetChecked(not group.dynamic)
         tinsert(panel.controls, staticCheck)
 
@@ -1556,8 +1558,10 @@ function Wise:RenderGroupProperties(panel, group, y)
             staticLabel:SetTextColor(0.5, 0.5, 0.5)
             dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
 
+            y = y - 25
+
             local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            lockNote:SetPoint("TOPLEFT", 10, y - 18)
+            lockNote:SetPoint("TOPLEFT", 10, y)
             lockNote:SetText("Cooldown interfaces must be dynamic.")
             tinsert(panel.controls, lockNote)
         end
@@ -1619,9 +1623,11 @@ function Wise:RenderGroupProperties(panel, group, y)
         animLabel:SetText("Animate")
         tinsert(panel.controls, animLabel)
 
+        y = y - 25
+
         -- Invert Order checkbox
         local invertCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        invertCheck:SetPoint("LEFT", animLabel, "RIGHT", 15, 0)
+        invertCheck:SetPoint("TOPLEFT", 10, y)
         invertCheck:SetChecked(group.invertOrder or false)
         invertCheck:SetScript("OnClick", function(self)
             group.invertOrder = self:GetChecked()
@@ -1772,7 +1778,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Fixed X Checkbox
              local fixedX = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedX:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
+             fixedX:SetPoint("LEFT", xSliderPlusBtn, "RIGHT", 10, 0)
              fixedX:SetChecked(group.fixedAxis == "x")
              fixedX.text = fixedX:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
              fixedX.text:SetPoint("LEFT", fixedX, "RIGHT", 5, 0)
@@ -1836,7 +1842,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Fixed Y Checkbox
              local fixedY = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedY:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
+             fixedY:SetPoint("LEFT", ySliderPlusBtn, "RIGHT", 10, 0)
              fixedY:SetChecked(group.fixedAxis == "y")
              fixedY.text = fixedY:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
              fixedY.text:SetPoint("LEFT", fixedY, "RIGHT", 5, 0)
@@ -3363,8 +3369,10 @@ function Wise:RenderGroupProperties(panel, group, y)
         tinsert(panel.controls, chkAlwaysVis)
         tinsert(panel.controls, chkAlwaysVis.text)
 
+        y = y - 25
+
         local chkAlwaysHide = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkAlwaysHide:SetPoint("LEFT", chkAlwaysVis.text, "RIGHT", 15, 0)
+        chkAlwaysHide:SetPoint("TOPLEFT", 10, y)
         chkAlwaysHide.text = chkAlwaysHide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         chkAlwaysHide.text:SetPoint("LEFT", chkAlwaysHide, "RIGHT", 5, 0)
         chkAlwaysHide.text:SetText("Always Hidden")
@@ -3384,8 +3392,10 @@ function Wise:RenderGroupProperties(panel, group, y)
         tinsert(panel.controls, chkCombat)
         tinsert(panel.controls, chkCombat.text)
 
+        y = y - 25
+
         local chkOOC = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkOOC:SetPoint("LEFT", chkCombat.text, "RIGHT", 15, 0)
+        chkOOC:SetPoint("TOPLEFT", 10, y)
         chkOOC.text = chkOOC:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         chkOOC.text:SetPoint("LEFT", chkOOC, "RIGHT", 5, 0)
         chkOOC.text:SetText("Show Out of Combat")
