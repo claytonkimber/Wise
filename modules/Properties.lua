@@ -1534,9 +1534,11 @@ function Wise:RenderGroupProperties(panel, group, y)
         dynamicLabel:SetText("Dynamic")
         tinsert(panel.controls, dynamicLabel)
 
+        y = y - 25
+
         -- Static Checkbox
         local staticCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        staticCheck:SetPoint("LEFT", dynamicLabel, "RIGHT", 25, 0)
+        staticCheck:SetPoint("TOPLEFT", 10, y)
         staticCheck:SetChecked(not group.dynamic)
         tinsert(panel.controls, staticCheck)
 
@@ -1556,12 +1558,12 @@ function Wise:RenderGroupProperties(panel, group, y)
             staticLabel:SetTextColor(0.5, 0.5, 0.5)
             dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
 
+            y = y - 25
+
             local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            lockNote:SetPoint("TOPLEFT", 10, y - 25)
+            lockNote:SetPoint("TOPLEFT", 10, y)
             lockNote:SetText("Cooldown interfaces must be dynamic.")
             tinsert(panel.controls, lockNote)
-
-            y = y - 15
         end
 
         -- Logic for mutually exclusive checkboxes
@@ -1621,9 +1623,11 @@ function Wise:RenderGroupProperties(panel, group, y)
         animLabel:SetText("Animate")
         tinsert(panel.controls, animLabel)
 
+        y = y - 25
+
         -- Invert Order checkbox
         local invertCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        invertCheck:SetPoint("LEFT", animLabel, "RIGHT", 15, 0)
+        invertCheck:SetPoint("TOPLEFT", 10, y)
         invertCheck:SetChecked(group.invertOrder or false)
         invertCheck:SetScript("OnClick", function(self)
             group.invertOrder = self:GetChecked()
