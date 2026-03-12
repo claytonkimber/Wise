@@ -1327,7 +1327,7 @@ if HelpTip and HelpTip.Show then
                     if talentsBtn and self.framePool and self.framePool.activeObjects then
                         -- Find the HelpTip frame that was just spawned
                         for frame, _ in pairs(self.framePool.activeObjects) do
-                            if frame.info == info then
+                            if type(frame) == "table" and frame.info and frame.info == info and frame:IsShown() then
                                 frame:ClearAllPoints()
                                 frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
                                 break
