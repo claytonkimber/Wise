@@ -23,4 +23,13 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_3" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="HelpTip Repositioning Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that the hero talents HelpTip moves to the custom Menu Bar.\n1. Hide Blizzard Micro Menu in Settings.\n2. Ensure the custom Menu Bar is open.\n3. Run this test, which spawns a mock HelpTip on PlayerSpellsMicroButton.\n4. Verify the HelpTip anchors to the Talents button." type="string"/>
+            <KeyValue key="action" value="local info = {text='Choose your hero talents', buttonStyle=1, targetPoint=1}; HelpTip:Show('PlayerSpellsMicroButton', info)" type="string"/>
+            <KeyValue key="clearAction" value="HelpTip:Hide('PlayerSpellsMicroButton', 'Choose your hero talents')" type="string"/>
+        </KeyValues>
+    </Frame>
+
 </Ui>
