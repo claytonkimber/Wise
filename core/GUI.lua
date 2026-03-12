@@ -284,6 +284,43 @@ function Wise:DeleteGroup(name)
     end
     
     WiseDB.groups[name] = nil
+
+    local modifiedParents = {}
+    for gName, group in pairs(WiseDB.groups) do
+        if gName ~= name then
+            local modified = false
+            if group.actions then
+                for slotIdx, states in pairs(group.actions) do
+                    if type(slotIdx) == "number" and type(states) == "table" then
+                        for i = #states, 1, -1 do
+                            local action = states[i]
+                            if action.type == "interface" and action.value == name then
+                                table.remove(states, i)
+                                modified = true
+                            end
+                        end
+                    end
+                end
+            end
+            if group.buttons then
+                for i = #group.buttons, 1, -1 do
+                    local action = group.buttons[i]
+                    if action.type == "interface" and action.value == name then
+                        table.remove(group.buttons, i)
+                        modified = true
+                    end
+                end
+            end
+            if modified then
+                modifiedParents[gName] = true
+            end
+        end
+    end
+
+    for pName in pairs(modifiedParents) do
+        Wise:UpdateGroupDisplay(pName)
+    end
+
     Wise:UpdateOptionsUI()
 end
 
