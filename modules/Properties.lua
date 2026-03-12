@@ -3369,8 +3369,10 @@ function Wise:RenderGroupProperties(panel, group, y)
         tinsert(panel.controls, chkAlwaysVis)
         tinsert(panel.controls, chkAlwaysVis.text)
 
+        y = y - 25
+
         local chkAlwaysHide = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkAlwaysHide:SetPoint("LEFT", chkAlwaysVis.text, "RIGHT", 15, 0)
+        chkAlwaysHide:SetPoint("TOPLEFT", 10, y)
         chkAlwaysHide.text = chkAlwaysHide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         chkAlwaysHide.text:SetPoint("LEFT", chkAlwaysHide, "RIGHT", 5, 0)
         chkAlwaysHide.text:SetText("Always Hidden")
@@ -3390,8 +3392,10 @@ function Wise:RenderGroupProperties(panel, group, y)
         tinsert(panel.controls, chkCombat)
         tinsert(panel.controls, chkCombat.text)
 
+        y = y - 25
+
         local chkOOC = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkOOC:SetPoint("LEFT", chkCombat.text, "RIGHT", 15, 0)
+        chkOOC:SetPoint("TOPLEFT", 10, y)
         chkOOC.text = chkOOC:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         chkOOC.text:SetPoint("LEFT", chkOOC, "RIGHT", 5, 0)
         chkOOC.text:SetText("Show Out of Combat")
