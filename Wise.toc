@@ -18,6 +18,10 @@ Libs\LibSharedMedia-3.0\lib.xml
 Libs\LibSharedMedia-3.0\WiseMedia.lua
 Libs\exui\exui.xml
 
+# Debug
+tests.xml
+modules\Debug.lua
+
 # Core
 Wise.lua
 core\Polyfill.lua

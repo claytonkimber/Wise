@@ -130,6 +130,9 @@ function Wise:CreateInfoView(parent)
         local checked = self:GetChecked()
         WiseDB.settings.debug = checked
         print("|cff00ccff[Wise]|r Debug mode " .. (checked and "enabled" or "disabled"))
+        if Wise.ToggleDebugInterface then
+            Wise:ToggleDebugInterface(checked)
+        end
     end)
 
     -- Bug Report Button

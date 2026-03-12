@@ -62,28 +62,6 @@ function Wise:GetOverrideSpellID(spellID)
     return spellID
 end
 
--- Debug Helper
-function Wise:DebugPrint(...)
-    if WiseDB and WiseDB.settings and WiseDB.settings.debug then
-        local msg = string.format(...)
-        print("|cff00ccff[Wise Debug]|r", msg)
-        
-        if Wise.LogFrame then
-            local timestamp = date("%H:%M:%S")
-            local current = Wise.LogFrame:GetText() or ""
-            -- Basic truncation to avoid memory issues (keep last 5000 chars roughly)
-            if #current > 10000 then 
-                 current = current:sub(-5000) 
-            end
-            Wise.LogFrame:SetText(current .. "\n[" .. timestamp .. "] " .. msg)
-            -- Auto scroll to bottom
-            if Wise.LogFrame:GetParent() then
-                 Wise.LogFrame:GetParent():SetVerticalScroll(Wise.LogFrame:GetParent():GetVerticalScrollRange())
-            end
-        end
-    end
-end
-
 -- Update Function - Core Info
 function Wise:UpdateCharacterInfo(sourceEvent)
     local _, className = UnitClass("player")
@@ -945,6 +923,10 @@ function frame:OnEvent(event, arg1)
     elseif event == "PLAYER_LOGIN" then
         if Wise.Initialize then Wise:Initialize() end
         if Wise.UpdateBlizzardUI then Wise:UpdateBlizzardUI() end
+
+        -- Initialize Debug Interface if enabled
+        if Wise.InitializeDebug then Wise:InitializeDebug() end
+
         -- Trigger Demo if first time
         if not WiseDB.tutorialComplete and Wise.Demo then
              C_Timer.After(2, function() Wise.Demo:Start() end)

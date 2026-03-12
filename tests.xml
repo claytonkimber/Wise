@@ -1,0 +1,16 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+
+    <Frame name="WiseDebugTestsData" virtual="true" hidden="true">
+        <!-- Sub-frames will define tests -->
+    </Frame>
+
+    <Frame name="WiseDebugTest_1" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Layout Growth" type="string"/>
+            <KeyValue key="instructions" value="Verify the layout growth looks correct when adding buttons. 1. Add 4 buttons to the newly created frame. 2. Verify that they layout as expected." type="string"/>
+            <KeyValue key="action" value="print('Layout Growth Test executed')" type="string"/>
+        </KeyValues>
+    </Frame>
+
+</Ui>
