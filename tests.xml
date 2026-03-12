@@ -7,9 +7,19 @@
 
     <Frame name="WiseDebugTest_1" inherits="WiseDebugTestsData">
         <KeyValues>
-            <KeyValue key="testName" value="Layout Growth" type="string"/>
-            <KeyValue key="instructions" value="Verify the layout growth looks correct when adding buttons. 1. Add 4 buttons to the newly created frame. 2. Verify that they layout as expected." type="string"/>
-            <KeyValue key="action" value="print('Layout Growth Test executed')" type="string"/>
+            <KeyValue key="testName" value="Layout Growth Test" type="string"/>
+            <KeyValue key="instructions" value="Verify the layout growth looks correct when adding buttons.\n1. Add 4 buttons to the newly created frame.\n2. Verify that they layout as expected." type="string"/>
+            <KeyValue key="action" value="Wise:CreateGroup('Debug Growth Bar', 'line'); Wise.frames['Debug Growth Bar']:Show(); Wise:ToggleEditMode()" type="string"/>
+            <KeyValue key="clearAction" value="Wise:DeleteGroup('Debug Growth Bar'); Wise:ToggleEditMode()" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_2" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Options Panel Initialization" type="string"/>
+            <KeyValue key="instructions" value="Verify that the settings panel opens correctly.\n1. Open Options\n2. Navigate to 'Settings'\n3. Check that 'Icon Size' is displayed." type="string"/>
+            <KeyValue key="action" value="if not Wise.OptionsFrame then Wise:CreateOptionsFrame() end; Wise.OptionsFrame:Show(); if Wise.SelectTab then Wise:SelectTab('Settings') end" type="string"/>
+            <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
         </KeyValues>
     </Frame>
 
