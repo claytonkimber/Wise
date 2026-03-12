@@ -1311,7 +1311,8 @@ if HelpTip and HelpTip.Show then
         end
 
         -- Check if it's the hero talents HelpTip trying to attach to the default spellbook micro button
-        if targetName == "PlayerSpellsMicroButton" then
+        -- or if it's a HelpTip mentioning talents trying to attach to the main menu bar while hidden
+        if targetName == "PlayerSpellsMicroButton" or (targetName == "MicroMenuContainer" and info and info.text and info.text:lower():find("talent")) then
             if WiseDB.settings.blizzardUI.hideMicroMenu then
                 local menuBar = Wise.frames and Wise.frames["Menu Bar"]
                 if menuBar and menuBar:IsShown() and menuBar.buttons then
@@ -1328,6 +1329,9 @@ if HelpTip and HelpTip.Show then
                         -- Find the HelpTip frame that was just spawned
                         for frame, _ in pairs(self.framePool.activeObjects) do
                             if type(frame) == "table" and frame.info and frame.info == info and frame:IsShown() then
+                                -- Fully reparent the frame so it follows the new button
+                                -- and doesn't get drawn underneath hidden/layered UI elements
+                                frame:SetParent(talentsBtn)
                                 frame:ClearAllPoints()
                                 frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
                                 break
