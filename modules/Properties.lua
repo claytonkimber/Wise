@@ -2728,7 +2728,12 @@ function Wise:RenderGroupProperties(panel, group, y)
         for i, styleMode in ipairs(styles) do
             local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
             local col = (i-1) % 3
-            radio:SetPoint("TOPLEFT", 10 + (col * 70), y)
+            -- 85px spacing is enough for "Spiral", "Border Wipe", and "Tracer" without overlapping.
+            -- "Border Wipe" is the longest string, so we'll adjust the first col offset if needed.
+            local xOffset = 10
+            if col == 1 then xOffset = 10 + 65 end -- after Spiral
+            if col == 2 then xOffset = 10 + 65 + 95 end -- after Border Wipe
+            radio:SetPoint("TOPLEFT", xOffset, y)
             radio:SetChecked(currentWipeStyle == styleMode.val)
             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
@@ -2753,8 +2758,8 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         if currentWipeStyle == "tracer" then
             local tModes = {
-                {val="relative", text="Rel"},
-                {val="absolute", text="Abs"}
+                {val="relative", text="Relative", tooltip="The tracer completes exactly 1 lap over the full duration of the cooldown."},
+                {val="absolute", text="Absolute", tooltip="The tracer moves at a constant speed of 1 lap per 60 seconds (1 minute = 1 full rotation)."}
             }
 
             local currentTMode = group.tracerMode
@@ -2771,6 +2776,16 @@ function Wise:RenderGroupProperties(panel, group, y)
                 radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
                 radio.text:SetText(tMode.text)
+
+                radio:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(tMode.text .. " Tracer Mode", 1, 1, 1)
+                    GameTooltip:AddLine(tMode.tooltip, nil, nil, nil, true)
+                    GameTooltip:Show()
+                end)
+                radio:SetScript("OnLeave", function(self)
+                    GameTooltip:Hide()
+                end)
 
                 radio:SetScript("OnClick", function(self)
                     group.tracerMode = tMode.val

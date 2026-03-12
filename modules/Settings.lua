@@ -990,7 +990,10 @@ function Wise:PopulateSettingsView(panel)
     for i, styleMode in ipairs(styles) do
         local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
         local col = (i-1) % 3
-        AddToContent(rightContent, radio, rx + (col * 120), startY)
+        local xOffset = rx
+        if col == 1 then xOffset = rx + 95 end -- past Spiral Wipe
+        if col == 2 then xOffset = rx + 95 + 105 end -- past Border Wipe
+        AddToContent(rightContent, radio, xOffset, startY)
         radio:SetChecked((WiseDB.settings.cooldownStyle or "spiral") == styleMode.val)
         radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
@@ -1016,18 +1019,28 @@ function Wise:PopulateSettingsView(panel)
         ry = ry - 20
 
         local tModes = {
-            {val="relative", text="Relative (1 lap = duration)"},
-            {val="absolute", text="Absolute (1 lap = 60 sec)"}
+            {val="relative", text="Relative", tooltip="The tracer completes exactly 1 lap over the full duration of the cooldown."},
+            {val="absolute", text="Absolute", tooltip="The tracer moves at a constant speed of 1 lap per 60 seconds (1 minute = 1 full rotation)."}
         }
         local tStartY = ry
         for i, tMode in ipairs(tModes) do
             local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
             local col = (i-1) % 2
-            AddToContent(rightContent, radio, rx + (col * 180), tStartY)
+            AddToContent(rightContent, radio, rx + (col * 100), tStartY)
             radio:SetChecked((WiseDB.settings.tracerMode or "relative") == tMode.val)
             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
             radio.text:SetText(tMode.text)
+
+            radio:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(tMode.text .. " Tracer Mode", 1, 1, 1)
+                GameTooltip:AddLine(tMode.tooltip, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            radio:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
 
             radio:SetScript("OnClick", function(self)
                 WiseDB.settings.tracerMode = tMode.val

@@ -4501,6 +4501,12 @@ function Wise:UpdateButtonCooldown(btn)
         end
     end
     
+    local isActive = false
+    local success, result = pcall(function()
+        return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
+    end)
+    if success then isActive = result end
+
     if cooldownStyle == "tracer" then
         btn.cooldown:SetAlpha(0)
         if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(0) end
@@ -4510,11 +4516,13 @@ function Wise:UpdateButtonCooldown(btn)
             btn.tracer:SetVertexColor(r, g, b, 1)
             btn.tracer:SetSize(borderWipeThickness * 2, borderWipeThickness * 2)
             if borderWipeColor == "default" then btn.tracer:SetVertexColor(1, 1, 1, 1) end -- White default tracer
+            if not isActive then btn.tracer:Hide() end
         end
         if visualClone and visualClone.tracer then
             visualClone.tracer:SetVertexColor(r, g, b, 1)
             visualClone.tracer:SetSize(borderWipeThickness * 2, borderWipeThickness * 2)
             if borderWipeColor == "default" then visualClone.tracer:SetVertexColor(1, 1, 1, 1) end
+            if not isActive then visualClone.tracer:Hide() end
         end
     else
         btn.cooldown:SetAlpha(1)
@@ -4545,13 +4553,6 @@ function Wise:UpdateButtonCooldown(btn)
         visualClone.cooldown:SetHideCountdownNumbers(true)
     end
     
-    -- Safely check cooldown state
-    local isActive = false
-    local success, result = pcall(function()
-        return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
-    end)
-    if success then isActive = result end
-
     -- Clear old OnUpdate script (crucial for migration/performance)
     btn:SetScript("OnUpdate", nil)
 
