@@ -20,6 +20,7 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA.  Only use li
 ## Verification Workflow
 - **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names.
 - **Automated Tests:** Do not write custom automated tests for the addon, as executing and passing them requires the actual World of Warcraft game client to be running.
+- **tests.xml Workflow:** Every bug fix, feature, or test must add a debugging/testing procedure to `tests.xml`. Before every merge, review `tests.xml` to check if existing tests are still needed, ensuring the file stays clean and unpolluted.
 - **Syntax Validation:** The development/shell environment for this repository lacks a native Lua interpreter by default. To perform syntax validation for Lua files, install luajit (`sudo apt-get install -y luajit`) and run `luajit -bl <file>`.
 - **Unit Testing:** Unit tests that mock core APIs via monkey-patching should be excluded from `Wise.toc` and should always restore the original functions immediately after execution to prevent side effects in the production environment.
 
