@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.0.20260312] - 2026-03-12
+
+- [Feature] Enhance debug QA UI with persistent results and LLM export
+- [Feature] Add Copy To Clipboard button to debug export UI
+- [Feature] Make debug mode persistent and add tests UI
+- [Feature] Add a spec chooser for multi-spec action restrictions
+- [Feature] Add secure mouse button dispatcher for Button3/4/5 input
+- [Feature] Replace build condition with multi-picker talent visibility logic
+- [Feature] Support hexagon and octagon button mask shapes
+- [Feature] Add custom generated WOW-inspired icons for audio toggles
+- [Feature] Output audio state changes to chat and add to miscellaneous actions
+- [Fix] Replace protected CopyToClipboard with manual copy selection
+- [Fix] Ensure spec picker can open in properties panel
+- [Fix] Display keybind text properly for dynamic and animated interface buttons
+- [Fix] Stop tutorial items from remaining highlighted
+- [Fix] Fix transparent background in spell picker category dropdown
+- [Fix] Prevent Masque from overriding button styles when disabled
+- [Fix] Separate unit vs ground markers to fix marker bugs
+- [Fix] Restrict drag-and-drop on Cooldowns/Utilities and fix list highlights
+
 ## [1.0.20260310] - 2026-03-10
 
 - [Feature] Reimplement Cooldowns and Utilities Wiser Interfaces

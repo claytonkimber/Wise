@@ -1,2 +1,15 @@
 # Use manual changelog instead of auto-generated from git commits
 manual-changelog: CHANGELOG.md
+
+# Files to exclude from the final packaged .zip
+ignore:
+  - .agent/
+  - .antigravityrules
+  - .claude/
+  - .github/
+  - .gitignore
+  - .pkgmeta
+  - AGENTS.md
+  - CLAUDE.md
+  - README.md
+  - wiki/
