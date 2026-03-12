@@ -1557,9 +1557,11 @@ function Wise:RenderGroupProperties(panel, group, y)
             dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
 
             local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            lockNote:SetPoint("TOPLEFT", 10, y - 18)
+            lockNote:SetPoint("TOPLEFT", 10, y - 25)
             lockNote:SetText("Cooldown interfaces must be dynamic.")
             tinsert(panel.controls, lockNote)
+
+            y = y - 15
         end
 
         -- Logic for mutually exclusive checkboxes
@@ -1772,7 +1774,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Fixed X Checkbox
              local fixedX = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedX:SetPoint("LEFT", xSlider, "RIGHT", 10, 0)
+             fixedX:SetPoint("LEFT", xSliderPlusBtn, "RIGHT", 10, 0)
              fixedX:SetChecked(group.fixedAxis == "x")
              fixedX.text = fixedX:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
              fixedX.text:SetPoint("LEFT", fixedX, "RIGHT", 5, 0)
@@ -1836,7 +1838,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Fixed Y Checkbox
              local fixedY = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedY:SetPoint("LEFT", ySlider, "RIGHT", 10, 0)
+             fixedY:SetPoint("LEFT", ySliderPlusBtn, "RIGHT", 10, 0)
              fixedY:SetChecked(group.fixedAxis == "y")
              fixedY.text = fixedY:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
              fixedY.text:SetPoint("LEFT", fixedY, "RIGHT", 5, 0)
