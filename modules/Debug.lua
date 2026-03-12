@@ -239,17 +239,11 @@ function Wise:ExportTestResults()
         local copyBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         copyBtn:SetSize(150, 24)
         copyBtn:SetPoint("BOTTOM", f.InsetBg, "BOTTOM", 0, 10)
-        copyBtn:SetText("Copy to Clipboard")
+        copyBtn:SetText("Select All")
         copyBtn:SetScript("OnClick", function()
-            local text = editBox:GetText()
-            if CopyToClipboard then
-                CopyToClipboard(text)
-                print("|cff00ccff[Wise QA]|r Results copied to clipboard.")
-            else
-                editBox:HighlightText()
-                editBox:SetFocus()
-                print("|cff00ccff[Wise QA]|r Press Ctrl+C to copy.")
-            end
+            editBox:HighlightText()
+            editBox:SetFocus()
+            print("|cff00ccff[Wise QA]|r Press Ctrl+C to copy.")
         end)
 
         f.EditBox = editBox
