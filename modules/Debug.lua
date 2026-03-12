@@ -219,7 +219,7 @@ function Wise:ExportTestResults()
 
         local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT", f.InsetBg, "TOPLEFT", 10, -40)
-        scroll:SetPoint("BOTTOMRIGHT", f.InsetBg, "BOTTOMRIGHT", -30, 10)
+        scroll:SetPoint("BOTTOMRIGHT", f.InsetBg, "BOTTOMRIGHT", -30, 40)
 
         local editBox = CreateFrame("EditBox", nil, scroll)
         editBox:SetMultiLine(true)
@@ -233,6 +233,22 @@ function Wise:ExportTestResults()
             local vs = scroll:GetVerticalScrollRange()
             if vs > 0 then
                 scroll:SetVerticalScroll(vs)
+            end
+        end)
+
+        local copyBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        copyBtn:SetSize(150, 24)
+        copyBtn:SetPoint("BOTTOM", f.InsetBg, "BOTTOM", 0, 10)
+        copyBtn:SetText("Copy to Clipboard")
+        copyBtn:SetScript("OnClick", function()
+            local text = editBox:GetText()
+            if CopyToClipboard then
+                CopyToClipboard(text)
+                print("|cff00ccff[Wise QA]|r Results copied to clipboard.")
+            else
+                editBox:HighlightText()
+                editBox:SetFocus()
+                print("|cff00ccff[Wise QA]|r Press Ctrl+C to copy.")
             end
         end)
 
