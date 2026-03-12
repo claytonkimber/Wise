@@ -229,11 +229,13 @@ function Wise:RefreshPropertiesPanel()
     panel.controls = panel.controls or {}
 
     -- Embedded picker mode: show picker in the right panel
-    if Wise.pickingAction or Wise.pickingTalents then
+    if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs then
         if Wise.pickingAction then
             Wise.OptionsFrame.Right.Title:SetText("Choose Action")
-        else
+        elseif Wise.pickingTalents then
             Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
+        else
+            Wise.OptionsFrame.Right.Title:SetText("Choose Specs")
         end
 
         -- Hide the main scroll frame
@@ -262,6 +264,8 @@ function Wise:RefreshPropertiesPanel()
             Wise:CreateEmbeddedPicker(Wise.OptionsFrame.Right.PickerHost)
         elseif Wise.pickingTalents then
             Wise:CreateEmbeddedTalentPicker(Wise.OptionsFrame.Right.PickerHost, Wise.pickingTalentsAction)
+        elseif Wise.pickingSpecs then
+            Wise:CreateEmbeddedSpecPicker(Wise.OptionsFrame.Right.PickerHost, Wise.pickingSpecsAction)
         end
         return
     else
@@ -727,10 +731,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             elseif catValue == "class" then
                  suffix = action.addedByClass
             elseif catValue == "spec" then
-                 if action.addedBySpec then
-                     local _, specName = GetSpecializationInfoByID(action.addedBySpec)
-                     suffix = specName
-                 end
+                 suffix = action.specRequirements
             elseif catValue == "talent" then
                 suffix = action.talentRequirements
             elseif catValue == "character" then
@@ -746,10 +747,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             elseif catValue == "class" then
                 suffix = select(2, UnitClass("player"))
             elseif catValue == "spec" then
-                local specIdx = GetSpecialization()
-                if specIdx then
-                    suffix = select(2, GetSpecializationInfo(specIdx))
-                end
+                suffix = {} -- Initialize as empty table so the 0 Specs logic triggers
             elseif catValue == "talent" then
                 suffix = {} -- Initialize as empty table so the 0 Talents logic triggers if they haven't picked anything yet
             elseif catValue == "character" then
@@ -758,28 +756,43 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         end
 
         if suffix and suffix ~= "" then
-            -- For talent, suffix might be a table (if existing logic left it there), so just handle it nicely
+            -- For talent/spec, suffix might be a table, so just handle it nicely
             if type(suffix) == "table" then
                 local numReqs = #suffix
                 if numReqs > 0 then
-                    local talentNames = {}
-                    for _, spellID in ipairs(suffix) do
-                        local spellInfo = C_Spell.GetSpellInfo(spellID)
-                        if spellInfo and spellInfo.name then
-                            table.insert(talentNames, spellInfo.name)
-                        else
-                            table.insert(talentNames, tostring(spellID))
+                    local itemNames = {}
+                    for _, reqID in ipairs(suffix) do
+                        if catValue == "talent" then
+                            local spellInfo = C_Spell.GetSpellInfo(reqID)
+                            if spellInfo and spellInfo.name then
+                                table.insert(itemNames, spellInfo.name)
+                            else
+                                table.insert(itemNames, tostring(reqID))
+                            end
+                        elseif catValue == "spec" then
+                            local _, specName = GetSpecializationInfoByID(reqID)
+                            if specName then
+                                table.insert(itemNames, specName)
+                            else
+                                table.insert(itemNames, tostring(reqID))
+                            end
                         end
                     end
-                    labelText = labelText .. " |cffff8800(" .. table.concat(talentNames, ", ") .. ")|r"
+                    labelText = labelText .. " |cffff8800(" .. table.concat(itemNames, ", ") .. ")|r"
                 else
-                    labelText = labelText .. " |cffff8800(0 Talents)|r"
+                    if catValue == "talent" then
+                        labelText = labelText .. " |cffff8800(0 Talents)|r"
+                    elseif catValue == "spec" then
+                        labelText = labelText .. " |cffff8800(0 Specs)|r"
+                    end
                 end
             else
                 labelText = labelText .. " |cffff8800(" .. tostring(suffix) .. ")|r"
             end
         elseif catValue == "talent" and type(suffix) == "table" and #suffix == 0 then
             labelText = labelText .. " |cffff8800(0 Talents)|r"
+        elseif catValue == "spec" and type(suffix) == "table" and #suffix == 0 then
+            labelText = labelText .. " |cffff8800(0 Specs)|r"
         end
         radio.text:SetText(labelText)
 
@@ -796,6 +809,14 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             -- If user switches back to talent, make sure we initialize it
             if catValue == "talent" and type(action.talentRequirements) ~= "table" then
                 action.talentRequirements = {}
+            end
+
+            -- If user switches to spec, make sure we initialize it
+            if catValue == "spec" and type(action.specRequirements) ~= "table" then
+                action.specRequirements = {}
+                if action.addedBySpec then
+                    table.insert(action.specRequirements, action.addedBySpec)
+                end
             end
 
             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
@@ -822,6 +843,21 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                 Wise:RefreshPropertiesPanel()
             end)
             tinsert(panel.controls, talentBtn)
+            y = y - 25
+        end
+
+        -- If spec is selected, show "Select Specs" button
+        if catValue == "spec" and currentCat == "spec" then
+            local specBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+            specBtn:SetSize(120, 22)
+            specBtn:SetPoint("TOPLEFT", 30, y)
+            specBtn:SetText("Select Specs")
+            specBtn:SetScript("OnClick", function()
+                Wise.pickingSpecs = true
+                Wise.pickingSpecsAction = action
+                Wise:RefreshPropertiesPanel()
+            end)
+            tinsert(panel.controls, specBtn)
             y = y - 25
         end
     end
@@ -3947,6 +3983,163 @@ function Wise:RenderGroupProperties(panel, group, y)
     end
 
     return y
+end
+
+function Wise:CreateEmbeddedSpecPicker(parent, action)
+    local ep = Wise.EmbeddedSpecPicker
+
+    if ep and ep.parent == parent then
+        ep.CancelBtn:Show()
+        ep.titleLabel:Show()
+        ep.descLabel:Show()
+        ep.Scroll:Show()
+    else
+        -- Build new picker UI into parent
+        ep = {}
+        Wise.EmbeddedSpecPicker = ep
+        ep.parent = parent
+
+        -- Cancel / Back button
+        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+        ep.CancelBtn:SetSize(80, 22)
+        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+        ep.CancelBtn:SetText("< Back")
+        ep.CancelBtn:SetScript("OnClick", function()
+            Wise.pickingSpecs = false
+            Wise.pickingSpecsAction = nil
+            Wise:RefreshPropertiesPanel()
+
+            -- Update display
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+
+        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+        ep.titleLabel:SetText("Select Required Specs")
+
+        -- Description
+        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+        ep.descLabel:SetJustifyH("LEFT")
+        ep.descLabel:SetText("Action will only be visible if ANY selected spec is active.")
+
+        -- ScrollFrame
+        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+
+        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+        ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
+        ep.Scroll:SetScrollChild(ep.Content)
+
+        ep.buttons = {}
+    end
+
+    tinsert(parent.controls, ep.CancelBtn)
+    tinsert(parent.controls, ep.titleLabel)
+    tinsert(parent.controls, ep.descLabel)
+    tinsert(parent.controls, ep.Scroll)
+
+    for _, btn in pairs(ep.buttons) do
+        btn:Hide()
+    end
+
+    -- Collect Specs
+    local items = {}
+
+    local numSpecs = GetNumSpecializations()
+    for i = 1, numSpecs do
+        local id, name, _, icon = GetSpecializationInfo(i)
+        if id then
+            table.insert(items, {
+                specID = id,
+                name = name,
+                icon = icon
+            })
+        end
+    end
+
+    -- Ensure specRequirements is a table
+    if type(action.specRequirements) ~= "table" then
+        action.specRequirements = {}
+        if action.addedBySpec then
+            table.insert(action.specRequirements, action.addedBySpec)
+        end
+    end
+
+    local selectedMap = {}
+    for _, id in ipairs(action.specRequirements) do
+        selectedMap[id] = true
+    end
+
+    local y = 0
+    local btnWidth = ep.Content:GetWidth() - 10
+    if btnWidth < 100 then btnWidth = 200 end
+
+    for i, data in ipairs(items) do
+        local btn = ep.buttons[i]
+        if not btn then
+            btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
+
+            -- Checkbox
+            local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+            chk:SetSize(24, 24)
+            chk:SetPoint("LEFT", 0, 0)
+            btn.chk = chk
+
+            -- Icon
+            local icon = btn:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(20, 20)
+            icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
+            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            btn.icon = icon
+
+            -- Name
+            local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+            nameLabel:SetPoint("RIGHT", 0, 0)
+            nameLabel:SetJustifyH("LEFT")
+            btn.nameLabel = nameLabel
+
+            -- Make row clickable to toggle checkbox
+            btn:SetScript("OnClick", function(self)
+                self.chk:SetChecked(not self.chk:GetChecked())
+                self.chk:GetScript("OnClick")(self.chk)
+            end)
+
+            table.insert(ep.buttons, btn)
+        end
+
+        btn:SetSize(btnWidth, 24)
+        btn:SetPoint("TOPLEFT", 4, y)
+        btn:Show()
+
+        btn.icon:SetTexture(data.icon)
+        btn.nameLabel:SetText(data.name)
+        btn.chk:SetChecked(selectedMap[data.specID] or false)
+
+        btn.chk:SetScript("OnClick", function(self)
+            local isChecked = self:GetChecked()
+            selectedMap[data.specID] = isChecked
+
+            -- Rebuild specRequirements
+            action.specRequirements = {}
+            for id, selected in pairs(selectedMap) do
+                if selected then
+                    table.insert(action.specRequirements, id)
+                end
+            end
+        end)
+
+        y = y - 24
+    end
+
+    ep.Content:SetHeight(math.abs(y))
 end
 
 function Wise:CreateEmbeddedTalentPicker(parent, action)

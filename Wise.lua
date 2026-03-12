@@ -169,9 +169,19 @@ function Wise:IsActionAllowed(action)
         if not checkClass then return true end
         return checkClass == self.characterInfo.class
     elseif category == "spec" then
-        local checkSpec = action.addedBySpec or action.specRestriction
-        if not checkSpec then return true end
-        return checkSpec == self.characterInfo.specID
+        if type(action.specRequirements) == "table" then
+            if #action.specRequirements == 0 then return true end
+            for _, reqSpec in ipairs(action.specRequirements) do
+                if reqSpec == self.characterInfo.specID then
+                    return true
+                end
+            end
+            return false
+        else
+            local checkSpec = action.addedBySpec or action.specRestriction
+            if not checkSpec then return true end
+            return checkSpec == self.characterInfo.specID
+        end
     elseif category == "talent" or category == "build" then
         local reqs = action.talentRequirements
         if not reqs then return true end

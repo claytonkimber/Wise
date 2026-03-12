@@ -3402,7 +3402,23 @@ function Wise:RefreshActionsView(container)
                      local targetClass = action.addedByClass or select(2, UnitClass("player"))
                      suffixText = targetClass or "Class"
                  elseif cat == "spec" then
-                     if action.addedBySpec then
+                     if type(action.specRequirements) == "table" then
+                         local numReqs = #action.specRequirements
+                         if numReqs > 0 then
+                             local specNames = {}
+                             for _, specID in ipairs(action.specRequirements) do
+                                 local _, specName = GetSpecializationInfoByID(specID)
+                                 if specName then
+                                     table.insert(specNames, specName)
+                                 else
+                                     table.insert(specNames, tostring(specID))
+                                 end
+                             end
+                             suffixText = table.concat(specNames, ", ")
+                         else
+                             suffixText = "0 Specs"
+                         end
+                     elseif action.addedBySpec then
                          local _, specName = GetSpecializationInfoByID(action.addedBySpec)
                          suffixText = specName or "Spec"
                      end
