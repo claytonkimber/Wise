@@ -391,10 +391,15 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 
                     local progress = 0
                     local elapsedCD = duration - rem
+
                     if info.tracerMode == "absolute" then
                         progress = (elapsedCD % 60) / 60
-                    else -- relative
+                    else
                         progress = elapsedCD / duration
+                    end
+
+                    if info.tracerMode == "reverse" then
+                        progress = 1.0 - progress
                     end
 
                     -- progress 0 to 1 (clockwise starting at 12 o'clock)
@@ -3008,23 +3013,28 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         
         Wise:ApplyIconStyle(btn, iconStyle)
 
-        if cooldownStyle == "border" then
+        local isBorderOrTracerLine = (cooldownStyle == "border" or (cooldownStyle == "tracer" and (tracerMode == "persistent" or tracerMode == "reverse")))
+
+        if isBorderOrTracerLine then
             btn.innerIcon:SetPoint("TOPLEFT", btn.icon, "TOPLEFT", borderWipeThickness, -borderWipeThickness)
             btn.innerIcon:SetPoint("BOTTOMRIGHT", btn.icon, "BOTTOMRIGHT", -borderWipeThickness, borderWipeThickness)
             btn.innerIcon:Show()
             -- Elevate innerIcon frame level so it sits above cooldown
-            -- Since innerIcon is a texture, we must adjust the cooldown's draw layer
-            -- Wait, cooldown is a frame. Textures on a frame are drawn below child frames.
-            -- To have innerIcon above cooldown, innerIcon MUST be on a frame that is above cooldown.
-            -- Or we can set cooldown to a lower frame level.
             if not btn.innerIconFrame then
                 btn.innerIconFrame = CreateFrame("Frame", nil, btn)
                 btn.innerIconFrame:SetAllPoints(btn)
                 btn.innerIcon:SetParent(btn.innerIconFrame)
             end
             btn.innerIconFrame:SetFrameLevel(btn.cooldown:GetFrameLevel() + 1)
+            -- Elevate text over the inner icon
+            if btn.count then btn.count:SetParent(btn.innerIconFrame) end
+            if btn.keybind then btn.keybind:SetParent(btn.innerIconFrame) end
+            if btn.customText then btn.customText:SetParent(btn.innerIconFrame) end
         else
             btn.innerIcon:Hide()
+            if btn.count then btn.count:SetParent(btn) end
+            if btn.keybind then btn.keybind:SetParent(btn) end
+            if btn.customText then btn.customText:SetParent(btn) end
         end
 
         -- Store action info for cooldown tracking
@@ -3249,7 +3259,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
              Wise:ApplyIconStyle(vBtn, visualIconStyle)
 
-             if vCooldownStyle == "border" then
+             local vIsBorderOrTracerLine = (vCooldownStyle == "border" or (vCooldownStyle == "tracer" and (tracerMode == "persistent" or tracerMode == "reverse")))
+             if vIsBorderOrTracerLine then
                  vBtn.innerIcon:SetPoint("TOPLEFT", vBtn.icon, "TOPLEFT", vBorderWipeThickness, -vBorderWipeThickness)
                  vBtn.innerIcon:SetPoint("BOTTOMRIGHT", vBtn.icon, "BOTTOMRIGHT", -vBorderWipeThickness, vBorderWipeThickness)
                  vBtn.innerIcon:Show()
@@ -3259,8 +3270,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                      vBtn.innerIcon:SetParent(vBtn.innerIconFrame)
                  end
                  vBtn.innerIconFrame:SetFrameLevel(vBtn.cooldown:GetFrameLevel() + 1)
+                 if vBtn.count then vBtn.count:SetParent(vBtn.innerIconFrame) end
+                 if vBtn.keybind then vBtn.keybind:SetParent(vBtn.innerIconFrame) end
+                 if vBtn.customText then vBtn.customText:SetParent(vBtn.innerIconFrame) end
              else
                  vBtn.innerIcon:Hide()
+                 if vBtn.count then vBtn.count:SetParent(vBtn) end
+                 if vBtn.keybind then vBtn.keybind:SetParent(vBtn) end
+                 if vBtn.customText then vBtn.customText:SetParent(vBtn) end
              end
 
              -- Link to real button for cooldown sync
@@ -4508,8 +4525,27 @@ function Wise:UpdateButtonCooldown(btn)
     if success then isActive = result end
 
     if cooldownStyle == "tracer" then
-        btn.cooldown:SetAlpha(0)
-        if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(0) end
+        local isLineTracer = (tracerMode == "persistent" or tracerMode == "reverse")
+        if isLineTracer then
+            btn.cooldown:SetDrawSwipe(true)
+            btn.cooldown:SetDrawEdge(true)
+            btn.cooldown:SetReverse(tracerMode == "reverse")
+            if visualClone and visualClone.cooldown then
+                visualClone.cooldown:SetDrawSwipe(true)
+                visualClone.cooldown:SetDrawEdge(true)
+                visualClone.cooldown:SetReverse(tracerMode == "reverse")
+            end
+        else
+            btn.cooldown:SetDrawSwipe(false)
+            btn.cooldown:SetDrawEdge(false)
+            if visualClone and visualClone.cooldown then
+                visualClone.cooldown:SetDrawSwipe(false)
+                visualClone.cooldown:SetDrawEdge(false)
+            end
+        end
+
+        btn.cooldown:SetAlpha(1) -- Need alpha 1 for text
+        if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(1) end
 
         local r, g, b = GetBorderColor(borderWipeColor)
         if btn.tracer then
@@ -4524,11 +4560,66 @@ function Wise:UpdateButtonCooldown(btn)
             if borderWipeColor == "default" then visualClone.tracer:SetVertexColor(1, 1, 1, 1) end
             if not isActive then visualClone.tracer:Hide() end
         end
-    else
-        btn.cooldown:SetAlpha(1)
-        if visualClone and visualClone.cooldown then visualClone.cooldown:SetAlpha(1) end
+
+        if not isActive and tracerMode == "persistent" then
+             -- Persistent mode: solid border when not on cooldown
+             -- We can achieve this by setting a fake cooldown that is "full" but paused,
+             -- or by using a border texture. However, the innerIcon + base icon trick
+             -- doesn't naturally color the base icon when off cooldown (cooldown swipe does that).
+             -- To draw a solid line, we color the cooldown swipe and force it to be 100% full.
+             -- Cooldown frame doesn't have a "SetFull" method, but we can set start=GetTime() and duration=999999
+             -- and pause it? No, just set start=0, duration=0, but that hides the swipe.
+             -- We will add a solid color layer if it's off cooldown.
+             if not btn.persistentBorder then
+                 btn.persistentBorder = btn:CreateTexture(nil, "BACKGROUND")
+                 btn.persistentBorder:SetAllPoints(btn.icon)
+                 btn.persistentBorder:SetColorTexture(r, g, b, 1)
+             end
+             btn.persistentBorder:SetColorTexture(r, g, b, 1)
+             if borderWipeColor == "default" then btn.persistentBorder:SetColorTexture(0, 0, 0, 0.8) end
+             btn.persistentBorder:Show()
+
+             if visualClone then
+                 if not visualClone.persistentBorder then
+                     visualClone.persistentBorder = visualClone:CreateTexture(nil, "BACKGROUND")
+                     visualClone.persistentBorder:SetAllPoints(visualClone.icon)
+                 end
+                 visualClone.persistentBorder:SetColorTexture(r, g, b, 1)
+                 if borderWipeColor == "default" then visualClone.persistentBorder:SetColorTexture(0, 0, 0, 0.8) end
+                 visualClone.persistentBorder:Show()
+             end
+        else
+             if btn.persistentBorder then btn.persistentBorder:Hide() end
+             if visualClone and visualClone.persistentBorder then visualClone.persistentBorder:Hide() end
+        end
+    elseif cooldownStyle == "none" then
+        btn.cooldown:SetDrawSwipe(false)
+        btn.cooldown:SetDrawEdge(false)
+        btn.cooldown:SetAlpha(1) -- Need alpha 1 for text
+        if visualClone and visualClone.cooldown then
+            visualClone.cooldown:SetDrawSwipe(false)
+            visualClone.cooldown:SetDrawEdge(false)
+            visualClone.cooldown:SetAlpha(1)
+        end
         if btn.tracer then btn.tracer:Hide() end
         if visualClone and visualClone.tracer then visualClone.tracer:Hide() end
+        if btn.persistentBorder then btn.persistentBorder:Hide() end
+        if visualClone and visualClone.persistentBorder then visualClone.persistentBorder:Hide() end
+    else
+        btn.cooldown:SetDrawSwipe(true)
+        btn.cooldown:SetDrawEdge(true)
+        if btn.cooldown.SetReverse then btn.cooldown:SetReverse(false) end
+        btn.cooldown:SetAlpha(1)
+        if visualClone and visualClone.cooldown then
+            visualClone.cooldown:SetDrawSwipe(true)
+            visualClone.cooldown:SetDrawEdge(true)
+            if visualClone.cooldown.SetReverse then visualClone.cooldown:SetReverse(false) end
+            visualClone.cooldown:SetAlpha(1)
+        end
+        if btn.tracer then btn.tracer:Hide() end
+        if visualClone and visualClone.tracer then visualClone.tracer:Hide() end
+        if btn.persistentBorder then btn.persistentBorder:Hide() end
+        if visualClone and visualClone.persistentBorder then visualClone.persistentBorder:Hide() end
     end
 
     btn.cooldown:SetCooldown(start, duration)
@@ -4803,6 +4894,7 @@ function Wise:UpdateButtonUsability(btn)
             btn.innerIcon:SetVertexColor(1, 1, 1)
             btn.innerIcon:SetAlpha(1)
         end
+        if btn.tracer then btn.tracer:SetAlpha(1) end
         if vIcon then
             vIcon:SetDesaturated(false)
             vIcon:SetVertexColor(1, 1, 1)
@@ -4812,6 +4904,7 @@ function Wise:UpdateButtonUsability(btn)
                 visualClone.innerIcon:SetVertexColor(1, 1, 1)
                 visualClone.innerIcon:SetAlpha(1)
             end
+            if visualClone.tracer then visualClone.tracer:SetAlpha(1) end
         end
     elseif noMana then
         -- Blue tint for OOM
@@ -4823,6 +4916,7 @@ function Wise:UpdateButtonUsability(btn)
             btn.innerIcon:SetVertexColor(0.5, 0.5, 1.0)
             btn.innerIcon:SetAlpha(1)
         end
+        if btn.tracer then btn.tracer:SetAlpha(1) end
         if vIcon then
             vIcon:SetDesaturated(false)
             vIcon:SetVertexColor(0.5, 0.5, 1.0)
@@ -4832,10 +4926,12 @@ function Wise:UpdateButtonUsability(btn)
                 visualClone.innerIcon:SetVertexColor(0.5, 0.5, 1.0)
                 visualClone.innerIcon:SetAlpha(1)
             end
+            if visualClone.tracer then visualClone.tracer:SetAlpha(1) end
         end
     else
         btn.icon:SetAlpha(0.3) -- Lower alpha to make it harder to see
         if btn.innerIcon then btn.innerIcon:SetAlpha(0.3) end
+        if btn.tracer then btn.tracer:SetAlpha(0.3) end
         if vIcon then
             vIcon:SetDesaturated(true)
             vIcon:SetVertexColor(1, 1, 1)
@@ -4845,6 +4941,7 @@ function Wise:UpdateButtonUsability(btn)
                 visualClone.innerIcon:SetVertexColor(1, 1, 1)
                 visualClone.innerIcon:SetAlpha(0.3)
             end
+            if visualClone.tracer then visualClone.tracer:SetAlpha(0.3) end
         end
     end
 

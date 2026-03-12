@@ -2759,7 +2759,9 @@ function Wise:RenderGroupProperties(panel, group, y)
         if currentWipeStyle == "tracer" then
             local tModes = {
                 {val="relative", text="Relative", tooltip="The tracer completes exactly 1 lap over the full duration of the cooldown."},
-                {val="absolute", text="Absolute", tooltip="The tracer moves at a constant speed of 1 lap per 60 seconds (1 minute = 1 full rotation)."}
+                {val="absolute", text="Absolute", tooltip="The tracer moves at a constant speed of 1 lap per 60 seconds (1 minute = 1 full rotation)."},
+                {val="persistent", text="Persistent", tooltip="A solid line that tracks the cooldown along the perimeter. When available, a solid colored box remains."},
+                {val="reverse", text="Reverse", tooltip="A solid line that tracks the cooldown backwards along the perimeter. When available, the box disappears."}
             }
 
             local currentTMode = group.tracerMode
@@ -2771,7 +2773,8 @@ function Wise:RenderGroupProperties(panel, group, y)
             for i, tMode in ipairs(tModes) do
                 local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
                 local col = (i-1) % 2
-                radio:SetPoint("TOPLEFT", 10 + (col * 80), y)
+                local row = math.floor((i-1) / 2)
+                radio:SetPoint("TOPLEFT", 10 + (col * 80), y - (row * 25))
                 radio:SetChecked(currentTMode == tMode.val)
                 radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
@@ -2802,88 +2805,91 @@ function Wise:RenderGroupProperties(panel, group, y)
                 tinsert(panel.controls, radio)
                 tinsert(panel.controls, radio.text)
             end
-            y = y - 30
+            y = y - (math.ceil(#tModes/2) * 25) - 5
         end
 
-        -- Border Thickness
-        local borderThickLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        borderThickLabel:SetPoint("TOPLEFT", 10, y)
-        borderThickLabel:SetText("Border Thickness:" .. (group.borderWipeThickness and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, borderThickLabel)
-        y = y - 20
+        if currentWipeStyle == "border" or currentWipeStyle == "tracer" then
+            -- Border Thickness
+            local borderThickLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            borderThickLabel:SetPoint("TOPLEFT", 10, y)
+            borderThickLabel:SetText("Border Thickness:" .. (group.borderWipeThickness and " |cffff8800(Custom)|r" or ""))
+            tinsert(panel.controls, borderThickLabel)
+            y = y - 20
 
-        local thickSlider = CreateFrame("Slider", "WiseBorderThickSlider_Group", panel, "OptionsSliderTemplate")
-        thickSlider:SetPoint("TOPLEFT", 10, y - 5)
-        thickSlider:SetWidth(140)
-        thickSlider:SetMinMaxValues(1, 20)
-        thickSlider:SetValueStep(1)
-        thickSlider:SetObeyStepOnDrag(true)
+            local thickSlider = CreateFrame("Slider", "WiseBorderThickSlider_Group", panel, "OptionsSliderTemplate")
+            thickSlider:SetPoint("TOPLEFT", 10, y - 5)
+            thickSlider:SetWidth(140)
+            thickSlider:SetMinMaxValues(1, 3)
+            thickSlider:SetValueStep(1)
+            thickSlider:SetObeyStepOnDrag(true)
 
-        local currentThick = group.borderWipeThickness or WiseDB.settings.borderWipeThickness or 2
-        thickSlider:SetValue(currentThick)
+            local currentThick = group.borderWipeThickness or WiseDB.settings.borderWipeThickness or 2
+            if currentThick > 3 then currentThick = 3 end
+            thickSlider:SetValue(currentThick)
 
-        _G[thickSlider:GetName() .. "Low"]:SetText("1")
-        _G[thickSlider:GetName() .. "High"]:SetText("20")
-        _G[thickSlider:GetName() .. "Text"]:SetText(tostring(currentThick) .. "px")
+            _G[thickSlider:GetName() .. "Low"]:SetText("Thin")
+            _G[thickSlider:GetName() .. "High"]:SetText("Thick")
+            _G[thickSlider:GetName() .. "Text"]:SetText(tostring(currentThick) .. "px")
 
-        thickSlider:SetScript("OnValueChanged", function(self, value)
-            local val = math.floor(value + 0.5)
-            group.borderWipeThickness = val
-            _G[self:GetName() .. "Text"]:SetText(tostring(val) .. "px")
-            UpdateDisplayStatus()
-            C_Timer.After(0.1, function()
-                if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-            end)
-        end)
-        tinsert(panel.controls, thickSlider)
-        y = y - 40
-
-        -- Border Color
-        local borderColorLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        borderColorLabel:SetPoint("TOPLEFT", 10, y)
-        borderColorLabel:SetText("Border Color:" .. (group.borderWipeColor and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, borderColorLabel)
-        y = y - 20
-
-        local colors = {
-            {val="default", text="Default/Dark"},
-            {val="class", text="Class Color"},
-            {val="red", text="Red"},
-            {val="gold", text="Gold"}
-        }
-
-        local currentColor = group.borderWipeColor
-        if not currentColor then
-            currentColor = WiseDB.settings.borderWipeColor or "default"
-        end
-
-        local colorRadioGroup = {}
-        for i, mode in ipairs(colors) do
-            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-            local col = (i-1) % 2
-            local row = math.floor((i-1) / 2)
-            radio:SetPoint("TOPLEFT", 10 + (col * 100), y - (row * 25))
-            radio:SetChecked(currentColor == mode.val)
-            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
-            radio.text:SetText(mode.text)
-
-            radio:SetScript("OnClick", function(self)
-                group.borderWipeColor = mode.val
-                for _, other in ipairs(colorRadioGroup) do
-                    if other ~= self then other:SetChecked(false) end
-                end
+            thickSlider:SetScript("OnValueChanged", function(self, value)
+                local val = math.floor(value + 0.5)
+                group.borderWipeThickness = val
+                _G[self:GetName() .. "Text"]:SetText(tostring(val) .. "px")
                 UpdateDisplayStatus()
-                Wise:RefreshPropertiesPanel()
                 C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+                    if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
                 end)
             end)
-            table.insert(colorRadioGroup, radio)
-            tinsert(panel.controls, radio)
-            tinsert(panel.controls, radio.text)
+            tinsert(panel.controls, thickSlider)
+            y = y - 40
+
+            -- Border Color
+            local borderColorLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            borderColorLabel:SetPoint("TOPLEFT", 10, y)
+            borderColorLabel:SetText("Border Color:" .. (group.borderWipeColor and " |cffff8800(Custom)|r" or ""))
+            tinsert(panel.controls, borderColorLabel)
+            y = y - 20
+
+            local colors = {
+                {val="default", text="Default/Dark"},
+                {val="class", text="Class Color"},
+                {val="red", text="Red"},
+                {val="gold", text="Gold"}
+            }
+
+            local currentColor = group.borderWipeColor
+            if not currentColor then
+                currentColor = WiseDB.settings.borderWipeColor or "default"
+            end
+
+            local colorRadioGroup = {}
+            for i, mode in ipairs(colors) do
+                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+                local col = (i-1) % 2
+                local row = math.floor((i-1) / 2)
+                radio:SetPoint("TOPLEFT", 10 + (col * 100), y - (row * 25))
+                radio:SetChecked(currentColor == mode.val)
+                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+                radio.text:SetText(mode.text)
+
+                radio:SetScript("OnClick", function(self)
+                    group.borderWipeColor = mode.val
+                    for _, other in ipairs(colorRadioGroup) do
+                        if other ~= self then other:SetChecked(false) end
+                    end
+                    UpdateDisplayStatus()
+                    Wise:RefreshPropertiesPanel()
+                    C_Timer.After(0.1, function()
+                        if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+                    end)
+                end)
+                table.insert(colorRadioGroup, radio)
+                tinsert(panel.controls, radio)
+                tinsert(panel.controls, radio.text)
+            end
+            y = y - (math.ceil(#colors/2) * 25) - 10
         end
-        y = y - (math.ceil(#colors/2) * 25) - 10
 
         -- Reset to Global Settings Button
         resetGlobalBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
