@@ -1297,6 +1297,49 @@ function Wise:UpdateBlizzardUI()
     Wise.pendingBlizzardUIUpdate = false
 end
 
+-- HelpTip Hooking for Micro Menu Replacements
+if HelpTip and HelpTip.Show then
+    hooksecurefunc(HelpTip, "Show", function(self, parent, info, relativeRegion)
+        if not WiseDB or not WiseDB.settings or not WiseDB.settings.blizzardUI then return end
+
+        local target = relativeRegion or parent
+        local targetName
+        if type(target) == "table" and target.GetName then
+            targetName = target:GetName()
+        elseif type(target) == "string" then
+            targetName = target
+        end
+
+        -- Check if it's the hero talents HelpTip trying to attach to the default spellbook micro button
+        if targetName == "PlayerSpellsMicroButton" then
+            if WiseDB.settings.blizzardUI.hideMicroMenu then
+                local menuBar = Wise.frames and Wise.frames["Menu Bar"]
+                if menuBar and menuBar:IsShown() and menuBar.buttons then
+                    local talentsBtn
+                    for _, btn in ipairs(menuBar.buttons) do
+                        local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+                        if meta and meta.actionType == "uipanel" and meta.actionValue == "talents" then
+                            talentsBtn = btn
+                            break
+                        end
+                    end
+
+                    if talentsBtn and self.framePool and self.framePool.activeObjects then
+                        -- Find the HelpTip frame that was just spawned
+                        for frame, _ in pairs(self.framePool.activeObjects) do
+                            if frame.info == info then
+                                frame:ClearAllPoints()
+                                frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- Slash Command Handler
 SLASH_WISE1 = "/wise"
 SlashCmdList["WISE"] = function(msg)
