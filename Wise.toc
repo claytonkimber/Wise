@@ -46,6 +46,7 @@ modules\Info.lua
 modules\Minimap.lua
 modules\Demo.lua
 modules\BugReport.lua
+modules\AddonVisibility.lua
 
 # Wiser
 wiser\Cooldowns.lua

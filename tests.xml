@@ -32,4 +32,13 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_4" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Addon Visibility Hooking" type="string"/>
+            <KeyValue key="instructions" value="Verify that Addon Visibility successfully hooks frames.\n1. Type /av inspect [part of frame name] to find a frame.\n2. Add it to AddonMap in AddonVisibility.lua.\n3. Reload UI and type /av list to see if hooking was successful." type="string"/>
+            <KeyValue key="action" value="Wise.AddonVisibility:ListHooks()" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
 </Ui>
