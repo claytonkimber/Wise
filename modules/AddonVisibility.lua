@@ -19,24 +19,13 @@ local EnumerateFrames = EnumerateFrames
 Wise.AddonVisibility = {}
 local AddonVisibility = Wise.AddonVisibility
 
--- ============================================================================
--- Configuration / Mapping
--- ============================================================================
--- How to add new addons:
--- [1] Find the addon's exact folder name (e.g., "Details").
--- [2] Identify the "Parent" frame you want to link visibility to.
--- [3] Identify the "Child" frame you want to hide/show automatically.
--- [4] Add a new entry to the AddonMap table below.
-local AddonMap = {
-    -- Example entry:
-    -- ["AddonFolderName"] = {
-    --     parentFrameName = "SomeParentFrameName",
-    --     childFrameName = "SomeChildFrameName"
-    -- },
-}
-
 -- Tracking table for status reporting
 local HookStatus = {}
+
+local function EnsureData()
+    if not WiseDB then return end
+    WiseDB.addonVisibilityMap = WiseDB.addonVisibilityMap or {}
+end
 
 -- ============================================================================
 -- Core Hooking Logic
@@ -124,7 +113,8 @@ local function AttemptHook(addon, config)
 end
 
 local function ProcessAddon(addon)
-    local config = AddonMap[addon]
+    EnsureData()
+    local config = WiseDB.addonVisibilityMap[addon]
     if config then
         -- Small delay to let internal frames initialize
         C_Timer.After(0.1, function()
@@ -141,17 +131,30 @@ local EventFrame = CreateFrame("Frame")
 EventFrame:RegisterEvent("ADDON_LOADED")
 EventFrame:SetScript("OnEvent", function(self, event, addon)
     if event == "ADDON_LOADED" then
-        if AddonMap[addon] then
+        EnsureData()
+        if WiseDB.addonVisibilityMap[addon] then
              ProcessAddon(addon)
         end
     end
 end)
 
 function AddonVisibility:Initialize()
+    EnsureData()
     -- Immediate check for already loaded addons
-    for addon, config in pairs(AddonMap) do
+    for addon, config in pairs(WiseDB.addonVisibilityMap) do
         if C_AddOns.IsAddOnLoaded(addon) then
             ProcessAddon(addon)
+        else
+            HookStatus[addon] = "Pending (Not Loaded)"
+        end
+    end
+end
+
+function AddonVisibility:ProcessAll()
+    EnsureData()
+    for addon, config in pairs(WiseDB.addonVisibilityMap) do
+        if C_AddOns.IsAddOnLoaded(addon) then
+            AttemptHook(addon, config)
         else
             HookStatus[addon] = "Pending (Not Loaded)"
         end
@@ -163,15 +166,16 @@ end
 -- ============================================================================
 
 function AddonVisibility:ListHooks()
+    EnsureData()
     print("|cff00ccff[Wise: AddonVisibility]|r Status Report:")
     local count = 0
-    for addon, config in pairs(AddonMap) do
+    for addon, config in pairs(WiseDB.addonVisibilityMap) do
         local status = HookStatus[addon] or "Unknown"
         print(string.format("- %s: %s", addon, status))
         count = count + 1
     end
     if count == 0 then
-        print("  No addons configured in AddonMap.")
+        print("  No addons configured in AddonVisibility.")
     end
 end
 

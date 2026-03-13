@@ -350,6 +350,178 @@ function Wise:RefreshPropertiesPanel()
         return
     end
 
+    -- Special case: Addon Visibility Tool
+    if Wise.selectedGroup == "Addon Visibility" then
+        Wise.OptionsFrame.Right.Title:SetText("Addon Visibility")
+        local y = -30
+
+        local intro = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        intro:SetPoint("TOPLEFT", 10, y)
+        intro:SetWidth(240)
+        intro:SetJustifyH("LEFT")
+        intro:SetText("Sync child frame visibility to a parent frame. (e.g. Details Row -> Details Base)")
+        tinsert(panel.controls, intro)
+        y = y - 45
+
+        -- Header: Existing Mappings
+        local mapLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        mapLabel:SetPoint("TOPLEFT", 10, y)
+        mapLabel:SetText("Current Mappings:")
+        tinsert(panel.controls, mapLabel)
+        y = y - 20
+
+        if WiseDB.addonVisibilityMap then
+            for addonName, config in pairs(WiseDB.addonVisibilityMap) do
+                local rowBg = panel:CreateTexture(nil, "BACKGROUND")
+                rowBg:SetColorTexture(1, 1, 1, 0.05)
+                rowBg:SetPoint("TOPLEFT", 10, y)
+                rowBg:SetSize(250, 36)
+                tinsert(panel.controls, rowBg)
+
+                local aLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                aLabel:SetPoint("TOPLEFT", 15, y - 4)
+                aLabel:SetText(addonName)
+                tinsert(panel.controls, aLabel)
+
+                local cLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                cLabel:SetPoint("TOPLEFT", 15, y - 18)
+                cLabel:SetWidth(200)
+                cLabel:SetJustifyH("LEFT")
+                cLabel:SetText(string.format("%s \124cff888888->\124r %s", config.childFrameName, config.parentFrameName))
+                tinsert(panel.controls, cLabel)
+
+                local delBtn = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+                delBtn:SetPoint("TOPRIGHT", rowBg, "TOPRIGHT", -2, -2)
+                delBtn:SetSize(24, 24)
+                delBtn:SetScript("OnClick", function()
+                     WiseDB.addonVisibilityMap[addonName] = nil
+                     Wise:RefreshPropertiesPanel()
+                end)
+                tinsert(panel.controls, delBtn)
+
+                y = y - 40
+            end
+        end
+
+        y = y - 10
+        local addHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        addHeader:SetPoint("TOPLEFT", 10, y)
+        addHeader:SetText("Add New Mapping:")
+        tinsert(panel.controls, addHeader)
+        y = y - 25
+
+        -- Addon Name
+        local nLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nLabel:SetPoint("TOPLEFT", 10, y)
+        nLabel:SetText("Addon Name:")
+        tinsert(panel.controls, nLabel)
+
+        local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        nameEdit:SetSize(150, 20)
+        nameEdit:SetPoint("TOPLEFT", 90, y + 2)
+        nameEdit:SetAutoFocus(false)
+        tinsert(panel.controls, nameEdit)
+        y = y - 25
+
+        -- Parent Frame
+        local pLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        pLabel:SetPoint("TOPLEFT", 10, y)
+        pLabel:SetText("Parent Frame:")
+        tinsert(panel.controls, pLabel)
+
+        local parentEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        parentEdit:SetSize(150, 20)
+        parentEdit:SetPoint("TOPLEFT", 90, y + 2)
+        parentEdit:SetAutoFocus(false)
+        tinsert(panel.controls, parentEdit)
+        y = y - 25
+
+        -- Child Frame
+        local cLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        cLabel:SetPoint("TOPLEFT", 10, y)
+        cLabel:SetText("Child Frame:")
+        tinsert(panel.controls, cLabel)
+
+        local childEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        childEdit:SetSize(150, 20)
+        childEdit:SetPoint("TOPLEFT", 90, y + 2)
+        childEdit:SetAutoFocus(false)
+        tinsert(panel.controls, childEdit)
+        y = y - 30
+
+        -- Save Button
+        local saveBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        saveBtn:SetSize(120, 22)
+        saveBtn:SetPoint("TOPLEFT", 10, y)
+        saveBtn:SetText("Save Mapping")
+        saveBtn:SetScript("OnClick", function()
+             local n = nameEdit:GetText()
+             local p = parentEdit:GetText()
+             local c = childEdit:GetText()
+             if n ~= "" and p ~= "" and c ~= "" then
+                 WiseDB.addonVisibilityMap = WiseDB.addonVisibilityMap or {}
+                 WiseDB.addonVisibilityMap[n] = {
+                     parentFrameName = p,
+                     childFrameName = c
+                 }
+                 if Wise.AddonVisibility and Wise.AddonVisibility.ProcessAll then
+                      Wise.AddonVisibility:ProcessAll()
+                 end
+                 Wise:RefreshPropertiesPanel()
+             else
+                 print("|cffff0000Wise:|r Please fill in all fields.")
+             end
+        end)
+        tinsert(panel.controls, saveBtn)
+        y = y - 40
+
+        -- Divider
+        local sep = panel:CreateTexture(nil, "ARTWORK")
+        sep:SetColorTexture(1, 1, 1, 0.2)
+        sep:SetSize(250, 1)
+        sep:SetPoint("TOPLEFT", 10, y)
+        tinsert(panel.controls, sep)
+        y = y - 20
+
+        -- Inspect Tool
+        local insLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        insLabel:SetPoint("TOPLEFT", 10, y)
+        insLabel:SetText("Inspect Frame Names:")
+        tinsert(panel.controls, insLabel)
+        y = y - 20
+
+        local insHelp = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        insHelp:SetPoint("TOPLEFT", 10, y)
+        insHelp:SetWidth(250)
+        insHelp:SetJustifyH("LEFT")
+        insHelp:SetText("Enter a prefix (e.g. 'Details') and click Inspect to print matching frame names to the chat window.")
+        tinsert(panel.controls, insHelp)
+        y = y - 30
+
+        local insEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        insEdit:SetSize(120, 20)
+        insEdit:SetPoint("TOPLEFT", 15, y)
+        insEdit:SetAutoFocus(false)
+        tinsert(panel.controls, insEdit)
+
+        local insBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        insBtn:SetSize(100, 22)
+        insBtn:SetPoint("LEFT", insEdit, "RIGHT", 5, 0)
+        insBtn:SetText("Inspect")
+        insBtn:SetScript("OnClick", function()
+             local txt = insEdit:GetText()
+             if txt ~= "" and Wise.AddonVisibility and Wise.AddonVisibility.Inspect then
+                 Wise.AddonVisibility:Inspect(txt)
+             end
+             insEdit:ClearFocus()
+        end)
+        tinsert(panel.controls, insBtn)
+
+        y = y - 30
+        panel:SetHeight(math.abs(y) + 50)
+        return
+    end
+
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
     if group and group.isLocked then

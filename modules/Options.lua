@@ -777,6 +777,56 @@ function Wise:RefreshGroupList()
         btnIndex = btnIndex + 1
     end
 
+    -- Addon Visibility Tool
+    local avBtn = container.buttons[btnIndex]
+    if not avBtn then
+        avBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
+        avBtn:SetSize(230, 40)
+
+        avBtn.icon = avBtn:CreateTexture(nil, "ARTWORK")
+        avBtn.icon:SetSize(32, 32)
+        avBtn.icon:SetPoint("LEFT", 5, 0)
+
+        avBtn.label = avBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        avBtn.label:SetPoint("LEFT", avBtn.icon, "RIGHT", 10, 0)
+        avBtn.label:SetJustifyH("LEFT")
+        avBtn.label:SetWidth(175)
+        avBtn.label:SetWordWrap(false)
+
+        avBtn.kbLabel = avBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        avBtn.kbLabel:SetPoint("RIGHT", avBtn.icon, "LEFT", -5, 0)
+        avBtn.kbLabel:SetJustifyH("RIGHT")
+        avBtn.kbLabel:SetTextColor(1, 1, 1, 1)
+
+        avBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+        tinsert(container.buttons, avBtn)
+    end
+    avBtn:Show()
+    avBtn:SetPoint("TOPLEFT", 40, y)
+    if avBtn.lockBtn then avBtn.lockBtn:Hide() end
+    if avBtn.errorIcon then avBtn.errorIcon:Hide() end
+
+    avBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    avBtn.label:SetText("Addon Visibility")
+    avBtn.kbLabel:Hide()
+
+    if Wise.selectedGroup == "Addon Visibility" then
+         avBtn:LockHighlight()
+    else
+         avBtn:UnlockHighlight()
+    end
+
+    avBtn:SetScript("OnClick", function()
+        Wise.selectedGroup = "Addon Visibility"
+        Wise.selectedSlot = nil
+        Wise.selectedState = nil
+        Wise:UpdateOptionsUI()
+    end)
+
+    y = y - 42
+    btnIndex = btnIndex + 1
+
     -- Smart Item Tool (Always show, placeholder if missing Syndicator)
     local isSyndicator = Wise:IsSyndicatorAvailable()
 
