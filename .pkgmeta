@@ -12,4 +12,5 @@ ignore:
   - AGENTS.md
   - CLAUDE.md
   - README.md
+  - tests.xml
   - wiki/

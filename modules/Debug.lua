@@ -37,6 +37,19 @@ function Wise:DebugPrint(...)
 end
 
 function Wise:InitializeDebug()
+    -- Only initialize and show IF tests are actually present (meaning tests.xml was loaded)
+    local hasTests = false
+    for name in pairs(_G) do
+        if type(name) == "string" and name:find("^WiseDebugTest_") then
+            hasTests = true
+            break
+        end
+    end
+
+    if not hasTests then
+        return
+    end
+
     if not Wise.DebugFrame then
         Wise.DebugResults = {}
         Wise:CreateDebugUI()
