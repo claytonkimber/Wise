@@ -410,17 +410,92 @@ function Wise:RefreshPropertiesPanel()
         tinsert(panel.controls, addHeader)
         y = y - 25
 
-        -- Addon Name
+        -- Addon Name Selection
         local nLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         nLabel:SetPoint("TOPLEFT", 10, y)
         nLabel:SetText("Addon Name:")
         tinsert(panel.controls, nLabel)
 
-        local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        nameEdit:SetSize(150, 20)
-        nameEdit:SetPoint("TOPLEFT", 90, y + 2)
-        nameEdit:SetAutoFocus(false)
-        tinsert(panel.controls, nameEdit)
+        local selectedAddonName = ""
+        local addonBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+        addonBtn:SetSize(150, 22)
+        addonBtn:SetPoint("TOPLEFT", 90, y + 2)
+        addonBtn:SetText("Select Addon...")
+
+        addonBtn:SetScript("OnClick", function(self)
+            if self.dropdown and self.dropdown:IsShown() then
+                self.dropdown:Hide()
+                return
+            end
+
+            if not self.dropdown then
+                local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
+                self.dropdown = d
+
+                local numAddons = C_AddOns.GetNumAddOns()
+                local validAddons = {}
+                for i = 1, numAddons do
+                    local name, title = C_AddOns.GetAddOnInfo(i)
+                    if name and not name:match("^Blizzard_") and name ~= "Wise" then
+                        table.insert(validAddons, { name = name, title = title or name })
+                    end
+                end
+                table.sort(validAddons, function(a, b) return a.title < b.title end)
+
+                local itemHeight = 22
+                local maxVisible = 10
+                local visibleCount = math.min(#validAddons, maxVisible)
+                local dropdownHeight = (visibleCount * itemHeight) + 20
+                local needsScroll = #validAddons > maxVisible
+
+                d:SetSize(220, dropdownHeight)
+                d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+                d:SetFrameStrata("DIALOG")
+                d:SetBackdrop({
+                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                    tile = true, tileSize = 32, edgeSize = 16,
+                    insets = { left = 5, right = 5, top = 5, bottom = 5 }
+                })
+
+                local scrollContent
+                if needsScroll then
+                    local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
+                    scrollFrame:SetPoint("TOPLEFT", 8, -8)
+                    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
+
+                    scrollContent = CreateFrame("Frame", nil, scrollFrame)
+                    scrollContent:SetSize(175, itemHeight * #validAddons)
+                    scrollFrame:SetScrollChild(scrollContent)
+                    scrollFrame:SetVerticalScroll(0)
+                else
+                    scrollContent = CreateFrame("Frame", nil, d)
+                    scrollContent:SetPoint("TOPLEFT", 8, -8)
+                    scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
+                end
+
+                for i, addonInfo in ipairs(validAddons) do
+                    local btn = CreateFrame("Button", nil, scrollContent)
+                    btn:SetSize(175, itemHeight - 2)
+                    btn:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
+                    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+                    btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    btn.text:SetPoint("LEFT", 5, 0)
+                    btn.text:SetPoint("RIGHT", -5, 0)
+                    btn.text:SetJustifyH("LEFT")
+                    btn.text:SetText(addonInfo.title)
+
+                    btn:SetScript("OnClick", function()
+                        selectedAddonName = addonInfo.name
+                        self:SetText(addonInfo.title)
+                        d:Hide()
+                    end)
+                end
+            end
+            self.dropdown:Show()
+        end)
+        tinsert(panel.controls, addonBtn)
         y = y - 25
 
         -- Parent Frame
@@ -455,7 +530,7 @@ function Wise:RefreshPropertiesPanel()
         saveBtn:SetPoint("TOPLEFT", 10, y)
         saveBtn:SetText("Save Mapping")
         saveBtn:SetScript("OnClick", function()
-             local n = nameEdit:GetText()
+             local n = selectedAddonName
              local p = parentEdit:GetText()
              local c = childEdit:GetText()
              if n ~= "" and p ~= "" and c ~= "" then
@@ -469,7 +544,7 @@ function Wise:RefreshPropertiesPanel()
                  end
                  Wise:RefreshPropertiesPanel()
              else
-                 print("|cffff0000Wise:|r Please fill in all fields.")
+                 print("|cffff0000Wise:|r Please select an addon and fill in all fields.")
              end
         end)
         tinsert(panel.controls, saveBtn)
