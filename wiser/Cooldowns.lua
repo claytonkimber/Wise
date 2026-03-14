@@ -9,7 +9,28 @@ function Wise:InitializeCooldownWiser()
             Actions = false, -- We want to allow editing actions to add decimal slots
             Rename = true, -- Usually shouldn't rename Wiser interfaces
         },
-        inject = {}
+        inject = {
+            Bottom = function(panel, group, y)
+                local tinsert = table.insert
+                local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+                check:SetSize(24, 24)
+                check:SetPoint("TOPLEFT", 10, y)
+                check.text = check:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                check.text:SetPoint("LEFT", check, "RIGHT", 4, 1)
+                check.text:SetText("Hide Game Interface")
+                check:SetChecked(group.hideNativeInterface or false)
+
+                check:SetScript("OnClick", function(self)
+                    group.hideNativeInterface = self:GetChecked()
+                    Wise:UpdateCooldownWiser(Wise.selectedGroup, group.viewerName)
+                end)
+
+                tinsert(panel.controls, check)
+                tinsert(panel.controls, check.text)
+
+                return y - 30
+            end
+        }
     }
 end
 
@@ -26,6 +47,16 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
 
     local viewer = _G[viewerName]
     if not viewer then return end
+
+    group.viewerName = viewerName
+
+    if not InCombatLockdown() then
+        if group.hideNativeInterface then
+            viewer:Hide()
+        else
+            viewer:Show()
+        end
+    end
 
     local spells = {}
     if viewer.GetChildren then
