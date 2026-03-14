@@ -991,5 +991,162 @@ function Wise:PopulateSettingsView(panel)
     table.insert(panel.children, showGCD.text)
     ry = ry - 40
 
+    local wipeStyleHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, wipeStyleHeader, rx, ry)
+    wipeStyleHeader:SetText("Cooldown Wipe Style")
+    ry = ry - 20
+
+    local styles = {
+        {val="none", text="None"},
+        {val="spiral", text="Spiral Wipe"},
+        {val="border", text="Border Wipe"},
+        {val="tracer", text="Tracer"}
+    }
+    local startY = ry
+    for i, styleMode in ipairs(styles) do
+        local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+        local col = (i-1) % 4
+        local xOffset = rx
+        if col == 1 then xOffset = rx + 65 end
+        if col == 2 then xOffset = rx + 65 + 95 end
+        if col == 3 then xOffset = rx + 65 + 95 + 105 end
+        AddToContent(rightContent, radio, xOffset, startY)
+        radio:SetChecked((WiseDB.settings.cooldownStyle or "spiral") == styleMode.val)
+        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+        radio.text:SetText(styleMode.text)
+
+        radio:SetScript("OnClick", function(self)
+            WiseDB.settings.cooldownStyle = styleMode.val
+            Wise:PopulateSettingsView(panel)
+            C_Timer.After(0.1, function()
+               if not InCombatLockdown() then
+                   for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+               end
+            end)
+        end)
+        table.insert(panel.children, radio.text)
+    end
+    ry = ry - 30
+
+    if WiseDB.settings.cooldownStyle == "tracer" then
+        local tracerModeHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        AddToContent(rightContent, tracerModeHeader, rx, ry)
+        tracerModeHeader:SetText("Tracer Mode")
+        ry = ry - 20
+
+        local tModes = {
+            {val="relative", text="Relative", tooltip="The tracer completes exactly 1 lap over the full duration of the cooldown."},
+            {val="absolute", text="Absolute", tooltip="The tracer moves at a constant speed of 1 lap per 60 seconds (1 minute = 1 full rotation)."},
+            {val="persistent", text="Persistent", tooltip="A solid line that tracks the cooldown along the perimeter. When available, a solid colored box remains."},
+            {val="reverse", text="Reverse", tooltip="A solid line that tracks the cooldown backwards along the perimeter. When available, the box disappears."}
+        }
+        local tStartY = ry
+        for i, tMode in ipairs(tModes) do
+            local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+            local col = (i-1) % 2
+            local row = math.floor((i-1) / 2)
+            AddToContent(rightContent, radio, rx + (col * 100), tStartY - (row * 25))
+            radio:SetChecked((WiseDB.settings.tracerMode or "relative") == tMode.val)
+            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+            radio.text:SetText(tMode.text)
+
+            radio:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(tMode.text .. " Tracer Mode", 1, 1, 1)
+                GameTooltip:AddLine(tMode.tooltip, nil, nil, nil, true)
+                GameTooltip:Show()
+            end)
+            radio:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+
+            radio:SetScript("OnClick", function(self)
+                WiseDB.settings.tracerMode = tMode.val
+                Wise:PopulateSettingsView(panel)
+                C_Timer.After(0.1, function()
+                   if not InCombatLockdown() then
+                       for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+                   end
+                end)
+            end)
+            table.insert(panel.children, radio.text)
+        end
+        ry = ry - (math.ceil(#tModes/2) * 25) - 5
+    end
+
+    if WiseDB.settings.cooldownStyle == "border" or WiseDB.settings.cooldownStyle == "tracer" then
+        local thickHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        AddToContent(rightContent, thickHeader, rx, ry)
+        thickHeader:SetText("Border Wipe Thickness")
+        ry = ry - 20
+
+        local thickSlider = CreateFrame("Slider", "WiseSettingsBorderThickSlider", rightContent, "OptionsSliderTemplate")
+        AddToContent(rightContent, thickSlider, rx, ry - 5)
+        thickSlider:SetWidth(180)
+        thickSlider:SetMinMaxValues(1, 3)
+        thickSlider:SetValueStep(1)
+        thickSlider:SetObeyStepOnDrag(true)
+
+        local currentThick = WiseDB.settings.borderWipeThickness or 2
+        if currentThick > 3 then currentThick = 3 end
+        thickSlider:SetValue(currentThick)
+
+        _G[thickSlider:GetName() .. "Low"]:SetText("Thin")
+        _G[thickSlider:GetName() .. "High"]:SetText("Thick")
+        _G[thickSlider:GetName() .. "Text"]:SetText(tostring(currentThick) .. "px")
+
+        thickSlider:SetScript("OnValueChanged", function(self, value)
+            local val = math.floor(value + 0.5)
+            WiseDB.settings.borderWipeThickness = val
+            _G[self:GetName() .. "Text"]:SetText(tostring(val) .. "px")
+            C_Timer.After(0.1, function()
+                if not InCombatLockdown() then
+                    for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+                end
+            end)
+        end)
+        table.insert(panel.children, thickSlider)
+        ry = ry - 40
+
+        local colorHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        AddToContent(rightContent, colorHeader, rx, ry)
+        colorHeader:SetText("Border Wipe Color")
+        ry = ry - 20
+
+        local colors = {
+            {val="default", text="Default/Dark"},
+            {val="class", text="Class Color"},
+            {val="red", text="Red"},
+            {val="gold", text="Gold"}
+        }
+
+        local currentColor = WiseDB.settings.borderWipeColor or "default"
+        local colorStartY = ry
+        for i, mode in ipairs(colors) do
+            local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+            local col = (i-1) % 2
+            local row = math.floor((i-1) / 2)
+            AddToContent(rightContent, radio, rx + (col * 120), colorStartY - (row * 25))
+            radio:SetChecked(currentColor == mode.val)
+            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+            radio.text:SetText(mode.text)
+
+            radio:SetScript("OnClick", function(self)
+                WiseDB.settings.borderWipeColor = mode.val
+                Wise:PopulateSettingsView(panel)
+                C_Timer.After(0.1, function()
+                    if not InCombatLockdown() then
+                        if Wise.UpdateAllCooldowns then Wise:UpdateAllCooldowns() end
+                    end
+                end)
+            end)
+            table.insert(panel.children, radio.text)
+        end
+        ry = ry - (math.ceil(#colors/2) * 25) - 10
+    end
+
     rightContent:SetHeight(math.abs(ry) + 20)
 end
