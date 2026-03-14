@@ -756,7 +756,7 @@ function Wise:CreateGroupFrame(name, instanceId)
     ]])
 
     -- Inline condition resolver for secure restricted environment (no 'function' keyword allowed).
-    -- _rv_ref must be set before this block runs; it sets _rv_t, _rv_s, _rv_i, _rv_m.
+    -- _rv_ref must be set before this block runs; it sets _rv_t, _rv_s, _rv_i, _rv_m, _rv_cb.
     local RESOLVE_BLOCK = [[
         do
             local _rc = _rv_ref:GetAttribute("isa_count") or 0
@@ -764,6 +764,7 @@ function Wise:CreateGroupFrame(name, instanceId)
             _rv_s = _rv_ref:GetAttribute("spell")
             _rv_i = _rv_ref:GetAttribute("item")
             _rv_m = _rv_ref:GetAttribute("macrotext")
+            _rv_cb = _rv_ref:GetAttribute("clickbutton")
             if _rc > 1 then
                 local _conflict = _rv_ref:GetAttribute("isa_conflict") or "priority"
                 local _matches = newtable()
@@ -829,6 +830,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                         _rv_s = nil
                         _rv_i = nil
                         _rv_m = _newMacro
+                        _rv_cb = nil
                         if _conflict == "sequence" then
                             local _lastM = _matches[_nextIdx - 1]
                             _rv_ref:SetAttribute("isa_seq", _lastM + 1)
@@ -841,6 +843,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                         _rv_s = _rv_ref:GetAttribute("isa_spell_" .. _chosen)
                         _rv_i = _rv_ref:GetAttribute("isa_item_" .. _chosen)
                         _rv_m = _rv_ref:GetAttribute("isa_macrotext_" .. _chosen)
+                        _rv_cb = _rv_ref:GetAttribute("isa_clickbutton_" .. _chosen)
                     end
                 end
             end
@@ -869,6 +872,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                     _rv_s = nil
                     _rv_i = nil
                     _rv_m = nil
+                    _rv_cb = nil
                 elseif _nm ~= "jump" then
                     local _nc = _rv_ref:GetAttribute("isa_nest_count") or 0
                     if _nc > 0 then
@@ -908,6 +912,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                                 _rv_s = _rv_ref:GetAttribute("isa_nest_spell_" .. _nchosen)
                                 _rv_i = _rv_ref:GetAttribute("isa_nest_item_" .. _nchosen)
                                 _rv_m = _rv_ref:GetAttribute("isa_nest_macrotext_" .. _nchosen)
+                                _rv_cb = _rv_ref:GetAttribute("isa_nest_clickbutton_" .. _nchosen)
                             end
                         end
                     end
@@ -928,7 +933,7 @@ function Wise:CreateGroupFrame(name, instanceId)
         local hideOnUse = self:GetAttribute("hideOnUse")
 
         -- Shared resolve variables (set by RESOLVE_BLOCK)
-        local _rv_ref, _rv_t, _rv_s, _rv_i, _rv_m
+        local _rv_ref, _rv_t, _rv_s, _rv_i, _rv_m, _rv_cb
 
         -- 'down' is provided by the SecureHandlerWrapScript environment
         if down then
@@ -968,6 +973,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("spell", _rv_s)
                         self:SetAttribute("item", _rv_i)
                         self:SetAttribute("macrotext", _rv_m)
+                        self:SetAttribute("clickbutton", _rv_cb)
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     else
                         self:SetAttribute("debug_msg", "Press+Button: No valid target found. Count="..count)
@@ -1003,11 +1009,13 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("spell", _rv_s)
                         self:SetAttribute("item", _rv_i)
                         self:SetAttribute("macrotext", _rv_m)
+                        self:SetAttribute("clickbutton", _rv_cb)
 
                         self:SetAttribute("ul_type", _rv_t)
                         self:SetAttribute("ul_spell", _rv_s)
                         self:SetAttribute("ul_item", _rv_i)
                         self:SetAttribute("ul_macrotext", _rv_m)
+                        self:SetAttribute("ul_clickbutton", _rv_cb)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     end
@@ -1016,6 +1024,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                     self:SetAttribute("spell", nil)
                     self:SetAttribute("item", nil)
                     self:SetAttribute("macrotext", nil)
+                    self:SetAttribute("clickbutton", nil)
                  end
             elseif trigger == "release_repeat" then
                  local hovered = _pre_hovered
@@ -1029,11 +1038,13 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("spell", _rv_s)
                         self:SetAttribute("item", _rv_i)
                         self:SetAttribute("macrotext", _rv_m)
+                        self:SetAttribute("clickbutton", _rv_cb)
 
                         self:SetAttribute("ul_type", _rv_t)
                         self:SetAttribute("ul_spell", _rv_s)
                         self:SetAttribute("ul_item", _rv_i)
                         self:SetAttribute("ul_macrotext", _rv_m)
+                        self:SetAttribute("ul_clickbutton", _rv_cb)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     end
@@ -1044,6 +1055,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                          self:SetAttribute("spell", self:GetAttribute("ul_spell"))
                          self:SetAttribute("item", self:GetAttribute("ul_item"))
                          self:SetAttribute("macrotext", self:GetAttribute("ul_macrotext"))
+                         self:SetAttribute("clickbutton", self:GetAttribute("ul_clickbutton"))
                          if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                     else
                          self:SetAttribute("type", nil)
@@ -1054,6 +1066,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                  self:SetAttribute("spell", nil)
                  self:SetAttribute("item", nil)
                  self:SetAttribute("macrotext", nil)
+                 self:SetAttribute("clickbutton", nil)
             end
         end
     ]]
@@ -1955,6 +1968,7 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
         btn:SetAttribute("isa_nest_spell_" .. ci, nil)
         btn:SetAttribute("isa_nest_item_" .. ci, nil)
         btn:SetAttribute("isa_nest_macrotext_" .. ci, nil)
+        btn:SetAttribute("isa_nest_clickbutton_" .. ci, nil)
         btn:SetAttribute("isa_nest_cond_" .. ci, nil)
     end
     btn:SetAttribute("isa_nest_count", 0)
@@ -1990,10 +2004,12 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
             local spellVal = (sAttr == "spell") and tostring(sValue) or ""
             local itemVal = (sAttr == "item") and tostring(sValue) or ""
             local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+            local clickbuttonVal = (sAttr == "clickbutton") and sValue or nil
             btn:SetAttribute("isa_nest_type_" .. nestIdx, sType)
             btn:SetAttribute("isa_nest_spell_" .. nestIdx, spellVal)
             btn:SetAttribute("isa_nest_item_" .. nestIdx, itemVal)
             btn:SetAttribute("isa_nest_macrotext_" .. nestIdx, macroVal)
+            btn:SetAttribute("isa_nest_clickbutton_" .. nestIdx, clickbuttonVal)
             btn:SetAttribute("isa_nest_cond_" .. nestIdx, action.conditions or "")
         end
     end
@@ -2013,16 +2029,19 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
                 local tmpS = btn:GetAttribute("isa_nest_spell_" .. si)
                 local tmpI = btn:GetAttribute("isa_nest_item_" .. si)
                 local tmpM = btn:GetAttribute("isa_nest_macrotext_" .. si)
+                local tmpCB = btn:GetAttribute("isa_nest_clickbutton_" .. si)
                 local tmpC = btn:GetAttribute("isa_nest_cond_" .. si)
                 btn:SetAttribute("isa_nest_type_" .. si, btn:GetAttribute("isa_nest_type_" .. sj))
                 btn:SetAttribute("isa_nest_spell_" .. si, btn:GetAttribute("isa_nest_spell_" .. sj))
                 btn:SetAttribute("isa_nest_item_" .. si, btn:GetAttribute("isa_nest_item_" .. sj))
                 btn:SetAttribute("isa_nest_macrotext_" .. si, btn:GetAttribute("isa_nest_macrotext_" .. sj))
+                btn:SetAttribute("isa_nest_clickbutton_" .. si, btn:GetAttribute("isa_nest_clickbutton_" .. sj))
                 btn:SetAttribute("isa_nest_cond_" .. si, btn:GetAttribute("isa_nest_cond_" .. sj))
                 btn:SetAttribute("isa_nest_type_" .. sj, tmpT)
                 btn:SetAttribute("isa_nest_spell_" .. sj, tmpS)
                 btn:SetAttribute("isa_nest_item_" .. sj, tmpI)
                 btn:SetAttribute("isa_nest_macrotext_" .. sj, tmpM)
+                btn:SetAttribute("isa_nest_clickbutton_" .. sj, tmpCB)
                 btn:SetAttribute("isa_nest_cond_" .. sj, tmpC)
             end
         end
@@ -2905,11 +2924,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     local spellVal = (sAttr == "spell") and tostring(sValue) or ""
                     local itemVal = (sAttr == "item") and tostring(sValue) or ""
                     local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+                    local clickbuttonVal = (sAttr == "clickbutton") and sValue or nil
                     local _, _, isOffGcd = Wise:GetCastTimeText(stateAction.type, stateAction.value)
                     btn:SetAttribute("isa_type_" .. sIdx, sType)
                     btn:SetAttribute("isa_spell_" .. sIdx, spellVal)
                     btn:SetAttribute("isa_item_" .. sIdx, itemVal)
                     btn:SetAttribute("isa_macrotext_" .. sIdx, macroVal)
+                    btn:SetAttribute("isa_clickbutton_" .. sIdx, clickbuttonVal)
                     btn:SetAttribute("isa_cond_" .. sIdx, computedCond)
                     btn:SetAttribute("isa_offgcd_" .. sIdx, isOffGcd and 1 or 0)
                 end
