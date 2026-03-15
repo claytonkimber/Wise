@@ -33,30 +33,6 @@
     </Frame>
 
 
-    <Frame name="WiseDebugTest_4" inherits="WiseDebugTestsData">
-        <KeyValues>
-            <KeyValue key="testName" value="Extra Action Button on Release Mouseover" type="string" />
-            <KeyValue key="instructions" value="1. Bind Extra Action Button to a group.
-2. Set keybind trigger to Release Mouseover.
-3. Trigger it over an enemy or player.
-4. Extra Action Button should fire." type="string" />
-            <KeyValue key="action" value="" type="string" />
-            <KeyValue key="clearAction" value="" type="string" />
-        </KeyValues>
-    </Frame>
-
-    <Frame name="WiseDebugTest_4" inherits="WiseDebugTestsData">
-        <KeyValues>
-            <KeyValue key="testName" value="Extra Action Button on Release Mouseover" type="string" />
-            <KeyValue key="instructions" value="1. Bind Extra Action Button to a group.
-2. Set keybind trigger to Release Mouseover.
-3. Trigger it over an enemy or player.
-4. Extra Action Button should fire." type="string" />
-            <KeyValue key="action" value="" type="string" />
-            <KeyValue key="clearAction" value="" type="string" />
-        </KeyValues>
-    </Frame>
-
     <Frame name="WiseDebugTest_ExtraActionButton" inherits="WiseDebugTestsData">
         <KeyValues>
             <KeyValue key="testName" value="Extra Action Button on Release Mouseover" type="string" />

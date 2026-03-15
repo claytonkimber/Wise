@@ -3487,8 +3487,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          local vClone = meta.visualClone or btn.visualClone
                          if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
                          -- Rebind clickbutton when the spell button changes (e.g. entering garrison)
-                         if canSetAttrs and zoneBtn then
-                             btn:SetAttribute("clickbutton", zoneBtn)
+                         if canSetAttrs and zoneBtn and zoneBtn.GetName then
+                             btn:SetAttribute("type", "macro")
+                             btn:SetAttribute("macrotext", "/click " .. zoneBtn:GetName())
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
@@ -3501,8 +3502,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
                          -- Rebind clickbutton in case override bar appeared
                          local overrideBtn = _G["OverrideActionBarButton1"]
-                         if canSetAttrs and overrideBtn then
-                             btn:SetAttribute("clickbutton", overrideBtn)
+                         if canSetAttrs and overrideBtn and overrideBtn.GetName then
+                             btn:SetAttribute("type", "macro")
+                             btn:SetAttribute("macrotext", "/click " .. overrideBtn:GetName())
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
@@ -3515,8 +3517,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
                          -- Rebind clickbutton in case possess bar appeared
                          local possessBtn = _G["ActionButton1"]
-                         if canSetAttrs and possessBtn then
-                             btn:SetAttribute("clickbutton", possessBtn)
+                         if canSetAttrs and possessBtn and possessBtn.GetName then
+                             btn:SetAttribute("type", "macro")
+                             btn:SetAttribute("macrotext", "/click " .. possessBtn:GetName())
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
