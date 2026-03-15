@@ -610,6 +610,92 @@ function Wise:HideOverlayGlow(frame)
 end
 -- ============================================================================
 
+-- ============================================================================
+-- Hover Indication System
+-- Provides a subtle glow + 5% scale increase on hovered ring buttons.
+-- Uses a lightweight overlay (no ants/spark) at 50% brightness.
+-- ============================================================================
+
+local HOVER_SCALE = 1.05
+local HOVER_GLOW_ALPHA = 0.5
+
+local function CreateHoverGlow(parent)
+    local glow = CreateFrame("Frame", nil, parent)
+    glow:SetFrameLevel(parent:GetFrameLevel() + 3)
+    glow:SetAllPoints(parent)
+
+    glow.inner = glow:CreateTexture(nil, "ARTWORK")
+    glow.inner:SetPoint("CENTER")
+    glow.inner:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+    glow.inner:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+    glow.inner:SetBlendMode("ADD")
+    glow.inner:SetAlpha(HOVER_GLOW_ALPHA)
+
+    glow.outer = glow:CreateTexture(nil, "ARTWORK")
+    glow.outer:SetPoint("CENTER")
+    glow.outer:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+    glow.outer:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+    glow.outer:SetBlendMode("ADD")
+    glow.outer:SetAlpha(HOVER_GLOW_ALPHA * 0.6)
+
+    glow:Hide()
+    return glow
+end
+
+local function ShowHoverGlow(btn)
+    if not btn._hoverGlow then
+        btn._hoverGlow = CreateHoverGlow(btn)
+    end
+    -- For list layouts, anchor glow to the icon only (not the wide text button)
+    local parentFrame = btn:GetParent()
+    local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+    if isListLayout and btn.icon then
+        local iw, ih = btn.icon:GetSize()
+        btn._hoverGlow:ClearAllPoints()
+        btn._hoverGlow:SetPoint("CENTER", btn.icon, "CENTER")
+        btn._hoverGlow:SetSize(iw, ih)
+        btn._hoverGlow.inner:SetSize(iw * 1.2, ih * 1.2)
+        btn._hoverGlow.outer:SetSize(iw * 1.5, ih * 1.5)
+    else
+        local w, h = btn:GetSize()
+        btn._hoverGlow:ClearAllPoints()
+        btn._hoverGlow:SetAllPoints(btn)
+        btn._hoverGlow.inner:SetSize(w * 1.2, h * 1.2)
+        btn._hoverGlow.outer:SetSize(w * 1.5, h * 1.5)
+    end
+    btn._hoverGlow:Show()
+end
+
+local function HideHoverGlow(btn)
+    if btn._hoverGlow then
+        btn._hoverGlow:Hide()
+    end
+end
+
+function Wise:AddHoverIndication(btn)
+    if not btn then return end
+
+    btn:HookScript("OnEnter", function(self)
+        local parentFrame = self:GetParent()
+        local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+        if not isListLayout then
+            -- Scale up by 5% (skip for list — would distort text layout)
+            self:SetScale(HOVER_SCALE)
+        end
+        -- Show dim glow
+        ShowHoverGlow(self)
+    end)
+
+    btn:HookScript("OnLeave", function(self)
+        -- Reset scale
+        self:SetScale(1.0)
+        -- Hide glow
+        HideHoverGlow(self)
+    end)
+end
+
+-- ============================================================================
+
 -- WiseStateDriver: Central secure handler for cross-interface visibility.
 -- Holds boolean state ("active"/"inactive") for each interface and propagates
 -- changes to all registered group frames so [wise:interfaceName] conditionals work.
@@ -865,7 +951,7 @@ function Wise:CreateGroupFrame(name, instanceId)
             if _rv_ref:GetAttribute("isa_is_interface") then
                 local _nm = _rv_ref:GetAttribute("isa_nest_mode") or "jump"
                 if _nm == "jump" then
-                    -- Direct toggle: find the child group via frame ref
+                    -- Toggle child interface via parent keybind (hover opens, keybind toggles)
                     local _childName = _rv_ref:GetAttribute("isa_interface_target")
                     if _childName then
                         local _childGroup = self:GetFrameRef("nested_" .. _childName)
@@ -903,7 +989,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                             local _nchosen = nil
                             if _nm == "priority" then
                                 _nchosen = _nmatches[1]
-                            elseif _nm == "cycle" or _nm == "shuffle" then
+                            elseif _nm == "cycle" then
                                 local _nseq = _rv_ref:GetAttribute("isa_nest_seq") or 1
                                 local _nStartIdx = nil
                                 for _ni = 1, #_nmatches do
@@ -967,6 +1053,23 @@ function Wise:CreateGroupFrame(name, instanceId)
                  local targetState = (currentManual == "show") and "hide" or "show"
 
                  f:SetAttribute("state-manual", targetState)
+
+                 -- When hiding parent, also hide any open child interfaces
+                 if targetState == "hide" then
+                     local _bc = self:GetAttribute("buttonCount") or 0
+                     for _bi = 1, _bc do
+                         local _pb = self:GetFrameRef("btn" .. _bi)
+                         if _pb and _pb:GetAttribute("isa_is_interface") then
+                             local _cid = _pb:GetAttribute("isa_interface_target")
+                             if _cid then
+                                 local _cf = self:GetFrameRef("nested_" .. _cid)
+                                 if _cf then
+                                     _cf:SetAttribute("state-manual", "hide")
+                                 end
+                             end
+                         end
+                     end
+                 end
             end
 
             -- EXECUTION LOGIC (Press)
@@ -1010,6 +1113,37 @@ function Wise:CreateGroupFrame(name, instanceId)
             -- Read hoveredButton BEFORE hiding the frame (hiding clears hover via OnLeave)
             local _pre_hovered = self:GetAttribute("hoveredButton")
 
+            -- Check child interfaces for hovered buttons.
+            -- Only override parent hover when: (a) no parent button is hovered, or
+            -- (b) the hovered parent button is the interface button that owns the child.
+            local _usedChildGroup = nil
+            local _btnCount = self:GetAttribute("buttonCount") or 0
+            for _ci = 1, _btnCount do
+                local _parentBtn = self:GetFrameRef("btn" .. _ci)
+                if _parentBtn and _parentBtn:GetAttribute("isa_is_interface") then
+                    local _childId = _parentBtn:GetAttribute("isa_interface_target")
+                    local _childMode = _parentBtn:GetAttribute("isa_nest_mode") or "jump"
+                    if _childId and _childMode == "jump" then
+                        local _childToggle = self:GetFrameRef("childToggle_" .. _childId)
+                        if _childToggle then
+                            local _childHovered = _childToggle:GetAttribute("hoveredButton")
+                            if _childHovered then
+                                local _childBtnRef = _childToggle:GetFrameRef(_childHovered)
+                                if _childBtnRef then
+                                    -- Only take child action if parent hover is nil or is the owning interface button
+                                    if not _pre_hovered or _pre_hovered == _parentBtn:GetName() then
+                                        _pre_hovered = "_child_"
+                                        _rv_ref = _childBtnRef
+                                        _usedChildGroup = self:GetFrameRef("nested_" .. _childId)
+                                    end
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+
             -- VISIBILITY LOGIC (Key Up)
             if heldMode then
                 f:SetAttribute("state-manual", "hide")
@@ -1019,9 +1153,8 @@ function Wise:CreateGroupFrame(name, instanceId)
             if trigger == "release_mouseover" then
                  local hovered = _pre_hovered
                  if hovered then
-                    local ref = self:GetFrameRef(hovered)
-                    if ref then
-                        _rv_ref = ref
+                    if hovered == "_child_" then
+                        -- Child button already resolved above
                         ]] .. RESOLVE_BLOCK .. [[
 
                         self:SetAttribute("type", _rv_t)
@@ -1035,6 +1168,28 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        -- Close used child (unless keepOpenAfterUse)
+                        if _usedChildGroup and not _usedChildGroup:GetAttribute("keepOpenAfterUse") then
+                            _usedChildGroup:SetAttribute("state-manual", "hide")
+                        end
+                    else
+                        local ref = self:GetFrameRef(hovered)
+                        if ref then
+                            _rv_ref = ref
+                            ]] .. RESOLVE_BLOCK .. [[
+
+                            self:SetAttribute("type", _rv_t)
+                            self:SetAttribute("spell", _rv_s)
+                            self:SetAttribute("item", _rv_i)
+                            self:SetAttribute("macrotext", _rv_m)
+
+                            self:SetAttribute("ul_type", _rv_t)
+                            self:SetAttribute("ul_spell", _rv_s)
+                            self:SetAttribute("ul_item", _rv_i)
+                            self:SetAttribute("ul_macrotext", _rv_m)
+
+                            if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        end
                     end
                  else
                     self:SetAttribute("type", nil)
@@ -1045,9 +1200,8 @@ function Wise:CreateGroupFrame(name, instanceId)
             elseif trigger == "release_repeat" then
                  local hovered = _pre_hovered
                  if hovered then
-                    local ref = self:GetFrameRef(hovered)
-                    if ref then
-                        _rv_ref = ref
+                    if hovered == "_child_" then
+                        -- Child button already resolved above
                         ]] .. RESOLVE_BLOCK .. [[
 
                         self:SetAttribute("type", _rv_t)
@@ -1061,6 +1215,28 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        -- Close used child (unless keepOpenAfterUse)
+                        if _usedChildGroup and not _usedChildGroup:GetAttribute("keepOpenAfterUse") then
+                            _usedChildGroup:SetAttribute("state-manual", "hide")
+                        end
+                    else
+                        local ref = self:GetFrameRef(hovered)
+                        if ref then
+                            _rv_ref = ref
+                            ]] .. RESOLVE_BLOCK .. [[
+
+                            self:SetAttribute("type", _rv_t)
+                            self:SetAttribute("spell", _rv_s)
+                            self:SetAttribute("item", _rv_i)
+                            self:SetAttribute("macrotext", _rv_m)
+
+                            self:SetAttribute("ul_type", _rv_t)
+                            self:SetAttribute("ul_spell", _rv_s)
+                            self:SetAttribute("ul_item", _rv_i)
+                            self:SetAttribute("ul_macrotext", _rv_m)
+
+                            if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        end
                     end
                  else
                     local t = self:GetAttribute("ul_type")
@@ -1079,6 +1255,25 @@ function Wise:CreateGroupFrame(name, instanceId)
                  self:SetAttribute("spell", nil)
                  self:SetAttribute("item", nil)
                  self:SetAttribute("macrotext", nil)
+            end
+
+            -- UNCONDITIONAL: When parent is hiding, always hide ALL child interfaces.
+            -- This catches every path: held release, toggle hide, hideOnUse, trigger=none.
+            local _finalState = f:GetAttribute("state-manual") or "hide"
+            if _finalState == "hide" then
+                local _bc2 = self:GetAttribute("buttonCount") or 0
+                for _bi2 = 1, _bc2 do
+                    local _pb2 = self:GetFrameRef("btn" .. _bi2)
+                    if _pb2 and _pb2:GetAttribute("isa_is_interface") then
+                        local _cid2 = _pb2:GetAttribute("isa_interface_target")
+                        if _cid2 then
+                            local _cf2 = self:GetFrameRef("nested_" .. _cid2)
+                            if _cf2 then
+                                _cf2:SetAttribute("state-manual", "hide")
+                            end
+                        end
+                    end
+                end
             end
         end
     ]]
@@ -1145,68 +1340,52 @@ function Wise:CreateGroupFrame(name, instanceId)
 
         local group = WiseDB.groups[self.groupName]
         
-        if group and group.anchorMode == "mouse" then
-            -- Position immediately at cursor (works in combat via Proxy Anchor)
-            
-            -- Get cursor position and correct for UI scale (like UltimateMouseCursor)
+        local isNestedInstance = self.parentInstanceId and not (group and group.isWiser)
+
+        if isNestedInstance then
+            -- Nested child: always position relative to parent button,
+            -- regardless of the child group's own anchorMode setting.
+            Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
+
+            -- Auto-close on leave: start monitoring mouse proximity
+            Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
+        elseif group and group.anchorMode == "mouse" then
+            -- Standalone mouse-anchor mode: position at cursor
             local cursorX, cursorY = GetCursorPosition()
             local uiScale = UIParent:GetScale()
             local frameScale = self:GetScale()
-            
-            -- Apply scale correction and offsets
+
             local correctedX = (cursorX / uiScale) / frameScale
             local correctedY = (cursorY / uiScale) / frameScale
             local offsetX = (group.mouseOffsetX or 0) / frameScale
             local offsetY = (group.mouseOffsetY or 0) / frameScale
-            
-            -- Move the PROXY ANCHOR, not the secure frame
+
             if self.Anchor and not InCombatLockdown() then
                 self.Anchor:ClearAllPoints()
                 self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
-            -- Move the SECURE FRAME (Only safe out of combat)
+
             if not InCombatLockdown() then
                  self:ClearAllPoints()
                  self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
-            -- For hold/toggle modes, lock position so user can hover over buttons
-            -- For "always visible" button mode, keep following mouse
+
             local layoutType = group.type or "circle"
             local mode = group.interaction or "toggle"
             if (layoutType == "button" and mode == "press_visible") or (group.visibility == "always" or group.visibility == "combat") then
-                -- Always visible: continuously follow mouse
                 self.mouseAnchorLocked = false
             else
-                -- Hold/toggle popup: lock in place for selection
                 self.mouseAnchorLocked = true
-            end
-        end
-        
-        -- Nested Interface Positioning (Jump Mode):
-        -- Position this child group relative to the parent button that opened it.
-        -- Skip nesting behaviors for Wiser interfaces (they are never legitimately nested
-        -- and should not be subject to cascade close, close-on-leave, or parent positioning).
-        if group and group.anchorMode ~= "mouse" and not group.isWiser then
-            if self.parentInstanceId then
-                Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
-
-                -- closeParentOnOpen: hide parent when child opens
-                if not InCombatLockdown() then
-                    Wise:HandleCloseParentOnOpen(self.groupName, self.parentInstanceId)
-                end
-
-                -- Auto-close on leave: start monitoring mouse proximity
-                Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
             end
         end
 
         -- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
         if InCombatLockdown() then return end
 
-        if group and group.animation then
+        local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+        if shouldAnimate then
             -- Animate: slide buttons from center to target
+            -- Nested children inherit animation setting from parent
             Wise:PlaySlideAnimation(self, true)
         else
             -- No animation: place buttons directly at target positions
@@ -1221,7 +1400,7 @@ function Wise:CreateGroupFrame(name, instanceId)
         
         -- Fix for button selection on spawn (OnEnter doesn't fire if appearing under mouse)
         -- Skip if animating, as movement will naturally trigger OnEnter
-        if not InCombatLockdown() and self.buttons and not (group and group.animation) then
+        if not InCombatLockdown() and self.buttons and not shouldAnimate then
              local found = nil
              for _, btn in ipairs(self.buttons) do
                  if btn:IsShown() and btn:IsMouseOver() then
@@ -1237,6 +1416,12 @@ function Wise:CreateGroupFrame(name, instanceId)
     end)
     
     f:SetScript("OnHide", function(self)
+        -- Reset hover indication on all buttons
+        for _, btn in ipairs(self.buttons or {}) do
+            btn:SetScale(1.0)
+            HideHoverGlow(btn)
+        end
+
         -- Cancel nested close-on-leave ticker
         if self.nestedCloseTicker then
             self.nestedCloseTicker:Cancel()
@@ -1272,7 +1457,8 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
 
         local group = WiseDB.groups[self.groupName]
-        if group and group.animation and not InCombatLockdown() then
+        local shouldAnimateClose = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+        if shouldAnimateClose and not InCombatLockdown() then
             -- Detect WoW-forced UI hide (quest dialogues, cutscenes, etc.)
             -- UIParent is hidden during these events; fighting it with Show() causes
             -- animation state corruption that leaves frames permanently invisible.
@@ -1301,6 +1487,57 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
     end)
     
+    -- Mousewheel scroll support: cycle through buttons on scroll
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        if not self.buttons or #self.buttons == 0 then return end
+        if not self.toggleBtn then return end
+
+        -- Build list of visible button names
+        local visible = {}
+        for _, btn in ipairs(self.buttons) do
+            if btn:IsShown() then
+                table.insert(visible, btn)
+            end
+        end
+        if #visible == 0 then return end
+
+        -- Find current hovered index
+        local currentName = self.toggleBtn:GetAttribute("hoveredButton")
+        local currentIdx = 0
+        for i, btn in ipairs(visible) do
+            if btn:GetName() == currentName then
+                currentIdx = i
+                break
+            end
+        end
+
+        -- Advance by scroll direction (delta > 0 = up = previous, delta < 0 = down = next)
+        local newIdx
+        if currentIdx == 0 then
+            newIdx = (delta > 0) and 1 or #visible
+        else
+            newIdx = currentIdx - delta
+            if newIdx < 1 then newIdx = #visible end
+            if newIdx > #visible then newIdx = 1 end
+        end
+
+        local newBtn = visible[newIdx]
+        if newBtn and not InCombatLockdown() then
+            self.toggleBtn:SetAttribute("hoveredButton", newBtn:GetName())
+            -- Update hover indication visuals
+            for _, btn in ipairs(visible) do
+                if btn:GetName() == newBtn:GetName() then
+                    btn:SetScale(HOVER_SCALE)
+                    ShowHoverGlow(btn)
+                else
+                    btn:SetScale(1.0)
+                    HideHoverGlow(btn)
+                end
+            end
+        end
+    end)
+
     -- Register with WiseStateDriver for cross-interface visibility
     local driver = WiseStateDriver
     f:SetFrameRef("WiseStateDriver", driver)
@@ -1452,8 +1689,8 @@ function Wise:BuildVisibilityDriver(f, group)
     -- Only press_visible mode respects base visibility for the state-game driver.
     if showStr == "" and hideStr == "" then
         local mode = group.interaction or "toggle"
-        local base = group.visibilitySettings.baseVisibility
-        local isHeldOrToggle = (group.visibilitySettings.held or group.visibilitySettings.toggleOnPress)
+        local base = f.effectiveBaseVisibility or group.visibilitySettings.baseVisibility
+        local isHeldOrToggle = (group.visibilitySettings.held or (f.effectiveToggleOnPress ~= nil and f.effectiveToggleOnPress or group.visibilitySettings.toggleOnPress))
 
         if isHeldOrToggle then
             -- Hold/Toggle: driver stays empty → defaults to "hide"
@@ -2004,7 +2241,7 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
     end
     btn:SetAttribute("isa_nest_count", 0)
 
-    if nestMode == "jump" then return end -- Jump mode uses /click, no child attrs needed
+    if nestMode == "jump" or nestMode == nil then return end -- Jump mode opens child, no attrs needed
 
     local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
     if not childGroup or not childGroup.actions then return end
@@ -2050,43 +2287,14 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
         end
     end
     btn:SetAttribute("isa_nest_count", nestIdx)
-    -- Initialize sequence counter for cycle/shuffle
+    -- Initialize sequence counter for cycle mode
     if not btn:GetAttribute("isa_nest_seq") then
         btn:SetAttribute("isa_nest_seq", 1)
-    end
-    -- For shuffle mode, randomize the order by shuffling the attributes
-    if nestMode == "shuffle" and nestIdx > 1 then
-        -- Fisher-Yates shuffle of the nest attributes
-        for si = nestIdx, 2, -1 do
-            local sj = math.random(si)
-            if si ~= sj then
-                -- Swap si and sj
-                local tmpT = btn:GetAttribute("isa_nest_type_" .. si)
-                local tmpS = btn:GetAttribute("isa_nest_spell_" .. si)
-                local tmpI = btn:GetAttribute("isa_nest_item_" .. si)
-                local tmpM = btn:GetAttribute("isa_nest_macrotext_" .. si)
-                local tmpCB = btn:GetAttribute("isa_nest_clickbutton_name_" .. si)
-                local tmpC = btn:GetAttribute("isa_nest_cond_" .. si)
-                btn:SetAttribute("isa_nest_type_" .. si, btn:GetAttribute("isa_nest_type_" .. sj))
-                btn:SetAttribute("isa_nest_spell_" .. si, btn:GetAttribute("isa_nest_spell_" .. sj))
-                btn:SetAttribute("isa_nest_item_" .. si, btn:GetAttribute("isa_nest_item_" .. sj))
-                btn:SetAttribute("isa_nest_macrotext_" .. si, btn:GetAttribute("isa_nest_macrotext_" .. sj))
-                btn:SetAttribute("isa_nest_clickbutton_name_" .. si, btn:GetAttribute("isa_nest_clickbutton_name_" .. sj))
-                btn:SetAttribute("isa_nest_cond_" .. si, btn:GetAttribute("isa_nest_cond_" .. sj))
-                btn:SetAttribute("isa_nest_type_" .. sj, tmpT)
-                btn:SetAttribute("isa_nest_spell_" .. sj, tmpS)
-                btn:SetAttribute("isa_nest_item_" .. sj, tmpI)
-                btn:SetAttribute("isa_nest_macrotext_" .. sj, tmpM)
-                btn:SetAttribute("isa_nest_clickbutton_name_" .. sj, tmpCB)
-                btn:SetAttribute("isa_nest_cond_" .. sj, tmpC)
-            end
-        end
-        btn:SetAttribute("isa_nest_seq", 1) -- Reset after shuffle
     end
 end
 
 -- Helper: Get the icon for the current rotation action on an interface button.
--- For cycle/shuffle, shows the NEXT action. For random/priority, shows best match.
+-- For cycle, shows the NEXT action. For random/priority, shows best match.
 function Wise:GetRotationIcon(btn, childGroupName, nestMode)
     local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
     if not childGroup or not childGroup.actions then return nil end
@@ -2134,7 +2342,7 @@ function Wise:GetRotationIcon(btn, childGroupName, nestMode)
             end
         end
         if not chosen then chosen = actions[1] end
-    elseif nestMode == "cycle" or nestMode == "shuffle" then
+    elseif nestMode == "cycle" then
         -- Show the action at current sequence position
         local seq = btn:GetAttribute("isa_nest_seq") or 1
         local idx = ((seq - 1) % #actions) + 1
@@ -2177,6 +2385,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     if overrideOpts and overrideOpts.nestedInterfaceType and overrideOpts.nestedInterfaceType ~= "default" then
         displayType = overrideOpts.nestedInterfaceType
     end
+    f.effectiveDisplayType = displayType
+
+    -- Allow nesting options to override the child's dynamic/static style
+    local isDynamic = group.dynamic
+    if overrideOpts and overrideOpts.nestedInterfaceStyle and overrideOpts.nestedInterfaceStyle ~= "default" then
+        isDynamic = (overrideOpts.nestedInterfaceStyle == "dynamic")
+    end
+
     local mode = group.interaction or "toggle"
     
     -- Check Availability override (Wiser interfaces)
@@ -2206,24 +2422,33 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Nested Interface Detection (used for strata, toggleOnPress, visibility)
     local parentName, parentGroup = Wise:GetParentInfo(name)
 
-    -- Apply nested inheritance BEFORE visibility driver (driver reads toggleOnPress)
-    -- Skip for Wiser interfaces: they manage their own visibility and should not
-    -- be forced to ALWAYS_HIDDEN or toggleOnPress by nesting detection.
-    if parentName and parentGroup and not group.isWiser then
-        -- Nested interfaces must toggle on press to respond to /click from parent.
-        -- Even if the group has its own keybind, toggleOnPress is needed because
-        -- /click simulates a full down+up and held mode would flash-and-hide.
-        if not group.visibilitySettings.toggleOnPress then
-            group.visibilitySettings.toggleOnPress = true
+    -- Determine if THIS invocation is for a nested instance (has instanceId from parent)
+    -- vs the base/standalone instance. A group can be both standalone (own keybind)
+    -- AND nested (referenced as interface action in another group). Only the nested
+    -- instance should be forced to toggleOnPress/ALWAYS_HIDDEN.
+    local isNestedInstance = (instanceId ~= nil) and parentName and not group.isWiser
+
+    -- Effective visibility overrides for nested instances only (never mutate saved data)
+    local effectiveToggleOnPress = group.visibilitySettings.toggleOnPress
+    local effectiveBaseVisibility = group.visibilitySettings.baseVisibility
+    local effectiveHideOnUse = group.visibilitySettings.hideOnUse
+
+    if isNestedInstance then
+        effectiveToggleOnPress = true
+        effectiveBaseVisibility = "ALWAYS_HIDDEN"
+        if effectiveHideOnUse == nil then
+            effectiveHideOnUse = true
         end
-        -- Default to ALWAYS_HIDDEN so visibility is controlled by toggle only
-        if group.visibilitySettings.baseVisibility ~= "ALWAYS_HIDDEN" then
-            group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN"
-        end
-        -- Nested interfaces should hide on use by default (unless explicitly set to false)
-        if group.visibilitySettings.hideOnUse == nil then
-            group.visibilitySettings.hideOnUse = true
-        end
+    end
+
+    -- Store effective values on frame for BuildVisibilityDriver and toggleBtn setup
+    f.effectiveToggleOnPress = effectiveToggleOnPress
+    f.effectiveBaseVisibility = effectiveBaseVisibility
+    f.effectiveHideOnUse = effectiveHideOnUse
+
+    -- Nested instances inherit animation from parent
+    if isNestedInstance and overrideOpts then
+        f.parentAnimation = overrideOpts._parentAnimation or false
     end
 
     -- Module 1: Apply Visibility Engine
@@ -2473,7 +2698,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local manualState = f:GetAttribute("state-manual") or "hide"
         local customState = initialCustomState
         
-        local base = group.visibilitySettings.baseVisibility
+        local base = effectiveBaseVisibility
 
         -- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
         local wiseShowState = f:GetAttribute("state-wise-show") or "hide"
@@ -2550,7 +2775,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
     -- Apply Anchor (only for fixed mode or initial positioning)
     -- Mouse mode will reposition via OnUpdate
-    if group.anchorMode ~= "mouse" then
+    -- Nested instances always use static positioning (PositionNestedChild handles them)
+    if isNestedInstance or group.anchorMode ~= "mouse" then
         -- Static Mode: Restore anchor to f.Anchor
         if not InCombatLockdown() then
              -- Ensure f is anchored to f.Anchor using the group's point
@@ -2652,20 +2878,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- CRITICAL: If Toggle On Press is enabled, we MUST NOT enable visibleWhenHeld,
         -- because visibleWhenHeld causes the frame to hide on release.
         local isHeld = group.visibilitySettings.held or autoHeld
-        if group.visibilitySettings.toggleOnPress then isHeld = false end
+        if effectiveToggleOnPress then isHeld = false end
 
         f.toggleBtn:SetAttribute("visibleWhenHeld", isHeld)
 
-        f.toggleBtn:SetAttribute("toggleOnPress", group.visibilitySettings.toggleOnPress)
-        f.toggleBtn:SetAttribute("hideOnUse", group.visibilitySettings.hideOnUse)
+        f.toggleBtn:SetAttribute("toggleOnPress", effectiveToggleOnPress)
+        f.toggleBtn:SetAttribute("hideOnUse", effectiveHideOnUse)
         f.toggleBtn:SetAttribute("layoutType", displayType)
-        f.toggleBtn:SetAttribute("openNestedButton", group.nestingOpenButton or "BUTTON1")
 
         Wise:DebugPrint(string.format("Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'", 
             name, 
             derivedTrigger, 
             tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")), 
-            tostring(group.visibilitySettings.toggleOnPress),
+            tostring(effectiveToggleOnPress),
             tostring(group.keybindSettings and group.keybindSettings.repeatPrevious)
         ))
     end
@@ -2713,14 +2938,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     local shouldShow = true
                     -- Check if spell/item is known
                     local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-    
-                    if group.dynamic then
+
+                    if isDynamic then
                         -- For dynamic groups, collapse "Spacer" actions (empty custom macros)
                         -- A spacer is misc/custom_macro with either no name/macrotext or explicitly named "Empty"
                         local isSpacer = (actionData.type == "misc" and actionData.value == "custom_macro") and
                                          (actionData.name == "Empty" or (not actionData.macroText or actionData.macroText == ""))
 
-                        if shouldShow and isKnown and not isSpacer then
+                        -- Also check cooldowns for dynamic mode: hide on-cooldown actions
+                        local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+
+                        if shouldShow and isKnown and not isSpacer and not isOnCooldown then
                             table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, activeState = chosenIdx})
                         end
                     else
@@ -2733,7 +2961,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         end
                     end
                 end
-            elseif not group.dynamic then
+            elseif not isDynamic then
                 -- Static interfaces: always preserve empty slots (no collapsing)
                 table.insert(actionsToShow, {data = {type="empty", value=nil}, known = true, categoryMatch = true, slot = slotIdx})
             end
@@ -2744,18 +2972,119 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
          for i, actionData in ipairs(group.buttons) do
             local shouldShow = Wise:ShouldShowAction(actionData)
             local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-            if group.dynamic then
-                if shouldShow and isKnown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
+            if isDynamic then
+                local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                if shouldShow and isKnown and not isOnCooldown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
             else
                 table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = shouldShow, slot = i})
             end
          end
     end
     
+    -- Expand embedded interface actions: replace interface slots with child's resolved actions
+    -- Clear stale embedded parent mappings for this group
+    if Wise._embeddedParents then
+        for childName, parentName in pairs(Wise._embeddedParents) do
+            if parentName == name then
+                Wise._embeddedParents[childName] = nil
+            end
+        end
+    end
+    local expanded = {}
+    for _, actionInfo in ipairs(actionsToShow) do
+        local ad = actionInfo.data
+        if ad and ad.type == "interface" and ad.value then
+            local nestOpts = Wise:GetNestingOptions(ad)
+            -- Box parents don't support embedded mode; skip expansion
+            local pType = group and group.type or "circle"
+            if nestOpts and nestOpts.rotationMode == "embedded" and pType ~= "box" then
+                local childGroupName = ad.value
+                local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
+                if childGroup then
+                    -- Resolve child actions the same way the main loop does
+                    local childActions = childGroup.actions
+                    local childButtons = not childActions and childGroup.buttons
+                    local childSlots = {}
+                    if childActions then
+                        for slotIdx, states in pairs(childActions) do
+                            if type(slotIdx) == "number" and type(states) == "table" then
+                                table.insert(childSlots, {index = slotIdx, states = states})
+                            end
+                        end
+                        table.sort(childSlots, function(a, b) return a.index < b.index end)
+                    elseif childButtons then
+                        for ci, cAction in ipairs(childButtons) do
+                            table.insert(childSlots, {index = ci, states = {cAction}})
+                        end
+                    end
+
+                    local childIsDynamic = childGroup.dynamic
+                    for _, cSlot in ipairs(childSlots) do
+                        local cStates = cSlot.states
+                        local validStates = {}
+                        validStates.conflictStrategy = cStates.conflictStrategy
+                        validStates.resetOnCombat = cStates.resetOnCombat
+                        validStates.suppressErrors = cStates.suppressErrors
+                        for _, st in ipairs(cStates) do
+                            if Wise:IsActionAllowed(st) then
+                                table.insert(validStates, st)
+                            end
+                        end
+                        if #validStates > 0 then
+                            local cs = validStates.conflictStrategy or "priority"
+                            local chosenIdx = Wise:EvaluateSlotConditions(validStates, cs, nil)
+                            local cData = chosenIdx and validStates[chosenIdx] or validStates[1]
+                            if cData and cData.type ~= "interface" then
+                                local cKnown = Wise:IsActionKnown(cData.type, cData.value)
+                                if childIsDynamic or isDynamic then
+                                    local isSpacer = (cData.type == "misc" and cData.value == "custom_macro") and
+                                        (cData.name == "Empty" or (not cData.macroText or cData.macroText == ""))
+                                    local isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
+                                    if cKnown and not isSpacer and not isOnCD then
+                                        table.insert(expanded, {data = cData, known = true, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, suppressErrors = validStates.suppressErrors, activeState = chosenIdx, embeddedFrom = childGroupName})
+                                    end
+                                else
+                                    if Wise.editMode or cKnown then
+                                        table.insert(expanded, {data = cData, known = cKnown, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, activeState = chosenIdx, embeddedFrom = childGroupName})
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    -- Track this parent so child updates can propagate
+                    if not Wise._embeddedParents then Wise._embeddedParents = {} end
+                    Wise._embeddedParents[childGroupName] = name
+                else
+                    -- Child group not found, skip
+                end
+            else
+                table.insert(expanded, actionInfo)
+            end
+        else
+            table.insert(expanded, actionInfo)
+        end
+    end
+    actionsToShow = expanded
+
     Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
 
     -- Create/Update Buttons
     local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots = Wise:GetGroupDisplaySettings(name)
+
+    -- Nested instances inherit icon size from parent
+    if isNestedInstance and overrideOpts and overrideOpts._parentIconSize then
+        iconSize = overrideOpts._parentIconSize
+        f.inheritedIconSize = iconSize
+    end
+
+    -- Nested line children: inherit orientation/anchor overrides from nesting logic
+    if isNestedInstance and overrideOpts then
+        f.nestedLineOrientation = overrideOpts._nestedLineOrientation or nil
+        f.nestedLineAnchor = overrideOpts._nestedLineAnchor or nil
+        f.nestedListAnchor = overrideOpts._nestedListAnchor or nil
+        f.nestedTextAlign = overrideOpts._nestedTextAlign or nil
+    end
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2804,6 +3133,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
             -- Tooltip support
             Wise:AddInterfaceTooltip(btn)
+
+            -- Hover indication (5% scale + dim glow)
+            Wise:AddHoverIndication(btn)
+
+            -- Mousewheel: propagate to parent group frame for scroll navigation
+            btn:EnableMouseWheel(true)
+            btn:SetScript("OnMouseWheel", function(self, delta)
+                local parent = self:GetParent()
+                if parent and parent:GetScript("OnMouseWheel") then
+                    parent:GetScript("OnMouseWheel")(parent, delta)
+                end
+            end)
 
             -- Secure hover tracking
             SecureHandlerWrapScript(btn, "OnEnter", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", self:GetName()) ]])
@@ -2882,12 +3223,26 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn:SetAttribute("isa_interface_target", childInstanceId)
 
             local nestOpts = Wise:GetNestingOptions(actionData)
-            if nestOpts then
-                btn:SetAttribute("isa_open_button", nestOpts.openNestedButton or "BUTTON1")
-                btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+            local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
+            -- Box parents only support button nesting (jump/embedded too complex for grid)
+            local parentType = group and group.type or "circle"
+            if parentType == "box" then
+                nestMode = "button"
+            end
+            -- For button mode, pass the buttonMode to the secure handler
+            -- (secure handler uses cycle/random/priority directly)
+            local secureNestMode = nestMode
+            if nestMode == "button" then
+                secureNestMode = (nestOpts and nestOpts.buttonMode) or "cycle"
+            end
+            btn:SetAttribute("isa_nest_mode", secureNestMode)
 
-                if nestOpts.openOnHover then
-                    -- Open on hover via secure snippet
+            if nestMode == "jump" then
+                -- Jump mode: create child frame and set up hover-to-open
+                if nestOpts then
+                    btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+
+                    -- Always open on hover (the only open method for nested interfaces)
                     btn:SetAttribute("_onenter", [[
                         local target = self:GetAttribute("isa_interface_target")
                         if target then
@@ -2904,39 +3259,155 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                             end
                         end
                     ]])
-                else
-                    btn:SetAttribute("_onenter", nil)
+                    btn:SetAttribute("_onclick", nil)
                 end
-            end
 
-            -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
-            local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
-            if childGroup then
-                local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
-                if childFrame then
-                    f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
-                    btn:SetFrameRef("child_group", childFrame)
-                    if Wise.WiseStateDriver then
-                        btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+                -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
+                local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
+                if childGroup then
+                    local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
+                    if childFrame then
+                        f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
+                        btn:SetFrameRef("child_group", childFrame)
+                        if Wise.WiseStateDriver then
+                            btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+                        end
+                        -- Store ref to child's toggleBtn so parent can check child hover state
+                        if childFrame.toggleBtn then
+                            f.toggleBtn:SetFrameRef("childToggle_" .. childInstanceId, childFrame.toggleBtn)
+                        end
+                    end
+
+                    -- Store owning button name and parent toggleBtn on child frame
+                    -- so the close ticker knows when the parent moved to a different slot
+                    if childFrame then
+                        childFrame.ownerButtonName = btn:GetName()
+                        childFrame.parentToggleBtn = f.toggleBtn
+                        if not InCombatLockdown() then
+                            childFrame:SetAttribute("keepOpenAfterUse", nestOpts.keepOpenAfterUse or false)
+                        end
+                    end
+
+                    -- Recursive update to prepare child layout with overrides
+                    if not nestOpts then nestOpts = {} end
+                    nestOpts._parentInstanceId = frameKey
+
+                    -- Inherit icon size from parent so nested children match
+                    nestOpts._parentIconSize = iconSize
+                    nestOpts._parentAnimation = group.animation or false
+
+                    -- Compute line orientation/anchor overrides for line children
+                    local effectiveChildType = nestOpts.nestedInterfaceType or "default"
+                    if effectiveChildType == "default" then
+                        local childGroup = WiseDB.groups[aValue]
+                        effectiveChildType = (childGroup and childGroup.type) or "circle"
+                    end
+                    local parentType = group.type or "circle"
+                    local openDir = nestOpts.openDirection or "auto"
+
+                    if effectiveChildType == "line" then
+                        if parentType == "circle" then
+                            -- Circle/Line: child line always points away from circle center
+                            local bx = btn.targetX or 0
+                            local by = btn.targetY or 0
+                            local dist = math.sqrt(bx * bx + by * by)
+                            if dist > 0.1 then
+                                local absX = math.abs(bx)
+                                local absY = math.abs(by)
+                                if absX >= absY then
+                                    nestOpts._nestedLineOrientation = "horizontal"
+                                    nestOpts._nestedLineAnchor = (bx > 0) and "LEFT" or "RIGHT"
+                                else
+                                    nestOpts._nestedLineOrientation = "vertical"
+                                    nestOpts._nestedLineAnchor = (by > 0) and "BOTTOM" or "TOP"
+                                end
+                            end
+                        elseif parentType == "line" or parentType == "list" then
+                            -- Line/Line or List/Line: child line opens perpendicular to parent
+                            local parentOrientation = group.lineOrientation or "horizontal"
+                            if parentType == "list" then parentOrientation = "vertical" end
+
+                            if parentOrientation == "horizontal" then
+                                nestOpts._nestedLineOrientation = "vertical"
+                                if openDir == "up" then
+                                    nestOpts._nestedLineAnchor = "BOTTOM"
+                                elseif openDir == "down" then
+                                    nestOpts._nestedLineAnchor = "TOP"
+                                else
+                                    nestOpts._nestedLineAnchor = "TOP"
+                                end
+                            else
+                                nestOpts._nestedLineOrientation = "horizontal"
+                                if openDir == "right" then
+                                    nestOpts._nestedLineAnchor = "LEFT"
+                                elseif openDir == "left" then
+                                    nestOpts._nestedLineAnchor = "RIGHT"
+                                else
+                                    nestOpts._nestedLineAnchor = "LEFT"
+                                end
+                            end
+                        end
+                    elseif effectiveChildType == "list" then
+                        if parentType == "line" or parentType == "list" then
+                            -- Line/List or List/List: child list opens perpendicular to parent
+                            local parentOrientation = group.lineOrientation or "horizontal"
+                            if parentType == "list" then parentOrientation = "vertical" end
+
+                            if parentOrientation == "horizontal" then
+                                -- Parent horizontal → child list opens up or down
+                                if openDir == "up" then
+                                    nestOpts._nestedListAnchor = "BOTTOM"
+                                elseif openDir == "down" then
+                                    nestOpts._nestedListAnchor = "TOP"
+                                else
+                                    nestOpts._nestedListAnchor = "TOP"
+                                end
+                            else
+                                -- Parent vertical → child list opens left or right
+                                if openDir == "right" then
+                                    nestOpts._nestedListAnchor = "LEFT"
+                                elseif openDir == "left" then
+                                    nestOpts._nestedListAnchor = "RIGHT"
+                                else
+                                    nestOpts._nestedListAnchor = "LEFT"
+                                end
+                            end
+
+                            -- Text align override
+                            local nta = nestOpts.nestedTextAlign or "auto"
+                            if nta ~= "auto" then
+                                nestOpts._nestedTextAlign = nta
+                            else
+                                -- Auto: place text away from parent
+                                -- If opening right/down, text goes right; if left/up, text goes left
+                                local anchor = nestOpts._nestedListAnchor or "TOP"
+                                if anchor == "LEFT" or anchor == "TOP" then
+                                    nestOpts._nestedTextAlign = "right"
+                                else
+                                    nestOpts._nestedTextAlign = "left"
+                                end
+                            end
+                        end
+                    end
+
+                    local currentDepth = (overrideOpts and overrideOpts._depth) or 0
+                    if currentDepth < 3 then
+                        nestOpts._depth = currentDepth + 1
+                        Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
+                    else
+                        Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
                     end
                 end
-
-                -- Recursive update to prepare child layout with overrides
-                if not nestOpts then nestOpts = {} end
-                nestOpts._parentInstanceId = frameKey
-
-                local currentDepth = (overrideOpts and overrideOpts._depth) or 0
-                if currentDepth < 3 then
-                    nestOpts._depth = currentDepth + 1
-                    Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
-                else
-                    Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
-                end
+            else
+                -- Button modes (cycle/random/priority): no child frame needed.
+                -- The RESOLVE_BLOCK resolves child actions via isa_nest_* attributes.
+                btn:SetAttribute("_onenter", nil)
+                btn:SetAttribute("_onclick", nil)
+                btn:SetAttribute("isa_open_button", nil)
+                btn:SetAttribute("isa_open_direction", nil)
             end
 
-            -- Store child group's actions for rotation modes (cycle/shuffle/random/priority)
-            local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
-            btn:SetAttribute("isa_nest_mode", nestMode)
+            -- Store child group's actions for rotation modes
             Wise:StoreChildActionsOnButton(btn, aValue, nestMode)
         else
             btn:SetAttribute("isa_is_interface", nil)
@@ -2945,6 +3416,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn:SetAttribute("isa_open_direction", nil)
             btn:SetAttribute("isa_nest_mode", nil)
             btn:SetAttribute("isa_nest_count", nil)
+            btn:SetAttribute("_onenter", nil)
+            btn:SetAttribute("_onclick", nil)
         end
 
         -- Store all states as secure attributes for condition evaluation
@@ -3181,6 +3654,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Sync Visual Display Buttons
     if f.visualDisplay then
         local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
+        -- Nested instances inherit icon size from parent
+        if f.inheritedIconSize then
+            visualIconSize = f.inheritedIconSize
+        end
         for i, actionInfo in ipairs(actionsToShow) do
              local actionData = actionInfo.data
              local isKnown = actionInfo.known
@@ -3317,6 +3794,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              f.visualDisplay.buttons[i]:Hide()
         end
         
+        -- Propagate inherited display settings to visual display
+        f.visualDisplay.inheritedIconSize = f.inheritedIconSize
+        f.visualDisplay.nestedCircleRotation = f.nestedCircleRotation
+        f.visualDisplay.nestedLineOrientation = f.nestedLineOrientation
+        f.visualDisplay.nestedLineAnchor = f.nestedLineAnchor
+        f.visualDisplay.nestedListAnchor = f.nestedListAnchor
+        f.visualDisplay.nestedTextAlign = f.nestedTextAlign
         -- Apply Layout to Visual Display
         Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
     end
@@ -3636,11 +4120,25 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     end
                 end
             end
+
         end)
     end
 
     -- Ensure bindings are active (fixes potential staleness on new groups)
     if Wise.UpdateBindings then Wise:UpdateBindings() end
+
+    -- Propagate to parents that embed this group
+    if Wise._embeddedParents and Wise._embeddedParents[name] then
+        local parentName = Wise._embeddedParents[name]
+        -- Guard against re-entrancy: only propagate if not already updating this parent
+        if not Wise._embeddedUpdating then
+            Wise._embeddedUpdating = true
+            if not InCombatLockdown() then
+                Wise:UpdateGroupDisplay(parentName)
+            end
+            Wise._embeddedUpdating = nil
+        end
+    end
 end
 
 -- Metadata storage to avoid reading SecureFrames in combat
@@ -3802,7 +4300,12 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     frame.buttons = frame.buttons or {}
     local buttons = frame.buttons
     local iconSize, _, _, showKeybinds = Wise:GetGroupDisplaySettings(groupName)
-    
+
+    -- Nested instances inherit icon size from their nesting parent
+    if frame.inheritedIconSize then
+        iconSize = frame.inheritedIconSize
+    end
+
     -- Try to extract group name if not provided (fallback for legacy/secure frames)
     if not groupName and frame:GetName() then
         groupName = frame:GetName():match("WiseGroup_(.+)")
@@ -3868,6 +4371,13 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             if WiseDB.groups[groupName].lineOrientation then
                 orientation = WiseDB.groups[groupName].lineOrientation
             end
+        end
+        -- Nested line children: override orientation and anchor from nesting logic
+        if frame.nestedLineOrientation then
+            orientation = frame.nestedLineOrientation
+        end
+        if frame.nestedLineAnchor then
+            anchorPoint = frame.nestedLineAnchor
         end
         local spacing = iconSize + linePadding
         
@@ -3983,7 +4493,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         end
     elseif type == "list" then
         -- Vertical text-based list
-        local iconSize, textSize, fontPath = Wise:GetGroupDisplaySettings(groupName)
+        local _, textSize, fontPath = Wise:GetGroupDisplaySettings(groupName)
         local listPadding = 8 -- default line padding
         local anchorPoint = "CENTER"
         if groupName and WiseDB.groups[groupName] then
@@ -3994,14 +4504,22 @@ function Wise:ApplyLayout(frame, type, count, groupName)
                 anchorPoint = WiseDB.groups[groupName].anchor.point
             end
         end
+        -- Nested list children: override anchor and text align from nesting logic
+        if frame.nestedListAnchor then
+            anchorPoint = frame.nestedListAnchor
+        end
         local listIconSize = iconSize
         local contentHeight = math.max(textSize, listIconSize)
         local lineHeight = contentHeight + listPadding
         local maxTextWidth = 0
         -- groupName is now passed as argument
-        
+
         -- Alignment (Pre-calculate for loop)
         local textAlign = (WiseDB.groups[groupName] and WiseDB.groups[groupName].textAlign) or "right"
+        -- Nested list children: override text align
+        if frame.nestedTextAlign then
+            textAlign = frame.nestedTextAlign
+        end
 
         local dy = -lineHeight
         local startY = 0
@@ -4127,11 +4645,17 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             circleRadius = WiseDB.groups[groupName].circleRadius
             circleRotation = WiseDB.groups[groupName].circleRotation or 0
         end
-        -- Default radius if not set
+
+        -- Default radius if not set (uses inherited iconSize for nested children)
         if not circleRadius then
             circleRadius = iconSize * 2
         end
         if not circleRotation then circleRotation = 0 end
+
+        -- Nested child: override rotation so button 1 points back toward parent
+        if frame.nestedCircleRotation then
+            circleRotation = frame.nestedCircleRotation
+        end
         local step = 360 / max(count, 1)
         for i=1, count do
             local angle
@@ -4711,6 +5235,15 @@ function Wise:UpdateButtonUsability(btn)
                 end
             else
                 isUsable = false -- No addons selected
+            end
+        end
+    elseif actionType == "toy" then
+        local toyID = tonumber(actionValue)
+        if toyID then
+            if C_ToyBox and C_ToyBox.IsToyUsable then
+                isUsable = C_ToyBox.IsToyUsable(toyID)
+            elseif PlayerHasToy then
+                isUsable = PlayerHasToy(toyID)
             end
         end
     elseif spellID then
