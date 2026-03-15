@@ -811,7 +811,8 @@ function Wise:GetTransportation(filter)
                 if name then
                     local isTransportItem = false
 
-                    if string.match(string.lower(name), "hearthstone") then
+                    local lName = string.lower(name)
+                    if string.match(lName, "hearthstone") then
                         isTransportItem = true
                     else
                         -- Check if item casts a teleport spell
@@ -833,7 +834,7 @@ function Wise:GetTransportation(filter)
                         end
                     end
 
-                    if isTransportItem and (not filter or string.find(string.lower(name), filter, 1, true)) then
+                    if isTransportItem and (not filter or string.find(lName, filter, 1, true)) then
                         if not seen[name] then
                             table.insert(items, {
                                 type = "item",
@@ -864,7 +865,10 @@ function Wise:GetTransportation(filter)
                     local isTransportToy = false
                     local lName = string.lower(name)
 
-                    if string.match(lName, "hearthstone") or string.match(lName, "wormhole") then
+                    if string.match(lName, "hearthstone") or
+                       string.match(lName, "wormhole") or
+                       string.match(lName, "generator") or
+                       string.match(lName, "transporter") then
                         isTransportToy = true
                     else
                         -- Check if toy casts a teleport spell
@@ -886,7 +890,7 @@ function Wise:GetTransportation(filter)
                         end
                     end
 
-                    if isTransportToy and (not filter or string.find(string.lower(name), filter, 1, true)) then
+                    if isTransportToy and (not filter or string.find(lName, filter, 1, true)) then
                         if not seen[name] then
                             table.insert(items, {
                                 type = "toy",
