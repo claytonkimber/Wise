@@ -910,6 +910,8 @@ function Wise:GetTransportation(filter)
 end
 
 function Wise:GetInterface(filter)
+    local allowedWiser = { ["Specs"] = true, ["Professions"] = true, ["Forms"] = true, ["Menu Bar"] = true }
+
     local items = {}
     
     -- Context: Who is the parent?
@@ -920,7 +922,7 @@ function Wise:GetInterface(filter)
     if not parentGroup then 
         -- Fallback if no selected group (e.g. testing?), list all
         for name, group in pairs(WiseDB.groups) do
-             if not group.isWiser and (not filter or string.find(string.lower(name), filter, 1, true)) then
+             if (not group.isWiser or allowedWiser[name]) and (not filter or string.find(string.lower(name), filter, 1, true)) then
                  local icon = Wise:GetActionIcon("interface", name)
                  table.insert(items, {type="interface", value=name, name=name, icon=icon, category="Interface"})
              end
@@ -937,7 +939,7 @@ function Wise:GetInterface(filter)
         -- Base Filters:
         -- 1. Not Wiser (Wiser Interfaces can't be selected)
         -- 2. Not Self (Cannot nest inside itself)
-        if not group.isWiser and name ~= parentName then
+        if (not group.isWiser or allowedWiser[name]) and name ~= parentName then
 
             -- Filter by text
             if not filter or string.find(string.lower(name), filter, 1, true) then
