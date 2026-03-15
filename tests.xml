@@ -32,4 +32,13 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_4" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Hide Native Interface Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that checking the 'Hide Game Interface' box in the Properties panel hides the native interface.\n1. Enable the Cooldowns interface in settings.\n2. Open Properties for Cooldowns.\n3. Check the 'Hide Game Interface' box and verify the default UI element (EssentialCooldownViewer) hides." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = true; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = false; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+        </KeyValues>
+    </Frame>
+
 </Ui>
