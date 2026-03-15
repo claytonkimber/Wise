@@ -55,6 +55,7 @@ function Wise:CreateOptionsFrame()
     f.Sidebar.AddBtn:SetPoint("TOP", f.Sidebar, "TOP", 0, -20)
     Wise:AddTooltip(f.Sidebar.AddBtn, "Create a new custom interface (ring, bar, grid).")
     f.Sidebar.AddBtn:SetScript("OnClick", function()
+        EnsureCreateGroupPopup()
         StaticPopup_Show("WISE_CREATE_GROUP")
     end)
 
@@ -74,13 +75,13 @@ function Wise:CreateOptionsFrame()
     -- Filter Buttons (Anchored to Top Edge of Middle Column)
     f.Middle.FilterButtons = {}
     local filterWidth = 300 -- Match Middle column width
-    local btnWidth = filterWidth / 5
-    -- We want them to sit ON the top edge. 
+    -- We want them to sit ON the top edge.
     -- f.Middle is an InsetFrame. We anchor to its TOPLEFT but shift up.
     -- Parent to f so they aren't clipped or inside the inset.
-    
-    local filters = {"global", "class", "spec", "talent", "character"}
-    local labels = {global="Global", class="Class", spec="Spec", talent="Talents", character="Char"}
+
+    local filters = {"global", "class", "role", "spec", "talent", "character"}
+    local labels = {global="Global", class="Class", role="Role", spec="Spec", talent="Talents", character="Char"}
+    local btnWidth = filterWidth / #filters
     
     for i, filter in ipairs(filters) do
         local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -918,25 +919,29 @@ end
 -- Old RefreshActionList removed.
 
 
-StaticPopupDialogs["WISE_CREATE_GROUP"] = {
-    text = "Enter new Wise Interface name:",
-    button1 = "Create",
-    button2 = "Cancel",
-    hasEditBox = true,
-    OnAccept = function(self)
-        local editBox = self.EditBox or self.editBox
-        if not editBox then return end
-        local text = editBox:GetText()
-        if text and text ~= "" then
-            Wise:CreateGroup(text)
-        end
-    end,
-    EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        StaticPopup_OnClick(parent, 1)
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
+local function EnsureCreateGroupPopup()
+    if not StaticPopupDialogs["WISE_CREATE_GROUP"] then
+        StaticPopupDialogs["WISE_CREATE_GROUP"] = {
+            text = "Enter new Wise Interface name:",
+            button1 = "Create",
+            button2 = "Cancel",
+            hasEditBox = true,
+            OnAccept = function(self)
+                local editBox = self.EditBox or self.editBox
+                if not editBox then return end
+                local text = editBox:GetText()
+                if text and text ~= "" then
+                    Wise:CreateGroup(text)
+                end
+            end,
+            EditBoxOnEnterPressed = function(self)
+                local parent = self:GetParent()
+                StaticPopup_OnClick(parent, 1)
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
+end

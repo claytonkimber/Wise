@@ -57,17 +57,31 @@ function Wise:GetKeybind(groupName, slotIndex)
     return nil
 end
 
+-- Returns the group-level (interface toggle) binding text for display on buttons.
+-- This is the keybind that shows/hides the entire interface.
+function Wise:GetInterfaceKeybind(groupName)
+    if not groupName then return nil end
+    local group = WiseDB.groups[groupName]
+    if not group then return nil end
+
+    if group.binding and group.binding ~= "" then
+        return Wise:FormatKeybindText(group.binding), group.binding
+    end
+
+    return nil
+end
+
 -- Format raw keybind text for display (max 3 chars)
 -- Compound modifier+mouse patterns handled first to stay within 3 chars
 function Wise:FormatKeybindText(text)
     if not text then return nil end
-    -- 1. Compound: modifier + mousewheel (e.g. SHIFT-MOUSEWHEELUP -> SwU)
-    text = text:gsub("ALT%-MOUSEWHEELUP", "AwU")
-    text = text:gsub("ALT%-MOUSEWHEELDOWN", "AwD")
-    text = text:gsub("CTRL%-MOUSEWHEELUP", "CwU")
-    text = text:gsub("CTRL%-MOUSEWHEELDOWN", "CwD")
-    text = text:gsub("SHIFT%-MOUSEWHEELUP", "SwU")
-    text = text:gsub("SHIFT%-MOUSEWHEELDOWN", "SwD")
+    -- 1. Compound: modifier + mousewheel
+    text = text:gsub("ALT%-MOUSEWHEELUP", "AMWU")
+    text = text:gsub("ALT%-MOUSEWHEELDOWN", "AMWD")
+    text = text:gsub("CTRL%-MOUSEWHEELUP", "CMWU")
+    text = text:gsub("CTRL%-MOUSEWHEELDOWN", "CMWD")
+    text = text:gsub("SHIFT%-MOUSEWHEELUP", "SMWU")
+    text = text:gsub("SHIFT%-MOUSEWHEELDOWN", "SMWD")
     -- 2. Compound: modifier + mouse button (e.g. SHIFT-BUTTON3 -> S3)
     text = text:gsub("ALT%-BUTTON(%d)", "A%1")
     text = text:gsub("CTRL%-BUTTON(%d)", "C%1")
@@ -80,12 +94,30 @@ function Wise:FormatKeybindText(text)
     text = text:gsub("CTRL%-", "C-")
     text = text:gsub("SHIFT%-", "S-")
     text = text:gsub("SPACE", "Spc")
-    text = text:gsub("MOUSEWHEELUP", "MwU")
-    text = text:gsub("MOUSEWHEELDOWN", "MwD")
+    text = text:gsub("MOUSEWHEELUP", "MWU")
+    text = text:gsub("MOUSEWHEELDOWN", "MWD")
     text = text:gsub("MIDDLEMOUSE", "M3")
     text = text:gsub("BUTTON3", "M3")
     text = text:gsub("BUTTON4", "M4")
     text = text:gsub("BUTTON5", "M5")
+    text = text:gsub("MINUS", "-")
+    text = text:gsub("EQUALS", "=")
+    text = text:gsub("NUMPADMINUS", "N-")
+    text = text:gsub("NUMPADEQUALS", "N=")
+    text = text:gsub("NUMPADPLUS", "N+")
+    text = text:gsub("NUMPADMULTIPLY", "N*")
+    text = text:gsub("NUMPADDIVIDE", "N/")
+    text = text:gsub("NUMPADDECIMAL", "N.")
+    text = text:gsub("NUMPAD(%d)", "N%1")
+    text = text:gsub("PAGEUP", "PU")
+    text = text:gsub("PAGEDOWN", "PD")
+    text = text:gsub("INSERT", "Ins")
+    text = text:gsub("DELETE", "Del")
+    text = text:gsub("HOME", "Hm")
+    text = text:gsub("END", "End")
+    text = text:gsub("BACKSPACE", "BS")
+    text = text:gsub("CAPSLOCK", "Caps")
+    text = text:gsub("NUMLOCK", "Num")
     return text
 end
 

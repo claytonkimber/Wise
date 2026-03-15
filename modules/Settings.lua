@@ -612,7 +612,7 @@ function Wise:PopulateSettingsView(panel)
     showKb:SetChecked(WiseDB.settings.showKeybinds)
     showKb.text = showKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     showKb.text:SetPoint("LEFT", showKb, "RIGHT", 5, 0)
-    showKb.text:SetText("Show")
+    showKb.text:SetText("Slot Keybinds")
     showKb:SetScript("OnClick", function(self)
         WiseDB.settings.showKeybinds = self:GetChecked()
         C_Timer.After(0.1, function()
@@ -634,6 +634,36 @@ function Wise:PopulateSettingsView(panel)
         end)
     end)
     table.insert(panel.children, showKb.text)
+
+    -- Interface Keybind toggle (same line, right of Slot Keybinds)
+    local showIntKb = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    showIntKb:SetPoint("LEFT", showKb.text, "RIGHT", 10, 0)
+    showIntKb:SetChecked(WiseDB.settings.showInterfaceKeybind)
+    showIntKb.text = showIntKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    showIntKb.text:SetPoint("LEFT", showIntKb, "RIGHT", 5, 0)
+    showIntKb.text:SetText("Interface Keybind")
+    showIntKb:SetScript("OnClick", function(self)
+        WiseDB.settings.showInterfaceKeybind = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then
+                for name in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(name) end
+
+                -- Force text refresh on all active buttons
+                if Wise.frames then
+                    for groupName, f in pairs(Wise.frames) do
+                        local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(groupName)
+                        if f.buttons then
+                            for _, btn in ipairs(f.buttons) do
+                                Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end)
+    table.insert(panel.children, showIntKb)
+    table.insert(panel.children, showIntKb.text)
     ry = ry - 30
 
     local kbPosLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

@@ -1,14 +1,18 @@
 local addonName, Wise = ...
 local tinsert = table.insert
 
-StaticPopupDialogs["WISE_BINDING_ERROR"] = {
-    text = "|cffff0000%s|r",
-    button1 = "OK",
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
+local function EnsureBindingErrorPopup()
+    if not StaticPopupDialogs["WISE_BINDING_ERROR"] then
+        StaticPopupDialogs["WISE_BINDING_ERROR"] = {
+            text = "|cffff0000%s|r",
+            button1 = "OK",
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
+end
 
 function Wise:ValidateMouseWheelBinding(group, isSlot)
     if isSlot then
@@ -92,55 +96,57 @@ local function CreateConditionValidator(editBox, panel)
     return status
 end
 
-StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
-    text = "Key '%s' is currently bound to '%s'. Use anyway?",
-    button1 = "Yes",
-    button2 = "Cancel",
-    OnAccept = function(self, data)
-        if data.oldOwner then
-            if data.oldSlot == "SYSTEM" then
-                -- It's a WoW system binding
-                SetBinding(data.key, nil)
-                local currentSet = GetCurrentBindingSet()
-                if currentSet == 1 or currentSet == 2 then
-                    SaveBindings(currentSet)
+local function EnsureBindingOverwritePopup()
+    if not StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] then
+        StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
+            text = "Key '%s' is currently bound to '%s'. Use anyway?",
+            button1 = "Yes",
+            button2 = "Cancel",
+            OnAccept = function(self, data)
+                if data.oldOwner then
+                    if data.oldSlot == "SYSTEM" then
+                        SetBinding(data.key, nil)
+                        local currentSet = GetCurrentBindingSet()
+                        if currentSet == 1 or currentSet == 2 then
+                            SaveBindings(currentSet)
+                        end
+                    else
+                        Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+                    end
                 end
-            else
-                Wise:ClearKeybind(data.oldOwner, data.oldSlot)
-            end
-        end
 
-        if data.group then
-            if data.isSlotBinding then
-                data.group.actions[data.slotIdx].keybind = data.key
-            else
-                data.group.binding = data.key
-            end
-        end
-        Wise:UpdateBindings()
-        if data.btn then
-            data.btn:SetText(data.key)
-        end
-        Wise:UpdateOptionsUI()
-    end,
-    OnCancel = function(self, data)
-        -- Revert text
-        if data.btn then
-            if data.group then
-                if data.isSlotBinding then
-                    data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
-                else
-                    data.btn:SetText(data.group.binding or "None")
+                if data.group then
+                    if data.isSlotBinding then
+                        data.group.actions[data.slotIdx].keybind = data.key
+                    else
+                        data.group.binding = data.key
+                    end
                 end
-            else
-                data.btn:SetText("None")
-            end
-        end
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-}
+                Wise:UpdateBindings()
+                if data.btn then
+                    data.btn:SetText(data.key)
+                end
+                Wise:UpdateOptionsUI()
+            end,
+            OnCancel = function(self, data)
+                if data.btn then
+                    if data.group then
+                        if data.isSlotBinding then
+                            data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
+                        else
+                            data.btn:SetText(data.group.binding or "None")
+                        end
+                    else
+                        data.btn:SetText("None")
+                    end
+                end
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+        }
+    end
+end
 
 function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
     local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
@@ -168,6 +174,7 @@ function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
             oldSlot = oldSlot,
             btn = btn
         }
+        EnsureBindingOverwritePopup()
         StaticPopup_Show("WISE_CONFIRM_BINDING_OVERWRITE", key, ownerText, data)
         return true
     end
@@ -780,6 +787,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                  end
             elseif catValue == "class" then
                  suffix = action.addedByClass
+            elseif catValue == "role" then
+                 suffix = action.roleRequirements
             elseif catValue == "spec" then
                  suffix = action.specRequirements
             elseif catValue == "talent" then
@@ -796,6 +805,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                 suffix = UnitName("player")
             elseif catValue == "class" then
                 suffix = select(2, UnitClass("player"))
+            elseif catValue == "role" then
+                suffix = {} -- Initialize as empty table so the 0 Roles logic triggers
             elseif catValue == "spec" then
                 suffix = {} -- Initialize as empty table so the 0 Specs logic triggers
             elseif catValue == "talent" then
@@ -819,6 +830,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                             else
                                 table.insert(itemNames, tostring(reqID))
                             end
+                        elseif catValue == "role" then
+                            table.insert(itemNames, Wise.RoleLabels[reqID] or reqID)
                         elseif catValue == "spec" then
                             local _, specName = GetSpecializationInfoByID(reqID)
                             if specName then
@@ -832,6 +845,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
                 else
                     if catValue == "talent" then
                         labelText = labelText .. " |cffff8800(0 Talents)|r"
+                    elseif catValue == "role" then
+                        labelText = labelText .. " |cffff8800(0 Roles)|r"
                     elseif catValue == "spec" then
                         labelText = labelText .. " |cffff8800(0 Specs)|r"
                     end
@@ -841,6 +856,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             end
         elseif catValue == "talent" and type(suffix) == "table" and #suffix == 0 then
             labelText = labelText .. " |cffff8800(0 Talents)|r"
+        elseif catValue == "role" and type(suffix) == "table" and #suffix == 0 then
+            labelText = labelText .. " |cffff8800(0 Roles)|r"
         elseif catValue == "spec" and type(suffix) == "table" and #suffix == 0 then
             labelText = labelText .. " |cffff8800(0 Specs)|r"
         end
@@ -859,6 +876,14 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             -- If user switches back to talent, make sure we initialize it
             if catValue == "talent" and type(action.talentRequirements) ~= "table" then
                 action.talentRequirements = {}
+            end
+
+            -- If user switches to role, initialize with current role
+            if catValue == "role" and type(action.roleRequirements) ~= "table" then
+                action.roleRequirements = {}
+                if Wise.characterInfo.role then
+                    table.insert(action.roleRequirements, Wise.characterInfo.role)
+                end
             end
 
             -- If user switches to spec, make sure we initialize it
@@ -894,6 +919,56 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             end)
             tinsert(panel.controls, talentBtn)
             y = y - 25
+        end
+
+        -- If role is selected, show inline role checkboxes
+        if catValue == "role" and currentCat == "role" then
+            if type(action.roleRequirements) ~= "table" then
+                action.roleRequirements = {}
+            end
+            local roles = {"TANK", "HEALER", "DAMAGER"}
+            for _, roleKey in ipairs(roles) do
+                local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+                cb:SetPoint("TOPLEFT", 30, y)
+                cb:SetSize(22, 22)
+
+                local isChecked = false
+                for _, r in ipairs(action.roleRequirements) do
+                    if r == roleKey then isChecked = true; break end
+                end
+                cb:SetChecked(isChecked)
+
+                if not canModify then
+                    cb:Disable()
+                    cb:SetAlpha(0.5)
+                end
+
+                cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                cb.label:SetPoint("LEFT", cb, "RIGHT", 3, 0)
+                cb.label:SetText(Wise.RoleLabels[roleKey] or roleKey)
+
+                cb:SetScript("OnClick", function(self)
+                    if self:GetChecked() then
+                        table.insert(action.roleRequirements, roleKey)
+                    else
+                        for i, r in ipairs(action.roleRequirements) do
+                            if r == roleKey then
+                                table.remove(action.roleRequirements, i)
+                                break
+                            end
+                        end
+                    end
+                    Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+                    C_Timer.After(0, function()
+                        if not InCombatLockdown() then
+                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                        end
+                    end)
+                end)
+                tinsert(panel.controls, cb)
+                tinsert(panel.controls, cb.label)
+                y = y - 22
+            end
         end
 
         -- If spec is selected, show "Select Specs" button
@@ -1403,6 +1478,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
                     if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
                         local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
                         if not isValid then
+                            EnsureBindingErrorPopup()
                             StaticPopup_Show("WISE_BINDING_ERROR", err)
                             self:EnableKeyboard(false)
                             self:EnableMouseWheel(false)
@@ -2641,31 +2717,72 @@ function Wise:RenderGroupProperties(panel, group, y)
         -- Per-Interface Keybind Settings
         local piKbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         piKbLabel:SetPoint("TOPLEFT", 10, y)
-        piKbLabel:SetText("Keybinds:" .. ( (group.showKeybinds~=nil or group.keybindPosition or group.keybindTextSize) and " |cffff8800(Custom)|r" or ""))
+        piKbLabel:SetText("Keybinds:" .. ( (group.showKeybinds~=nil or group.showInterfaceKeybind~=nil or group.keybindPosition or group.keybindTextSize) and " |cffff8800(Custom)|r" or ""))
         tinsert(panel.controls, piKbLabel)
         y = y - 22
 
-        -- Show Checkbox
+        -- Show Slot Keybinds Checkbox
         local piShowKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
         piShowKb:SetPoint("TOPLEFT", 10, y)
-        -- Tri-state logic: nil = global, true/false = override
         local currentShow = group.showKeybinds
         if currentShow == nil then currentShow = WiseDB.settings.showKeybinds end
         piShowKb:SetChecked(currentShow)
 
         piShowKb.text = piShowKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         piShowKb.text:SetPoint("LEFT", piShowKb, "RIGHT", 5, 0)
-        piShowKb.text:SetText("Show")
+        piShowKb.text:SetText("Show Slot Keybinds" .. (group.showKeybinds == nil and " |cff888888(global)|r" or ""))
         piShowKb:SetScript("OnClick", function(self)
             group.showKeybinds = self:GetChecked()
-            UpdateDisplayStatus() -- Updates Reset Button
-            Wise:RefreshPropertiesPanel() -- To update label (Custom)
+            UpdateDisplayStatus()
+            Wise:RefreshPropertiesPanel()
             C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
+        end)
+        piShowKb:SetScript("OnMouseDown", function(self, button)
+            if button == "RightButton" then
+                group.showKeybinds = nil
+                UpdateDisplayStatus()
+                Wise:RefreshPropertiesPanel()
+                C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
+            end
         end)
         tinsert(panel.controls, piShowKb)
         tinsert(panel.controls, piShowKb.text)
+        y = y - 22
 
-        y = y - 30
+        -- Show Interface Keybind Checkbox
+        local piShowIntKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+        piShowIntKb:SetPoint("TOPLEFT", 10, y)
+        local currentIntShow = group.showInterfaceKeybind
+        if currentIntShow == nil then currentIntShow = WiseDB.settings.showInterfaceKeybind end
+        piShowIntKb:SetChecked(currentIntShow)
+
+        piShowIntKb.text = piShowIntKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        piShowIntKb.text:SetPoint("LEFT", piShowIntKb, "RIGHT", 5, 0)
+        piShowIntKb.text:SetText("Show Interface Keybind" .. (group.showInterfaceKeybind == nil and " |cff888888(global)|r" or ""))
+        piShowIntKb:SetScript("OnClick", function(self)
+            group.showInterfaceKeybind = self:GetChecked()
+            UpdateDisplayStatus()
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
+        end)
+        piShowIntKb:SetScript("OnMouseDown", function(self, button)
+            if button == "RightButton" then
+                group.showInterfaceKeybind = nil
+                UpdateDisplayStatus()
+                Wise:RefreshPropertiesPanel()
+                C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
+            end
+        end)
+        tinsert(panel.controls, piShowIntKb)
+        tinsert(panel.controls, piShowIntKb.text)
+        y = y - 22
+
+        -- Hint text
+        local kbHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        kbHint:SetPoint("TOPLEFT", 14, y)
+        kbHint:SetText("Right-click checkbox to reset to global")
+        tinsert(panel.controls, kbHint)
+        y = y - 22
 
         -- Position
         local piKbPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -3904,6 +4021,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
                         local isValid, err = Wise:ValidateMouseWheelBinding(group, false)
                         if not isValid then
+                            EnsureBindingErrorPopup()
                             StaticPopup_Show("WISE_BINDING_ERROR", err)
                             self:EnableKeyboard(false)
                             self:EnableMouseWheel(false)

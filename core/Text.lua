@@ -51,10 +51,16 @@ function Wise:Text_CreateFontStrings(btn)
         btn.count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
-    -- Keybind
+    -- Keybind (slot-level)
     if not btn.keybind then
         btn.keybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         btn.keybind:SetShadowOffset(1, -1)
+    end
+
+    -- Interface Keybind (group-level toggle binding)
+    if not btn.interfaceKeybind then
+        btn.interfaceKeybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.interfaceKeybind:SetShadowOffset(1, -1)
     end
 
     -- Countdown (new)
@@ -126,6 +132,35 @@ function Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
         btn.keybind:Show()
     else
         btn.keybind:Hide()
+    end
+end
+
+--- Apply interface-level keybind text on a button.
+--- Shows the group's toggle binding (group.binding) on each button.
+---@param btn Button
+---@param groupName string
+---@param showInterfaceKeybind boolean
+function Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
+    if not btn.interfaceKeybind then return end
+
+    if not showInterfaceKeybind then
+        btn.interfaceKeybind:Hide()
+        return
+    end
+
+    local _, _, _, _, kbPos, kbSize = Wise:GetGroupDisplaySettings(groupName)
+    local text = Wise.GetInterfaceKeybind and Wise:GetInterfaceKeybind(groupName) or nil
+
+    if text then
+        btn.interfaceKeybind:SetText(text)
+        local fontPath = WiseDB.settings.font or "Fonts\\FRIZQT__.TTF"
+        btn.interfaceKeybind:SetFont(fontPath, kbSize, "OUTLINE")
+
+        local pos = kbPos or "BOTTOM"
+        Wise:Text_ApplyPosition(btn.interfaceKeybind, pos)
+        btn.interfaceKeybind:Show()
+    else
+        btn.interfaceKeybind:Hide()
     end
 end
 

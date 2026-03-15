@@ -556,7 +556,22 @@ function Wise:ShouldShowAction(action)
     if filter == "class" then
         return true
     end
-    
+
+    -- "Role" button -> Show Global + Class + Role (matching current role)
+    if filter == "role" then
+        if cat == "role" then
+            local currentRole = Wise.characterInfo.role
+            if type(action.roleRequirements) == "table" then
+                if #action.roleRequirements == 0 then return true end
+                for _, r in ipairs(action.roleRequirements) do
+                    if r == currentRole then return true end
+                end
+                return false
+            end
+        end
+        return true
+    end
+
     -- "Spec" button -> Show Global + Class + Spec (Current Spec Only)
     if filter == "spec" then
         local currentSpecIndex = GetSpecialization()
@@ -578,13 +593,19 @@ Wise.ActionTypes = {
 }
 
 -- Category constants
-Wise.Categories = {"global", "class", "spec", "talent", "character"}
+Wise.Categories = {"global", "class", "role", "spec", "talent", "character"}
 Wise.CategoryLabels = {
     global = "Global",
     class = "Class",
+    role = "Role",
     spec = "Spec",
     talent = "Talents",
     character = "Character"
+}
+Wise.RoleLabels = {
+    TANK = "Tank",
+    HEALER = "Healer",
+    DAMAGER = "DPS",
 }
 
 -- Resolve the spellbook category for a given spell ID.
@@ -3456,6 +3477,16 @@ function Wise:RefreshActionsView(container)
                  if cat == "class" then
                      local targetClass = action.addedByClass or select(2, UnitClass("player"))
                      suffixText = targetClass or "Class"
+                 elseif cat == "role" then
+                     if type(action.roleRequirements) == "table" and #action.roleRequirements > 0 then
+                         local roleNames = {}
+                         for _, role in ipairs(action.roleRequirements) do
+                             table.insert(roleNames, Wise.RoleLabels[role] or role)
+                         end
+                         suffixText = table.concat(roleNames, ", ")
+                     else
+                         suffixText = "0 Roles"
+                     end
                  elseif cat == "spec" then
                      if type(action.specRequirements) == "table" then
                          local numReqs = #action.specRequirements

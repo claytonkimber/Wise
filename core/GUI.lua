@@ -235,7 +235,11 @@ function Wise:GetGroupDisplaySettings(groupName)
     if group and group.hideEmptySlots ~= nil then hideEmptySlots = group.hideEmptySlots end
     if hideEmptySlots == nil then hideEmptySlots = false end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots
+    local showInterfaceKeybind = settings.showInterfaceKeybind
+    if group and group.showInterfaceKeybind ~= nil then showInterfaceKeybind = group.showInterfaceKeybind end
+    if showInterfaceKeybind == nil then showInterfaceKeybind = false end
+
+    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, showInterfaceKeybind
 end
 
 function Wise:CreateGroup(name, type)
@@ -3122,12 +3126,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             tinsert(f.buttons, btn)
 
             -- Masque Support
+            -- Note: HotKey (btn.keybind) is intentionally excluded.
+            -- Wise manages its own keybind text via core/Text.lua.
+            -- Passing it to Masque causes Masque's Skin_Text to call
+            -- SetSize(36,0) which clips/hides wider strings like MWU, MWD, M3.
             if Wise.MasqueGroup then
                 Wise.MasqueGroup:AddButton(btn, {
                     Icon = btn.icon,
                     Cooldown = btn.cooldown,
                     Count = btn.count,
-                    HotKey = btn.keybind,
                 })
             end
 
@@ -3692,13 +3699,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  
                  tinsert(f.visualDisplay.buttons, vBtn)
 
-                 -- Masque Support
+                 -- Masque Support (HotKey excluded — managed by Wise's Text layer)
                  if Wise.MasqueGroup then
                      Wise.MasqueGroup:AddButton(vBtn, {
                          Icon = vBtn.icon,
                          Cooldown = vBtn.cooldown,
                          Count = vBtn.count,
-                         HotKey = vBtn.keybind,
                      })
                  end
 
@@ -4299,7 +4305,7 @@ end
 function Wise:ApplyLayout(frame, type, count, groupName)
     frame.buttons = frame.buttons or {}
     local buttons = frame.buttons
-    local iconSize, _, _, showKeybinds = Wise:GetGroupDisplaySettings(groupName)
+    local iconSize, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(groupName)
 
     -- Nested instances inherit icon size from their nesting parent
     if frame.inheritedIconSize then
@@ -4327,6 +4333,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         
         -- Update Keybind Display via Text
         Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
+        Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
         
         -- If this is a visual clone, ensure its keybind text is also synchronized
         if btn.visualClone and btn.visualClone.keybind then
@@ -4339,6 +4346,20 @@ function Wise:ApplyLayout(frame, type, count, groupName)
                  btn.visualClone.keybind:Show()
              else
                  btn.visualClone.keybind:Hide()
+             end
+        end
+        -- Sync interface keybind to visual clone
+        if btn.visualClone and btn.visualClone.interfaceKeybind then
+             if btn.interfaceKeybind and btn.interfaceKeybind:IsShown() then
+                 btn.visualClone.interfaceKeybind:SetText(btn.interfaceKeybind:GetText())
+                 btn.visualClone.interfaceKeybind:SetFont(btn.interfaceKeybind:GetFont())
+                 btn.visualClone.interfaceKeybind:SetTextColor(btn.interfaceKeybind:GetTextColor())
+                 btn.visualClone.interfaceKeybind:ClearAllPoints()
+                 local p, r, rp, x, y = btn.interfaceKeybind:GetPoint()
+                 if p then btn.visualClone.interfaceKeybind:SetPoint(p, r, rp, x, y) end
+                 btn.visualClone.interfaceKeybind:Show()
+             else
+                 btn.visualClone.interfaceKeybind:Hide()
              end
         end
     end
@@ -4827,9 +4848,11 @@ function Wise:UpdateBindings()
 
         -- 3. Refresh Keybind UI Text
         if f and f.buttons then
+            local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(name)
             for _, btn in ipairs(f.buttons) do
                 if btn:IsShown() then
                     Wise:Text_UpdateKeybind(btn, name, showKeybinds)
+                    Wise:Text_UpdateInterfaceKeybind(btn, name, showInterfaceKeybind)
                 end
             end
         end

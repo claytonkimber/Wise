@@ -69,8 +69,9 @@ function Wise:UpdateCharacterInfo(sourceEvent)
     
     local specIndex = GetSpecialization()
     if specIndex then
-        local specID = GetSpecializationInfo(specIndex)
+        local specID, _, _, _, role = GetSpecializationInfo(specIndex)
         self.characterInfo.specID = specID
+        self.characterInfo.role = role
     end
     
     -- Get active talent loadout name
@@ -146,6 +147,15 @@ function Wise:IsActionAllowed(action)
         local checkClass = action.addedByClass or action.classRestriction
         if not checkClass then return true end
         return checkClass == self.characterInfo.class
+    elseif category == "role" then
+        local reqs = action.roleRequirements
+        if not reqs or #reqs == 0 then return true end
+        for _, reqRole in ipairs(reqs) do
+            if reqRole == self.characterInfo.role then
+                return true
+            end
+        end
+        return false
     elseif category == "spec" then
         if type(action.specRequirements) == "table" then
             if #action.specRequirements == 0 then return true end
@@ -879,6 +889,7 @@ function frame:OnEvent(event, arg1)
                     textSize = 12,
                     font = "Fonts\\FRIZQT__.TTF",
                     showKeybinds = false,
+                    showInterfaceKeybind = false,
                     keybindPosition = "BOTTOM",
                     keybindTextSize = 10,
                     chargeTextSize = 12,
@@ -903,6 +914,7 @@ function frame:OnEvent(event, arg1)
             if WiseDB.settings.font == nil then WiseDB.settings.font = "Fonts\\FRIZQT__.TTF" end
             if WiseDB.settings.showKeybinds == nil then WiseDB.settings.showKeybinds = false end
             if WiseDB.settings.keybindPosition == nil then WiseDB.settings.keybindPosition = "BOTTOM" end
+            if WiseDB.settings.showInterfaceKeybind == nil then WiseDB.settings.showInterfaceKeybind = false end
             if WiseDB.settings.keybindTextSize == nil then WiseDB.settings.keybindTextSize = 10 end
             if WiseDB.settings.chargeTextSize == nil then WiseDB.settings.chargeTextSize = 12 end
             if WiseDB.settings.chargeTextPosition == nil then WiseDB.settings.chargeTextPosition = "TOP" end
@@ -1243,18 +1255,19 @@ function Wise:UpdateBlizzardUI()
     local hideAB1 = settings["hideActionBar1"]
 
     -- Action Buttons 1-12
+    -- Reparent instead of RegisterStateDriver to avoid tainting secure attributes
+    -- (pressAndHoldAction etc.) on Blizzard action buttons in 11.0+.
     for i = 1, 12 do
         local btn = _G["ActionButton" .. i]
         if btn then
             if hideAB1 then
-                RegisterStateDriver(btn, "visibility", "hide")
-                btn:SetAlpha(0)
-                btn:EnableMouse(false)
-                Wise.managedFrames[btn] = true
+                if not Wise.managedFrames[btn] then
+                    Wise.managedFrames[btn] = { originalParent = btn:GetParent() }
+                end
+                btn:SetParent(hiddenParent)
             elseif Wise.managedFrames[btn] then
-                UnregisterStateDriver(btn, "visibility")
-                btn:SetAlpha(1)
-                btn:EnableMouse(true)
+                local savedParent = Wise.managedFrames[btn].originalParent or UIParent
+                btn:SetParent(savedParent)
                 if btn.Show then btn:Show() end
                 Wise.managedFrames[btn] = nil
             end
