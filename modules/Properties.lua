@@ -541,6 +541,56 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 35
 
+    -- Custom Name Input
+    local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    nameLabel:SetPoint("TOPLEFT", 10, y)
+    nameLabel:SetText("Custom Name:")
+    tinsert(panel.controls, nameLabel)
+
+    y = y - 20
+    local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    nameEdit:SetSize(180, 20)
+    nameEdit:SetPoint("TOPLEFT", 14, y)
+    nameEdit:SetAutoFocus(false)
+    nameEdit:SetText(action.customName or "")
+    nameEdit:SetCursorPosition(0)
+
+    local function UpdateNameData(self)
+        local text = self:GetText()
+        action.customName = (text ~= "") and text or nil
+        if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+        end
+    end
+
+    local function CommitName(self)
+        UpdateNameData(self)
+        C_Timer.After(0, function()
+            if not InCombatLockdown() then
+                Wise:UpdateGroupDisplay(Wise.selectedGroup)
+            end
+        end)
+    end
+
+    nameEdit:SetScript("OnTextChanged", function(self)
+        UpdateNameData(self)
+    end)
+
+    nameEdit:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    nameEdit:SetScript("OnEditFocusLost", function(self)
+        CommitName(self)
+    end)
+    nameEdit:SetScript("OnEscapePressed", function(self)
+        self:SetText(action.customName or "")
+        self:ClearFocus()
+        UpdateNameData(self)
+    end)
+    tinsert(panel.controls, nameEdit)
+
+    y = y - 35
+
     -- Conditions Input (e.g. [combat], [mod:shift])
     local condLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     condLabel:SetPoint("TOPLEFT", 10, y)
