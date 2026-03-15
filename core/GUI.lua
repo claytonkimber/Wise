@@ -812,6 +812,11 @@ function Wise:CreateGroupFrame(name, instanceId)
                                 _line = "/use " .. _prefix .. _mi
                             elseif _mt == "macro" then
                                 _line = (_mm and _mm ~= "") and _mm or ""
+                            elseif _mt == "click" then
+                                local _mcb_name = _rv_ref:GetAttribute("isa_clickbutton_name_" .. _m)
+                                if _mcb_name and _mcb_name ~= "" then
+                                    _line = "/click " .. _prefix .. _mcb_name
+                                end
                             end
                             if _line ~= "" then
                                 if _newMacro == "" then
@@ -841,6 +846,16 @@ function Wise:CreateGroupFrame(name, instanceId)
                         _rv_s = _rv_ref:GetAttribute("isa_spell_" .. _chosen)
                         _rv_i = _rv_ref:GetAttribute("isa_item_" .. _chosen)
                         _rv_m = _rv_ref:GetAttribute("isa_macrotext_" .. _chosen)
+
+                        if _rv_t == "click" then
+                            local _mcb_name = _rv_ref:GetAttribute("isa_clickbutton_name_" .. _chosen)
+                            local _mc = _rv_ref:GetAttribute("isa_cond_" .. _chosen) or ""
+                            local _prefix = (_mc ~= "") and (_mc .. " ") or ""
+                            if _mcb_name and _mcb_name ~= "" then
+                                _rv_t = "macro"
+                                _rv_m = "/click " .. _prefix .. _mcb_name
+                            end
+                        end
                     end
                 end
             end
@@ -908,6 +923,16 @@ function Wise:CreateGroupFrame(name, instanceId)
                                 _rv_s = _rv_ref:GetAttribute("isa_nest_spell_" .. _nchosen)
                                 _rv_i = _rv_ref:GetAttribute("isa_nest_item_" .. _nchosen)
                                 _rv_m = _rv_ref:GetAttribute("isa_nest_macrotext_" .. _nchosen)
+
+                                if _rv_t == "click" then
+                                    local _mcb_name = _rv_ref:GetAttribute("isa_nest_clickbutton_name_" .. _nchosen)
+                                    local _mc = _rv_ref:GetAttribute("isa_nest_cond_" .. _nchosen) or ""
+                                    local _prefix = (_mc ~= "") and (_mc .. " ") or ""
+                                    if _mcb_name and _mcb_name ~= "" then
+                                        _rv_t = "macro"
+                                        _rv_m = "/click " .. _prefix .. _mcb_name
+                                    end
+                                end
                             end
                         end
                     end
@@ -1777,15 +1802,24 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureAttr = "item"
             secureValue = "Hearthstone"
         elseif aValue == "extrabutton" then
-            secureType = "click"
-            secureAttr = "clickbutton"
-            secureValue = _G["ExtraActionButton1"]
+            secureType = "macro"
+            secureAttr = "macrotext"
+            secureValue = "/click ExtraActionButton1"
         elseif aValue == "zoneability" then
             secureType = "click"
             secureAttr = "clickbutton"
             local zoneBtn = GetZoneAbilitySpellButton()
             if zoneBtn then
                 secureValue = zoneBtn
+                if zoneBtn.GetName and zoneBtn:GetName() then
+                    secureType = "macro"
+                    secureAttr = "macrotext"
+                    secureValue = "/click " .. zoneBtn:GetName()
+                elseif zoneBtn.spellID then
+                    secureType = "spell"
+                    secureAttr = "spell"
+                    secureValue = zoneBtn.spellID
+                end
             end
         elseif aValue == "overridebar" then
             secureType = "click"
@@ -1793,6 +1827,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             local overrideBtn = _G["OverrideActionBarButton1"]
             if overrideBtn then
                 secureValue = overrideBtn
+                if overrideBtn.GetName and overrideBtn:GetName() then
+                    secureType = "macro"
+                    secureAttr = "macrotext"
+                    secureValue = "/click " .. overrideBtn:GetName()
+                end
             end
         elseif aValue == "possessbar" then
             secureType = "click"
@@ -1801,6 +1840,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             local possessBtn = _G["ActionButton1"]
             if possessBtn then
                 secureValue = possessBtn
+                if possessBtn.GetName and possessBtn:GetName() then
+                    secureType = "macro"
+                    secureAttr = "macrotext"
+                    secureValue = "/click " .. possessBtn:GetName()
+                end
             end
         elseif aValue == "leave_vehicle" then
             secureType = "macro"
@@ -1955,6 +1999,7 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
         btn:SetAttribute("isa_nest_spell_" .. ci, nil)
         btn:SetAttribute("isa_nest_item_" .. ci, nil)
         btn:SetAttribute("isa_nest_macrotext_" .. ci, nil)
+        btn:SetAttribute("isa_nest_clickbutton_name_" .. ci, nil)
         btn:SetAttribute("isa_nest_cond_" .. ci, nil)
     end
     btn:SetAttribute("isa_nest_count", 0)
@@ -1990,10 +2035,17 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
             local spellVal = (sAttr == "spell") and tostring(sValue) or ""
             local itemVal = (sAttr == "item") and tostring(sValue) or ""
             local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+            local cbName = ""
+            if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
+                cbName = sValue:GetName() or ""
+            elseif sType == "click" and type(sValue) == "string" then
+                cbName = sValue
+            end
             btn:SetAttribute("isa_nest_type_" .. nestIdx, sType)
             btn:SetAttribute("isa_nest_spell_" .. nestIdx, spellVal)
             btn:SetAttribute("isa_nest_item_" .. nestIdx, itemVal)
             btn:SetAttribute("isa_nest_macrotext_" .. nestIdx, macroVal)
+            btn:SetAttribute("isa_nest_clickbutton_name_" .. nestIdx, cbName)
             btn:SetAttribute("isa_nest_cond_" .. nestIdx, action.conditions or "")
         end
     end
@@ -2013,16 +2065,19 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
                 local tmpS = btn:GetAttribute("isa_nest_spell_" .. si)
                 local tmpI = btn:GetAttribute("isa_nest_item_" .. si)
                 local tmpM = btn:GetAttribute("isa_nest_macrotext_" .. si)
+                local tmpCB = btn:GetAttribute("isa_nest_clickbutton_name_" .. si)
                 local tmpC = btn:GetAttribute("isa_nest_cond_" .. si)
                 btn:SetAttribute("isa_nest_type_" .. si, btn:GetAttribute("isa_nest_type_" .. sj))
                 btn:SetAttribute("isa_nest_spell_" .. si, btn:GetAttribute("isa_nest_spell_" .. sj))
                 btn:SetAttribute("isa_nest_item_" .. si, btn:GetAttribute("isa_nest_item_" .. sj))
                 btn:SetAttribute("isa_nest_macrotext_" .. si, btn:GetAttribute("isa_nest_macrotext_" .. sj))
+                btn:SetAttribute("isa_nest_clickbutton_name_" .. si, btn:GetAttribute("isa_nest_clickbutton_name_" .. sj))
                 btn:SetAttribute("isa_nest_cond_" .. si, btn:GetAttribute("isa_nest_cond_" .. sj))
                 btn:SetAttribute("isa_nest_type_" .. sj, tmpT)
                 btn:SetAttribute("isa_nest_spell_" .. sj, tmpS)
                 btn:SetAttribute("isa_nest_item_" .. sj, tmpI)
                 btn:SetAttribute("isa_nest_macrotext_" .. sj, tmpM)
+                btn:SetAttribute("isa_nest_clickbutton_name_" .. sj, tmpCB)
                 btn:SetAttribute("isa_nest_cond_" .. sj, tmpC)
             end
         end
@@ -2905,11 +2960,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     local spellVal = (sAttr == "spell") and tostring(sValue) or ""
                     local itemVal = (sAttr == "item") and tostring(sValue) or ""
                     local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+                    local cbName = ""
+                    if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
+                        cbName = sValue:GetName() or ""
+                    elseif sType == "click" and type(sValue) == "string" then
+                        cbName = sValue
+                    end
                     local _, _, isOffGcd = Wise:GetCastTimeText(stateAction.type, stateAction.value)
                     btn:SetAttribute("isa_type_" .. sIdx, sType)
                     btn:SetAttribute("isa_spell_" .. sIdx, spellVal)
                     btn:SetAttribute("isa_item_" .. sIdx, itemVal)
                     btn:SetAttribute("isa_macrotext_" .. sIdx, macroVal)
+                    btn:SetAttribute("isa_clickbutton_name_" .. sIdx, cbName)
                     btn:SetAttribute("isa_cond_" .. sIdx, computedCond)
                     btn:SetAttribute("isa_offgcd_" .. sIdx, isOffGcd and 1 or 0)
                 end
@@ -3445,7 +3507,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
                          -- Rebind clickbutton when the spell button changes (e.g. entering garrison)
                          if canSetAttrs and zoneBtn then
-                             btn:SetAttribute("clickbutton", zoneBtn)
+                             if zoneBtn.GetName and zoneBtn:GetName() then
+                                 btn:SetAttribute("type", "macro")
+                                 btn:SetAttribute("macrotext", "/click " .. zoneBtn:GetName())
+                             elseif zoneBtn.spellID then
+                                 btn:SetAttribute("type", "spell")
+                                 btn:SetAttribute("spell", zoneBtn.spellID)
+                             else
+                                 btn:SetAttribute("type", "click")
+                                 btn:SetAttribute("clickbutton", zoneBtn)
+                             end
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
@@ -3459,7 +3530,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          -- Rebind clickbutton in case override bar appeared
                          local overrideBtn = _G["OverrideActionBarButton1"]
                          if canSetAttrs and overrideBtn then
-                             btn:SetAttribute("clickbutton", overrideBtn)
+                             if overrideBtn.GetName and overrideBtn:GetName() then
+                                 btn:SetAttribute("type", "macro")
+                                 btn:SetAttribute("macrotext", "/click " .. overrideBtn:GetName())
+                             else
+                                 btn:SetAttribute("type", "click")
+                                 btn:SetAttribute("clickbutton", overrideBtn)
+                             end
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
@@ -3473,7 +3550,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          -- Rebind clickbutton in case possess bar appeared
                          local possessBtn = _G["ActionButton1"]
                          if canSetAttrs and possessBtn then
-                             btn:SetAttribute("clickbutton", possessBtn)
+                             if possessBtn.GetName and possessBtn:GetName() then
+                                 btn:SetAttribute("type", "macro")
+                                 btn:SetAttribute("macrotext", "/click " .. possessBtn:GetName())
+                             else
+                                 btn:SetAttribute("type", "click")
+                                 btn:SetAttribute("clickbutton", possessBtn)
+                             end
                          end
                          Wise:UpdateButtonCooldown(btn)
                          Wise:UpdateButtonUsability(btn)
