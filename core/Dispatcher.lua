@@ -14,6 +14,7 @@ local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
 local pairs = pairs
 local tostring = tostring
+local GetCVarBool = GetCVarBool
 
 -- ─── Module Table ──────────────────────────────────────────────────
 local Dispatcher = {}
@@ -76,35 +77,37 @@ local preClickSnippet = BUTTON_MAP_SNIPPET .. [[
 
     local fullKey = mods .. key
 
-    if down then
-        -- On key-down: look up the bound action for this button
-        -- Try modifier+key first, then plain key as fallback
-        local lookupKey = fullKey
-        local actionType = self:GetAttribute("bind-" .. fullKey .. "-type")
-        if not actionType then
-            lookupKey = key
-            actionType = self:GetAttribute("bind-" .. key .. "-type")
-        end
-
-        if actionType then
-            self:SetAttribute("type", actionType)
-            self:SetAttribute("spell", self:GetAttribute("bind-" .. lookupKey .. "-spell"))
-            self:SetAttribute("item", self:GetAttribute("bind-" .. lookupKey .. "-item"))
-            self:SetAttribute("macrotext", self:GetAttribute("bind-" .. lookupKey .. "-macrotext"))
-            self:SetAttribute("_dispatch_active", lookupKey)
-        else
-            -- No action registered for this button — suppress
-            self:SetAttribute("type", nil)
-            self:SetAttribute("_dispatch_active", nil)
-        end
-    else
-        -- On key-up: clear to prevent double-triggers
+    local downOnly = self:GetAttribute("isa_action_on_down")
+    if (down and not downOnly) or (not down and downOnly) then
         self:SetAttribute("type", nil)
         self:SetAttribute("spell", nil)
         self:SetAttribute("item", nil)
         self:SetAttribute("macrotext", nil)
         self:SetAttribute("_dispatch_active", nil)
+        return
     end
+
+    -- On key-down: look up the bound action for this button
+    -- Try modifier+key first, then plain key as fallback
+    local lookupKey = fullKey
+    local actionType = self:GetAttribute("bind-" .. fullKey .. "-type")
+    if not actionType then
+        lookupKey = key
+        actionType = self:GetAttribute("bind-" .. key .. "-type")
+    end
+
+    if actionType then
+        self:SetAttribute("type", actionType)
+        self:SetAttribute("spell", self:GetAttribute("bind-" .. lookupKey .. "-spell"))
+        self:SetAttribute("item", self:GetAttribute("bind-" .. lookupKey .. "-item"))
+        self:SetAttribute("macrotext", self:GetAttribute("bind-" .. lookupKey .. "-macrotext"))
+        self:SetAttribute("_dispatch_active", lookupKey)
+    else
+        -- No action registered for this button — suppress
+        self:SetAttribute("type", nil)
+        self:SetAttribute("_dispatch_active", nil)
+    end
+
 ]]
 
 -- ─── 4. PostClick Secure Snippet ──────────────────────────────────
@@ -229,12 +232,14 @@ function Dispatcher:ApplyBinding(key)
     end
 
     -- Set the override binding so WoW routes this key to our dispatcher
-    SetOverrideBindingClick(dispatcherBtn, false, key, "WiseDispatcher")
+    SetOverrideBindingClick(dispatcherBtn, false, key, "WiseDispatcher", key)
 end
 
 --- Apply all registered bindings. Called on init and when leaving combat.
 function Dispatcher:ApplyBindings()
     if InCombatLockdown() then return end
+
+    dispatcherBtn:SetAttribute("isa_action_on_down", GetCVarBool("ActionButtonUseKeyDown"))
 
     -- Clear all existing override bindings on our proxy
     ClearOverrideBindings(dispatcherBtn)
