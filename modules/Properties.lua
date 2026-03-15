@@ -937,13 +937,47 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         tinsert(panel.controls, nestLine)
 
         y = y - 15
+        local nestOpts = Wise:GetNestingOptions(action) or {}
+
+        -- Interface Style (dynamic/static) — above nesting options
+        local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        styleLabel:SetPoint("TOPLEFT", 10, y)
+        styleLabel:SetText("Interface Style:")
+        tinsert(panel.controls, styleLabel)
+        y = y - 20
+
+        local styleOptions = {
+            { value = "default",  label = "Default (inherit from child)" },
+            { value = "dynamic",  label = "Dynamic (hide unavailable)" },
+            { value = "static",   label = "Static (grey out unavailable)" },
+        }
+        for _, entry in ipairs(styleOptions) do
+            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+            radio:SetPoint("TOPLEFT", 10, y)
+            radio:SetChecked(nestOpts.nestedInterfaceStyle == entry.value)
+            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+            radio.text:SetText(entry.label)
+            radio:SetScript("OnClick", function()
+                Wise:SetNestingOption(action, "nestedInterfaceStyle", entry.value)
+                Wise:RefreshPropertiesPanel()
+                C_Timer.After(0, function()
+                    if not InCombatLockdown() then
+                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                    end
+                end)
+            end)
+            tinsert(panel.controls, radio)
+            tinsert(panel.controls, radio.text)
+            y = y - 22
+        end
+
+        y = y - 8
         local nestHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nestHeader:SetPoint("TOPLEFT", 10, y)
         nestHeader:SetText("Nesting Options")
         tinsert(panel.controls, nestHeader)
-
         y = y - 22
-        local nestOpts = Wise:GetNestingOptions(action) or {}
 
         -- Nested Interface Mode radios
         local typeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -981,36 +1015,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         end
         y = y - 8
 
-
-        -- Open Button radios
-        local obLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        obLabel:SetPoint("TOPLEFT", 10, y)
-        obLabel:SetText("Open Button:")
-        tinsert(panel.controls, obLabel)
-        y = y - 20
-        for _, entry in ipairs(Wise.NESTING_OPEN_BUTTONS) do
-            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-            radio:SetPoint("TOPLEFT", 10, y)
-            radio:SetChecked(nestOpts.openNestedButton == entry.value)
-            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-            radio.text:SetText(entry.label)
-            radio:SetScript("OnClick", function()
-                Wise:SetNestingOption(action, "openNestedButton", entry.value)
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, radio)
-            tinsert(panel.controls, radio.text)
-            y = y - 22
-        end
-
-        y = y - 8
-        -- Rotation Mode radios
+        -- Rotation Mode radios (above Open Button)
         local rmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         rmLabel:SetPoint("TOPLEFT", 10, y)
         rmLabel:SetText("Rotation Mode:")
@@ -1044,42 +1049,88 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             y = y - 22
         end
 
-        y = y - 8
-        -- Open Direction radios
-        local odLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        odLabel:SetPoint("TOPLEFT", 10, y)
-        odLabel:SetText("Open Direction:")
-        tinsert(panel.controls, odLabel)
-        y = y - 20
-        for _, entry in ipairs(Wise.NESTING_OPEN_DIRECTIONS) do
-            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-            radio:SetPoint("TOPLEFT", 10, y)
-            radio:SetChecked(nestOpts.openDirection == entry.value)
-            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-            radio.text:SetText(entry.label)
-            radio:SetScript("OnClick", function()
-                Wise:SetNestingOption(action, "openDirection", entry.value)
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
+        -- Jump-only options: Open Button, Open Direction
+        if nestOpts.rotationMode == "jump" then
+            y = y - 8
+            -- Open Button radios (no middle click, includes hover)
+            local obLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            obLabel:SetPoint("TOPLEFT", 10, y)
+            obLabel:SetText("Open Button:")
+            tinsert(panel.controls, obLabel)
+            y = y - 20
+
+            -- Determine effective open value: map legacy openOnHover to "hover"
+            local effectiveOpen = nestOpts.openNestedButton or "BUTTON1"
+            if nestOpts.openOnHover then effectiveOpen = "hover" end
+
+            local openButtons = {
+                { value = "BUTTON1",  label = "Left Click" },
+                { value = "keybind",  label = "Parent Keybind" },
+                { value = "hover",    label = "Open on Hover" },
+            }
+            for _, entry in ipairs(openButtons) do
+                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+                radio:SetPoint("TOPLEFT", 10, y)
+                radio:SetChecked(effectiveOpen == entry.value)
+                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+                radio.text:SetText(entry.label)
+                radio:SetScript("OnClick", function()
+                    if entry.value == "hover" then
+                        Wise:SetNestingOption(action, "openOnHover", true)
+                        Wise:SetNestingOption(action, "openNestedButton", "BUTTON1")
+                    else
+                        Wise:SetNestingOption(action, "openOnHover", false)
+                        Wise:SetNestingOption(action, "openNestedButton", entry.value)
                     end
+                    Wise:RefreshPropertiesPanel()
+                    C_Timer.After(0, function()
+                        if not InCombatLockdown() then
+                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                        end
+                    end)
                 end)
-            end)
-            tinsert(panel.controls, radio)
-            tinsert(panel.controls, radio.text)
-            y = y - 22
+                tinsert(panel.controls, radio)
+                tinsert(panel.controls, radio.text)
+                y = y - 22
+            end
+
+            y = y - 8
+            -- Open Direction radios
+            local odLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            odLabel:SetPoint("TOPLEFT", 10, y)
+            odLabel:SetText("Open Direction:")
+            tinsert(panel.controls, odLabel)
+            y = y - 20
+            for _, entry in ipairs(Wise.NESTING_OPEN_DIRECTIONS) do
+                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+                radio:SetPoint("TOPLEFT", 10, y)
+                radio:SetChecked(nestOpts.openDirection == entry.value)
+                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+                radio.text:SetText(entry.label)
+                radio:SetScript("OnClick", function()
+                    Wise:SetNestingOption(action, "openDirection", entry.value)
+                    Wise:RefreshPropertiesPanel()
+                    C_Timer.After(0, function()
+                        if not InCombatLockdown() then
+                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                        end
+                    end)
+                end)
+                tinsert(panel.controls, radio)
+                tinsert(panel.controls, radio.text)
+                y = y - 22
+            end
         end
 
         y = y - 8
         -- Checkboxes
-        local checkboxes = {
-            { key = "openOnHover",        label = "Open on hover (instead of click)" },
-            { key = "closeParentOnOpen",  label = "Close parent on open" },
-            { key = "showGhostIndicator", label = "Show ghost indicator" },
-            { key = "anchorToParentSlot", label = "Anchor to parent slot" },
-        }
+        local checkboxes = {}
+        if nestOpts.rotationMode == "jump" then
+            tinsert(checkboxes, { key = "closeParentOnOpen",  label = "Close parent on open" })
+        end
+        tinsert(checkboxes, { key = "showGhostIndicator", label = "Show ghost indicator" })
         for _, cb in ipairs(checkboxes) do
             local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
             check:SetPoint("TOPLEFT", 10, y)

@@ -928,6 +928,12 @@ function frame:OnEvent(event, arg1)
                     g.iconStyle = nil
                     g.hideEmptySlots = true
                 end
+                -- Migration: old nesting code incorrectly forced toggleOnPress=true
+                -- on groups that were also used as nested children. Clear the conflict
+                -- if the group has held=true (user intended held mode).
+                if g.visibilitySettings and g.visibilitySettings.held and g.visibilitySettings.toggleOnPress then
+                    g.visibilitySettings.toggleOnPress = false
+                end
             end
         end
         -- Initialize modules if needed

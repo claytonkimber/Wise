@@ -610,6 +610,74 @@ function Wise:HideOverlayGlow(frame)
 end
 -- ============================================================================
 
+-- ============================================================================
+-- Hover Indication System
+-- Provides a subtle glow + 5% scale increase on hovered ring buttons.
+-- Uses a lightweight overlay (no ants/spark) at 50% brightness.
+-- ============================================================================
+
+local HOVER_SCALE = 1.05
+local HOVER_GLOW_ALPHA = 0.5
+
+local function CreateHoverGlow(parent)
+    local glow = CreateFrame("Frame", nil, parent)
+    glow:SetFrameLevel(parent:GetFrameLevel() + 3)
+    glow:SetAllPoints(parent)
+
+    glow.inner = glow:CreateTexture(nil, "ARTWORK")
+    glow.inner:SetPoint("CENTER")
+    glow.inner:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+    glow.inner:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+    glow.inner:SetBlendMode("ADD")
+    glow.inner:SetAlpha(HOVER_GLOW_ALPHA)
+
+    glow.outer = glow:CreateTexture(nil, "ARTWORK")
+    glow.outer:SetPoint("CENTER")
+    glow.outer:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+    glow.outer:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+    glow.outer:SetBlendMode("ADD")
+    glow.outer:SetAlpha(HOVER_GLOW_ALPHA * 0.6)
+
+    glow:Hide()
+    return glow
+end
+
+local function ShowHoverGlow(btn)
+    if not btn._hoverGlow then
+        btn._hoverGlow = CreateHoverGlow(btn)
+    end
+    local w, h = btn:GetSize()
+    btn._hoverGlow.inner:SetSize(w * 1.2, h * 1.2)
+    btn._hoverGlow.outer:SetSize(w * 1.5, h * 1.5)
+    btn._hoverGlow:Show()
+end
+
+local function HideHoverGlow(btn)
+    if btn._hoverGlow then
+        btn._hoverGlow:Hide()
+    end
+end
+
+function Wise:AddHoverIndication(btn)
+    if not btn then return end
+
+    btn:HookScript("OnEnter", function(self)
+        -- Scale up by 5%
+        self:SetScale(HOVER_SCALE)
+        -- Show dim glow
+        ShowHoverGlow(self)
+    end)
+
+    btn:HookScript("OnLeave", function(self)
+        -- Reset scale
+        self:SetScale(1.0)
+        -- Hide glow
+        HideHoverGlow(self)
+    end)
+end
+
+-- ============================================================================
+
 -- WiseStateDriver: Central secure handler for cross-interface visibility.
 -- Holds boolean state ("active"/"inactive") for each interface and propagates
 -- changes to all registered group frames so [wise:interfaceName] conditionals work.
@@ -1010,6 +1078,34 @@ function Wise:CreateGroupFrame(name, instanceId)
             -- Read hoveredButton BEFORE hiding the frame (hiding clears hover via OnLeave)
             local _pre_hovered = self:GetAttribute("hoveredButton")
 
+            -- If no parent button is hovered, check child interfaces for hovered buttons.
+            -- Iterate parent buttons to find open children with a hovered button.
+            if not _pre_hovered then
+                local _btnCount = self:GetAttribute("buttonCount") or 0
+                for _ci = 1, _btnCount do
+                    local _parentBtn = self:GetFrameRef("btn" .. _ci)
+                    if _parentBtn and _parentBtn:GetAttribute("isa_is_interface") then
+                        local _childId = _parentBtn:GetAttribute("isa_interface_target")
+                        local _childMode = _parentBtn:GetAttribute("isa_nest_mode") or "jump"
+                        if _childId and _childMode == "jump" then
+                            local _childToggle = self:GetFrameRef("childToggle_" .. _childId)
+                            if _childToggle then
+                                local _childHovered = _childToggle:GetAttribute("hoveredButton")
+                                if _childHovered then
+                                    -- Found a hovered button in a child interface
+                                    local _childBtnRef = _childToggle:GetFrameRef(_childHovered)
+                                    if _childBtnRef then
+                                        _pre_hovered = "_child_"
+                                        _rv_ref = _childBtnRef
+                                    end
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
             -- VISIBILITY LOGIC (Key Up)
             if heldMode then
                 f:SetAttribute("state-manual", "hide")
@@ -1019,9 +1115,8 @@ function Wise:CreateGroupFrame(name, instanceId)
             if trigger == "release_mouseover" then
                  local hovered = _pre_hovered
                  if hovered then
-                    local ref = self:GetFrameRef(hovered)
-                    if ref then
-                        _rv_ref = ref
+                    if hovered == "_child_" then
+                        -- Child button already resolved above
                         ]] .. RESOLVE_BLOCK .. [[
 
                         self:SetAttribute("type", _rv_t)
@@ -1035,6 +1130,24 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                    else
+                        local ref = self:GetFrameRef(hovered)
+                        if ref then
+                            _rv_ref = ref
+                            ]] .. RESOLVE_BLOCK .. [[
+
+                            self:SetAttribute("type", _rv_t)
+                            self:SetAttribute("spell", _rv_s)
+                            self:SetAttribute("item", _rv_i)
+                            self:SetAttribute("macrotext", _rv_m)
+
+                            self:SetAttribute("ul_type", _rv_t)
+                            self:SetAttribute("ul_spell", _rv_s)
+                            self:SetAttribute("ul_item", _rv_i)
+                            self:SetAttribute("ul_macrotext", _rv_m)
+
+                            if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        end
                     end
                  else
                     self:SetAttribute("type", nil)
@@ -1045,9 +1158,8 @@ function Wise:CreateGroupFrame(name, instanceId)
             elseif trigger == "release_repeat" then
                  local hovered = _pre_hovered
                  if hovered then
-                    local ref = self:GetFrameRef(hovered)
-                    if ref then
-                        _rv_ref = ref
+                    if hovered == "_child_" then
+                        -- Child button already resolved above
                         ]] .. RESOLVE_BLOCK .. [[
 
                         self:SetAttribute("type", _rv_t)
@@ -1061,6 +1173,24 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("ul_macrotext", _rv_m)
 
                         if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                    else
+                        local ref = self:GetFrameRef(hovered)
+                        if ref then
+                            _rv_ref = ref
+                            ]] .. RESOLVE_BLOCK .. [[
+
+                            self:SetAttribute("type", _rv_t)
+                            self:SetAttribute("spell", _rv_s)
+                            self:SetAttribute("item", _rv_i)
+                            self:SetAttribute("macrotext", _rv_m)
+
+                            self:SetAttribute("ul_type", _rv_t)
+                            self:SetAttribute("ul_spell", _rv_s)
+                            self:SetAttribute("ul_item", _rv_i)
+                            self:SetAttribute("ul_macrotext", _rv_m)
+
+                            if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                        end
                     end
                  else
                     local t = self:GetAttribute("ul_type")
@@ -1145,68 +1275,57 @@ function Wise:CreateGroupFrame(name, instanceId)
 
         local group = WiseDB.groups[self.groupName]
         
-        if group and group.anchorMode == "mouse" then
-            -- Position immediately at cursor (works in combat via Proxy Anchor)
-            
-            -- Get cursor position and correct for UI scale (like UltimateMouseCursor)
+        local isNestedInstance = self.parentInstanceId and not (group and group.isWiser)
+
+        if isNestedInstance then
+            -- Nested child: always position relative to parent button,
+            -- regardless of the child group's own anchorMode setting.
+            Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
+
+            -- closeParentOnOpen: hide parent when child opens
+            if not InCombatLockdown() then
+                Wise:HandleCloseParentOnOpen(self.groupName, self.parentInstanceId)
+            end
+
+            -- Auto-close on leave: start monitoring mouse proximity
+            Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
+        elseif group and group.anchorMode == "mouse" then
+            -- Standalone mouse-anchor mode: position at cursor
             local cursorX, cursorY = GetCursorPosition()
             local uiScale = UIParent:GetScale()
             local frameScale = self:GetScale()
-            
-            -- Apply scale correction and offsets
+
             local correctedX = (cursorX / uiScale) / frameScale
             local correctedY = (cursorY / uiScale) / frameScale
             local offsetX = (group.mouseOffsetX or 0) / frameScale
             local offsetY = (group.mouseOffsetY or 0) / frameScale
-            
-            -- Move the PROXY ANCHOR, not the secure frame
+
             if self.Anchor and not InCombatLockdown() then
                 self.Anchor:ClearAllPoints()
                 self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
-            -- Move the SECURE FRAME (Only safe out of combat)
+
             if not InCombatLockdown() then
                  self:ClearAllPoints()
                  self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
             end
-            
-            -- For hold/toggle modes, lock position so user can hover over buttons
-            -- For "always visible" button mode, keep following mouse
+
             local layoutType = group.type or "circle"
             local mode = group.interaction or "toggle"
             if (layoutType == "button" and mode == "press_visible") or (group.visibility == "always" or group.visibility == "combat") then
-                -- Always visible: continuously follow mouse
                 self.mouseAnchorLocked = false
             else
-                -- Hold/toggle popup: lock in place for selection
                 self.mouseAnchorLocked = true
-            end
-        end
-        
-        -- Nested Interface Positioning (Jump Mode):
-        -- Position this child group relative to the parent button that opened it.
-        -- Skip nesting behaviors for Wiser interfaces (they are never legitimately nested
-        -- and should not be subject to cascade close, close-on-leave, or parent positioning).
-        if group and group.anchorMode ~= "mouse" and not group.isWiser then
-            if self.parentInstanceId then
-                Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
-
-                -- closeParentOnOpen: hide parent when child opens
-                if not InCombatLockdown() then
-                    Wise:HandleCloseParentOnOpen(self.groupName, self.parentInstanceId)
-                end
-
-                -- Auto-close on leave: start monitoring mouse proximity
-                Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
             end
         end
 
         -- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
         if InCombatLockdown() then return end
 
-        if group and group.animation then
+        local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+        if shouldAnimate then
             -- Animate: slide buttons from center to target
+            -- Nested children inherit animation setting from parent
             Wise:PlaySlideAnimation(self, true)
         else
             -- No animation: place buttons directly at target positions
@@ -1221,7 +1340,7 @@ function Wise:CreateGroupFrame(name, instanceId)
         
         -- Fix for button selection on spawn (OnEnter doesn't fire if appearing under mouse)
         -- Skip if animating, as movement will naturally trigger OnEnter
-        if not InCombatLockdown() and self.buttons and not (group and group.animation) then
+        if not InCombatLockdown() and self.buttons and not shouldAnimate then
              local found = nil
              for _, btn in ipairs(self.buttons) do
                  if btn:IsShown() and btn:IsMouseOver() then
@@ -1237,6 +1356,12 @@ function Wise:CreateGroupFrame(name, instanceId)
     end)
     
     f:SetScript("OnHide", function(self)
+        -- Reset hover indication on all buttons
+        for _, btn in ipairs(self.buttons or {}) do
+            btn:SetScale(1.0)
+            HideHoverGlow(btn)
+        end
+
         -- Cancel nested close-on-leave ticker
         if self.nestedCloseTicker then
             self.nestedCloseTicker:Cancel()
@@ -1272,7 +1397,8 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
 
         local group = WiseDB.groups[self.groupName]
-        if group and group.animation and not InCombatLockdown() then
+        local shouldAnimateClose = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+        if shouldAnimateClose and not InCombatLockdown() then
             -- Detect WoW-forced UI hide (quest dialogues, cutscenes, etc.)
             -- UIParent is hidden during these events; fighting it with Show() causes
             -- animation state corruption that leaves frames permanently invisible.
@@ -1301,6 +1427,57 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
     end)
     
+    -- Mousewheel scroll support: cycle through buttons on scroll
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        if not self.buttons or #self.buttons == 0 then return end
+        if not self.toggleBtn then return end
+
+        -- Build list of visible button names
+        local visible = {}
+        for _, btn in ipairs(self.buttons) do
+            if btn:IsShown() then
+                table.insert(visible, btn)
+            end
+        end
+        if #visible == 0 then return end
+
+        -- Find current hovered index
+        local currentName = self.toggleBtn:GetAttribute("hoveredButton")
+        local currentIdx = 0
+        for i, btn in ipairs(visible) do
+            if btn:GetName() == currentName then
+                currentIdx = i
+                break
+            end
+        end
+
+        -- Advance by scroll direction (delta > 0 = up = previous, delta < 0 = down = next)
+        local newIdx
+        if currentIdx == 0 then
+            newIdx = (delta > 0) and 1 or #visible
+        else
+            newIdx = currentIdx - delta
+            if newIdx < 1 then newIdx = #visible end
+            if newIdx > #visible then newIdx = 1 end
+        end
+
+        local newBtn = visible[newIdx]
+        if newBtn and not InCombatLockdown() then
+            self.toggleBtn:SetAttribute("hoveredButton", newBtn:GetName())
+            -- Update hover indication visuals
+            for _, btn in ipairs(visible) do
+                if btn:GetName() == newBtn:GetName() then
+                    btn:SetScale(HOVER_SCALE)
+                    ShowHoverGlow(btn)
+                else
+                    btn:SetScale(1.0)
+                    HideHoverGlow(btn)
+                end
+            end
+        end
+    end)
+
     -- Register with WiseStateDriver for cross-interface visibility
     local driver = WiseStateDriver
     f:SetFrameRef("WiseStateDriver", driver)
@@ -1452,8 +1629,8 @@ function Wise:BuildVisibilityDriver(f, group)
     -- Only press_visible mode respects base visibility for the state-game driver.
     if showStr == "" and hideStr == "" then
         local mode = group.interaction or "toggle"
-        local base = group.visibilitySettings.baseVisibility
-        local isHeldOrToggle = (group.visibilitySettings.held or group.visibilitySettings.toggleOnPress)
+        local base = f.effectiveBaseVisibility or group.visibilitySettings.baseVisibility
+        local isHeldOrToggle = (group.visibilitySettings.held or (f.effectiveToggleOnPress ~= nil and f.effectiveToggleOnPress or group.visibilitySettings.toggleOnPress))
 
         if isHeldOrToggle then
             -- Hold/Toggle: driver stays empty → defaults to "hide"
@@ -2177,6 +2354,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     if overrideOpts and overrideOpts.nestedInterfaceType and overrideOpts.nestedInterfaceType ~= "default" then
         displayType = overrideOpts.nestedInterfaceType
     end
+
+    -- Allow nesting options to override the child's dynamic/static style
+    local isDynamic = group.dynamic
+    if overrideOpts and overrideOpts.nestedInterfaceStyle and overrideOpts.nestedInterfaceStyle ~= "default" then
+        isDynamic = (overrideOpts.nestedInterfaceStyle == "dynamic")
+    end
+
     local mode = group.interaction or "toggle"
     
     -- Check Availability override (Wiser interfaces)
@@ -2206,24 +2390,33 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Nested Interface Detection (used for strata, toggleOnPress, visibility)
     local parentName, parentGroup = Wise:GetParentInfo(name)
 
-    -- Apply nested inheritance BEFORE visibility driver (driver reads toggleOnPress)
-    -- Skip for Wiser interfaces: they manage their own visibility and should not
-    -- be forced to ALWAYS_HIDDEN or toggleOnPress by nesting detection.
-    if parentName and parentGroup and not group.isWiser then
-        -- Nested interfaces must toggle on press to respond to /click from parent.
-        -- Even if the group has its own keybind, toggleOnPress is needed because
-        -- /click simulates a full down+up and held mode would flash-and-hide.
-        if not group.visibilitySettings.toggleOnPress then
-            group.visibilitySettings.toggleOnPress = true
+    -- Determine if THIS invocation is for a nested instance (has instanceId from parent)
+    -- vs the base/standalone instance. A group can be both standalone (own keybind)
+    -- AND nested (referenced as interface action in another group). Only the nested
+    -- instance should be forced to toggleOnPress/ALWAYS_HIDDEN.
+    local isNestedInstance = (instanceId ~= nil) and parentName and not group.isWiser
+
+    -- Effective visibility overrides for nested instances only (never mutate saved data)
+    local effectiveToggleOnPress = group.visibilitySettings.toggleOnPress
+    local effectiveBaseVisibility = group.visibilitySettings.baseVisibility
+    local effectiveHideOnUse = group.visibilitySettings.hideOnUse
+
+    if isNestedInstance then
+        effectiveToggleOnPress = true
+        effectiveBaseVisibility = "ALWAYS_HIDDEN"
+        if effectiveHideOnUse == nil then
+            effectiveHideOnUse = true
         end
-        -- Default to ALWAYS_HIDDEN so visibility is controlled by toggle only
-        if group.visibilitySettings.baseVisibility ~= "ALWAYS_HIDDEN" then
-            group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN"
-        end
-        -- Nested interfaces should hide on use by default (unless explicitly set to false)
-        if group.visibilitySettings.hideOnUse == nil then
-            group.visibilitySettings.hideOnUse = true
-        end
+    end
+
+    -- Store effective values on frame for BuildVisibilityDriver and toggleBtn setup
+    f.effectiveToggleOnPress = effectiveToggleOnPress
+    f.effectiveBaseVisibility = effectiveBaseVisibility
+    f.effectiveHideOnUse = effectiveHideOnUse
+
+    -- Nested instances inherit animation from parent
+    if isNestedInstance and overrideOpts then
+        f.parentAnimation = overrideOpts._parentAnimation or false
     end
 
     -- Module 1: Apply Visibility Engine
@@ -2473,7 +2666,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local manualState = f:GetAttribute("state-manual") or "hide"
         local customState = initialCustomState
         
-        local base = group.visibilitySettings.baseVisibility
+        local base = effectiveBaseVisibility
 
         -- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
         local wiseShowState = f:GetAttribute("state-wise-show") or "hide"
@@ -2550,7 +2743,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
     -- Apply Anchor (only for fixed mode or initial positioning)
     -- Mouse mode will reposition via OnUpdate
-    if group.anchorMode ~= "mouse" then
+    -- Nested instances always use static positioning (PositionNestedChild handles them)
+    if isNestedInstance or group.anchorMode ~= "mouse" then
         -- Static Mode: Restore anchor to f.Anchor
         if not InCombatLockdown() then
              -- Ensure f is anchored to f.Anchor using the group's point
@@ -2652,12 +2846,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- CRITICAL: If Toggle On Press is enabled, we MUST NOT enable visibleWhenHeld,
         -- because visibleWhenHeld causes the frame to hide on release.
         local isHeld = group.visibilitySettings.held or autoHeld
-        if group.visibilitySettings.toggleOnPress then isHeld = false end
+        if effectiveToggleOnPress then isHeld = false end
 
         f.toggleBtn:SetAttribute("visibleWhenHeld", isHeld)
 
-        f.toggleBtn:SetAttribute("toggleOnPress", group.visibilitySettings.toggleOnPress)
-        f.toggleBtn:SetAttribute("hideOnUse", group.visibilitySettings.hideOnUse)
+        f.toggleBtn:SetAttribute("toggleOnPress", effectiveToggleOnPress)
+        f.toggleBtn:SetAttribute("hideOnUse", effectiveHideOnUse)
         f.toggleBtn:SetAttribute("layoutType", displayType)
         f.toggleBtn:SetAttribute("openNestedButton", group.nestingOpenButton or "BUTTON1")
 
@@ -2665,7 +2859,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             name, 
             derivedTrigger, 
             tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")), 
-            tostring(group.visibilitySettings.toggleOnPress),
+            tostring(effectiveToggleOnPress),
             tostring(group.keybindSettings and group.keybindSettings.repeatPrevious)
         ))
     end
@@ -2713,14 +2907,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     local shouldShow = true
                     -- Check if spell/item is known
                     local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-    
-                    if group.dynamic then
+
+                    if isDynamic then
                         -- For dynamic groups, collapse "Spacer" actions (empty custom macros)
                         -- A spacer is misc/custom_macro with either no name/macrotext or explicitly named "Empty"
                         local isSpacer = (actionData.type == "misc" and actionData.value == "custom_macro") and
                                          (actionData.name == "Empty" or (not actionData.macroText or actionData.macroText == ""))
 
-                        if shouldShow and isKnown and not isSpacer then
+                        -- Also check cooldowns for dynamic mode: hide on-cooldown actions
+                        local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+
+                        if shouldShow and isKnown and not isSpacer and not isOnCooldown then
                             table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, activeState = chosenIdx})
                         end
                     else
@@ -2733,7 +2930,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         end
                     end
                 end
-            elseif not group.dynamic then
+            elseif not isDynamic then
                 -- Static interfaces: always preserve empty slots (no collapsing)
                 table.insert(actionsToShow, {data = {type="empty", value=nil}, known = true, categoryMatch = true, slot = slotIdx})
             end
@@ -2744,8 +2941,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
          for i, actionData in ipairs(group.buttons) do
             local shouldShow = Wise:ShouldShowAction(actionData)
             local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-            if group.dynamic then
-                if shouldShow and isKnown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
+            if isDynamic then
+                local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                if shouldShow and isKnown and not isOnCooldown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
             else
                 table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = shouldShow, slot = i})
             end
@@ -2756,6 +2954,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
     -- Create/Update Buttons
     local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots = Wise:GetGroupDisplaySettings(name)
+
+    -- Nested instances inherit display settings from parent
+    if isNestedInstance and overrideOpts and overrideOpts._parentIconSize then
+        iconSize = overrideOpts._parentIconSize
+        f.inheritedIconSize = iconSize
+        f.inheritedCircleRadius = overrideOpts._parentCircleRadius
+    end
 
     for i, actionInfo in ipairs(actionsToShow) do
         local actionData = actionInfo.data
@@ -2804,6 +3009,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
             -- Tooltip support
             Wise:AddInterfaceTooltip(btn)
+
+            -- Hover indication (5% scale + dim glow)
+            Wise:AddHoverIndication(btn)
+
+            -- Mousewheel: propagate to parent group frame for scroll navigation
+            btn:EnableMouseWheel(true)
+            btn:SetScript("OnMouseWheel", function(self, delta)
+                local parent = self:GetParent()
+                if parent and parent:GetScript("OnMouseWheel") then
+                    parent:GetScript("OnMouseWheel")(parent, delta)
+                end
+            end)
 
             -- Secure hover tracking
             SecureHandlerWrapScript(btn, "OnEnter", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", self:GetName()) ]])
@@ -2882,61 +3099,101 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             btn:SetAttribute("isa_interface_target", childInstanceId)
 
             local nestOpts = Wise:GetNestingOptions(actionData)
-            if nestOpts then
-                btn:SetAttribute("isa_open_button", nestOpts.openNestedButton or "BUTTON1")
-                btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+            local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
+            btn:SetAttribute("isa_nest_mode", nestMode)
 
-                if nestOpts.openOnHover then
-                    -- Open on hover via secure snippet
-                    btn:SetAttribute("_onenter", [[
-                        local target = self:GetAttribute("isa_interface_target")
-                        if target then
-                            local childGroup = self:GetFrameRef("child_group")
-                            if childGroup then
-                                local _cManual = childGroup:GetAttribute("state-manual") or "hide"
-                                if _cManual == "hide" then
-                                    childGroup:SetAttribute("state-manual", "show")
-                                    local driver = self:GetFrameRef("WiseStateDriver")
-                                    if driver then
-                                        driver:SetAttribute("wisesetstate", target .. ":active")
+            if nestMode == "jump" then
+                -- Jump mode: create child frame and set up toggle/hover
+                if nestOpts then
+                    btn:SetAttribute("isa_open_button", nestOpts.openNestedButton or "BUTTON1")
+                    btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+
+                    if nestOpts.openOnHover then
+                        -- Open on hover via secure snippet
+                        btn:SetAttribute("_onenter", [[
+                            local target = self:GetAttribute("isa_interface_target")
+                            if target then
+                                local childGroup = self:GetFrameRef("child_group")
+                                if childGroup then
+                                    local _cManual = childGroup:GetAttribute("state-manual") or "hide"
+                                    if _cManual == "hide" then
+                                        childGroup:SetAttribute("state-manual", "show")
+                                        local driver = self:GetFrameRef("WiseStateDriver")
+                                        if driver then
+                                            driver:SetAttribute("wisesetstate", target .. ":active")
+                                        end
                                     end
                                 end
                             end
-                        end
-                    ]])
-                else
-                    btn:SetAttribute("_onenter", nil)
-                end
-            end
+                        ]])
+                    else
+                        btn:SetAttribute("_onenter", nil)
+                    end
 
-            -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
-            local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
-            if childGroup then
-                local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
-                if childFrame then
-                    f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
-                    btn:SetFrameRef("child_group", childFrame)
-                    if Wise.WiseStateDriver then
-                        btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+                    -- Direct click to open: PreClick on the button itself
+                    -- so left-click opens the child without needing the parent keybind
+                    local openBtn = nestOpts.openNestedButton or "BUTTON1"
+                    if openBtn == "BUTTON1" and not nestOpts.openOnHover then
+                        SecureHandlerWrapScript(btn, "OnClick", btn, [[
+                            if button == "LeftButton" and down then
+                                local childGroup = self:GetFrameRef("child_group")
+                                if childGroup then
+                                    local _cManual = childGroup:GetAttribute("state-manual") or "hide"
+                                    local _cTarget = (_cManual == "show") and "hide" or "show"
+                                    childGroup:SetAttribute("state-manual", _cTarget)
+                                    local driver = self:GetFrameRef("WiseStateDriver")
+                                    if driver then
+                                        local target = self:GetAttribute("isa_interface_target")
+                                        driver:SetAttribute("wisesetstate", target .. ":" .. ((_cTarget == "show") and "active" or "inactive"))
+                                    end
+                                end
+                            end
+                        ]])
                     end
                 end
 
-                -- Recursive update to prepare child layout with overrides
-                if not nestOpts then nestOpts = {} end
-                nestOpts._parentInstanceId = frameKey
+                -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
+                local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
+                if childGroup then
+                    local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
+                    if childFrame then
+                        f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
+                        btn:SetFrameRef("child_group", childFrame)
+                        if Wise.WiseStateDriver then
+                            btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+                        end
+                        -- Store ref to child's toggleBtn so parent can check child hover state
+                        if childFrame.toggleBtn then
+                            f.toggleBtn:SetFrameRef("childToggle_" .. childInstanceId, childFrame.toggleBtn)
+                        end
+                    end
 
-                local currentDepth = (overrideOpts and overrideOpts._depth) or 0
-                if currentDepth < 3 then
-                    nestOpts._depth = currentDepth + 1
-                    Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
-                else
-                    Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
+                    -- Recursive update to prepare child layout with overrides
+                    if not nestOpts then nestOpts = {} end
+                    nestOpts._parentInstanceId = frameKey
+
+                    -- Inherit display settings from parent so nested children match
+                    nestOpts._parentIconSize = iconSize
+                    nestOpts._parentCircleRadius = group.circleRadius or (iconSize * 2)
+                    nestOpts._parentAnimation = group.animation or false
+
+                    local currentDepth = (overrideOpts and overrideOpts._depth) or 0
+                    if currentDepth < 3 then
+                        nestOpts._depth = currentDepth + 1
+                        Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
+                    else
+                        Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
+                    end
                 end
+            else
+                -- Rotation modes (cycle/shuffle/random/priority): no child frame needed.
+                -- The RESOLVE_BLOCK resolves child actions via isa_nest_* attributes.
+                btn:SetAttribute("_onenter", nil)
+                btn:SetAttribute("isa_open_button", nil)
+                btn:SetAttribute("isa_open_direction", nil)
             end
 
-            -- Store child group's actions for rotation modes (cycle/shuffle/random/priority)
-            local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
-            btn:SetAttribute("isa_nest_mode", nestMode)
+            -- Store child group's actions for rotation modes
             Wise:StoreChildActionsOnButton(btn, aValue, nestMode)
         else
             btn:SetAttribute("isa_is_interface", nil)
@@ -3317,6 +3574,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              f.visualDisplay.buttons[i]:Hide()
         end
         
+        -- Propagate inherited display settings to visual display
+        f.visualDisplay.inheritedIconSize = f.inheritedIconSize
+        f.visualDisplay.inheritedCircleRadius = f.inheritedCircleRadius
+        f.visualDisplay.nestedCircleRotation = f.nestedCircleRotation
         -- Apply Layout to Visual Display
         Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
     end
@@ -3636,6 +3897,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     end
                 end
             end
+
         end)
     end
 
@@ -4127,11 +4389,25 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             circleRadius = WiseDB.groups[groupName].circleRadius
             circleRotation = WiseDB.groups[groupName].circleRotation or 0
         end
+
+        -- Nested instances inherit display settings from parent
+        if frame.inheritedIconSize then
+            iconSize = frame.inheritedIconSize
+        end
+        if frame.inheritedCircleRadius then
+            circleRadius = frame.inheritedCircleRadius
+        end
+
         -- Default radius if not set
         if not circleRadius then
             circleRadius = iconSize * 2
         end
         if not circleRotation then circleRotation = 0 end
+
+        -- Nested child: override rotation so button 1 points back toward parent
+        if frame.nestedCircleRotation then
+            circleRotation = frame.nestedCircleRotation
+        end
         local step = 360 / max(count, 1)
         for i=1, count do
             local angle
@@ -4711,6 +4987,15 @@ function Wise:UpdateButtonUsability(btn)
                 end
             else
                 isUsable = false -- No addons selected
+            end
+        end
+    elseif actionType == "toy" then
+        local toyID = tonumber(actionValue)
+        if toyID then
+            if C_ToyBox and C_ToyBox.IsToyUsable then
+                isUsable = C_ToyBox.IsToyUsable(toyID)
+            elseif PlayerHasToy then
+                isUsable = PlayerHasToy(toyID)
             end
         end
     elseif spellID then

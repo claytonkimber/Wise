@@ -193,9 +193,9 @@ Wise.NESTING_DEFAULTS = {
     closeParentOnOpen = false,      -- Close parent interface when child opens
     inheritHideOnUse = true,        -- Child inherits parent's hideOnUse setting
     showGhostIndicator = true,      -- Show a visual indicator that this slot opens a sub-interface
-    anchorToParentSlot = true,      -- Position child relative to the parent button that opened it
     openDirection = "auto",         -- "auto", "up", "down", "left", "right" - where child appears
     nestedInterfaceType = "default", -- "default", "circle", "line", "box", "list", "button"
+    nestedInterfaceStyle = "default", -- "default" (inherit), "dynamic" (hide unavailable), "static" (grey out unavailable)
 }
 
 --- Get the effective nesting options for an interface action, merging defaults.
@@ -493,8 +493,8 @@ Wise.NESTING_OPEN_DIRECTIONS = OPEN_DIRECTIONS
 ---------------------------------------------------------------------------
 Wise.NESTING_OPEN_BUTTONS = {
     { value = "BUTTON1",  label = "Left Click",     desc = "Open nested interface with left mouse button" },
-    { value = "BUTTON3",  label = "Middle Mouse",   desc = "Open nested interface with middle mouse button" },
     { value = "keybind",  label = "Parent Keybind",  desc = "Open nested interface with the parent group's keybind" },
+    { value = "hover",    label = "Open on Hover",   desc = "Open nested interface when hovering over the button" },
 }
 
 --- Resolve the open direction for a nested interface.
@@ -625,111 +625,122 @@ function Wise:PositionNestedChild(childFrame, childName, parentName)
         end
     end
 
-    -- Fallback to parent frame center if no specific button found
-    local anchorFrame = parentBtn or parentFrame
+    -- Get the parent frame's center (the hub of the parent circle)
+    local parentCx, parentCy = parentFrame:GetCenter()
+    if not parentCx or not parentCy then return end
 
-    -- Resolve open direction from the action's nesting options
-    local direction = "auto"
+    local parentScale = parentFrame:GetEffectiveScale()
+    local uiScale = UIParent:GetEffectiveScale()
+
+    -- Parent center in UIParent coords
+    local parentUiX = (parentCx * parentScale) / uiScale
+    local parentUiY = (parentCy * parentScale) / uiScale
+
+    -- Calculate offset: position child center outward from the parent button
+    -- so that one child icon sits at the parent button position and the rest
+    -- radiate outward beyond the parent's icon ring.
+    local offsetX, offsetY = 0, 0
     if parentBtn then
-        direction = parentBtn:GetAttribute("isa_open_direction") or "auto"
-    end
-    direction = Wise:ResolveOpenDirection(anchorFrame, direction)
+        -- Use targetX/targetY (layout-computed offsets from parent center)
+        -- rather than GetCenter() which can be stale during animations
+        local btnOffX = parentBtn.targetX or 0
+        local btnOffY = parentBtn.targetY or 0
 
-    -- Get the anchor frame's center in screen coordinates
-    local cx, cy = anchorFrame:GetCenter()
-    if not cx or not cy then return end
+        -- Convert from parent frame coords to UIParent coords
+        local dx = btnOffX * parentScale / uiScale
+        local dy = btnOffY * parentScale / uiScale
+        local dist = math.sqrt(dx * dx + dy * dy)
 
-    local uiScale = UIParent:GetScale()
-    local frameScale = childFrame:GetScale()
-    local correctedX = cx / frameScale
-    local correctedY = cy / frameScale
+        if dist > 0.1 then
+            local nx = dx / dist
+            local ny = dy / dist
 
-    -- Offset based on direction (use parent icon size as spacing)
-    local spacingX = (parentBtn and parentBtn:GetWidth() or 50) + 10
-    local spacingY = (parentBtn and parentBtn:GetHeight() or 50) + 10
+            -- Child circle radius (use inherited values if available)
+            local childGroupName = childFrame.groupName
+            local childGroup = childGroupName and WiseDB.groups[childGroupName]
+            local childIconSize = childFrame.inheritedIconSize
+                or (childGroup and childGroup.iconSize)
+                or (WiseDB.settings and WiseDB.settings.iconSize)
+                or 30
+            local childCircleRadius = childFrame.inheritedCircleRadius
+                or (childGroup and childGroup.circleRadius)
+                or (childIconSize * 2)
 
-    -- In a list layout, width might be much larger (150+), so handle X offset carefully
-    if parentBtn and parentBtn.textLabel and parentBtn.textLabel:IsShown() then
-        -- This is likely a list item. The actual clickable width is the whole row,
-        -- but visually we might want to offset relative to the icon or the whole row.
-        spacingX = parentBtn:GetWidth() + 10
-    end
+            -- Position child center so that the inward-most button (at -direction)
+            -- lands exactly at the parent button position:
+            -- childCenter = parentBtn + direction * childCircleRadius
+            -- dx/dy is already the vector from parent center to button in UI coords
+            offsetX = dx + nx * childCircleRadius
+            offsetY = dy + ny * childCircleRadius
 
-    local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
-    local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childName]
-    local closeParentOnOpen = false
-    local displayType = childGroup and childGroup.type or "circle"
-
-    if parentGroup and parentGroup.actions then
-        for _, states in pairs(parentGroup.actions) do
-            if type(states) == "table" then
-                for _, action in ipairs(states) do
-                    if action.type == "interface" and action.value == childName then
-                        local opts = Wise:GetNestingOptions(action)
-                        if opts then
-                            if opts.closeParentOnOpen then
-                                closeParentOnOpen = true
-                            end
-                            if opts.nestedInterfaceType and opts.nestedInterfaceType ~= "default" then
-                                displayType = opts.nestedInterfaceType
-                            end
-                        end
-                        break
-                    end
-                end
-            end
+            -- Calculate rotation so button 1 sits at the inward position
+            -- (pointing back toward the parent center), creating a straight line:
+            -- parent center → child icon 1 → child icon 3 (for 4 icons)
+            -- ApplyLayout: button i direction = math.rad((i-1)*step + circleRotation + 90)
+            -- Button 1 direction = circleRotation + 90 degrees
+            -- We want button 1 at inward angle = offsetAngle + 180
+            -- So: circleRotation + 90 = offsetAngle + 180 → circleRotation = offsetAngle + 90
+            local offsetAngleDeg = math.deg(math.atan2(ny, nx))
+            childFrame.nestedCircleRotation = offsetAngleDeg + 90
         end
     end
 
-    -- If the parent closes, the new child exactly overlaps the selected parent icon.
-    -- Furthermore, if the child layout is a circle, its natural center IS the parent icon.
-    if closeParentOnOpen or displayType == "circle" then
-        spacingX = 0
-        spacingY = 0
-    end
-
-    if direction == "up" then
-        correctedY = correctedY + spacingY / frameScale
-    elseif direction == "down" then
-        correctedY = correctedY - spacingY / frameScale
-    elseif direction == "right" then
-        correctedX = correctedX + spacingX / frameScale
-    elseif direction == "left" then
-        correctedX = correctedX - spacingX / frameScale
-    end
-    -- "center" keeps the same position
+    local uiX = parentUiX + offsetX
+    local uiY = parentUiY + offsetY
 
     -- Move the proxy anchor (only safe out of combat since it anchors a secure frame)
     if childFrame.Anchor and not InCombatLockdown() then
         childFrame.Anchor:ClearAllPoints()
-        childFrame.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+        childFrame.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", uiX, uiY)
     end
 
     -- Also move the secure frame directly (only safe out of combat)
     if not InCombatLockdown() then
         childFrame:ClearAllPoints()
-        childFrame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+        childFrame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", uiX, uiY)
     end
-    
-    Wise:DebugPrint("PositionNestedChild: child=%s parent=%s parentBtn=%s cx=%.1f cy=%.1f correctedX=%.1f correctedY=%.1f", 
-        childName, parentName, parentBtn and parentBtn:GetName() or "NONE", cx or 0, cy or 0, correctedX or 0, correctedY or 0)
+
+    -- Re-apply layout with the computed rotation so buttons fan outward
+    if childFrame.nestedCircleRotation and not InCombatLockdown() then
+        local childGroupName = childFrame.groupName
+        local childGroup = childGroupName and WiseDB.groups[childGroupName]
+        local displayType = (childGroup and childGroup.type) or "circle"
+        local btnCount = 0
+        if childFrame.buttons then
+            for _, btn in ipairs(childFrame.buttons) do
+                if btn:IsShown() then btnCount = btnCount + 1 end
+            end
+        end
+        if btnCount > 0 then
+            Wise:ApplyLayout(childFrame, displayType, btnCount, childGroupName)
+        end
+    end
+
+    Wise:DebugPrint("PositionNestedChild: child=%s parent=%s parentBtn=%s offset=%.1f,%.1f uiX=%.1f uiY=%.1f rot=%.1f",
+        childName, parentName, parentBtn and parentBtn:GetName() or "NONE", offsetX, offsetY, uiX, uiY, childFrame.nestedCircleRotation or 0)
 end
 
+-- Close monitoring: handles both click-outside (for click-opened) and
+-- mouse-leave (for hover-opened) nested interfaces.
 function Wise:StartNestedCloseOnLeave(childFrame, childName, parentInstanceId)
-    -- Cancel any existing ticker
+    -- Cancel any existing watcher
     if childFrame.nestedCloseTicker then
         childFrame.nestedCloseTicker:Cancel()
         childFrame.nestedCloseTicker = nil
+    end
+    if childFrame._outsideClickFrame then
+        childFrame._outsideClickFrame:Hide()
     end
 
     local parentFrame = Wise.frames and Wise.frames[parentInstanceId]
     local parentName = parentFrame and parentFrame.groupName or parentInstanceId
 
-    -- Find the interface action data to check closeOnLeave option
+    -- Find the interface action data to check closeOnLeave and openOnHover options
     local parentGroup = WiseDB and WiseDB.groups and WiseDB.groups[parentName]
     if not parentGroup or not parentGroup.actions then return end
 
     local closeOnLeave = true -- default
+    local isHoverOpened = false
     for _, states in pairs(parentGroup.actions) do
         if type(states) == "table" then
             for _, action in ipairs(states) do
@@ -737,6 +748,7 @@ function Wise:StartNestedCloseOnLeave(childFrame, childName, parentInstanceId)
                     local opts = Wise:GetNestingOptions(action)
                     if opts then
                         closeOnLeave = opts.closeOnLeave
+                        isHoverOpened = opts.openOnHover or false
                     end
                     break
                 end
@@ -746,12 +758,62 @@ function Wise:StartNestedCloseOnLeave(childFrame, childName, parentInstanceId)
 
     if not closeOnLeave then return end
 
-    local parentFrame = Wise.frames and Wise.frames[parentName]
-    local leaveDelay = 0 -- grace frames before closing
-    local leaveCount = 0
-    local LEAVE_THRESHOLD = 3 -- ticks (~0.6s) before closing
+    -- Helper: check if mouse is over any related frame (child, parent, or descendants)
+    -- Uses generous padding to bridge the gap between parent and child circles
+    local function isMouseOverAnyRelated()
+        local pad = 40
+        if childFrame:IsMouseOver(pad, -pad, -pad, pad) then return true end
+        if parentFrame and parentFrame:IsShown() and parentFrame:IsMouseOver(pad, -pad, -pad, pad) then return true end
 
-    childFrame.nestedCloseTicker = C_Timer.NewTicker(0.2, function()
+        -- Check individual buttons (IsMouseOver on the frame may miss
+        -- buttons that extend far from center on circle layouts)
+        if childFrame.buttons then
+            for _, btn in ipairs(childFrame.buttons) do
+                if btn:IsShown() and btn:IsMouseOver(10, -10, -10, 10) then return true end
+            end
+        end
+        if parentFrame and parentFrame:IsShown() and parentFrame.buttons then
+            for _, btn in ipairs(parentFrame.buttons) do
+                if btn:IsShown() and btn:IsMouseOver(10, -10, -10, 10) then return true end
+            end
+        end
+
+        -- Check descendant child frames
+        local descendants = Wise:GetAllDescendants(childFrame.groupName or childName)
+        for _, descName in ipairs(descendants) do
+            local descFrame = Wise.frames and Wise.frames[descName]
+            if descFrame and descFrame:IsShown() and descFrame:IsMouseOver(pad, -pad, -pad, pad) then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Helper: close the child frame
+    local function closeChild()
+        if not InCombatLockdown() then
+            childFrame:SetAttribute("state-manual", "hide")
+            local driver = Wise.WiseStateDriver
+            if driver then
+                driver:SetAttribute("wisesetstate", childName .. ":inactive")
+            end
+        end
+        if childFrame.nestedCloseTicker then
+            childFrame.nestedCloseTicker:Cancel()
+            childFrame.nestedCloseTicker = nil
+        end
+    end
+
+    -- Grace period counter for hover-opened: close after mouse has been
+    -- outside all related frames for N consecutive ticks (avoids flicker
+    -- when moving between parent and child or during open animation)
+    local leaveTicks = 0
+    local LEAVE_GRACE = 5 -- 5 ticks × 0.15s = 0.75s grace period
+    -- Startup immunity: skip close checks while animation is settling
+    local startupTicks = 0
+    local STARTUP_DELAY = 4 -- 4 ticks × 0.15s = 0.6s (covers open animation)
+
+    childFrame.nestedCloseTicker = C_Timer.NewTicker(0.15, function()
         if not childFrame:IsShown() then
             if childFrame.nestedCloseTicker then
                 childFrame.nestedCloseTicker:Cancel()
@@ -760,27 +822,25 @@ function Wise:StartNestedCloseOnLeave(childFrame, childName, parentInstanceId)
             return
         end
 
-        -- Check if mouse is over any child button or the child frame itself
-        local overChild = childFrame:IsMouseOver(20, -20, -20, 20) -- slight padding
-        local overParent = parentFrame and parentFrame:IsShown() and parentFrame:IsMouseOver(20, -20, -20, 20)
+        if isHoverOpened then
+            -- Startup immunity: don't check for leave during animation
+            startupTicks = startupTicks + 1
+            if startupTicks <= STARTUP_DELAY then return end
 
-        if overChild or overParent then
-            leaveCount = 0
-        else
-            leaveCount = leaveCount + 1
-            if leaveCount >= LEAVE_THRESHOLD then
-                -- Close the child interface
-                if not InCombatLockdown() then
-                    childFrame:SetAttribute("state-manual", "hide")
-                    -- Notify the state driver
-                    local driver = Wise.WiseStateDriver
-                    if driver then
-                        driver:SetAttribute("wisesetstate", childName .. ":inactive")
-                    end
+            -- Hover-opened: close when mouse leaves all related frames
+            if isMouseOverAnyRelated() then
+                leaveTicks = 0
+            else
+                leaveTicks = leaveTicks + 1
+                if leaveTicks >= LEAVE_GRACE then
+                    closeChild()
                 end
-                if childFrame.nestedCloseTicker then
-                    childFrame.nestedCloseTicker:Cancel()
-                    childFrame.nestedCloseTicker = nil
+            end
+        else
+            -- Click-opened: close when mouse button is pressed outside all related frames
+            if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") or IsMouseButtonDown("MiddleButton") then
+                if not isMouseOverAnyRelated() then
+                    closeChild()
                 end
             end
         end

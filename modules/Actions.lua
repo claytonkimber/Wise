@@ -1766,10 +1766,16 @@ function Wise:IsActionKnown(actionType, value)
         end
     
     elseif actionType == "toy" then
+        local toyID = tonumber(value)
+        if not toyID then return false end
+        -- Must be collected first
+        if PlayerHasToy and not PlayerHasToy(toyID) then return false end
+        -- Check profession/faction/class restrictions
         if C_ToyBox and C_ToyBox.IsToyUsable then
-            if C_ToyBox.IsToyUsable(value) then return true end
+            return C_ToyBox.IsToyUsable(toyID)
         end
-        if PlayerHasToy then return PlayerHasToy(value) end
+        -- API unavailable, fall back to collected-only check
+        return PlayerHasToy and PlayerHasToy(toyID) or false
         
     elseif actionType == "mount" then
         if C_MountJournal then
@@ -1807,6 +1813,51 @@ function Wise:IsActionKnown(actionType, value)
     end
     
     return true
+end
+
+-- Check if an action is currently on cooldown (> 1.5s remaining to ignore GCD)
+function Wise:IsActionOnCooldown(actionType, value, actionData)
+    if actionType == "spell" then
+        local spellID = value
+        if type(value) == "string" then
+            local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(value)
+            if info then spellID = info.spellID end
+        end
+        spellID = tonumber(spellID)
+        if spellID then
+            -- Check override spell (e.g. talent replaces base spell)
+            local overrideID = Wise:GetOverrideSpellID(spellID)
+            local checkID = overrideID or spellID
+            local info = C_Spell.GetSpellCooldown(checkID)
+            if info and info.duration and info.duration > 1.5 then
+                local remaining = (info.startTime + info.duration) - GetTime()
+                if remaining > 1.5 then return true end
+            end
+        end
+    elseif actionType == "item" then
+        local itemID = tonumber(value)
+        if itemID then
+            local start, duration = C_Item.GetItemCooldown(itemID)
+            if duration and duration > 1.5 then
+                local remaining = (start + duration) - GetTime()
+                if remaining > 1.5 then return true end
+            end
+        end
+    elseif actionType == "toy" then
+        local toyID = tonumber(value)
+        if toyID then
+            -- Toys use item cooldown API
+            local start, duration = C_Item.GetItemCooldown(toyID)
+            if duration and duration > 1.5 then
+                local remaining = (start + duration) - GetTime()
+                if remaining > 1.5 then return true end
+            end
+        end
+    elseif actionType == "mount" then
+        -- Mounts don't have meaningful cooldowns to filter on
+        return false
+    end
+    return false
 end
 
 function Wise:GetCastTimeText(actionType, value)
