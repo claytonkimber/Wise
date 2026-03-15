@@ -194,7 +194,7 @@ function AddonVisibility:Inspect(prefix)
 
     while currentFrame do
         local name = currentFrame:GetName()
-        if name and string.find(string.lower(name), lowerPrefix, 1, true) then
+        if type(name) == "string" and string.find(string.lower(name), lowerPrefix, 1, true) then
             print("  - " .. name)
             count = count + 1
         end
