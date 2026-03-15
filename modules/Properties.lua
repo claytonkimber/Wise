@@ -333,6 +333,23 @@ function Wise:RefreshPropertiesPanel()
         return
     end
 
+    -- Special case: Spec and Equipment Changer Tool
+    if Wise.SPEC_AND_EQUIP_TEMPLATE and Wise.selectedGroup == Wise.SPEC_AND_EQUIP_TEMPLATE then
+        Wise.OptionsFrame.Right.Title:SetText("Spec and Equipment Changer")
+
+        local y = -30
+
+        if Wise.CreateSpecAndEquipPropertiesPanel then
+             Wise:CreateSpecAndEquipPropertiesPanel(panel, y)
+        else
+             local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+             msgLabel:SetPoint("TOPLEFT", 10, y)
+             msgLabel:SetText("Spec and Equipment module not loaded.")
+             tinsert(panel.controls, msgLabel)
+        end
+        return
+    end
+
     -- Special case: Bar Copy Tool
     if Wise.BAR_COPY_TEMPLATE and Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
         Wise.OptionsFrame.Right.Title:SetText("Bar Copy Tool")

@@ -52,3 +52,4 @@ wiser\Cooldowns.lua
 wiser\SmartItem.lua
 wiser\BarCopy.lua
 wiser\AddonMagic.lua
+wiser\SpecAndEquip.lua

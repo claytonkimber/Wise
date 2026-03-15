@@ -433,13 +433,16 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
         Wise:UpdateGroupDisplay("Addon Loading Magic")
     end
-    -- 6. Cooldowns (default: box layout, width 4, fixed anchor)
+    -- 6. Spec and Equipment Changer
+    local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle")
+
+    -- 7. Cooldowns (default: box layout, width 4, fixed anchor)
     local cooldownsGroup = EnsureWiserGroup("Cooldowns", "box", {type = "box", boxWidth = 4})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
     end
 
-    -- 7. Utilities (default: box layout, width 2, fixed anchor)
+    -- 8. Utilities (default: box layout, width 2, fixed anchor)
     local utilitiesGroup = EnsureWiserGroup("Utilities", "box", {type = "box", boxWidth = 2})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")

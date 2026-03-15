@@ -723,6 +723,60 @@ function Wise:RefreshGroupList()
     toolsHdr:SetText("Tools")
     y = y - 18
 
+    -- Spec and Equipment Changer Tool
+    if Wise.SPEC_AND_EQUIP_TEMPLATE then
+        local seBtn = container.buttons[btnIndex]
+        if not seBtn then
+            seBtn = CreateFrame("Button", nil, container, "BackdropTemplate")
+            seBtn:SetSize(165, 40)
+
+            seBtn.icon = seBtn:CreateTexture(nil, "ARTWORK")
+            seBtn.icon:SetSize(32, 32)
+            seBtn.icon:SetPoint("LEFT", 5, 0)
+
+            seBtn.label = seBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            seBtn.label:SetPoint("LEFT", seBtn.icon, "RIGHT", 10, 0)
+            seBtn.label:SetJustifyH("LEFT")
+            seBtn.label:SetWidth(110)
+            seBtn.label:SetWordWrap(false)
+
+            -- Keybind Label
+            seBtn.kbLabel = seBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            seBtn.kbLabel:SetPoint("RIGHT", seBtn.icon, "LEFT", -5, 0)
+            seBtn.kbLabel:SetJustifyH("RIGHT")
+            seBtn.kbLabel:SetTextColor(1, 1, 1, 1) -- White
+
+            seBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+            tinsert(container.buttons, seBtn)
+        end
+        seBtn:Show()
+        seBtn:SetPoint("TOPLEFT", 40, y)
+        if seBtn.lockBtn then seBtn.lockBtn:Hide() end
+        if seBtn.errorIcon then seBtn.errorIcon:Hide() end
+
+        seBtn.icon:SetTexture("Interface\\Icons\\Inv_misc_gear_01")
+        seBtn.label:SetText(Wise.SPEC_AND_EQUIP_TEMPLATE)
+
+        seBtn.kbLabel:Hide()
+
+        if Wise.selectedGroup == Wise.SPEC_AND_EQUIP_TEMPLATE then
+             seBtn:LockHighlight()
+        else
+             seBtn:UnlockHighlight()
+        end
+
+        seBtn:SetScript("OnClick", function()
+            Wise.selectedGroup = Wise.SPEC_AND_EQUIP_TEMPLATE
+            Wise.selectedSlot = nil
+            Wise.selectedState = nil
+            Wise:UpdateOptionsUI()
+        end)
+
+        y = y - 42
+        btnIndex = btnIndex + 1
+    end
+
     -- Bar Copy Tool
     if Wise.BAR_COPY_TEMPLATE then
         local barBtn = container.buttons[btnIndex]
