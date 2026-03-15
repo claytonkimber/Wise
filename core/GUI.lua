@@ -4426,11 +4426,25 @@ function Wise:UpdateButtonCooldown(btn)
              end
         end
         
-        if aura and aura.expirationTime and aura.duration and aura.duration > 0 then
-            -- Override cooldown display with buff/debuff duration
-            start = aura.expirationTime - aura.duration
-            duration = aura.duration
-            isBuffActive = true
+        if aura and aura.expirationTime and aura.duration then
+            local isValidDur = false
+            -- Secret numbers throw on comparison, meaning they are valid durations
+            local s1, res = pcall(function(d) return d > 0 end, aura.duration)
+            if s1 then
+                isValidDur = res
+            else
+                isValidDur = true
+            end
+
+            if isValidDur then
+                -- Override cooldown display with buff/debuff duration
+                local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, aura.expirationTime, aura.duration)
+                if s2 then
+                    start = calcStart
+                    duration = calcDuration
+                    isBuffActive = true
+                end
+            end
         end
     end
     
