@@ -41,12 +41,4 @@
         </KeyValues>
     </Frame>
 
-    <Frame name="WiseDebugTest_WiserActionPicker" inherits="WiseDebugTestsData">
-        <KeyValues>
-            <KeyValue key="testName" value="Wiser Interfaces in Action Picker Test" type="string"/>
-            <KeyValue key="instructions" value="Verify that 'Specs', 'Professions', 'Forms', and 'Menu Bar' appear in the Interface tab of the Action Picker.\n1. Open Options.\n2. Select or create an Interface.\n3. Add an action and open the Action Picker.\n4. Search for 'Interface' category.\n5. Verify that 'Specs', 'Professions', 'Forms', and 'Menu Bar' are available as selectable options." type="string"/>
-            <KeyValue key="action" value="" type="string"/>
-            <KeyValue key="clearAction" value="" type="string"/>
-        </KeyValues>
-    </Frame>
 </Ui>
