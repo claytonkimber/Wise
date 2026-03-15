@@ -558,39 +558,68 @@ function Wise:RefreshPropertiesPanel()
         tinsert(panel.controls, sep)
         y = y - 20
 
-        -- Inspect Tool
-        local insLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        insLabel:SetPoint("TOPLEFT", 10, y)
-        insLabel:SetText("Inspect Frame Names:")
-        tinsert(panel.controls, insLabel)
+        -- Interactive Grab Tool
+        local grabLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        grabLabel:SetPoint("TOPLEFT", 10, y)
+        grabLabel:SetText("Interactive Grab Tool:")
+        tinsert(panel.controls, grabLabel)
         y = y - 20
 
-        local insHelp = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        insHelp:SetPoint("TOPLEFT", 10, y)
-        insHelp:SetWidth(250)
-        insHelp:SetJustifyH("LEFT")
-        insHelp:SetText("Enter a prefix (e.g. 'Details') and click Inspect to print matching frame names to the chat window.")
-        tinsert(panel.controls, insHelp)
+        local grabHelp = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        grabHelp:SetPoint("TOPLEFT", 10, y)
+        grabHelp:SetWidth(250)
+        grabHelp:SetJustifyH("LEFT")
+        grabHelp:SetText("Click the button, then quickly hover your mouse over the target UI element.")
+        tinsert(panel.controls, grabHelp)
         y = y - 30
 
-        local insEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        insEdit:SetSize(120, 20)
-        insEdit:SetPoint("TOPLEFT", 15, y)
-        insEdit:SetAutoFocus(false)
-        tinsert(panel.controls, insEdit)
+        local grabBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        grabBtn:SetSize(230, 24)
+        grabBtn:SetPoint("TOPLEFT", 10, y)
+        grabBtn:SetText("Grab Frame Under Mouse (3s)")
 
-        local insBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        insBtn:SetSize(100, 22)
-        insBtn:SetPoint("LEFT", insEdit, "RIGHT", 5, 0)
-        insBtn:SetText("Inspect")
-        insBtn:SetScript("OnClick", function()
-             local txt = insEdit:GetText()
-             if txt ~= "" and Wise.AddonVisibility and Wise.AddonVisibility.Inspect then
-                 Wise.AddonVisibility:Inspect(txt)
+        local timer = 0
+        local isGrabbing = false
+        local function DoGrab()
+             isGrabbing = false
+             grabBtn:SetText("Grab Frame Under Mouse (3s)")
+             grabBtn:SetScript("OnUpdate", nil)
+
+             if Wise.AddonVisibility and Wise.AddonVisibility.GrabFrame then
+                 local childName, parentName = Wise.AddonVisibility:GrabFrame()
+                 if childName then
+                      childEdit:SetText(childName)
+                      if parentName then
+                           parentEdit:SetText(parentName)
+                      end
+                 end
              end
-             insEdit:ClearFocus()
+        end
+
+        grabBtn:SetScript("OnClick", function()
+             if isGrabbing then return end
+             isGrabbing = true
+             timer = 3.0
+             grabBtn:SetText("Grabbing in 3...")
+             grabBtn:SetScript("OnUpdate", function(self, elapsed)
+                  timer = timer - elapsed
+                  if timer <= 0 then
+                       DoGrab()
+                  else
+                       self:SetText(string.format("Grabbing in %d...", math.ceil(timer)))
+                  end
+             end)
         end)
-        tinsert(panel.controls, insBtn)
+        tinsert(panel.controls, grabBtn)
+
+        y = y - 35
+
+        local cmdHelp = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        cmdHelp:SetPoint("TOPLEFT", 10, y)
+        cmdHelp:SetWidth(250)
+        cmdHelp:SetJustifyH("LEFT")
+        cmdHelp:SetText("Alternatively, create a macro with '/av grab' and press it while hovering over the target.")
+        tinsert(panel.controls, cmdHelp)
 
         y = y - 30
         panel:SetHeight(math.abs(y) + 50)

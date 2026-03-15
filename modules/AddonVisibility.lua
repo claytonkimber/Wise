@@ -204,6 +204,45 @@ function AddonVisibility:Inspect(prefix)
     print(string.format("Scan complete. Found %d matching frames.", count))
 end
 
+function AddonVisibility:GrabFrame()
+    local focus = GetMouseFoci and GetMouseFoci()[1] or GetMouseFocus and GetMouseFocus() or nil
+    if not focus then
+        print("|cff00ccff[Wise: AddonVisibility]|r No frame found under mouse.")
+        return
+    end
+
+    local childName = focus:GetName()
+    if not childName then
+        print("|cff00ccff[Wise: AddonVisibility]|r Frame under mouse is anonymous (has no name). Cannot hook.")
+        return
+    end
+
+    -- Find the highest-level named parent
+    local rootFrame = focus
+    local parentName = childName
+    while rootFrame do
+        local p = rootFrame:GetParent()
+        if not p or p == UIParent then
+            break
+        end
+        local pName = p:GetName()
+        if pName then
+            parentName = pName
+        end
+        rootFrame = p
+    end
+
+    print("|cff00ccff[Wise: AddonVisibility]|r Grab Results:")
+    print("  Target Frame (Child): |cffcccccc" .. childName .. "|r")
+    if parentName ~= childName then
+        print("  Root Frame (Parent): |cffcccccc" .. parentName .. "|r")
+    else
+        print("  Target is already a root frame.")
+    end
+
+    return childName, parentName
+end
+
 -- Slash Command Handler
 SLASH_ADDONVISIBILITY1 = "/av"
 SlashCmdList["ADDONVISIBILITY"] = function(msg)
@@ -214,10 +253,13 @@ SlashCmdList["ADDONVISIBILITY"] = function(msg)
         AddonVisibility:ListHooks()
     elseif cmd == "inspect" then
         AddonVisibility:Inspect(arg)
+    elseif cmd == "grab" then
+        AddonVisibility:GrabFrame()
     else
         print("|cff00ccff[Wise: AddonVisibility]|r Commands:")
         print("  /av list - Show hook status for configured addons.")
         print("  /av inspect [prefix] - Find frames matching the prefix.")
+        print("  /av grab - Print the name of the frame under the mouse and its highest-level parent.")
     end
 end
 
