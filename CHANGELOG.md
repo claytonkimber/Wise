@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.20260315] - 2026-03-15
+
+- [Feature] Overhaul nesting system with three top-level modes: Jump (Open), Button, and Embedded
+- [Feature] Add Button sub-modes (Cycle, Random, Priority) for resolving child actions on parent slots
+- [Feature] Embedded nesting mode injects child actions directly into parent layout with automatic rebuild propagation
+- [Feature] Add custom name property to states for clearer identification
+- [Feature] Allow specific Wiser interfaces in the action picker
+- [Feature] Add 'Hide Game Interface' toggle for Cooldowns wiser interface
+- [Fix] Fix nesting open direction, positioning, and cascade close behavior
+- [Fix] Fix Extra Action Button and Zone Ability missing clickbutton handling on release mouseover
+- [Fix] Fix Zone Ability and others failing on Release Mouseover due to background ticker
+- [Fix] Fix error when comparing secret number aura duration
+- [Fix] Ensure deleted interfaces are removed from parent groups
+- [Fix] Align visibility and interface style checkboxes to a single column
+- [Fix] Correct overlapping elements in properties panel
+- [Fix] Fix Cooldowns and Utilities decimal slots not persisting through relogs
+- [Chore] Make tests.xml transparent to deployments
+
 ## [1.0.20260312] - 2026-03-12
 
 - [Feature] Enhance debug QA UI with persistent results and LLM export
