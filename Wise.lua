@@ -1331,9 +1331,19 @@ if HelpTip and HelpTip.Show then
                             if type(frame) == "table" and frame.info and frame.info == info and frame:IsShown() then
                                 -- Fully reparent the frame so it follows the new button
                                 -- and doesn't get drawn underneath hidden/layered UI elements
+                                local originalParent = frame:GetParent()
                                 frame:SetParent(talentsBtn)
                                 frame:ClearAllPoints()
                                 frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
+
+                                if not frame.WiseOriginalMatches then
+                                    frame.WiseOriginalMatches = frame.Matches
+                                    frame.Matches = function(self, matchParent, text)
+                                        local currentParent = self:GetParent()
+                                        -- Allow it to match if the hide request targets its original Blizzard parent
+                                        return (currentParent == matchParent or originalParent == matchParent) and (text == nil or (self.info and self.info.text == text))
+                                    end
+                                end
                                 break
                             end
                         end
