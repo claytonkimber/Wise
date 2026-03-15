@@ -1261,6 +1261,8 @@ end
 
 
 function Wise:GetActionName(actionType, value, extraData)
+    if extraData and extraData.customName then return extraData.customName end
+
     -- For spells, always resolve dynamically (overrides change with spec/talents)
     if extraData and extraData.name and actionType ~= "spell" then return extraData.name end
 
