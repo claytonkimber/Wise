@@ -1299,10 +1299,11 @@ end
 
 -- HelpTip Hooking for Micro Menu Replacements
 if HelpTip and HelpTip.Show then
-    hooksecurefunc(HelpTip, "Show", function(self, parent, info, relativeRegion)
+    -- Safely hook the global Hide method instead of mutating pooled frame methods
+    hooksecurefunc(HelpTip, "Hide", function(self, parent, text)
         if not WiseDB or not WiseDB.settings or not WiseDB.settings.blizzardUI then return end
 
-        local target = relativeRegion or parent
+        local target = parent
         local targetName
         if type(target) == "table" and target.GetName then
             targetName = target:GetName()
@@ -1310,9 +1311,57 @@ if HelpTip and HelpTip.Show then
             targetName = target
         end
 
+        -- If Blizzard is trying to hide the talents HelpTip on the original default micro button
+        -- We check text and localized global string to be safe on non-English clients
+        local isTalentText = false
+        if text then
+            if text:lower():find("talent") then isTalentText = true end
+            -- Additional global string checks could be added here if known, e.g., text == TALENTS_TUTORIAL_TEXT
+        end
+
+        if targetName == "PlayerSpellsMicroButton" or (targetName == "MicroMenuContainer" and isTalentText) then
+            -- Also try to hide it on our custom talents button, just in case
+            local menuBar = Wise.frames and Wise.frames["Menu Bar"]
+            if menuBar and menuBar.buttons then
+                for _, btn in ipairs(menuBar.buttons) do
+                    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+                    if meta and meta.actionType == "uipanel" and meta.actionValue == "talents" then
+                        -- Call the real internal release to be safe if it's there
+                        if self.framePool and self.framePool.activeObjects then
+                            for frame, _ in pairs(self.framePool.activeObjects) do
+                                if frame.relativeRegion == btn and (text == nil or (frame.info and frame.info.text == text)) then
+                                    if frame.Close then frame:Close() else frame:Hide() end
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end)
+
+    hooksecurefunc(HelpTip, "Show", function(self, parent, info, relativeRegion)
+        if not WiseDB or not WiseDB.settings or not WiseDB.settings.blizzardUI then return end
+
+        local target = relativeRegion or parent
+        local targetFrame = type(target) == "string" and _G[target] or target
+
+        local targetName
+        if type(target) == "table" and target.GetName then
+            targetName = target:GetName()
+        elseif type(target) == "string" then
+            targetName = target
+        end
+
+        local isTalentText = false
+        if info and info.text then
+            if info.text:lower():find("talent") then isTalentText = true end
+        end
+
         -- Check if it's the hero talents HelpTip trying to attach to the default spellbook micro button
         -- or if it's a HelpTip mentioning talents trying to attach to the main menu bar while hidden
-        if targetName == "PlayerSpellsMicroButton" or (targetName == "MicroMenuContainer" and info and info.text and info.text:lower():find("talent")) then
+        if targetName == "PlayerSpellsMicroButton" or (targetName == "MicroMenuContainer" and isTalentText) then
             if WiseDB.settings.blizzardUI.hideMicroMenu then
                 local menuBar = Wise.frames and Wise.frames["Menu Bar"]
                 if menuBar and menuBar:IsShown() and menuBar.buttons then
@@ -1328,22 +1377,32 @@ if HelpTip and HelpTip.Show then
                     if talentsBtn and self.framePool and self.framePool.activeObjects then
                         -- Find the HelpTip frame that was just spawned
                         for frame, _ in pairs(self.framePool.activeObjects) do
-                            if type(frame) == "table" and frame.info and frame.info == info and frame:IsShown() then
-                                -- Fully reparent the frame so it follows the new button
-                                -- and doesn't get drawn underneath hidden/layered UI elements
-                                local originalParent = frame:GetParent()
+                            if type(frame) == "table" and frame.info and frame.info.text == info.text and frame:IsShown() and (frame.relativeRegion == targetFrame or frame:GetParent() == targetFrame) then
+                                -- Blizzard HelpTips use relativeRegion in their OnUpdate to snap to targets
+                                -- and to orient the arrow.
+                                frame.relativeRegion = talentsBtn
+
+                                -- The Arrow is positioned inside an Init method. We can force a layout update by re-initing it slightly
+                                -- However, doing a full re-init is risky. Let's just update the point dynamically.
                                 frame:SetParent(talentsBtn)
                                 frame:ClearAllPoints()
-                                frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
 
-                                if not frame.WiseOriginalMatches then
-                                    frame.WiseOriginalMatches = frame.Matches
-                                    frame.Matches = function(self, matchParent, text)
-                                        local currentParent = self:GetParent()
-                                        -- Allow it to match if the hide request targets its original Blizzard parent
-                                        return (currentParent == matchParent or originalParent == matchParent) and (text == nil or (self.info and self.info.text == text))
-                                    end
+                                -- Adjust the point based on info targetPoint, default to pointing up at the button
+                                local point = info.targetPoint or HelpTip.Point.BottomEdgeCenter
+
+                                if point == HelpTip.Point.TopEdgeCenter then
+                                    frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
+                                elseif point == HelpTip.Point.BottomEdgeCenter then
+                                    frame:SetPoint("TOP", talentsBtn, "BOTTOM", 0, -10)
+                                elseif point == HelpTip.Point.RightEdgeCenter then
+                                    frame:SetPoint("LEFT", talentsBtn, "RIGHT", 10, 0)
+                                elseif point == HelpTip.Point.LeftEdgeCenter then
+                                    frame:SetPoint("RIGHT", talentsBtn, "LEFT", -10, 0)
+                                else
+                                    frame:SetPoint("BOTTOM", talentsBtn, "TOP", 0, 10)
                                 end
+
+                                -- No need to override Matches anymore since we hook HelpTip:Hide directly
                                 break
                             end
                         end
