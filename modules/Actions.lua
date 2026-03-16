@@ -537,54 +537,32 @@ end
 
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
-    local cat = action.category or "global"
+    local enables = action.visibilityEnable or {}
 
-    -- "Global" button -> Show ALL
+    -- "Global" filter -> Show everything
     if filter == "global" then return true end
 
-    -- Always show Global items
-    if cat == "global" then return true end
+    -- If there are NO enables, it is effectively global
+    if #enables == 0 then return true end
 
-    local _, playerClass = UnitClass("player")
-
-    -- If action is class-restricted, it must match player
-    if action.addedByClass and action.addedByClass ~= playerClass then
-        return false
-    end
-
-    -- "Class" button -> Show Global + Class (All Specs)
-    if filter == "class" then
-        return true
-    end
-
-    -- "Role" button -> Show Global + Class + Role (matching current role)
-    if filter == "role" then
-        if cat == "role" then
-            local currentRole = Wise.characterInfo.role
-            if type(action.roleRequirements) == "table" then
-                if #action.roleRequirements == 0 then return true end
-                for _, r in ipairs(action.roleRequirements) do
-                    if r == currentRole then return true end
-                end
-                return false
-            end
+    for _, tag in ipairs(enables) do
+        if filter == "class" and tag:match("^class:") then
+            local _, pClass = UnitClass("player")
+            if tag == "class:" .. pClass then return true end
+        elseif filter == "role" and tag:match("^role:") then
+            if tag == "role:" .. (Wise.characterInfo.role or "") then return true end
+        elseif filter == "spec" and tag:match("^spec:") then
+            if tag == "spec:" .. (Wise.characterInfo.specID or "") then return true end
+        elseif filter == "talent" and tag:match("^talent:") then
+            -- Let's just show it in the list if they select talent
+            return true
+        elseif filter == "character" and tag:match("^char:") then
+            local charKey = UnitName("player") .. "-" .. GetRealmName()
+            if tag == "char:" .. charKey then return true end
         end
-        return true
     end
 
-    -- "Spec" button -> Show Global + Class + Spec (Current Spec Only)
-    if filter == "spec" then
-        local currentSpecIndex = GetSpecialization()
-        local currentSpecID = currentSpecIndex and GetSpecializationInfo(currentSpecIndex)
-
-        -- If action is spec-restricted, it must match current spec
-        if action.addedBySpec and action.addedBySpec ~= currentSpecID then
-            return false
-        end
-        return true
-    end
-    
-    return cat == filter
+    return false
 end
 
 Wise.ActionTypes = {
@@ -1003,9 +981,10 @@ function Wise:MigrateGroupToActions(group)
     end
     group.actions = group.actions or {}
 
-    -- Migrate old talent/build restrictions
+    -- Migrate old talent/build restrictions and new visibility enables/disables
     for _, slotStates in pairs(group.actions) do
         for _, action in ipairs(slotStates) do
+            -- Talent migration
             if action.category == "talent_build" or action.category == "build" then
                 action.category = "talent"
             end
@@ -1015,6 +994,44 @@ function Wise:MigrateGroupToActions(group)
             elseif action.talentBuildRestriction then
                 action.talentRequirements = action.talentBuildRestriction
                 action.talentBuildRestriction = nil
+            end
+
+            -- Convert old category/addedBy logic to visibilityEnable / visibilityDisable
+            if action.category and (not action.visibilityEnable and not action.visibilityDisable) then
+                action.visibilityEnable = {}
+                action.visibilityDisable = {}
+                local cat = action.category
+
+                if cat == "class" then
+                    local cls = action.addedByClass or action.classRestriction
+                    if cls then table.insert(action.visibilityEnable, "class:" .. cls) end
+                elseif cat == "role" then
+                    if type(action.roleRequirements) == "table" then
+                        for _, r in ipairs(action.roleRequirements) do
+                            table.insert(action.visibilityEnable, "role:" .. r)
+                        end
+                    end
+                elseif cat == "spec" then
+                    if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
+                        for _, sp in ipairs(action.specRequirements) do
+                            table.insert(action.visibilityEnable, "spec:" .. sp)
+                        end
+                    else
+                        local sp = action.addedBySpec or action.specRestriction
+                        if sp then table.insert(action.visibilityEnable, "spec:" .. sp) end
+                    end
+                elseif cat == "talent" then
+                    if type(action.talentRequirements) == "table" then
+                        for _, t in ipairs(action.talentRequirements) do
+                            table.insert(action.visibilityEnable, "talent:" .. t)
+                        end
+                    end
+                elseif cat == "character" then
+                    local ch = action.addedByCharacter or action.characterRestriction
+                    if ch then table.insert(action.visibilityEnable, "char:" .. ch) end
+                end
+
+                -- action.category = nil -- Don't delete it yet just in case, but rely on new structure
             end
         end
     end
@@ -1095,12 +1112,21 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
     local newAction = {
         type = actionType,
         value = actionValue,
-        category = resolvedCategory,
+        category = resolvedCategory, -- keeping for legacy safety temporarily
+        visibilityEnable = {},
+        visibilityDisable = {},
         addedByCharacter = UnitName("player") .. "-" .. GetRealmName(),
         addedByClass = playerClass,
         addedBySpec = resolvedSpecID,
         talentRequirements = talentBuildName,
     }
+
+    -- Set up initial visibility arrays based on the resolved category
+    if resolvedCategory == "class" and playerClass then
+        table.insert(newAction.visibilityEnable, "class:" .. playerClass)
+    elseif resolvedCategory == "spec" and resolvedSpecID then
+        table.insert(newAction.visibilityEnable, "spec:" .. resolvedSpecID)
+    end
 
     if extraData then
         if extraData.icon then newAction.icon = extraData.icon end
@@ -3470,70 +3496,25 @@ function Wise:RefreshActionsView(container)
                  
                  btn.icon:SetTexture(icon)
 
-                 -- Build suffix text from category
-                 local cat = action.category or "global"
+                 -- Build suffix text from visibility arrays
                  local suffixText = ""
+                 local enables = action.visibilityEnable or {}
+                 local disables = action.visibilityDisable or {}
 
-                 if cat == "class" then
-                     local targetClass = action.addedByClass or select(2, UnitClass("player"))
-                     suffixText = targetClass or "Class"
-                 elseif cat == "role" then
-                     if type(action.roleRequirements) == "table" and #action.roleRequirements > 0 then
-                         local roleNames = {}
-                         for _, role in ipairs(action.roleRequirements) do
-                             table.insert(roleNames, Wise.RoleLabels[role] or role)
-                         end
-                         suffixText = table.concat(roleNames, ", ")
-                     else
-                         suffixText = "0 Roles"
+                 if #enables == 0 and #disables == 0 then
+                     -- Legacy fallback text
+                     local cat = action.category or "global"
+                     if cat == "class" then suffixText = action.addedByClass or "Class"
+                     elseif cat == "spec" then
+                         local sp = action.addedBySpec
+                         if sp then local _, sn = GetSpecializationInfoByID(sp); suffixText = sn or "Spec" end
+                     elseif cat == "character" then suffixText = "Char"
                      end
-                 elseif cat == "spec" then
-                     if type(action.specRequirements) == "table" then
-                         local numReqs = #action.specRequirements
-                         if numReqs > 0 then
-                             local specNames = {}
-                             for _, specID in ipairs(action.specRequirements) do
-                                 local _, specName = GetSpecializationInfoByID(specID)
-                                 if specName then
-                                     table.insert(specNames, specName)
-                                 else
-                                     table.insert(specNames, tostring(specID))
-                                 end
-                             end
-                             suffixText = table.concat(specNames, ", ")
-                         else
-                             suffixText = "0 Specs"
-                         end
-                     elseif action.addedBySpec then
-                         local _, specName = GetSpecializationInfoByID(action.addedBySpec)
-                         suffixText = specName or "Spec"
-                     end
-                 elseif cat == "talent" then
-                     if type(action.talentRequirements) == "table" then
-                         local numReqs = #action.talentRequirements
-                         if numReqs > 0 then
-                             local talentNames = {}
-                             for _, spellID in ipairs(action.talentRequirements) do
-                                 local spellInfo = C_Spell.GetSpellInfo(spellID)
-                                 if spellInfo and spellInfo.name then
-                                     table.insert(talentNames, spellInfo.name)
-                                 else
-                                     table.insert(talentNames, tostring(spellID))
-                                 end
-                             end
-                             suffixText = table.concat(talentNames, ", ")
-                         else
-                             suffixText = "0 Talents"
-                         end
-                     else
-                         suffixText = action.talentRequirements or "Talent"
-                     end
-                 elseif cat == "character" then
-                     local char = action.addedByCharacter or ""
-                     if string.find(char, "-") then
-                         char = string.match(char, "^(.-)%-")
-                     end
-                     suffixText = char
+                 else
+                     local parts = {}
+                     if #enables > 0 then table.insert(parts, "+" .. #enables .. " Allow") end
+                     if #disables > 0 then table.insert(parts, "-" .. #disables .. " Block") end
+                     suffixText = table.concat(parts, " ")
                  end
 
                  -- Addon Magic: show addon count as suffix
