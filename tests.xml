@@ -41,6 +41,24 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_6" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Auto-Loaded Utilities Persistence Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that auto-loaded spells in Utilities persist when the native interface is hidden.\n1. Enable the Utilities interface.\n2. Ensure auto-loaded spells are present.\n3. Hide the game interface in Utilities properties.\n4. Reload UI.\n5. Verify spells are still there." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Utilities'] then return end; WiseDB.groups['Utilities'].hideNativeInterface = true; Wise:UpdateCooldownWiser('Utilities', 'UtilityCooldownViewer')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Utilities'] then return end; WiseDB.groups['Utilities'].hideNativeInterface = false; Wise:UpdateCooldownWiser('Utilities', 'UtilityCooldownViewer')" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_5" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Auto-Loaded Cooldowns Persistence Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that auto-loaded spells in Cooldowns persist when the native interface is hidden.\n1. Enable the Cooldowns interface.\n2. Ensure auto-loaded spells are present.\n3. Hide the game interface in Cooldowns properties.\n4. Reload UI.\n5. Verify spells are still there." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = true; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = false; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+        </KeyValues>
+    </Frame>
+
     <Frame name="WiseDebugTest_WiserActionPicker" inherits="WiseDebugTestsData">
         <KeyValues>
             <KeyValue key="testName" value="Wiser Interfaces in Action Picker Test" type="string"/>

@@ -94,28 +94,38 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
     group.dynamic = true
     group.propertyType = "CooldownWiser"
 
-    -- Iterate through the integer slots and replace them with the imported spells
+    -- Iterate through the detected spells and add them if they don't already exist
     local numSpells = #spells
     for i = 1, numSpells do
         local spellID = spells[i]
         local info = C_Spell.GetSpellInfo(spellID)
         local name = info and info.name or tostring(spellID)
-        group.actions[i] = {
-            { type = "spell", value = name, category = "global" }
-        }
-    end
 
-    -- Remove any extra integer slots that are greater than the number of spells
-    -- But preserve decimal slots
-    local keysToRemove = {}
-    for slotIdx, _ in pairs(group.actions) do
-        if type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and slotIdx > numSpells then
-            table.insert(keysToRemove, slotIdx)
+        -- Check if it already exists
+        local exists = false
+        for slotIdx, states in pairs(group.actions) do
+            if type(states) == "table" then
+                for _, state in ipairs(states) do
+                    if state.type == "spell" and state.value == name then
+                        exists = true
+                        state.autoLoaded = true
+                        break
+                    end
+                end
+            end
+            if exists then break end
         end
-    end
 
-    for _, slotIdx in ipairs(keysToRemove) do
-        group.actions[slotIdx] = nil
+        if not exists then
+            -- Find next available integer slot
+            local nextSlot = 1
+            while group.actions[nextSlot] ~= nil do
+                nextSlot = nextSlot + 1
+            end
+            group.actions[nextSlot] = {
+                { type = "spell", value = name, category = "global", autoLoaded = true }
+            }
+        end
     end
 
     if Wise.UpdateGroupDisplay and Wise.frames[groupName] and Wise.frames[groupName]:IsShown() then
