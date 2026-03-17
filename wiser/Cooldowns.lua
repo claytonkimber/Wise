@@ -118,8 +118,12 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
                             state.value = spellID
                         end
 
+                        -- Convert legacy global auto-loaded spells to spec-restricted
+                        if currentSpecID and state.category == "global" and state.autoLoaded then
+                            state.category = "spec"
+                            state.specRequirements = { currentSpecID }
                         -- If a spec restriction exists, append the current spec if missing
-                        if currentSpecID and state.category == "spec" and type(state.specRequirements) == "table" then
+                        elseif currentSpecID and state.category == "spec" and type(state.specRequirements) == "table" then
                             local hasSpec = false
                             for _, id in ipairs(state.specRequirements) do
                                 if id == currentSpecID then
