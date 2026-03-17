@@ -1679,12 +1679,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
          
     elseif actionType == "misc" then
         if value == "extrabutton" then
-            local extraBtn = _G["ExtraActionButton1"]
-            if extraBtn and extraBtn:IsShown() and extraBtn.action then
-                texture = GetActionTexture(extraBtn.action) or "Interface\\Icons\\Temp"
-            else
-                texture = "Interface\\Icons\\Temp"
-            end
+            texture = GetActionTexture(Wise.EXTRA_ACTION_BUTTON_SLOT) or "Interface\\Icons\\Temp"
         end
         if value == "zoneability" then
             local zoneBtn = Wise:GetZoneAbilitySpellButton()
@@ -1824,7 +1819,28 @@ function Wise:IsActionKnown(actionType, value)
     elseif actionType == "equipped" then
         return GetInventoryItemID("player", value) ~= nil
         
-    elseif actionType == "raidmarker" or actionType == "worldmarker" or actionType == "uipanel" or actionType == "misc" then
+    elseif actionType == "raidmarker" or actionType == "worldmarker" or actionType == "uipanel" then
+        return true
+
+    elseif actionType == "misc" then
+        -- For dynamic groups, these misc sub-types have knowable availability.
+        -- HasExtraActionBar() checks if the bar is currently active, not just if the slot has data.
+        -- HasAction() retains stale data after the bar disappears, so we can't use it here.
+        if value == "extrabutton" then
+            return HasExtraActionBar and HasExtraActionBar() or false
+        elseif value == "zoneability" then
+            local zoneFrame = _G["ZoneAbilityFrame"]
+            if not zoneFrame or not zoneFrame.SpellButtonContainer then return false end
+            local children = { zoneFrame.SpellButtonContainer:GetChildren() }
+            for _, child in ipairs(children) do
+                if child.spellID and child:IsShown() then return true end
+            end
+            return false
+        elseif value == "overridebar" then
+            return HasOverrideActionBar and HasOverrideActionBar() or false
+        elseif value == "possessbar" then
+            return (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar()) or (HasVehicleActionBar and HasVehicleActionBar()) or false
+        end
         return true
         
     elseif actionType == "interface" then
@@ -1841,6 +1857,8 @@ function Wise:IsActionKnown(actionType, value)
 end
 
 -- Check if an action is currently on cooldown (> 1.5s remaining to ignore GCD)
+-- Uses pcall for comparisons because cooldown API return values can be tainted
+-- if earlier addon code touched protected state.
 function Wise:IsActionOnCooldown(actionType, value, actionData)
     if actionType == "spell" then
         local spellID = value
@@ -1850,33 +1868,45 @@ function Wise:IsActionOnCooldown(actionType, value, actionData)
         end
         spellID = tonumber(spellID)
         if spellID then
-            -- Check override spell (e.g. talent replaces base spell)
             local overrideID = Wise:GetOverrideSpellID(spellID)
             local checkID = overrideID or spellID
             local info = C_Spell.GetSpellCooldown(checkID)
-            if info and info.duration and info.duration > 1.5 then
-                local remaining = (info.startTime + info.duration) - GetTime()
-                if remaining > 1.5 then return true end
+            if info then
+                local ok, onCD = pcall(function()
+                    if info.duration and info.duration > 1.5 then
+                        local remaining = (info.startTime + info.duration) - GetTime()
+                        return remaining > 1.5
+                    end
+                    return false
+                end)
+                if ok and onCD then return true end
             end
         end
     elseif actionType == "item" then
         local itemID = tonumber(value)
         if itemID then
             local start, duration = C_Item.GetItemCooldown(itemID)
-            if duration and duration > 1.5 then
-                local remaining = (start + duration) - GetTime()
-                if remaining > 1.5 then return true end
-            end
+            local ok, onCD = pcall(function()
+                if duration and duration > 1.5 then
+                    local remaining = (start + duration) - GetTime()
+                    return remaining > 1.5
+                end
+                return false
+            end)
+            if ok and onCD then return true end
         end
     elseif actionType == "toy" then
         local toyID = tonumber(value)
         if toyID then
-            -- Toys use item cooldown API
             local start, duration = C_Item.GetItemCooldown(toyID)
-            if duration and duration > 1.5 then
-                local remaining = (start + duration) - GetTime()
-                if remaining > 1.5 then return true end
-            end
+            local ok, onCD = pcall(function()
+                if duration and duration > 1.5 then
+                    local remaining = (start + duration) - GetTime()
+                    return remaining > 1.5
+                end
+                return false
+            end)
+            if ok and onCD then return true end
         end
     elseif actionType == "mount" then
         -- Mounts don't have meaningful cooldowns to filter on

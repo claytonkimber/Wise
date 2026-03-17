@@ -147,9 +147,8 @@ function Wise:AddInterfaceTooltip(btn)
         elseif type == "misc" then
              local hasAction = false
              if value == "extrabutton" and data and data.showTooltip then
-                 local extraBtn = _G["ExtraActionButton1"]
-                 if extraBtn and extraBtn:IsShown() and extraBtn.action then
-                     GameTooltip:SetAction(extraBtn.action)
+                 if HasExtraActionBar and HasExtraActionBar() then
+                     GameTooltip:SetAction(Wise.EXTRA_ACTION_BUTTON_SLOT)
                      hasAction = true
                  end
              elseif value == "zoneability" and data and data.showTooltip then

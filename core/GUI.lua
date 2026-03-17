@@ -65,28 +65,41 @@ function Wise:GetZoneAbilitySpellButton()
 end
 
 -- Resolve the real action ID for override/possess bar slots.
--- OverrideActionBarButton frames compute the actual action via ActionButton_CalculateAction,
--- so raw action IDs 133-144 / 121-132 may not return correct textures/cooldowns directly.
+-- The WoW API (GetActionTexture, GetActionCooldown, IsUsableAction) handles
+-- override/possess/vehicle bar remapping internally for raw slot IDs (121-144),
+-- so we just pass through the ID. Reading .action from Blizzard's protected
+-- ActionButton frames would taint the value and spread to Blizzard's secure code.
 function Wise:ResolveBarActionID(aID)
-    if aID >= 133 and aID <= 144 then
-        local overrideBtn = _G["OverrideActionBarButton" .. (aID - 132)]
-        if overrideBtn and HasOverrideActionBar and HasOverrideActionBar() then
-            return overrideBtn.action or aID
-        end
-    elseif aID >= 121 and aID <= 132 then
-        local possessBtn = _G["ActionButton" .. (aID - 120)]
-        if possessBtn and (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() or HasVehicleActionBar and HasVehicleActionBar()) then
-            return possessBtn.action or aID
-        end
-    end
     return aID
 end
 
--- Returns true if a zone ability is active (has a valid spell), regardless of
--- whether ZoneAbilityFrame is hidden (e.g. by Wise's "Hide Zone Ability" setting).
+-- Derive the ExtraActionButton1 slot at load time via GetExtraBarIndex().
+-- Reading .action from the Blizzard frame taints the value; this avoids taint.
+-- Formula: buttonIndex + (page - 1) * NUM_ACTIONBAR_BUTTONS
+local EXTRA_ACTION_BUTTON_SLOT = 1 + (GetExtraBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+Wise.EXTRA_ACTION_BUTTON_SLOT = EXTRA_ACTION_BUTTON_SLOT
+
+-- Returns true if a zone ability is genuinely active (has a valid spell AND is shown).
+-- Checks the spell button's visibility directly, since child buttons can retain a stale
+-- .spellID from a previous zone even when the zone ability is no longer available.
+-- Note: Wise's "Hide Zone Ability" setting hides ZoneAbilityFrame itself, but the
+-- spell button children inside SpellButtonContainer retain their shown state, so this
+-- still returns true when the user has hidden the Blizzard frame via Wise settings.
 local function IsZoneAbilityActive()
-    local zoneBtn = GetZoneAbilitySpellButton()
-    return zoneBtn and zoneBtn.spellID ~= nil
+    local zoneFrame = _G["ZoneAbilityFrame"]
+    if not zoneFrame then return false end
+    if zoneFrame.SpellButtonContainer then
+        local children = { zoneFrame.SpellButtonContainer:GetChildren() }
+        for _, child in ipairs(children) do
+            if child.spellID and child:IsShown() then
+                return true
+            end
+        end
+    end
+    if zoneFrame.SpellButton and zoneFrame.SpellButton.spellID then
+        return zoneFrame.SpellButton:IsShown()
+    end
+    return false
 end
 
 -- All custom conditionals that are NOT understood by WoW's secure state driver.
@@ -122,6 +135,57 @@ local function EvalCustomToken(token)
 
     if negated then result = not result end
     return result
+end
+
+-- Evaluate a full condition string (e.g. "[extrabar]", "[zoneability]", "[combat,bank]")
+-- Returns true if ANY bracket group matches (OR across groups). Handles both custom and secure conditionals.
+-- Used by dynamic groups to determine per-slot visibility.
+local function EvalFullConditionString(str)
+    if not str or str == "" then return true end -- No condition = always show
+
+    for block in str:gmatch("%[([^%]]*)%]") do
+        local customTokens = {}
+        local secureTokens = {}
+
+        for token in block:gmatch("[^,]+") do
+            local trimmed = token:match("^%s*(.-)%s*$")
+            local check = trimmed:lower()
+            local lookupBase = check
+            if lookupBase:sub(1, 2) == "no" then
+                local stripped = lookupBase:sub(3)
+                local stripBase = stripped:match("^([^:]+)") or stripped
+                if CUSTOM_VIS_CONDITIONALS[stripBase] then
+                    lookupBase = stripped
+                end
+            end
+            local baseToken = lookupBase:match("^([^:]+)") or lookupBase
+
+            if CUSTOM_VIS_CONDITIONALS[baseToken] then
+                table.insert(customTokens, trimmed)
+            else
+                table.insert(secureTokens, trimmed)
+            end
+        end
+
+        local groupMatch = true
+
+        for _, ct in ipairs(customTokens) do
+            if not EvalCustomToken(ct) then
+                groupMatch = false
+                break
+            end
+        end
+
+        if groupMatch and #secureTokens > 0 then
+            local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
+            local result = SecureCmdOptionParse(secureStr)
+            if result ~= "true" then groupMatch = false end
+        end
+
+        if groupMatch then return true end
+    end
+
+    return false
 end
 
 -- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
@@ -680,19 +744,23 @@ function Wise:AddHoverIndication(btn)
     if not btn then return end
 
     btn:HookScript("OnEnter", function(self)
-        local parentFrame = self:GetParent()
-        local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
-        if not isListLayout then
-            -- Scale up by 5% (skip for list — would distort text layout)
-            self:SetScale(HOVER_SCALE)
+        if not InCombatLockdown() then
+            local parentFrame = self:GetParent()
+            local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+            if not isListLayout then
+                -- Scale up by 5% (skip for list — would distort text layout)
+                self:SetScale(HOVER_SCALE)
+            end
         end
-        -- Show dim glow
+        -- Show dim glow (overlay frame, not protected)
         ShowHoverGlow(self)
     end)
 
     btn:HookScript("OnLeave", function(self)
-        -- Reset scale
-        self:SetScale(1.0)
+        if not InCombatLockdown() then
+            -- Reset scale
+            self:SetScale(1.0)
+        end
         -- Hide glow
         HideHoverGlow(self)
     end)
@@ -1385,6 +1453,15 @@ function Wise:CreateGroupFrame(name, instanceId)
 
         -- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
         if InCombatLockdown() then return end
+
+        -- Rebuild group display on show so dynamic slots (extrabutton, zoneability, etc.)
+        -- reflect current availability. Visibility drivers may show the frame after conditions
+        -- change (e.g. [extrabar] becomes true), but UpdateGroupDisplay hasn't run since then.
+        if group and group.dynamic and not self._rebuildingOnShow then
+            self._rebuildingOnShow = true
+            Wise:UpdateGroupDisplay(self.groupName)
+            self._rebuildingOnShow = nil
+        end
 
         local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
         if shouldAnimate then
@@ -2952,7 +3029,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         -- Also check cooldowns for dynamic mode: hide on-cooldown actions
                         local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
 
-                        if shouldShow and isKnown and not isSpacer and not isOnCooldown then
+                        -- For dynamic groups, evaluate per-slot conditions (e.g. [extrabar], [zoneability])
+                        -- to hide slots whose conditions are not currently met.
+                        local conditionMet = true
+                        if actionData.conditions and actionData.conditions ~= "" then
+                            conditionMet = EvalFullConditionString(actionData.conditions)
+                        end
+
+                        if shouldShow and isKnown and not isSpacer and not isOnCooldown and conditionMet then
                             table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, activeState = chosenIdx})
                         end
                     else
@@ -3904,6 +3988,26 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- Condition evaluation ticker for multi-state and interface icon updates
     if f.conditionTicker then f.conditionTicker:Cancel() end
     local needsTicker = false
+    -- For dynamic groups, check if any slot has per-action conditions or availability-dependent
+    -- misc types (extrabutton, zoneability, overridebar, possessbar). These slots may not have
+    -- visible buttons yet, but the ticker must run to detect when they become available.
+    local AVAILABILITY_MISC = {extrabutton=true, zoneability=true, overridebar=true, possessbar=true}
+    local hasDynamicConditions = false
+    if isDynamic and group.actions then
+        for _, states in pairs(group.actions) do
+            if type(states) == "table" then
+                for _, state in ipairs(states) do
+                    if (state.conditions and state.conditions ~= "") or
+                       (state.type == "misc" and AVAILABILITY_MISC[state.value]) then
+                        hasDynamicConditions = true
+                        break
+                    end
+                end
+            end
+            if hasDynamicConditions then break end
+        end
+    end
+    if hasDynamicConditions then needsTicker = true end
     for _, btn in ipairs(f.buttons) do
         if btn:IsShown() then
             local meta = Wise.buttonMeta[btn]
@@ -3919,8 +4023,54 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             end
         end
     end
+    -- Track which conditional/availability slots are currently visible, so we can detect changes
+    if hasDynamicConditions then
+        local condSnapshot = {}
+        if group.actions then
+            for slotIdx, states in pairs(group.actions) do
+                if type(states) == "table" then
+                    for _, state in ipairs(states) do
+                        if state.conditions and state.conditions ~= "" then
+                            condSnapshot[slotIdx] = EvalFullConditionString(state.conditions)
+                        elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
+                            condSnapshot[slotIdx] = Wise:IsActionKnown(state.type, state.value)
+                        end
+                    end
+                end
+            end
+        end
+        f._dynamicCondSnapshot = condSnapshot
+    end
     if needsTicker then
         f.conditionTicker = C_Timer.NewTicker(0.2, function()
+            -- For dynamic groups with conditional/availability slots, check if state changed
+            -- and trigger a full rebuild when it does (e.g. [extrabar] or [zoneability] toggled)
+            if hasDynamicConditions and f._dynamicCondSnapshot and not InCombatLockdown() then
+                local changed = false
+                if group.actions then
+                    for slotIdx, states in pairs(group.actions) do
+                        if type(states) == "table" then
+                            for _, state in ipairs(states) do
+                                local now
+                                if state.conditions and state.conditions ~= "" then
+                                    now = EvalFullConditionString(state.conditions)
+                                elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
+                                    now = Wise:IsActionKnown(state.type, state.value)
+                                end
+                                if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx] then
+                                    changed = true
+                                    break
+                                end
+                            end
+                        end
+                        if changed then break end
+                    end
+                end
+                if changed then
+                    Wise:UpdateGroupDisplay(name)
+                    return
+                end
+            end
             local canSetAttrs = not InCombatLockdown()
             for _, btn in ipairs(f.buttons) do
                 if btn:IsShown() then
@@ -3972,11 +4122,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          end
                     elseif meta.actionType == "misc" and meta.actionValue == "extrabutton" then
                          -- Update Extra Action Button icon dynamically
-                         local extraBtn = _G["ExtraActionButton1"]
-                         local tex
-                         if extraBtn and extraBtn:IsShown() and extraBtn.action then
-                             tex = GetActionTexture(extraBtn.action)
-                         end
+                         -- Use derived slot constant instead of reading .action from Blizzard frame to avoid taint
+                         -- GetActionTexture returns nil when no action is in the slot, so no gate needed
+                         local tex = GetActionTexture(EXTRA_ACTION_BUTTON_SLOT)
                          tex = tex or "Interface\\Icons\\Temp"
                          btn.icon:SetTexture(tex)
                          local vClone = meta.visualClone or btn.visualClone
@@ -4897,9 +5045,8 @@ function Wise:UpdateButtonCooldown(btn)
         start = start or 0
         duration = duration or 0
     elseif actionType == "misc" and actionValue == "extrabutton" then
-        local extraBtn = _G["ExtraActionButton1"]
-        if extraBtn and extraBtn:IsShown() and extraBtn.action then
-            start, duration = GetActionCooldown(extraBtn.action)
+        if HasExtraActionBar and HasExtraActionBar() then
+            start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
             start = start or 0
             duration = duration or 0
         end
@@ -5228,9 +5375,8 @@ function Wise:UpdateButtonUsability(btn)
         local realID = Wise:ResolveBarActionID(tonumber(actionValue))
         isUsable, noMana = IsUsableAction(realID)
     elseif actionType == "misc" and actionValue == "extrabutton" then
-        local extraBtn = _G["ExtraActionButton1"]
-        if extraBtn and extraBtn:IsShown() and extraBtn.action then
-            isUsable, noMana = IsUsableAction(extraBtn.action)
+        if HasExtraActionBar and HasExtraActionBar() then
+            isUsable, noMana = IsUsableAction(EXTRA_ACTION_BUTTON_SLOT)
         end
     elseif actionType == "misc" and actionValue == "zoneability" then
         local zoneBtn = GetZoneAbilitySpellButton()
