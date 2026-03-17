@@ -94,28 +94,72 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
     group.dynamic = true
     group.propertyType = "CooldownWiser"
 
-    -- Iterate through the integer slots and replace them with the imported spells
+    -- Get current spec ID for dynamically tagging newly loaded spells
+    local specIndex = GetSpecialization()
+    local currentSpecID = specIndex and GetSpecializationInfo(specIndex) or nil
+
+    -- Iterate through the detected spells and add them if they don't already exist
     local numSpells = #spells
     for i = 1, numSpells do
         local spellID = spells[i]
         local info = C_Spell.GetSpellInfo(spellID)
         local name = info and info.name or tostring(spellID)
-        group.actions[i] = {
-            { type = "spell", value = name, category = "global" }
-        }
-    end
 
-    -- Remove any extra integer slots that are greater than the number of spells
-    -- But preserve decimal slots
-    local keysToRemove = {}
-    for slotIdx, _ in pairs(group.actions) do
-        if type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and slotIdx > numSpells then
-            table.insert(keysToRemove, slotIdx)
+        -- Check if it already exists (by exact spellID or by name)
+        local exists = false
+        for slotIdx, states in pairs(group.actions) do
+            if type(states) == "table" then
+                for _, state in ipairs(states) do
+                    if state.type == "spell" and (state.value == spellID or state.value == name) then
+                        exists = true
+                        state.autoLoaded = true
+                        -- Upgrade to exact spellID if it was previously saved as a string name
+                        if state.value == name and type(state.value) == "string" then
+                            state.value = spellID
+                        end
+
+                        -- Convert legacy global auto-loaded spells to spec-restricted
+                        if currentSpecID and state.category == "global" and state.autoLoaded then
+                            state.category = "spec"
+                            state.specRequirements = { currentSpecID }
+                        -- If a spec restriction exists, append the current spec if missing
+                        elseif currentSpecID and state.category == "spec" and type(state.specRequirements) == "table" then
+                            local hasSpec = false
+                            for _, id in ipairs(state.specRequirements) do
+                                if id == currentSpecID then
+                                    hasSpec = true
+                                    break
+                                end
+                            end
+                            if not hasSpec then
+                                table.insert(state.specRequirements, currentSpecID)
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+            if exists then break end
         end
-    end
 
-    for _, slotIdx in ipairs(keysToRemove) do
-        group.actions[slotIdx] = nil
+        if not exists then
+            -- Find next available integer slot
+            local nextSlot = 1
+            while group.actions[nextSlot] ~= nil do
+                nextSlot = nextSlot + 1
+            end
+
+            -- If we know the current spec, tag this spell to that spec
+            if currentSpecID then
+                group.actions[nextSlot] = {
+                    { type = "spell", value = spellID, category = "spec", specRequirements = { currentSpecID }, autoLoaded = true }
+                }
+            else
+                group.actions[nextSlot] = {
+                    { type = "spell", value = spellID, category = "global", autoLoaded = true }
+                }
+            end
+        end
     end
 
     if Wise.UpdateGroupDisplay and Wise.frames[groupName] and Wise.frames[groupName]:IsShown() then

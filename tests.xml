@@ -41,12 +41,38 @@
         </KeyValues>
     </Frame>
 
+    <Frame name="WiseDebugTest_6" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Auto-Loaded Utilities Persistence Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that auto-loaded spells in Utilities persist when the native interface is hidden.\n1. Enable the Utilities interface.\n2. Ensure auto-loaded spells are present.\n3. Hide the game interface in Utilities properties.\n4. Reload UI.\n5. Verify spells are still there." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Utilities'] then return end; WiseDB.groups['Utilities'].hideNativeInterface = true; Wise:UpdateCooldownWiser('Utilities', 'UtilityCooldownViewer')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Utilities'] then return end; WiseDB.groups['Utilities'].hideNativeInterface = false; Wise:UpdateCooldownWiser('Utilities', 'UtilityCooldownViewer')" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_5" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Auto-Loaded Cooldowns Persistence Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that auto-loaded spells in Cooldowns persist when the native interface is hidden.\n1. Enable the Cooldowns interface.\n2. Ensure auto-loaded spells are present.\n3. Hide the game interface in Cooldowns properties.\n4. Reload UI.\n5. Verify spells are still there." type="string"/>
+            <KeyValue key="action" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = true; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+            <KeyValue key="clearAction" value="if not WiseDB.groups['Cooldowns'] then return end; WiseDB.groups['Cooldowns'].hideNativeInterface = false; Wise:UpdateCooldownWiser('Cooldowns', 'EssentialCooldownViewer')" type="string"/>
+        </KeyValues>
+    </Frame>
+
     <Frame name="WiseDebugTest_WiserActionPicker" inherits="WiseDebugTestsData">
         <KeyValues>
             <KeyValue key="testName" value="Wiser Interfaces in Action Picker Test" type="string"/>
             <KeyValue key="instructions" value="Verify that 'Specs', 'Professions', 'Forms', and 'Menu Bar' appear in the Interface tab of the Action Picker.\n1. Open Options.\n2. Select or create an Interface.\n3. Add an action and open the Action Picker.\n4. Search for 'Interface' category.\n5. Verify that 'Specs', 'Professions', 'Forms', and 'Menu Bar' are available as selectable options." type="string"/>
             <KeyValue key="action" value="" type="string"/>
             <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_Cooldowns_Spec_Persistence" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Cooldowns: Dynamic Spec Persistence" type="string"/>
+            <KeyValue key="instructions" value="Switch specs. Verify that Cooldowns from your previous spec do not incorrectly appear in the new spec. Verify the actions are correctly tagged with the new specRequirements." type="string"/>
+            <KeyValue key="action" value="local group = WiseDB.groups['Cooldowns']; if not group or not group.actions then print('Cooldowns group not initialized yet.') return end; local foundSpecSpells = 0; local foundGlobalSpells = 0; for _, states in pairs(group.actions) do for _, state in ipairs(states) do if state.autoLoaded then if state.category == 'spec' and type(state.specRequirements) == 'table' then foundSpecSpells = foundSpecSpells + 1 elseif state.category == 'global' then foundGlobalSpells = foundGlobalSpells + 1 end end end end; print(string.format('Found %d Spec-Restricted Spells, %d Global Spells.', foundSpecSpells, foundGlobalSpells)); if foundSpecSpells ~= 0 then print('Test Passed: Dynamically loaded spells are properly spec-restricted.') else print('Note: If you are above level 10 and have a spec, you should see spec-restricted spells.') end" type="string"/>
         </KeyValues>
     </Frame>
 </Ui>
