@@ -72,34 +72,7 @@
         <KeyValues>
             <KeyValue key="testName" value="Cooldowns: Dynamic Spec Persistence" type="string"/>
             <KeyValue key="instructions" value="Switch specs. Verify that Cooldowns from your previous spec do not incorrectly appear in the new spec. Verify the actions are correctly tagged with the new specRequirements." type="string"/>
-            <KeyValue key="action" type="string">
-                local group = WiseDB.groups["Cooldowns"]
-                if not group or not group.actions then
-                    print("Cooldowns group not initialized yet.")
-                    return
-                end
-
-                local foundSpecSpells = 0
-                local foundGlobalSpells = 0
-                for _, states in pairs(group.actions) do
-                    for _, state in ipairs(states) do
-                        if state.autoLoaded then
-                            if state.category == "spec" and type(state.specRequirements) == "table" then
-                                foundSpecSpells = foundSpecSpells + 1
-                            elseif state.category == "global" then
-                                foundGlobalSpells = foundGlobalSpells + 1
-                            end
-                        end
-                    end
-                end
-
-                print(string.format("Found %d Spec-Restricted Spells, %d Global Spells.", foundSpecSpells, foundGlobalSpells))
-                if foundSpecSpells > 0 then
-                    print("Test Passed: Dynamically loaded spells are properly spec-restricted.")
-                else
-                    print("Note: If you are above level 10 and have a spec, you should see spec-restricted spells.")
-                end
-            </KeyValue>
+            <KeyValue key="action" value="local group = WiseDB.groups['Cooldowns']; if not group or not group.actions then print('Cooldowns group not initialized yet.') return end; local foundSpecSpells = 0; local foundGlobalSpells = 0; for _, states in pairs(group.actions) do for _, state in ipairs(states) do if state.autoLoaded then if state.category == 'spec' and type(state.specRequirements) == 'table' then foundSpecSpells = foundSpecSpells + 1 elseif state.category == 'global' then foundGlobalSpells = foundGlobalSpells + 1 end end end end; print(string.format('Found %d Spec-Restricted Spells, %d Global Spells.', foundSpecSpells, foundGlobalSpells)); if foundSpecSpells ~= 0 then print('Test Passed: Dynamically loaded spells are properly spec-restricted.') else print('Note: If you are above level 10 and have a spec, you should see spec-restricted spells.') end" type="string"/>
         </KeyValues>
     </Frame>
 </Ui>
