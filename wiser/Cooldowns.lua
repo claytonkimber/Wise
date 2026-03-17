@@ -94,6 +94,10 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
     group.dynamic = true
     group.propertyType = "CooldownWiser"
 
+    -- Get current spec ID for dynamically tagging newly loaded spells
+    local specIndex = GetSpecialization()
+    local currentSpecID = specIndex and GetSpecializationInfo(specIndex) or nil
+
     -- Iterate through the detected spells and add them if they don't already exist
     local numSpells = #spells
     for i = 1, numSpells do
@@ -113,6 +117,20 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
                         if state.value == name and type(state.value) == "string" then
                             state.value = spellID
                         end
+
+                        -- If a spec restriction exists, append the current spec if missing
+                        if currentSpecID and state.category == "spec" and type(state.specRequirements) == "table" then
+                            local hasSpec = false
+                            for _, id in ipairs(state.specRequirements) do
+                                if id == currentSpecID then
+                                    hasSpec = true
+                                    break
+                                end
+                            end
+                            if not hasSpec then
+                                table.insert(state.specRequirements, currentSpecID)
+                            end
+                        end
                         break
                     end
                 end
@@ -126,9 +144,17 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
             while group.actions[nextSlot] ~= nil do
                 nextSlot = nextSlot + 1
             end
-            group.actions[nextSlot] = {
-                { type = "spell", value = spellID, category = "global", autoLoaded = true }
-            }
+
+            -- If we know the current spec, tag this spell to that spec
+            if currentSpecID then
+                group.actions[nextSlot] = {
+                    { type = "spell", value = spellID, category = "spec", specRequirements = { currentSpecID }, autoLoaded = true }
+                }
+            else
+                group.actions[nextSlot] = {
+                    { type = "spell", value = spellID, category = "global", autoLoaded = true }
+                }
+            end
         end
     end
 
