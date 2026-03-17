@@ -1747,10 +1747,13 @@ function Wise:IsActionKnown(actionType, value)
             end
         end
         if not spellID or type(spellID) ~= "number" then return false end
-        
+
+        -- Also resolve the override of the stored spellID (e.g. skyriding talent → active spell)
+        local storedOverride = Wise:GetOverrideSpellID(spellID)
+
         local currentSpec = GetSpecialization()
         local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
-        
+
         if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
             local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
             for i = 1, numSkillLines do
@@ -1766,7 +1769,8 @@ function Wise:IsActionKnown(actionType, value)
                             if spellType == Enum.SpellBookItemType.Spell then
                                 -- Check both direct match and override match (e.g. Maul -> Raze)
                                 local overrideID = Wise:GetOverrideSpellID(bookSpellID)
-                                if (bookSpellID == spellID or overrideID == spellID) then
+                                if (bookSpellID == spellID or overrideID == spellID
+                                    or (storedOverride and (bookSpellID == storedOverride or overrideID == storedOverride))) then
                                     if not C_Spell.IsSpellPassive(bookSpellID) then return true end
                                 end
                             end
@@ -1775,8 +1779,12 @@ function Wise:IsActionKnown(actionType, value)
                 end
             end
         end
-        
-        if IsPlayerSpell and type(spellID) == "number" and IsPlayerSpell(spellID) then return true end
+
+        -- Check both original and override spell IDs
+        if IsPlayerSpell and type(spellID) == "number" then
+            if IsPlayerSpell(spellID) then return true end
+            if storedOverride and storedOverride ~= spellID and IsPlayerSpell(storedOverride) then return true end
+        end
         return false
         
     elseif actionType == "item" then

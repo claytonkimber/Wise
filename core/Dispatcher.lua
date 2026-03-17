@@ -228,8 +228,10 @@ function Dispatcher:ApplyBinding(key)
         dispatcherBtn:SetAttribute("bind-" .. key .. "-" .. secureAttr, secureValue)
     end
 
-    -- Set the override binding so WoW routes this key to our dispatcher
-    SetOverrideBindingClick(dispatcherBtn, false, key, "WiseDispatcher")
+    -- Set the override binding so WoW routes this key to our dispatcher.
+    -- Pass the key as mouseClick (5th arg) so the PreClick snippet can
+    -- identify which button was pressed and resolve the correct action.
+    SetOverrideBindingClick(dispatcherBtn, false, key, "WiseDispatcher", key)
 end
 
 --- Apply all registered bindings. Called on init and when leaving combat.

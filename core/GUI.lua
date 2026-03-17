@@ -31,6 +31,25 @@ local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
 
+-- Mouse button keys need the 5th arg to SetOverrideBindingClick so the
+-- simulated click uses the correct button name; without it WoW silently
+-- drops the event for some mouse keys (BUTTON3 in particular).
+local MOUSE_BUTTON_CLICK_NAME = {
+    ["BUTTON3"]       = "MiddleButton",
+    ["BUTTON4"]       = "Button4",
+    ["BUTTON5"]       = "Button5",
+    ["MOUSEWHEELUP"]  = "LeftButton",
+    ["MOUSEWHEELDOWN"]= "LeftButton",
+    ["MIDDLEMOUSE"]   = "MiddleButton",
+}
+
+local function GetMouseClickName(key)
+    if not key then return nil end
+    -- Strip modifier prefix (ALT-SHIFT-BUTTON3 → BUTTON3)
+    local base = key:match("[^%-]+$")
+    return MOUSE_BUTTON_CLICK_NAME[base]
+end
+
 -- Helper: Get the first active spell button from ZoneAbilityFrame.
 -- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
 -- instead of a direct .SpellButton child.
@@ -897,13 +916,18 @@ function Wise:CreateGroupFrame(name, instanceId)
     f:SetAttribute("_onshow", [[
         local nested = self:GetAttribute("nestedKeybinds")
         if nested then
-            local max = self:GetAttribute("nested_max_keys") or 100 
+            local max = self:GetAttribute("nested_max_keys") or 100
             for i = 1, max do
                 local key = self:GetAttribute("nested_key_" .. i)
                 local btnName = self:GetAttribute("nested_btn_name_" .. i)
-                
+                local mouseBtn = self:GetAttribute("nested_mouse_" .. i)
+
                 if key and btnName then
-                    self:SetBindingClick(true, key, btnName)
+                    if mouseBtn then
+                        self:SetBindingClick(true, key, btnName, mouseBtn)
+                    else
+                        self:SetBindingClick(true, key, btnName)
+                    end
                 end
             end
         end
@@ -1890,22 +1914,32 @@ function Wise:GetSecureAttributes(actionData, conditions)
 
     if aType == "spell" then
         -- Resolve spell name for use in commands
+        -- Use GetOverrideSpell to handle talent-replaced spells (e.g. skyriding abilities)
         local spellName
+        local castID
         local n = tonumber(aValue)
         if n then
-            local info = C_Spell.GetSpellInfo(n)
-            spellName = (info and info.name) or n
+            castID = Wise:GetOverrideSpellID(n) or n
+            local info = C_Spell.GetSpellInfo(castID)
+            if not info then
+                -- Fallback to original ID if override lookup failed
+                info = C_Spell.GetSpellInfo(n)
+            end
+            spellName = info and info.name
         else
             spellName = aValue
         end
+        -- Final fallback: use the stored display name from the action data
+        local fallbackName = spellName or actionData.name or aValue
         if hasCond then
             secureType = "macro"
             secureAttr = "macrotext"
-            secureValue = "/cast " .. conditions .. " " .. spellName
+            secureValue = "/cast " .. conditions .. " " .. fallbackName
         else
             secureType = "spell"
             secureAttr = "spell"
-            secureValue = spellName
+            -- type="spell" accepts both spell names and spell IDs
+            secureValue = spellName or castID or aValue
         end
     elseif aType == "item" or aType == "toy" then
         if hasCond then
@@ -3928,18 +3962,20 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         for i, actionInfo in ipairs(actionsToShow) do
             local btn = f.buttons[i]
             local slotKey = group.actions[actionInfo.slot] and group.actions[actionInfo.slot].keybind
-            
+
             f:SetAttribute("nested_key_"..i, slotKey) -- Set or Clear (if nil)
             f:SetAttribute("nested_btn_name_"..i, btn:GetName())
+            f:SetAttribute("nested_mouse_"..i, slotKey and GetMouseClickName(slotKey) or nil)
         end
     end
-    
+
     -- Cleanup Stale Keys
     local maxKeys = f:GetAttribute("nested_max_keys") or 0
     if maxKeys > #actionsToShow then
          for i = #actionsToShow + 1, maxKeys do
              f:SetAttribute("nested_key_"..i, nil)
              f:SetAttribute("nested_btn_name_"..i, nil)
+             f:SetAttribute("nested_mouse_"..i, nil)
          end
     end
     f:SetAttribute("nested_max_keys", #actionsToShow)
@@ -4976,7 +5012,13 @@ function Wise:UpdateBindings()
         -- 1. Group Toggle Binding
         if group.binding and string.len(group.binding) > 0 then
             -- "WiseGroupToggle_"..name is the global name of the secure button
-            SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, "WiseGroupToggle_"..name)
+            local toggleName = "WiseGroupToggle_"..name
+            local mouseBtn = GetMouseClickName(group.binding)
+            if mouseBtn then
+                SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName, mouseBtn)
+            else
+                SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName)
+            end
         end
 
         -- 2. Slot Bindings (Direct Mode only)
@@ -5001,7 +5043,12 @@ function Wise:UpdateBindings()
                             end
 
                             if foundBtn and _G[foundBtn:GetName()] then
-                                SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName())
+                                local slotMouseBtn = GetMouseClickName(actionList.keybind)
+                                if slotMouseBtn then
+                                    SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName(), slotMouseBtn)
+                                else
+                                    SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName())
+                                end
                             end
                         end
                     end
