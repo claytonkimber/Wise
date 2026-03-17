@@ -101,14 +101,18 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
         local info = C_Spell.GetSpellInfo(spellID)
         local name = info and info.name or tostring(spellID)
 
-        -- Check if it already exists
+        -- Check if it already exists (by exact spellID or by name)
         local exists = false
         for slotIdx, states in pairs(group.actions) do
             if type(states) == "table" then
                 for _, state in ipairs(states) do
-                    if state.type == "spell" and state.value == name then
+                    if state.type == "spell" and (state.value == spellID or state.value == name) then
                         exists = true
                         state.autoLoaded = true
+                        -- Upgrade to exact spellID if it was previously saved as a string name
+                        if state.value == name and type(state.value) == "string" then
+                            state.value = spellID
+                        end
                         break
                     end
                 end
@@ -123,7 +127,7 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
                 nextSlot = nextSlot + 1
             end
             group.actions[nextSlot] = {
-                { type = "spell", value = name, category = "global", autoLoaded = true }
+                { type = "spell", value = spellID, category = "global", autoLoaded = true }
             }
         end
     end

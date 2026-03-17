@@ -3525,9 +3525,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         -- Calculate spellID for cooldown tracking
         local spellID, itemID
         if aType == "spell" then
-            local spellInfo = C_Spell.GetSpellInfo(aValue)
-            if spellInfo then
-                spellID = spellInfo.spellID
+            local n = tonumber(aValue)
+            if n then
+                spellID = n
+            else
+                local spellInfo = C_Spell.GetSpellInfo(aValue)
+                if spellInfo then
+                    spellID = spellInfo.spellID
+                end
             end
         elseif aType == "item" or aType == "toy" then
             itemID = aValue
@@ -3950,8 +3955,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          if mType then
                              local spellID, itemID
                              if mType == "spell" then
-                                 local info = C_Spell.GetSpellInfo(mVal)
-                                 if info then spellID = info.spellID end
+                                 local n = tonumber(mVal)
+                                 if n then
+                                     spellID = n
+                                 else
+                                     local info = C_Spell.GetSpellInfo(mVal)
+                                     if info then spellID = info.spellID end
+                                 end
                              elseif mType == "item" then
                                  itemID = mVal
                              end
@@ -4106,8 +4116,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 -- Update cooldown tracking for new active state
                                 local spellID, itemID
                                 if state.type == "spell" then
-                                    local info = C_Spell.GetSpellInfo(state.value)
-                                    if info then spellID = info.spellID end
+                                    local n = tonumber(state.value)
+                                    if n then
+                                        spellID = n
+                                    else
+                                        local info = C_Spell.GetSpellInfo(state.value)
+                                        if info then spellID = info.spellID end
+                                    end
                                 elseif state.type == "item" or state.type == "toy" then
                                     itemID = state.value
                                 elseif state.type == "mount" and C_MountJournal then
