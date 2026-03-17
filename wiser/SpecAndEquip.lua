@@ -68,11 +68,11 @@ function Wise:CreateSpecAndEquipPropertiesPanel(panel, startY)
             scroll:SetScrollChild(content)
 
             -- Populate Talent Loadouts
-            local configIDs = C_ClassTalents.GetConfigIDsByClass(select(3, UnitClass("player"))) or {}
+            local configIDs = C_ClassTalents and C_ClassTalents.GetConfigIDsByClass and C_ClassTalents.GetConfigIDsByClass(select(3, UnitClass("player"))) or {}
             local innerY = 0
 
             for _, configID in ipairs(configIDs) do
-                local configInfo = C_Traits.GetConfigInfo(configID)
+                local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(configID)
                 if configInfo and configInfo.name then
                     local b = CreateFrame("Button", nil, content)
                     b:SetSize(width-40, 20)
@@ -220,8 +220,13 @@ function Wise:CreateSpecAndEquipPropertiesPanel(panel, startY)
         end
 
         -- Execute Swap
-        local talentSuccess = C_ClassTalents.LoadConfig(panel.selectedTalentConfigID, true)
-        if talentSuccess == Enum.TraitConfigCommitError.None or talentSuccess == true or talentSuccess == nil then
+        local talentSuccess = nil
+        if C_ClassTalents and C_ClassTalents.LoadConfig then
+            talentSuccess = C_ClassTalents.LoadConfig(panel.selectedTalentConfigID, true)
+        end
+
+        -- If talent load logic is missing, fallback to success so gear swaps
+        if talentSuccess == nil or (Enum and Enum.TraitConfigCommitError and talentSuccess == Enum.TraitConfigCommitError.None) or talentSuccess == true then
              C_EquipmentManager.UseEquipmentSet(panel.selectedEquipmentSetID)
              local msg = string.format("Switching to %s with %s gear.", panel.selectedTalentName, panel.selectedEquipmentName)
              print("|cff00ccff[Wise]|r " .. msg)
