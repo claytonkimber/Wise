@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.20260315] - 2026-03-15
+## [1.0.20260317] - 2026-03-17
 
 - [Feature] Overhaul nesting system with three top-level modes: Jump (Open), Button, and Embedded
 - [Feature] Add Button sub-modes (Cycle, Random, Priority) for resolving child actions on parent slots
@@ -8,6 +8,15 @@
 - [Feature] Add custom name property to states for clearer identification
 - [Feature] Allow specific Wiser interfaces in the action picker
 - [Feature] Add 'Hide Game Interface' toggle for Cooldowns wiser interface
+- [Fix] Fix BUTTON3 (middle mouse) bindings silently failing by passing correct mouseClick arg to SetOverrideBindingClick
+- [Fix] Fix spell override resolution for skyriding abilities (Whirling Surge, etc.) using GetOverrideSpellID
+- [Fix] Fall back to stored display name when C_Spell.GetSpellInfo fails, preventing broken /cast macros
+- [Fix] Broaden IsActionKnown to check bidirectional spell override matching
+- [Fix] Fix Dispatcher ApplyBinding to pass key as 5th arg for mouse button input
+- [Fix] Fix Cooldowns and Utilities auto-loaded spells disappearing
+- [Fix] Fix cooldown spell visual state by storing exact integer spellIDs
+- [Fix] Fix spec bleed for dynamically loaded auto-spells in Cooldowns
+- [Fix] Fix persistence, spec bleed, and visual issues in dynamic Cooldowns & Utilities
 - [Fix] Fix nesting open direction, positioning, and cascade close behavior
 - [Fix] Fix Extra Action Button and Zone Ability missing clickbutton handling on release mouseover
 - [Fix] Fix Zone Ability and others failing on Release Mouseover due to background ticker
@@ -16,6 +25,8 @@
 - [Fix] Align visibility and interface style checkboxes to a single column
 - [Fix] Correct overlapping elements in properties panel
 - [Fix] Fix Cooldowns and Utilities decimal slots not persisting through relogs
+- [Fix] Fix multiple sources of taint
+- [Fix] Fix XML parser warning in tests.xml
 - [Chore] Make tests.xml transparent to deployments
 
 ## [1.0.20260312] - 2026-03-12
