@@ -761,7 +761,15 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     restrictLabel:SetPoint("TOPLEFT", 10, y)
     restrictLabel:SetText("Visibility Restrictions:")
     tinsert(panel.controls, restrictLabel)
-    y = y - 22
+    y = y - 18
+
+    local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    restrictDesc:SetPoint("TOPLEFT", 10, y)
+    restrictDesc:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+    restrictDesc:SetJustifyH("LEFT")
+    restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Enables act as an Allowlist; Disables act as a Blocklist.")
+    tinsert(panel.controls, restrictDesc)
+    y = y - 35
 
     local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
     restrictBtn:SetSize(180, 22)
