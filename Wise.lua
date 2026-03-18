@@ -138,65 +138,121 @@ function Wise:IsGroupAvailable(groupName)
     end
 end
 
-function Wise:IsActionAllowed(action)
-    local category = action.category or "global"
-    
-    if category == "global" then
-        return true
-    elseif category == "class" then
-        local checkClass = action.addedByClass or action.classRestriction
-        if not checkClass then return true end
-        return checkClass == self.characterInfo.class
-    elseif category == "role" then
-        local reqs = action.roleRequirements
-        if not reqs or #reqs == 0 then return true end
-        for _, reqRole in ipairs(reqs) do
-            if reqRole == self.characterInfo.role then
-                return true
-            end
-        end
-        return false
-    elseif category == "spec" then
-        if type(action.specRequirements) == "table" then
-            if #action.specRequirements == 0 then return true end
-            for _, reqSpec in ipairs(action.specRequirements) do
-                if reqSpec == self.characterInfo.specID then
-                    return true
-                end
-            end
-            return false
-        else
-            local checkSpec = action.addedBySpec or action.specRestriction
-            if not checkSpec then return true end
-            return checkSpec == self.characterInfo.specID
-        end
-    elseif category == "talent" or category == "build" then
-        local reqs = action.talentRequirements
-        if not reqs then return true end
-
-        -- If it's a legacy string (from old addedByTalentBuild), fallback to the old comparison behavior
-        if type(reqs) == "string" then
-            return reqs == self.characterInfo.talentBuild
-        end
-
-        -- If it's a table of spellIDs, verify all are known
-        if type(reqs) == "table" then
-            for _, spellID in ipairs(reqs) do
-                -- Use IsPlayerSpell to correctly verify passive and active talents
-                if not IsPlayerSpell(spellID) and not IsSpellKnownOrOverridesKnown(spellID) then
-                    return false
-                end
-            end
-        end
-        return true
-    elseif category == "character" then
-        local checkChar = action.addedByCharacter or action.characterRestriction
-        if not checkChar then return true end
-        local charKey = UnitName("player") .. "-" .. GetRealmName()
-        return checkChar == charKey
+-- Helper: check if a specific string exists in an array
+local function Contains(tbl, val)
+    if not tbl then return false end
+    for _, v in ipairs(tbl) do
+        if v == val then return true end
     end
+    return false
+end
+
+-- Helper: check if the current character matches a specific restriction tag
+function Wise:MatchesRestrictionTag(tag)
+    if not tag then return false end
     
-    return true
+    if tag == "global" then
+        return true
+    elseif tag == "role:TANK" then
+        return self.characterInfo.role == "TANK"
+    elseif tag == "role:HEALER" then
+        return self.characterInfo.role == "HEALER"
+    elseif tag == "role:DAMAGER" then
+        return self.characterInfo.role == "DAMAGER"
+    elseif tag:match("^class:") then
+        local reqClass = tag:sub(7)
+        return self.characterInfo.class == reqClass
+    elseif tag:match("^spec:") then
+        local reqSpec = tonumber(tag:sub(6))
+        return self.characterInfo.specID == reqSpec
+    elseif tag:match("^talent:") then
+        local reqTalent = tonumber(tag:sub(8))
+        return IsPlayerSpell(reqTalent) or IsSpellKnownOrOverridesKnown(reqTalent)
+    elseif tag:match("^char:") then
+        local reqChar = tag:sub(6)
+        local charKey = UnitName("player") .. "-" .. GetRealmName()
+        return charKey == reqChar
+    end
+    return false
+end
+
+function Wise:IsActionAllowed(action)
+    local enables = action.visibilityEnable or {}
+    local disables = action.visibilityDisable or {}
+
+    -- Legacy Migration Support - if missing both, treat as global/allowed by default
+    -- We do a runtime fallback just in case migration hasn't run on this specific object.
+    if #enables == 0 and #disables == 0 and action.category then
+        -- Mimic old logic if the data is purely old format
+        local category = action.category or "global"
+        local isAllowed = true
+        if category == "class" then
+            local checkClass = action.addedByClass or action.classRestriction
+            if checkClass and checkClass ~= self.characterInfo.class then isAllowed = false end
+        elseif category == "role" then
+            local reqs = action.roleRequirements
+            if reqs and #reqs > 0 then
+                isAllowed = false
+                for _, reqRole in ipairs(reqs) do
+                    if reqRole == self.characterInfo.role then isAllowed = true; break end
+                end
+            end
+        elseif category == "spec" then
+            if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
+                isAllowed = false
+                for _, reqSpec in ipairs(action.specRequirements) do
+                    if reqSpec == self.characterInfo.specID then isAllowed = true; break end
+                end
+            else
+                local checkSpec = action.addedBySpec or action.specRestriction
+                if checkSpec and checkSpec ~= self.characterInfo.specID then isAllowed = false end
+            end
+        elseif category == "talent" or category == "build" then
+            local reqs = action.talentRequirements
+            if type(reqs) == "string" then
+                if reqs ~= self.characterInfo.talentBuild then isAllowed = false end
+            elseif type(reqs) == "table" then
+                for _, spellID in ipairs(reqs) do
+                    if not IsPlayerSpell(spellID) and not IsSpellKnownOrOverridesKnown(spellID) then
+                        isAllowed = false
+                        break
+                    end
+                end
+            end
+        elseif category == "character" then
+            local checkChar = action.addedByCharacter or action.characterRestriction
+            local charKey = UnitName("player") .. "-" .. GetRealmName()
+            if checkChar and checkChar ~= charKey then isAllowed = false end
+        end
+        return isAllowed
+    end
+
+    local isAllowed = false
+
+    -- If there are ANY enables, default to false. Must match one to become true.
+    -- If NO enables, default to true.
+    if #enables > 0 then
+        for _, tag in ipairs(enables) do
+            if self:MatchesRestrictionTag(tag) then
+                isAllowed = true
+                break
+            end
+        end
+    else
+        isAllowed = true
+    end
+
+    -- If allowed so far, check disables. Any match makes it false.
+    if isAllowed and #disables > 0 then
+        for _, tag in ipairs(disables) do
+            if self:MatchesRestrictionTag(tag) then
+                isAllowed = false
+                break
+            end
+        end
+    end
+
+    return isAllowed
 end
 
 -- Helper: Check if interface is "Disabled" (no user-configured visibility settings)

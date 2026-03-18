@@ -236,8 +236,10 @@ function Wise:RefreshPropertiesPanel()
     panel.controls = panel.controls or {}
 
     -- Embedded picker mode: show picker in the right panel
-    if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs then
-        if Wise.pickingAction then
+    if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
+        if Wise.pickingRestrictions then
+             Wise.OptionsFrame.Right.Title:SetText("Visibility Restrictions")
+        elseif Wise.pickingAction then
             Wise.OptionsFrame.Right.Title:SetText("Choose Action")
         elseif Wise.pickingTalents then
             Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
@@ -267,12 +269,42 @@ function Wise:RefreshPropertiesPanel()
         end
         Wise.OptionsFrame.Right.PickerHost:Show()
 
-        if Wise.pickingAction then
-            Wise:CreateEmbeddedPicker(Wise.OptionsFrame.Right.PickerHost)
+        if Wise.pickingRestrictions then
+            -- We hijack both Middle and Right panels
+            Wise.OptionsFrame.Middle.Content:Hide()
+            if Wise.OptionsFrame.Middle.ScrollFrame then
+                Wise.OptionsFrame.Middle.ScrollFrame:Hide()
+            end
+
+            local host = Wise.OptionsFrame.Right.PickerHost
+            host:ClearAllPoints()
+            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
+            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+
+            if not host.bg then
+                host.bg = host:CreateTexture(nil, "BACKGROUND")
+                host.bg:SetAllPoints()
+                host.bg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Opaque dark background
+            end
+            host.bg:Show()
+
+            Wise:CreateEmbeddedRestrictionPicker(host, Wise.pickingRestrictionsAction)
+        elseif Wise.pickingAction then
+            -- Normal single-column host
+            local host = Wise.OptionsFrame.Right.PickerHost
+            host:ClearAllPoints()
+            host:SetAllPoints(Wise.OptionsFrame.Right)
+            Wise:CreateEmbeddedPicker(host)
         elseif Wise.pickingTalents then
-            Wise:CreateEmbeddedTalentPicker(Wise.OptionsFrame.Right.PickerHost, Wise.pickingTalentsAction)
+            local host = Wise.OptionsFrame.Right.PickerHost
+            host:ClearAllPoints()
+            host:SetAllPoints(Wise.OptionsFrame.Right)
+            Wise:CreateEmbeddedTalentPicker(host, Wise.pickingTalentsAction)
         elseif Wise.pickingSpecs then
-            Wise:CreateEmbeddedSpecPicker(Wise.OptionsFrame.Right.PickerHost, Wise.pickingSpecsAction)
+            local host = Wise.OptionsFrame.Right.PickerHost
+            host:ClearAllPoints()
+            host:SetAllPoints(Wise.OptionsFrame.Right)
+            Wise:CreateEmbeddedSpecPicker(host, Wise.pickingSpecsAction)
         end
         return
     else
@@ -282,6 +314,15 @@ function Wise:RefreshPropertiesPanel()
         end
         if Wise.OptionsFrame.Right.PickerHost then
             Wise.OptionsFrame.Right.PickerHost:Hide()
+            if Wise.OptionsFrame.Right.PickerHost.bg then
+                Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+            end
+        end
+        if Wise.OptionsFrame.Middle.Content then
+            Wise.OptionsFrame.Middle.Content:Show()
+        end
+        if Wise.OptionsFrame.Middle.ScrollFrame then
+            Wise.OptionsFrame.Middle.ScrollFrame:Show()
         end
     end
 
@@ -716,276 +757,31 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 5
 
-    -- Category selector (Radial Picker / Radio Buttons)
-    local catLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    catLabel:SetPoint("TOPLEFT", 10, y)
-    catLabel:SetText("Visibility Restriction:")
-    tinsert(panel.controls, catLabel)
+    local restrictLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    restrictLabel:SetPoint("TOPLEFT", 10, y)
+    restrictLabel:SetText("Visibility Restrictions:")
+    tinsert(panel.controls, restrictLabel)
+    y = y - 18
 
-    y = y - 22
-    local currentCat = action.category or "global"
+    local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    restrictDesc:SetPoint("TOPLEFT", 10, y)
+    restrictDesc:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+    restrictDesc:SetJustifyH("LEFT")
+    restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Enables act as an Allowlist; Disables act as a Blocklist.")
+    tinsert(panel.controls, restrictDesc)
+    y = y - 35
 
-    -- Check Permissions
-    local canModify = true
-    local _, playerClass = UnitClass("player")
-
-    if action.addedByClass and action.addedByClass ~= playerClass then
-        -- If the action is explicitly "global" category, anyone can modify it (and take ownership)
-        if currentCat == "global" then
-             canModify = true
-        else
-             -- It's restricted (Class, Spec, etc.) and we are wrong class
-             canModify = false
-        end
-    end
-
-    if not canModify then
-        -- Add Lock Icon
-        local lock = panel:CreateTexture(nil, "OVERLAY")
-        lock:SetTexture("Interface\\PetBattles\\PetBattle-LockIcon")
-        lock:SetSize(14, 14)
-        lock:SetPoint("LEFT", catLabel, "RIGHT", 5, 0)
-        tinsert(panel.controls, lock)
-
-        -- Enable mouse for tooltip (Textures can't have scripts)
-        local lockBtn = CreateFrame("Button", nil, panel)
-        lockBtn:SetAllPoints(lock)
-
-        lockBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Restricted", 1, 0.2, 0.2)
-            GameTooltip:AddLine("Only " .. (action.addedByClass or "owner") .. "s can modify this.", 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        lockBtn:SetScript("OnLeave", GameTooltip_Hide)
-        tinsert(panel.controls, lockBtn)
-    end
-
-    for _, catValue in ipairs(Wise.Categories) do
-        local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-        radio:SetPoint("TOPLEFT", 10, y)
-        radio:SetChecked(currentCat == catValue)
-
-        if not canModify then
-            radio:Disable()
-            radio:SetAlpha(0.5)
-        end
-
-        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-
-        -- Build Label with Context Suffix
-        local labelText = Wise.CategoryLabels[catValue] or catValue:upper()
-        local suffix = ""
-
-        if currentCat == catValue then
-            -- Use stored values if this is the currently selected option
-            if catValue == "global" then
-                 suffix = action.addedByCharacter
-                 if suffix and string.find(suffix, "-") then
-                     suffix = string.match(suffix, "^(.-)%-")
-                 end
-            elseif catValue == "class" then
-                 suffix = action.addedByClass
-            elseif catValue == "role" then
-                 suffix = action.roleRequirements
-            elseif catValue == "spec" then
-                 suffix = action.specRequirements
-            elseif catValue == "talent" then
-                suffix = action.talentRequirements
-            elseif catValue == "character" then
-                suffix = action.addedByCharacter
-                if suffix and string.find(suffix, "-") then
-                     suffix = string.match(suffix, "^(.-)%-")
-                end
-            end
-        else
-            -- Use current player values (Potential) for other options
-            if catValue == "global" then
-                suffix = UnitName("player")
-            elseif catValue == "class" then
-                suffix = select(2, UnitClass("player"))
-            elseif catValue == "role" then
-                suffix = {} -- Initialize as empty table so the 0 Roles logic triggers
-            elseif catValue == "spec" then
-                suffix = {} -- Initialize as empty table so the 0 Specs logic triggers
-            elseif catValue == "talent" then
-                suffix = {} -- Initialize as empty table so the 0 Talents logic triggers if they haven't picked anything yet
-            elseif catValue == "character" then
-                suffix = UnitName("player")
-            end
-        end
-
-        if suffix and suffix ~= "" then
-            -- For talent/spec, suffix might be a table, so just handle it nicely
-            if type(suffix) == "table" then
-                local numReqs = #suffix
-                if numReqs > 0 then
-                    local itemNames = {}
-                    for _, reqID in ipairs(suffix) do
-                        if catValue == "talent" then
-                            local spellInfo = C_Spell.GetSpellInfo(reqID)
-                            if spellInfo and spellInfo.name then
-                                table.insert(itemNames, spellInfo.name)
-                            else
-                                table.insert(itemNames, tostring(reqID))
-                            end
-                        elseif catValue == "role" then
-                            table.insert(itemNames, Wise.RoleLabels[reqID] or reqID)
-                        elseif catValue == "spec" then
-                            local _, specName = GetSpecializationInfoByID(reqID)
-                            if specName then
-                                table.insert(itemNames, specName)
-                            else
-                                table.insert(itemNames, tostring(reqID))
-                            end
-                        end
-                    end
-                    labelText = labelText .. " |cffff8800(" .. table.concat(itemNames, ", ") .. ")|r"
-                else
-                    if catValue == "talent" then
-                        labelText = labelText .. " |cffff8800(0 Talents)|r"
-                    elseif catValue == "role" then
-                        labelText = labelText .. " |cffff8800(0 Roles)|r"
-                    elseif catValue == "spec" then
-                        labelText = labelText .. " |cffff8800(0 Specs)|r"
-                    end
-                end
-            else
-                labelText = labelText .. " |cffff8800(" .. tostring(suffix) .. ")|r"
-            end
-        elseif catValue == "talent" and type(suffix) == "table" and #suffix == 0 then
-            labelText = labelText .. " |cffff8800(0 Talents)|r"
-        elseif catValue == "role" and type(suffix) == "table" and #suffix == 0 then
-            labelText = labelText .. " |cffff8800(0 Roles)|r"
-        elseif catValue == "spec" and type(suffix) == "table" and #suffix == 0 then
-            labelText = labelText .. " |cffff8800(0 Specs)|r"
-        end
-        radio.text:SetText(labelText)
-
-        radio:SetScript("OnClick", function(self)
-            action.category = catValue
-
-            -- Record Current State into Action Metadata
-            local _, pClass = UnitClass("player")
-            action.addedByClass = pClass
-            action.addedByCharacter = UnitName("player") .. "-" .. GetRealmName()
-            local sIdx = GetSpecialization()
-            action.addedBySpec = sIdx and GetSpecializationInfo(sIdx) or nil
-
-            -- If user switches back to talent, make sure we initialize it
-            if catValue == "talent" and type(action.talentRequirements) ~= "table" then
-                action.talentRequirements = {}
-            end
-
-            -- If user switches to role, initialize with current role
-            if catValue == "role" and type(action.roleRequirements) ~= "table" then
-                action.roleRequirements = {}
-                if Wise.characterInfo.role then
-                    table.insert(action.roleRequirements, Wise.characterInfo.role)
-                end
-            end
-
-            -- If user switches to spec, make sure we initialize it
-            if catValue == "spec" and type(action.specRequirements) ~= "table" then
-                action.specRequirements = {}
-                if action.addedBySpec then
-                    table.insert(action.specRequirements, action.addedBySpec)
-                end
-            end
-
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, radio)
-        tinsert(panel.controls, radio.text)
-        y = y - 22
-
-        -- If talent is selected, show "Select Talents" button
-        if catValue == "talent" and currentCat == "talent" then
-            local talentBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            talentBtn:SetSize(120, 22)
-            talentBtn:SetPoint("TOPLEFT", 30, y)
-            talentBtn:SetText("Select Talents")
-            talentBtn:SetScript("OnClick", function()
-                Wise.pickingTalents = true
-                Wise.pickingTalentsAction = action
-                Wise:RefreshPropertiesPanel()
-            end)
-            tinsert(panel.controls, talentBtn)
-            y = y - 25
-        end
-
-        -- If role is selected, show inline role checkboxes
-        if catValue == "role" and currentCat == "role" then
-            if type(action.roleRequirements) ~= "table" then
-                action.roleRequirements = {}
-            end
-            local roles = {"TANK", "HEALER", "DAMAGER"}
-            for _, roleKey in ipairs(roles) do
-                local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-                cb:SetPoint("TOPLEFT", 30, y)
-                cb:SetSize(22, 22)
-
-                local isChecked = false
-                for _, r in ipairs(action.roleRequirements) do
-                    if r == roleKey then isChecked = true; break end
-                end
-                cb:SetChecked(isChecked)
-
-                if not canModify then
-                    cb:Disable()
-                    cb:SetAlpha(0.5)
-                end
-
-                cb.label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                cb.label:SetPoint("LEFT", cb, "RIGHT", 3, 0)
-                cb.label:SetText(Wise.RoleLabels[roleKey] or roleKey)
-
-                cb:SetScript("OnClick", function(self)
-                    if self:GetChecked() then
-                        table.insert(action.roleRequirements, roleKey)
-                    else
-                        for i, r in ipairs(action.roleRequirements) do
-                            if r == roleKey then
-                                table.remove(action.roleRequirements, i)
-                                break
-                            end
-                        end
-                    end
-                    Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then
-                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        end
-                    end)
-                end)
-                tinsert(panel.controls, cb)
-                tinsert(panel.controls, cb.label)
-                y = y - 22
-            end
-        end
-
-        -- If spec is selected, show "Select Specs" button
-        if catValue == "spec" and currentCat == "spec" then
-            local specBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            specBtn:SetSize(120, 22)
-            specBtn:SetPoint("TOPLEFT", 30, y)
-            specBtn:SetText("Select Specs")
-            specBtn:SetScript("OnClick", function()
-                Wise.pickingSpecs = true
-                Wise.pickingSpecsAction = action
-                Wise:RefreshPropertiesPanel()
-            end)
-            tinsert(panel.controls, specBtn)
-            y = y - 25
-        end
-    end
+    local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+    restrictBtn:SetSize(180, 22)
+    restrictBtn:SetPoint("TOPLEFT", 10, y)
+    restrictBtn:SetText("Edit Restrictions...")
+    restrictBtn:SetScript("OnClick", function()
+        Wise.pickingRestrictions = true
+        Wise.pickingRestrictionsAction = action
+        Wise:RefreshPropertiesPanel()
+    end)
+    tinsert(panel.controls, restrictBtn)
+    y = y - 30
 
     y = y - 10
 
@@ -4681,4 +4477,317 @@ function Wise:CreateEmbeddedTalentPicker(parent, action)
     end
 
     ep.Content:SetHeight(math.abs(y))
+end
+
+-- ============================================================================
+-- Visibility Restriction Tree Picker
+-- ============================================================================
+
+
+-- ============================================================================
+-- Visibility Restriction Tree Picker
+-- ============================================================================
+
+local function HasTag(tbl, tag)
+    if not tbl then return false end
+    for _, t in ipairs(tbl) do
+        if t == tag then return true end
+    end
+    return false
+end
+
+local function AddTag(tbl, tag)
+    if not HasTag(tbl, tag) then
+        table.insert(tbl, tag)
+    end
+end
+
+local function RemoveTag(tbl, tag)
+    if not tbl then return end
+    for i = #tbl, 1, -1 do
+        if tbl[i] == tag then
+            table.remove(tbl, i)
+        end
+    end
+end
+
+function Wise:CreateEmbeddedRestrictionPicker(parent, action)
+    local ep = Wise.EmbeddedRestrictionPicker
+
+    if ep and ep.parent == parent then
+        ep.CancelBtn:Show()
+        ep.titleLabel:Show()
+        ep.descLabel:Show()
+        ep.Scroll:Show()
+    else
+        ep = {}
+        Wise.EmbeddedRestrictionPicker = ep
+        ep.parent = parent
+
+        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+        ep.CancelBtn:SetSize(80, 22)
+        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+        ep.CancelBtn:SetText("< Back")
+        ep.CancelBtn:SetScript("OnClick", function()
+            Wise.pickingRestrictions = false
+            Wise.pickingRestrictionsAction = nil
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+
+        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+        ep.titleLabel:SetText("Visibility Restrictions")
+
+        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+        ep.descLabel:SetJustifyH("LEFT")
+        ep.descLabel:SetText("Enable (Allowlist): The action will ONLY be shown if you match an enabled rule.\nDisable (Blocklist): The action will NEVER be shown if you match a disabled rule, overriding any allows.")
+
+        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+
+        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+        ep.Content:SetSize(ep.Scroll:GetWidth(), 100)
+        ep.Scroll:SetScrollChild(ep.Content)
+
+        ep.buttons = {}
+
+        ep.expanded = {
+            roles = false,
+            classes = false,
+            specs = {},
+            talents = {},
+            chars = false
+        }
+    end
+
+    action.visibilityEnable = action.visibilityEnable or {}
+    action.visibilityDisable = action.visibilityDisable or {}
+
+    if not parent.controls then parent.controls = {} end
+    tinsert(parent.controls, ep.CancelBtn)
+    tinsert(parent.controls, ep.titleLabel)
+    tinsert(parent.controls, ep.descLabel)
+    tinsert(parent.controls, ep.Scroll)
+
+    for _, btn in pairs(ep.buttons) do
+        btn:Hide()
+    end
+
+    local btnIndex = 1
+    local y = 0
+    local btnWidth = ep.Content:GetWidth() - 10
+
+    local function CreateRow(indent, labelText, tag, isNode, nodeKey, nodeSubKey)
+        local btn = ep.buttons[btnIndex]
+        if not btn then
+            btn = CreateFrame("Frame", nil, ep.Content)
+
+            btn.expandBtn = CreateFrame("Button", nil, btn)
+            btn.expandBtn:SetSize(16, 16)
+            btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            btn.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+
+            btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            btn.label:SetJustifyH("LEFT")
+
+            btn.chkEnable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+            btn.chkEnable:SetSize(24, 24)
+            btn.chkEnable.text = btn.chkEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.chkEnable.text:SetPoint("LEFT", btn.chkEnable, "RIGHT", 2, 0)
+            btn.chkEnable.text:SetText("Enable")
+
+            btn.chkDisable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+            btn.chkDisable:SetSize(24, 24)
+            btn.chkDisable.text = btn.chkDisable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.chkDisable.text:SetPoint("LEFT", btn.chkDisable, "RIGHT", 2, 0)
+            btn.chkDisable.text:SetText("Disable")
+
+            table.insert(ep.buttons, btn)
+        end
+
+        btn:ClearAllPoints()
+        btn:SetSize(btnWidth, 24)
+        btn:SetPoint("TOPLEFT", 0, y)
+        btn:Show()
+
+        btn.expandBtn:ClearAllPoints()
+        btn.expandBtn:SetPoint("LEFT", indent, 0)
+
+        if isNode then
+            btn.expandBtn:Show()
+            local isExp = false
+            if nodeSubKey then
+                isExp = ep.expanded[nodeKey][nodeSubKey]
+            else
+                isExp = ep.expanded[nodeKey]
+            end
+            if isExp then
+                btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            else
+                btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            end
+
+            btn.expandBtn:SetScript("OnClick", function()
+                if nodeSubKey then
+                    ep.expanded[nodeKey][nodeSubKey] = not ep.expanded[nodeKey][nodeSubKey]
+                else
+                    ep.expanded[nodeKey] = not ep.expanded[nodeKey]
+                end
+                Wise:CreateEmbeddedRestrictionPicker(parent, action)
+            end)
+        else
+            btn.expandBtn:Hide()
+        end
+
+        btn.label:SetPoint("LEFT", btn.expandBtn, "RIGHT", 5, 0)
+        btn.label:SetText(labelText)
+
+        if not tag then
+            btn.chkEnable:Hide()
+            btn.chkDisable:Hide()
+        else
+            btn.chkEnable:Show()
+            btn.chkDisable:Show()
+
+            btn.chkEnable:SetChecked(HasTag(action.visibilityEnable, tag))
+            btn.chkDisable:SetChecked(HasTag(action.visibilityDisable, tag))
+
+            btn.chkDisable:ClearAllPoints()
+            btn.chkDisable:SetPoint("RIGHT", -60, 0)
+
+            btn.chkEnable:ClearAllPoints()
+            btn.chkEnable:SetPoint("RIGHT", btn.chkDisable, "LEFT", -70, 0)
+
+            btn.chkEnable:SetScript("OnClick", function(self)
+                if self:GetChecked() then
+                    AddTag(action.visibilityEnable, tag)
+                    RemoveTag(action.visibilityDisable, tag)
+                    btn.chkDisable:SetChecked(false)
+                else
+                    RemoveTag(action.visibilityEnable, tag)
+                end
+                Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+            end)
+
+            btn.chkDisable:SetScript("OnClick", function(self)
+                if self:GetChecked() then
+                    AddTag(action.visibilityDisable, tag)
+                    RemoveTag(action.visibilityEnable, tag)
+                    btn.chkEnable:SetChecked(false)
+                else
+                    RemoveTag(action.visibilityDisable, tag)
+                end
+                Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+            end)
+        end
+
+        y = y - 24
+        btnIndex = btnIndex + 1
+    end
+
+    -- 1. Global
+    CreateRow(5, "Global", "global", false)
+
+    -- 2. Roles
+    CreateRow(5, "Roles", nil, true, "roles")
+    if ep.expanded.roles then
+        CreateRow(25, "Tank", "role:TANK", false)
+        CreateRow(25, "Healer", "role:HEALER", false)
+        CreateRow(25, "Damage", "role:DAMAGER", false)
+    end
+
+    -- 3. Classes
+    CreateRow(5, "Classes", nil, true, "classes")
+    if ep.expanded.classes then
+        local classes = {}
+        for i = 1, GetNumClasses() do
+            local name, tag, id = GetClassInfo(i)
+            if tag then table.insert(classes, {name=name, tag=tag, id=id}) end
+        end
+        table.sort(classes, function(a,b) return a.name < b.name end)
+
+        for _, cInfo in ipairs(classes) do
+            CreateRow(25, cInfo.name, "class:"..cInfo.tag, true, "specs", cInfo.tag)
+
+            if ep.expanded.specs[cInfo.tag] then
+                for i = 1, 4 do
+                    local id, name = GetSpecializationInfoForClassID(cInfo.id, i)
+                    if id and name then
+                        local isCurrentSpec = (id == Wise.characterInfo.specID)
+                        local specNodeTitle = isCurrentSpec and (name .. " (Active)") or name
+                        local specIsNode = isCurrentSpec
+
+                        CreateRow(45, specNodeTitle, "spec:"..id, specIsNode, "talents", id)
+
+                        if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
+                            local configID = C_ClassTalents.GetActiveConfigID()
+                            if configID then
+                                local configInfo = C_Traits.GetConfigInfo(configID)
+                                local titems = {}
+                                if configInfo then
+                                    for _, treeID in ipairs(configInfo.treeIDs) do
+                                        local nodes = C_Traits.GetTreeNodes(treeID)
+                                        for _, nodeID in ipairs(nodes) do
+                                            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+                                            if nodeInfo and nodeInfo.entryIDs then
+                                                for _, entryID in ipairs(nodeInfo.entryIDs) do
+                                                    local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                                                    if entryInfo and entryInfo.definitionID then
+                                                        local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+                                                        if defInfo and defInfo.spellID then
+                                                            local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
+                                                            if spellInfo then
+                                                                local exists = false
+                                                                for _, itm in ipairs(titems) do
+                                                                    if itm.spellID == spellInfo.spellID then exists = true break end
+                                                                end
+                                                                if not exists then table.insert(titems, {spellID=spellInfo.spellID, name=spellInfo.name}) end
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                table.sort(titems, function(a,b) return a.name < b.name end)
+                                for _, tit in ipairs(titems) do
+                                    CreateRow(65, tit.name, "talent:"..tit.spellID, false)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 4. Characters
+    CreateRow(5, "Characters", nil, true, "chars")
+    if ep.expanded.chars then
+        local chars = {}
+        if WiseDB and WiseDB.knownCharacters then
+            for charKey, _ in pairs(WiseDB.knownCharacters) do
+                table.insert(chars, charKey)
+            end
+        end
+        local currentKey = UnitName("player") .. "-" .. GetRealmName()
+        if not HasTag(chars, currentKey) then table.insert(chars, currentKey) end
+
+        table.sort(chars)
+
+        for _, charKey in ipairs(chars) do
+            CreateRow(25, charKey, "char:"..charKey, false)
+        end
+    end
+
+    ep.Content:SetHeight(math.abs(y) + 20)
 end
