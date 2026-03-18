@@ -271,11 +271,23 @@ function Wise:RefreshPropertiesPanel()
 
         if Wise.pickingRestrictions then
             -- We hijack both Middle and Right panels
-            -- To keep it simple, we just put it in the Right.PickerHost but make the host wide
+            Wise.OptionsFrame.Middle.Content:Hide()
+            if Wise.OptionsFrame.Middle.ScrollFrame then
+                Wise.OptionsFrame.Middle.ScrollFrame:Hide()
+            end
+
             local host = Wise.OptionsFrame.Right.PickerHost
             host:ClearAllPoints()
             host:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
             host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+
+            if not host.bg then
+                host.bg = host:CreateTexture(nil, "BACKGROUND")
+                host.bg:SetAllPoints()
+                host.bg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Opaque dark background
+            end
+            host.bg:Show()
+
             Wise:CreateEmbeddedRestrictionPicker(host, Wise.pickingRestrictionsAction)
         elseif Wise.pickingAction then
             -- Normal single-column host
@@ -302,6 +314,15 @@ function Wise:RefreshPropertiesPanel()
         end
         if Wise.OptionsFrame.Right.PickerHost then
             Wise.OptionsFrame.Right.PickerHost:Hide()
+            if Wise.OptionsFrame.Right.PickerHost.bg then
+                Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+            end
+        end
+        if Wise.OptionsFrame.Middle.Content then
+            Wise.OptionsFrame.Middle.Content:Show()
+        end
+        if Wise.OptionsFrame.Middle.ScrollFrame then
+            Wise.OptionsFrame.Middle.ScrollFrame:Show()
         end
     end
 
@@ -4542,6 +4563,7 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
     action.visibilityEnable = action.visibilityEnable or {}
     action.visibilityDisable = action.visibilityDisable or {}
 
+    if not parent.controls then parent.controls = {} end
     tinsert(parent.controls, ep.CancelBtn)
     tinsert(parent.controls, ep.titleLabel)
     tinsert(parent.controls, ep.descLabel)
@@ -4583,6 +4605,7 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
             table.insert(ep.buttons, btn)
         end
 
+        btn:ClearAllPoints()
         btn:SetSize(btnWidth, 24)
         btn:SetPoint("TOPLEFT", 0, y)
         btn:Show()
