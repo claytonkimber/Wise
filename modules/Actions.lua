@@ -3501,6 +3501,25 @@ function Wise:RefreshActionsView(container)
                  local enables = action.visibilityEnable or {}
                  local disables = action.visibilityDisable or {}
 
+                 local function formatTag(tag)
+                     if tag == "global" then return "Global" end
+                     local prefix, val = strsplit(":", tag, 2)
+                     if not val then return tag end
+                     if prefix == "role" then return Wise.RoleLabels and Wise.RoleLabels[val] or val
+                     elseif prefix == "class" then return val -- already a class tag
+                     elseif prefix == "spec" then
+                         local _, name = GetSpecializationInfoByID(tonumber(val))
+                         return name or val
+                     elseif prefix == "talent" then
+                         local spellInfo = C_Spell.GetSpellInfo(tonumber(val))
+                         return spellInfo and spellInfo.name or val
+                     elseif prefix == "char" then
+                         local name = strsplit("-", val)
+                         return name or val
+                     end
+                     return val
+                 end
+
                  if #enables == 0 and #disables == 0 then
                      -- Legacy fallback text
                      local cat = action.category or "global"
@@ -3512,8 +3531,18 @@ function Wise:RefreshActionsView(container)
                      end
                  else
                      local parts = {}
-                     if #enables > 0 then table.insert(parts, "+" .. #enables .. " Allow") end
-                     if #disables > 0 then table.insert(parts, "-" .. #disables .. " Block") end
+                     if #enables > 0 then
+                         local eStrs = {}
+                         for i = 1, math.min(2, #enables) do table.insert(eStrs, formatTag(enables[i])) end
+                         if #enables > 2 then table.insert(eStrs, "...") end
+                         table.insert(parts, "+(" .. table.concat(eStrs, ", ") .. ")")
+                     end
+                     if #disables > 0 then
+                         local dStrs = {}
+                         for i = 1, math.min(2, #disables) do table.insert(dStrs, formatTag(disables[i])) end
+                         if #disables > 2 then table.insert(dStrs, "...") end
+                         table.insert(parts, "-(" .. table.concat(dStrs, ", ") .. ")")
+                     end
                      suffixText = table.concat(parts, " ")
                  end
 

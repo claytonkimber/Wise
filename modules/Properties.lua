@@ -4539,10 +4539,10 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
         ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
         ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
         ep.descLabel:SetJustifyH("LEFT")
-        ep.descLabel:SetText("Enable: ONLY show if this matches. Disable: NEVER show if this matches.")
+        ep.descLabel:SetText("Enable (Allowlist): The action will ONLY be shown if you match an enabled rule.\nDisable (Blocklist): The action will NEVER be shown if you match a disabled rule, overriding any allows.")
 
         ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -20)
+        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
         ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
 
         ep.Content = CreateFrame("Frame", nil, ep.Scroll)
