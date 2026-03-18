@@ -151,11 +151,11 @@ function Wise:CreateSpecAndEquipPropertiesPanel(panel, startY)
             scroll:SetScrollChild(content)
 
             -- Populate Equipment Sets
-            local setIDs = C_EquipmentManager.GetEquipmentSetIDs() or {}
+            local setIDs = C_EquipmentManager and C_EquipmentManager.GetEquipmentSetIDs and C_EquipmentManager.GetEquipmentSetIDs() or {}
             local innerY = 0
 
             for _, setID in ipairs(setIDs) do
-                local name = C_EquipmentManager.GetEquipmentSetInfo(setID)
+                local name = C_EquipmentManager and C_EquipmentManager.GetEquipmentSetInfo and C_EquipmentManager.GetEquipmentSetInfo(setID)
                 if name then
                     local b = CreateFrame("Button", nil, content)
                     b:SetSize(width-40, 20)
@@ -227,7 +227,9 @@ function Wise:CreateSpecAndEquipPropertiesPanel(panel, startY)
 
         -- If talent load logic is missing, fallback to success so gear swaps
         if talentSuccess == nil or (Enum and Enum.TraitConfigCommitError and talentSuccess == Enum.TraitConfigCommitError.None) or talentSuccess == true then
-             C_EquipmentManager.UseEquipmentSet(panel.selectedEquipmentSetID)
+             if C_EquipmentManager and C_EquipmentManager.UseEquipmentSet then
+                 C_EquipmentManager.UseEquipmentSet(panel.selectedEquipmentSetID)
+             end
              local msg = string.format("Switching to %s with %s gear.", panel.selectedTalentName, panel.selectedEquipmentName)
              print("|cff00ccff[Wise]|r " .. msg)
              statusText:SetText("|cff00ff00" .. msg .. "|r")
