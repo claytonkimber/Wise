@@ -238,7 +238,7 @@ function Wise:RefreshPropertiesPanel()
     -- Embedded picker mode: show picker in the right panel
     if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
         if Wise.pickingRestrictions then
-             Wise.OptionsFrame.Right.Title:SetText("Visibility Restrictions")
+             Wise.OptionsFrame.Right.Title:SetText("Show/Hide rules")
         elseif Wise.pickingAction then
             Wise.OptionsFrame.Right.Title:SetText("Choose Action")
         elseif Wise.pickingTalents then
@@ -773,7 +773,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     local restrictLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     restrictLabel:SetPoint("TOPLEFT", 10, y)
-    restrictLabel:SetText("Visibility Restrictions:")
+    restrictLabel:SetText("Show/Hide rules:")
     tinsert(panel.controls, restrictLabel)
     y = y - 18
 
@@ -781,14 +781,14 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     restrictDesc:SetPoint("TOPLEFT", 10, y)
     restrictDesc:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
     restrictDesc:SetJustifyH("LEFT")
-    restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Enables act as an Allowlist; Disables act as a Blocklist.")
+    restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Shows act as an Allowlist; Hides act as a Blocklist.")
     tinsert(panel.controls, restrictDesc)
-    y = y - 35
+    y = y - 50
 
     local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
     restrictBtn:SetSize(180, 22)
     restrictBtn:SetPoint("TOPLEFT", 10, y)
-    restrictBtn:SetText("Edit Restrictions...")
+    restrictBtn:SetText("Edit Rules...")
     restrictBtn:SetScript("OnClick", function()
         Wise.pickingRestrictions = true
         Wise.pickingRestrictionsAction = action
@@ -4555,13 +4555,13 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 
         ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
-        ep.titleLabel:SetText("Visibility Restrictions")
+        ep.titleLabel:SetText("Show/Hide rules")
 
         ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
         ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
         ep.descLabel:SetJustifyH("LEFT")
-        ep.descLabel:SetText("Enable (Allowlist): The action will ONLY be shown if you match an enabled rule.\nDisable (Blocklist): The action will NEVER be shown if you match a disabled rule, overriding any allows.")
+        ep.descLabel:SetText("Show (Allowlist): The action will ONLY be shown if you match a show rule.\nHide (Blocklist): The action will NEVER be shown if you match a hide rule, overriding any shows.")
 
         ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
         ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
@@ -4616,13 +4616,13 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
             btn.chkEnable:SetSize(24, 24)
             btn.chkEnable.text = btn.chkEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             btn.chkEnable.text:SetPoint("LEFT", btn.chkEnable, "RIGHT", 2, 0)
-            btn.chkEnable.text:SetText("Enable")
+            btn.chkEnable.text:SetText("Show")
 
             btn.chkDisable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
             btn.chkDisable:SetSize(24, 24)
             btn.chkDisable.text = btn.chkDisable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             btn.chkDisable.text:SetPoint("LEFT", btn.chkDisable, "RIGHT", 2, 0)
-            btn.chkDisable.text:SetText("Disable")
+            btn.chkDisable.text:SetText("Hide")
 
             table.insert(ep.buttons, btn)
         end

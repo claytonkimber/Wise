@@ -85,4 +85,13 @@
             <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_ShowHideRules" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Show/Hide Rules UI Update Test" type="string"/>
+            <KeyValue key="instructions" value="Verify the layout and text of the Show/Hide rules button in Properties.\n1. Open Options and select any interface.\n2. Select an action in the middle panel.\n3. Look at the Properties panel on the right.\n4. Verify 'Show/Hide rules' is the title and the text above the button no longer overlaps the 'Edit Rules...' button.\n5. Click 'Edit Rules...' and verify the labels 'Show' and 'Hide' are used instead of 'Enable'/'Disable'." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
