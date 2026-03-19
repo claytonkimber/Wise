@@ -6,16 +6,40 @@ local tinsert = table.insert
 -- Data Initialization
 -- ============================================================================
 
--- Spec and Equipment Changer stores its slots in WiseDB.specEquipSlots
--- Each slot: { name = "My Tank Setup", specIndex = 2, talentConfigID = 12345, equipmentSetName = "Tank Set", icon = texturePath, keybind = "ALT-F1" }
 local function EnsureData()
     if not WiseDB then return end
     WiseDB.specEquipSlots = WiseDB.specEquipSlots or {}
 end
 
 -- ============================================================================
+-- Auto-name: builds "[Spec] - Loadout - Set" from slot config
+-- ============================================================================
+
+local function BuildAutoName(slot)
+    local parts = {}
+    if slot.specIndex then
+        local _, specName = GetSpecializationInfo(slot.specIndex)
+        if specName then tinsert(parts, specName) end
+    end
+    if slot.talentConfigID then
+        local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(slot.talentConfigID)
+        if configInfo and configInfo.name and configInfo.name ~= "" then
+            tinsert(parts, configInfo.name)
+        end
+    end
+    if slot.equipmentSetName then
+        tinsert(parts, slot.equipmentSetName)
+    end
+    if #parts == 0 then return nil end
+    return table.concat(parts, " - ")
+end
+
+-- ============================================================================
 -- Execution: Switch spec/loadout and equip gear
 -- ============================================================================
+
+-- Pending deferred talent loadout after a spec change completes
+Wise._pendingTalentLoadout = nil
 
 function Wise:ExecuteSpecEquip(slotIndex)
     EnsureData()
@@ -28,32 +52,24 @@ function Wise:ExecuteSpecEquip(slotIndex)
     end
 
     local parts = {}
+    local needsSpecChange = false
 
-    -- Spec switch
     if slot.specIndex then
         local currentSpec = GetSpecialization()
         if slot.specIndex ~= currentSpec then
-            local setSpecFn = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization
-            if setSpecFn then
-                setSpecFn(slot.specIndex)
+            local canSwitch = true
+            if C_SpecializationInfo and C_SpecializationInfo.CanPlayerUseTalentSpecUI then
+                canSwitch = C_SpecializationInfo.CanPlayerUseTalentSpecUI()
             end
-            local _, specName = GetSpecializationInfo(slot.specIndex)
-            tinsert(parts, specName or ("Spec " .. slot.specIndex))
+            if not canSwitch then
+                print("|cff00ccff[Wise]|r |cffff0000Cannot switch specs right now (cooldown, M+, or other restriction).|r")
+                return
+            end
+            needsSpecChange = true
         end
     end
 
-    -- Talent loadout switch
-    if slot.talentConfigID then
-        if C_ClassTalents and C_ClassTalents.LoadConfig then
-            C_ClassTalents.LoadConfig(slot.talentConfigID, true)
-            local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(slot.talentConfigID)
-            if configInfo and configInfo.name then
-                tinsert(parts, configInfo.name)
-            end
-        end
-    end
-
-    -- Equipment set switch
+    -- 1) Equipment FIRST — instant, no async issues
     if slot.equipmentSetName then
         if C_EquipmentSet then
             local setID = C_EquipmentSet.GetEquipmentSetID(slot.equipmentSetName)
@@ -64,10 +80,73 @@ function Wise:ExecuteSpecEquip(slotIndex)
         end
     end
 
+    -- 2) Spec change — async, fires PLAYER_SPECIALIZATION_CHANGED when done
+    if needsSpecChange then
+        -- Defer talent loadout to after spec change completes
+        if slot.talentConfigID then
+            Wise._pendingTalentLoadout = slot.talentConfigID
+        end
+        local setSpecFn = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization
+        if setSpecFn then
+            setSpecFn(slot.specIndex)
+        end
+        local _, specName = GetSpecializationInfo(slot.specIndex)
+        tinsert(parts, specName or ("Spec " .. slot.specIndex))
+    else
+        -- 3) No spec change — apply talent loadout immediately
+        if slot.talentConfigID then
+            if C_ClassTalents and C_ClassTalents.LoadConfig then
+                C_ClassTalents.LoadConfig(slot.talentConfigID, true)
+                local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(slot.talentConfigID)
+                if configInfo and configInfo.name then
+                    tinsert(parts, configInfo.name)
+                end
+            end
+        end
+    end
+
     if #parts > 0 then
-        print("|cff00ccff[Wise]|r Switching to " .. table.concat(parts, " + ") .. ".")
+        local msg = "Switching to " .. table.concat(parts, " + ") .. "."
+        if needsSpecChange and slot.talentConfigID then
+            msg = msg .. " Talent loadout will apply after spec change."
+        end
+        print("|cff00ccff[Wise]|r " .. msg)
+    end
+
+    if Wise.UpdateCharacterInfo then
+        C_Timer.After(1, function()
+            Wise:UpdateCharacterInfo("SPEC_EQUIP_EXEC")
+        end)
     end
 end
+
+-- Event frame: apply deferred talent loadout after spec change completes
+local specChangeFrame = CreateFrame("Frame")
+specChangeFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+specChangeFrame:SetScript("OnEvent", function(self, event)
+    local configID = Wise._pendingTalentLoadout
+    if not configID then return end
+    Wise._pendingTalentLoadout = nil
+
+    -- Delay to let spec fully settle before loading talent config
+    C_Timer.After(1.5, function()
+        if InCombatLockdown() then
+            print("|cff00ccff[Wise]|r |cffff0000Cannot apply talent loadout in combat.|r")
+            return
+        end
+        if C_ClassTalents and C_ClassTalents.LoadConfig then
+            C_ClassTalents.LoadConfig(configID, true)
+            local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(configID)
+            local name = configInfo and configInfo.name or "loadout"
+            print("|cff00ccff[Wise]|r Applied talent loadout: " .. name)
+        end
+        if Wise.UpdateCharacterInfo then
+            C_Timer.After(1, function()
+                Wise:UpdateCharacterInfo("SPEC_EQUIP_DEFERRED")
+            end)
+        end
+    end)
+end)
 
 -- ============================================================================
 -- Properties Panel: Chooser for Selected Slot
@@ -143,6 +222,18 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
     tinsert(panel.controls, sep)
     y = y - 15
 
+    -- Helper: auto-name the slot and update the edit box
+    local function AutoNameSlot()
+        local autoName = BuildAutoName(slot)
+        if autoName then
+            slot.name = autoName
+            nameEdit:SetText(autoName)
+        end
+        if Wise.UpdateWiserInterfaces then
+            Wise:UpdateWiserInterfaces()
+        end
+    end
+
     -- === 1. Specialization Selection ===
     local specLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     specLabel:SetPoint("TOPLEFT", 10, y)
@@ -202,9 +293,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
             end
             self:SetChecked(true)
             slot.specIndex = self.specIdx or nil
-            if Wise.UpdateWiserInterfaces then
-                Wise:UpdateWiserInterfaces()
-            end
+            AutoNameSlot()
         end)
     end
 
@@ -213,11 +302,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
     -- === 2. Talent Loadout Selection ===
     local tlLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tlLabel:SetPoint("TOPLEFT", 10, y)
-    if isCurrentSpec then
-        tlLabel:SetText("Talent Loadout (optional):")
-    else
-        tlLabel:SetText("Talent Loadout (optional):")
-    end
+    tlLabel:SetText("Talent Loadout (optional):")
     tinsert(panel.controls, tlLabel)
     y = y - 20
 
@@ -228,7 +313,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
         note:SetPoint("TOPLEFT", 30, y)
         note:SetWidth(width - 40)
         note:SetJustifyH("LEFT")
-        note:SetText("Switch to " .. (targetSpecName or "the selected spec") .. " first to choose a loadout.\nThe loadout picker only shows loadouts for your current spec.")
+        note:SetText("Switch to " .. (targetSpecName or "the selected spec") .. " first to choose a loadout.\nLoadouts are only available for your active spec.")
         tinsert(panel.controls, note)
         local noteHeight = note:GetStringHeight() or 20
         y = y - noteHeight - 10
@@ -243,16 +328,13 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
             tinsert(panel.controls, prev)
             y = y - 20
 
-            -- Clear button
             local clearBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
             clearBtn:SetSize(100, 20)
             clearBtn:SetPoint("TOPLEFT", 30, y)
             clearBtn:SetText("Clear")
             clearBtn:SetScript("OnClick", function()
                 slot.talentConfigID = nil
-                if Wise.UpdateWiserInterfaces then
-                    Wise:UpdateWiserInterfaces()
-                end
+                AutoNameSlot()
             end)
             tinsert(panel.controls, clearBtn)
             y = y - 25
@@ -326,9 +408,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
                 end
                 self:SetChecked(true)
                 slot.talentConfigID = self.configID or nil
-                if Wise.UpdateWiserInterfaces then
-                    Wise:UpdateWiserInterfaces()
-                end
+                AutoNameSlot()
             end)
         end
     end
@@ -407,9 +487,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
             if self.setIcon then
                 slot.icon = self.setIcon
             end
-            if Wise.UpdateWiserInterfaces then
-                Wise:UpdateWiserInterfaces()
-            end
+            AutoNameSlot()
         end)
     end
 
@@ -423,14 +501,12 @@ end
 
 local origRefreshActionsView = Wise.RefreshActionsView
 function Wise:RefreshActionsView(container)
-    -- Call the original first
     if origRefreshActionsView then
         origRefreshActionsView(self, container)
     end
 
     local isSE = (Wise.selectedGroup == "Spec and Equipment Changer")
 
-    -- Hide filter buttons when viewing this interface
     if Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.FilterButtons then
         for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons) do
             if isSE then
@@ -469,12 +545,10 @@ end
 
 local origUpdateBindings = Wise.UpdateBindings
 function Wise:UpdateBindings()
-    -- Call the original binding logic
     if origUpdateBindings then
         origUpdateBindings(self)
     end
 
-    -- Sync keybinds from group.actions back to WiseDB.specEquipSlots
     EnsureData()
     local group = WiseDB.groups["Spec and Equipment Changer"]
     if group and group.actions and WiseDB.specEquipSlots then
