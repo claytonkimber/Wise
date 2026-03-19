@@ -1723,7 +1723,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
             local realID = Wise:ResolveBarActionID(121)
             texture = GetActionTexture(realID) or "Interface\\Icons\\Temp"
         end
-        if value == "leave_vehicle" then texture = "Interface\\Icons\\Spell_Shadow_SacrificialPact" end
+        if value == "leave_vehicle" then texture = "Interface\\Vehicles\\UI-Vehicles-Button-Exit-Up" end
         if value == "custom_macro" then texture = 134400 end
         if value == "toggle_sound" then texture = "Interface\\AddOns\\Wise\\Media\\SoundToggle.tga" end
         if value == "toggle_sfx" then texture = "Interface\\AddOns\\Wise\\Media\\SFXToggle.tga" end
@@ -3169,6 +3169,16 @@ function Wise:GetOverridebars(filter)
         end
     end
 
+    if not filter or string.find("leave vehicle", filter, 1, true) then
+        table.insert(items, {
+            type = "misc",
+            value = "leave_vehicle",
+            name = "Leave Vehicle",
+            icon = "Interface\\Vehicles\\UI-Vehicles-Button-Exit-Up",
+            category = "Override bars"
+        })
+    end
+
     return items
 end
 
@@ -3176,7 +3186,6 @@ function Wise:GetMiscellaneous(filter)
     local items = {}
     local misc = {
          {name="New Custom Macro", val="custom_macro", icon="Interface\\Icons\\Macro_Create"},
-         {name="Leave Vehicle", val="leave_vehicle", icon="Interface\\Icons\\Spell_Shadow_SacrificialPact"},
          {name="Extra Action Button 1", val="extrabutton", icon="Interface\\Icons\\Temp"},
          {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
          {name="Override Bar", val="overridebar", icon="Interface\\Icons\\Temp"},
