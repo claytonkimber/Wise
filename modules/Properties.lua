@@ -518,6 +518,20 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         end
     end
 
+    -- Special case: Spec and Equipment Changer actions — show the chooser
+    if action.type == "misc" and action.value and tostring(action.value):match("^spec_equip_(%d+)$") then
+        local seSlotIdx = tonumber(tostring(action.value):match("^spec_equip_(%d+)$"))
+        if seSlotIdx and Wise.CreateSpecEquipPropertiesPanel then
+            local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            headerLabel:SetPoint("TOPLEFT", 10, y)
+            headerLabel:SetText("Spec & Equipment Slot:")
+            tinsert(panel.controls, headerLabel)
+            y = y - 20
+            y = Wise:CreateSpecEquipPropertiesPanel(panel, seSlotIdx, y)
+            return y
+        end
+    end
+
     local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     label:SetPoint("TOPLEFT", 10, y)
     label:SetText("Action (Slot " .. slotIdx .. " State " .. stateIdx .. "):")
