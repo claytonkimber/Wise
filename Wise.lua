@@ -435,6 +435,51 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     end
     -- 6. Spec and Equipment Changer
     local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle")
+    WiseDB.specEquipSlots = WiseDB.specEquipSlots or {}
+    for i, slot in ipairs(WiseDB.specEquipSlots) do
+        local slotName = slot.name or ("Slot " .. i)
+        -- Build a description from the slot config
+        local parts = {}
+        if slot.specIndex then
+            local _, specName = GetSpecializationInfo(slot.specIndex)
+            if specName then tinsert(parts, specName) end
+        end
+        if slot.talentConfigID then
+            local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(slot.talentConfigID)
+            if configInfo and configInfo.name then tinsert(parts, configInfo.name) end
+        end
+        if slot.equipmentSetName then
+            tinsert(parts, slot.equipmentSetName)
+        end
+
+        -- Pick the best icon: equipment set icon > spec icon > default
+        local slotIcon = slot.icon or "Interface\\Icons\\Inv_misc_gear_01"
+        if not slot.icon and slot.specIndex then
+            local _, _, _, specIcon = GetSpecializationInfo(slot.specIndex)
+            if specIcon then slotIcon = specIcon end
+        end
+
+        table.insert(specEquipGroup.buttons, {
+            type = "misc",
+            value = "spec_equip_" .. i,
+            name = slotName,
+            icon = slotIcon,
+            category = "global"
+        })
+    end
+    -- Immediately migrate buttons to actions so keybinds can be restored
+    if Wise.MigrateGroupToActions then
+        Wise:MigrateGroupToActions(specEquipGroup)
+    end
+    -- Restore per-slot keybinds from canonical storage (WiseDB.specEquipSlots)
+    for i, slot in ipairs(WiseDB.specEquipSlots) do
+        if slot.keybind and slot.keybind ~= "" and specEquipGroup.actions[i] then
+            specEquipGroup.actions[i].keybind = slot.keybind
+        end
+    end
+    if Wise.frames["Spec and Equipment Changer"] and Wise.frames["Spec and Equipment Changer"]:IsShown() then
+        Wise:UpdateGroupDisplay("Spec and Equipment Changer")
+    end
 
     -- 7. Cooldowns (default: box layout, width 4, fixed anchor)
     local cooldownsGroup = EnsureWiserGroup("Cooldowns", "box", {type = "box", boxWidth = 4})

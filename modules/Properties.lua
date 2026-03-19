@@ -333,23 +333,6 @@ function Wise:RefreshPropertiesPanel()
         return
     end
 
-    -- Special case: Spec and Equipment Changer Tool
-    if Wise.SPEC_AND_EQUIP_TEMPLATE and Wise.selectedGroup == Wise.SPEC_AND_EQUIP_TEMPLATE then
-        Wise.OptionsFrame.Right.Title:SetText("Spec and Equipment Changer")
-
-        local y = -30
-
-        if Wise.CreateSpecAndEquipPropertiesPanel then
-             Wise:CreateSpecAndEquipPropertiesPanel(panel, y)
-        else
-             local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-             msgLabel:SetPoint("TOPLEFT", 10, y)
-             msgLabel:SetText("Spec and Equipment module not loaded.")
-             tinsert(panel.controls, msgLabel)
-        end
-        return
-    end
-
     -- Special case: Bar Copy Tool
     if Wise.BAR_COPY_TEMPLATE and Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
         Wise.OptionsFrame.Right.Title:SetText("Bar Copy Tool")
@@ -483,6 +466,20 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             tinsert(panel.controls, headerLabel)
             y = y - 20
             y = Wise:CreateAddonMagicPropertiesPanel(panel, amSlotIdx, y)
+            return y
+        end
+    end
+
+    -- Special case: Spec and Equipment Changer actions — show the chooser
+    if action.type == "misc" and action.value and tostring(action.value):match("^spec_equip_(%d+)$") then
+        local seSlotIdx = tonumber(tostring(action.value):match("^spec_equip_(%d+)$"))
+        if seSlotIdx and Wise.CreateSpecEquipPropertiesPanel then
+            local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            headerLabel:SetPoint("TOPLEFT", 10, y)
+            headerLabel:SetText("Spec & Equipment Slot:")
+            tinsert(panel.controls, headerLabel)
+            y = y - 20
+            y = Wise:CreateSpecEquipPropertiesPanel(panel, seSlotIdx, y)
             return y
         end
     end

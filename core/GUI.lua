@@ -2107,6 +2107,13 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
+        elseif aValue:match("^spec_equip_") then
+            local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
+            if slotIdx then
+                secureType = "macro"
+                secureAttr = "macrotext"
+                secureValue = "/run if Wise and Wise.ExecuteSpecEquip then Wise:ExecuteSpecEquip(" .. slotIdx .. ") end"
+            end
         elseif aValue:match("^spec_") then
             local val = tonumber(aValue:match("^spec_(%d+)"))
             local specIndex = val

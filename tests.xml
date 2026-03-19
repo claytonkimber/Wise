@@ -53,8 +53,8 @@
     <Frame name="WiseDebugTest_SpecEquipTool" inherits="WiseDebugTestsData">
         <KeyValues>
             <KeyValue key="testName" value="Spec and Equipment Changer Test" type="string"/>
-            <KeyValue key="instructions" value="Verify that the Spec and Equipment Changer tool appears in the Options UI.\n1. Open Options.\n2. In the Sidebar, look under 'Tools'.\n3. Click 'Spec and Equipment Changer'.\n4. Verify the two dropdowns and Switch button are rendered in the Properties panel." type="string"/>
-            <KeyValue key="action" value="if not Wise.OptionsFrame then Wise:CreateOptionsFrame() end; Wise.OptionsFrame:Show(); Wise.selectedGroup = Wise.SPEC_AND_EQUIP_TEMPLATE; Wise:UpdateOptionsUI()" type="string"/>
+            <KeyValue key="instructions" value="Verify that the Spec and Equipment Changer Wiser Interface appears in the Options UI.\n1. Open Options.\n2. In the Sidebar, look under 'Wiser Interfaces'.\n3. Click 'Spec and Equipment Changer'.\n4. Verify slots for specs, talent loadouts, and equipment sets appear." type="string"/>
+            <KeyValue key="action" value="if not Wise.OptionsFrame then Wise:CreateOptionsFrame() end; Wise.OptionsFrame:Show(); Wise.selectedGroup = 'Spec and Equipment Changer'; Wise:UpdateOptionsUI()" type="string"/>
             <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
         </KeyValues>
     </Frame>
