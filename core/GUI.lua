@@ -2222,6 +2222,20 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureType = "macro"
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
+        elseif aValue:match("^spec_equip_") then
+            local specIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
+            secureType = "macro"
+            secureAttr = "macrotext"
+            if specIdx then
+                local equipSetName = actionData.equipmentSet or ""
+                if equipSetName ~= "" then
+                    secureValue = "/equipset " .. equipSetName .. "\n/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
+                else
+                    secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
+                end
+            else
+                secureValue = "/run print('[Wise] Invalid spec_equip action')"
+            end
         elseif aValue:match("^spec_") then
             local val = tonumber(aValue:match("^spec_(%d+)"))
             local specIndex = val
@@ -2237,7 +2251,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             end
             secureType = "macro"
             secureAttr = "macrotext"
-            secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
+            if specIndex then
+                secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
+            else
+                secureValue = "/run print('[Wise] Unknown spec value')"
+            end
         elseif aValue:match("^form_") then
             local formIndex = tonumber(aValue:match("^form_(%d+)"))
             if formIndex then
