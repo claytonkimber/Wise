@@ -238,7 +238,7 @@ function Wise:RefreshPropertiesPanel()
     -- Embedded picker mode: show picker in the right panel
     if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
         if Wise.pickingRestrictions then
-             Wise.OptionsFrame.Right.Title:SetText("Show/Hide rules")
+             Wise.OptionsFrame.Right.Title:SetText("Availability Filtering")
         elseif Wise.pickingAction then
             Wise.OptionsFrame.Right.Title:SetText("Choose Action")
         elseif Wise.pickingTalents then
@@ -773,7 +773,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     local restrictLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     restrictLabel:SetPoint("TOPLEFT", 10, y)
-    restrictLabel:SetText("Show/Hide rules:")
+    restrictLabel:SetText("Availability Filtering:")
     tinsert(panel.controls, restrictLabel)
     y = y - 18
 
@@ -788,7 +788,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
     restrictBtn:SetSize(180, 22)
     restrictBtn:SetPoint("TOPLEFT", 10, y)
-    restrictBtn:SetText("Edit Rules...")
+    restrictBtn:SetText("Edit Filters...")
     restrictBtn:SetScript("OnClick", function()
         Wise.pickingRestrictions = true
         Wise.pickingRestrictionsAction = action
@@ -4555,7 +4555,7 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 
         ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
-        ep.titleLabel:SetText("Show/Hide rules")
+        ep.titleLabel:SetText("Availability Filtering")
 
         ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
@@ -4708,7 +4708,7 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
     end
 
     -- 1. Global
-    CreateRow(5, "Global", "global", false)
+    CreateRow(5, "All", "global", false)
 
     -- 2. Roles
     CreateRow(5, "Roles", nil, true, "roles")

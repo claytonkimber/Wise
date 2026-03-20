@@ -80,7 +80,7 @@ function Wise:CreateOptionsFrame()
     -- Parent to f so they aren't clipped or inside the inset.
 
     local filters = {"global", "class", "role", "spec", "talent", "character"}
-    local labels = {global="Global", class="Class", role="Role", spec="Spec", talent="Talents", character="Char"}
+    local labels = {global="All", class="Class", role="Role", spec="Spec", talent="Talents", character="Char"}
     local btnWidth = filterWidth / #filters
     
     for i, filter in ipairs(filters) do
