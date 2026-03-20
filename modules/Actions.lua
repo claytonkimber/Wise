@@ -1515,6 +1515,8 @@ function Wise:GetActionIcon(actionType, value, extraData)
             local realID = Wise:ResolveBarActionID(aID)
             local icon = GetActionTexture(realID)
             if icon then return icon end
+            -- Empty override/possess bar slots return nil to hide the icon
+            if aID >= 121 and aID <= 144 then return nil end
         end
         return 134400
 
@@ -1717,11 +1719,11 @@ function Wise:GetActionIcon(actionType, value, extraData)
         end
         if value == "overridebar" then
             local realID = Wise:ResolveBarActionID(133)
-            texture = GetActionTexture(realID) or "Interface\\Icons\\Temp"
+            texture = GetActionTexture(realID)
         end
         if value == "possessbar" then
             local realID = Wise:ResolveBarActionID(121)
-            texture = GetActionTexture(realID) or "Interface\\Icons\\Temp"
+            texture = GetActionTexture(realID)
         end
         if value == "leave_vehicle" then texture = "Interface\\Vehicles\\UI-Vehicles-Button-Exit-Up" end
         if value == "custom_macro" then texture = 134400 end
