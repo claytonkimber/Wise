@@ -83,12 +83,25 @@ function Wise:GetZoneAbilitySpellButton()
     return GetZoneAbilitySpellButton()
 end
 
--- Resolve the real action ID for override/possess bar slots.
--- The WoW API (GetActionTexture, GetActionCooldown, IsUsableAction) handles
--- override/possess/vehicle bar remapping internally for raw slot IDs (121-144),
--- so we just pass through the ID. Reading .action from Blizzard's protected
--- ActionButton frames would taint the value and spread to Blizzard's secure code.
+-- Resolve the real action ID for override/possess/vehicle bar slots.
+-- Raw IDs 133-144 (override) and 121-132 (possess/vehicle) don't return correct
+-- textures via GetActionTexture without remapping. We use taint-free bar index APIs
+-- (same approach as EXTRA_ACTION_BUTTON_SLOT) instead of reading .action from
+-- Blizzard's protected ActionButton frames which would spread taint.
 function Wise:ResolveBarActionID(aID)
+    if aID >= 133 and aID <= 144 then
+        local buttonIndex = aID - 132
+        if HasOverrideActionBar and HasOverrideActionBar() and GetOverrideBarIndex then
+            return buttonIndex + (GetOverrideBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+        end
+    elseif aID >= 121 and aID <= 132 then
+        local buttonIndex = aID - 120
+        if HasVehicleActionBar and HasVehicleActionBar() and GetVehicleBarIndex then
+            return buttonIndex + (GetVehicleBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+        elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and GetTempShapeshiftBarIndex then
+            return buttonIndex + (GetTempShapeshiftBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+        end
+    end
     return aID
 end
 
@@ -2223,11 +2236,18 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
         elseif aValue:match("^spec_equip_") then
-            local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
-            if slotIdx then
-                secureType = "macro"
-                secureAttr = "macrotext"
-                secureValue = "/run if Wise and Wise.ExecuteSpecEquip then Wise:ExecuteSpecEquip(" .. slotIdx .. ") end"
+            local specIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
+            secureType = "macro"
+            secureAttr = "macrotext"
+            if specIdx then
+                local equipSetName = actionData.equipmentSet or ""
+                if equipSetName ~= "" then
+                    secureValue = "/equipset " .. equipSetName .. "\n/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
+                else
+                    secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
+                end
+            else
+                secureValue = "/run print('[Wise] Invalid spec_equip action')"
             end
         elseif aValue:match("^spec_") then
             local val = tonumber(aValue:match("^spec_(%d+)"))
@@ -2244,7 +2264,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             end
             secureType = "macro"
             secureAttr = "macrotext"
-            secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
+            if specIndex then
+                secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
+            else
+                secureValue = "/run print('[Wise] Unknown spec value')"
+            end
         elseif aValue:match("^form_") then
             local formIndex = tonumber(aValue:match("^form_(%d+)"))
             if formIndex then
@@ -3638,8 +3662,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              if resolvedIcon and not actionData.icon then texture = resolvedIcon end
         end
 
-        btn.icon:SetTexture(texture)
-        
+        if texture then
+            btn.icon:SetTexture(texture)
+            btn.icon:Show()
+        else
+            btn.icon:Hide()
+        end
+
         Wise:ApplyIconStyle(btn, iconStyle)
 
         -- Store action info for cooldown tracking
@@ -4128,10 +4157,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                          local aID = tonumber(meta.actionValue)
                          if aID then
                              local realID = Wise:ResolveBarActionID(aID)
-                             local tex = GetActionTexture(realID) or 134400
-                             btn.icon:SetTexture(tex)
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                             local tex = GetActionTexture(realID)
+                             local isBarSlot = (aID >= 121 and aID <= 144)
+                             if tex then
+                                 btn.icon:SetTexture(tex)
+                                 btn.icon:Show()
+                                 local vClone = meta.visualClone or btn.visualClone
+                                 if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
+                             elseif isBarSlot then
+                                 btn.icon:Hide()
+                                 local vClone = meta.visualClone or btn.visualClone
+                                 if vClone and vClone.icon then vClone.icon:Hide() end
+                             else
+                                 btn.icon:SetTexture(134400)
+                                 btn.icon:Show()
+                                 local vClone = meta.visualClone or btn.visualClone
+                                 if vClone and vClone.icon then vClone.icon:SetTexture(134400); vClone.icon:Show() end
+                             end
                              Wise:UpdateButtonCooldown(btn)
                              Wise:UpdateButtonUsability(btn)
                          end
@@ -4214,10 +4256,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     elseif meta.actionType == "misc" and meta.actionValue == "overridebar" then
                          -- Update Override Bar icon dynamically
                          local realID = Wise:ResolveBarActionID(133)
-                         local tex = GetActionTexture(realID) or "Interface\\Icons\\Temp"
-                         btn.icon:SetTexture(tex)
-                         local vClone = meta.visualClone or btn.visualClone
-                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         local tex = GetActionTexture(realID)
+                         if tex then
+                             btn.icon:SetTexture(tex)
+                             btn.icon:Show()
+                             local vClone = meta.visualClone or btn.visualClone
+                             if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
+                         else
+                             btn.icon:Hide()
+                             local vClone = meta.visualClone or btn.visualClone
+                             if vClone and vClone.icon then vClone.icon:Hide() end
+                         end
                          -- Rebind clickbutton in case override bar appeared
                          local overrideBtn = _G["OverrideActionBarButton1"]
                          if canSetAttrs and overrideBtn then
@@ -4234,10 +4283,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
                          -- Update Possess Bar icon dynamically
                          local realID = Wise:ResolveBarActionID(121)
-                         local tex = GetActionTexture(realID) or "Interface\\Icons\\Temp"
-                         btn.icon:SetTexture(tex)
-                         local vClone = meta.visualClone or btn.visualClone
-                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
+                         local tex = GetActionTexture(realID)
+                         if tex then
+                             btn.icon:SetTexture(tex)
+                             btn.icon:Show()
+                             local vClone = meta.visualClone or btn.visualClone
+                             if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
+                         else
+                             btn.icon:Hide()
+                             local vClone = meta.visualClone or btn.visualClone
+                             if vClone and vClone.icon then vClone.icon:Hide() end
+                         end
                          -- Rebind clickbutton in case possess bar appeared
                          local possessBtn = _G["ActionButton1"]
                          if canSetAttrs and possessBtn then

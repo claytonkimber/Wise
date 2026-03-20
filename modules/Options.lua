@@ -1,6 +1,8 @@
 -- Options.lua
 local addonName, Wise = ...
 
+local EnsureCreateGroupPopup
+
 function Wise:CreateOptionsFrame()
     local f = CreateFrame("Frame", "WiseOptionsFrame", UIParent, "PortraitFrameTemplate")
     f:Hide()
@@ -919,7 +921,7 @@ end
 -- Old RefreshActionList removed.
 
 
-local function EnsureCreateGroupPopup()
+EnsureCreateGroupPopup = function()
     if not StaticPopupDialogs["WISE_CREATE_GROUP"] then
         StaticPopupDialogs["WISE_CREATE_GROUP"] = {
             text = "Enter new Wise Interface name:",
