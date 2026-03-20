@@ -771,11 +771,17 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     y = y - 5
 
-    local restrictLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    restrictLabel:SetPoint("TOPLEFT", 10, y)
-    restrictLabel:SetText("Availability Filtering:")
-    tinsert(panel.controls, restrictLabel)
-    y = y - 18
+    local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+    restrictBtn:SetSize(180, 22)
+    restrictBtn:SetPoint("TOPLEFT", 10, y)
+    restrictBtn:SetText("Availability Filtering")
+    restrictBtn:SetScript("OnClick", function()
+        Wise.pickingRestrictions = true
+        Wise.pickingRestrictionsAction = action
+        Wise:RefreshPropertiesPanel()
+    end)
+    tinsert(panel.controls, restrictBtn)
+    y = y - 28
 
     local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     restrictDesc:SetPoint("TOPLEFT", 10, y)
@@ -783,19 +789,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     restrictDesc:SetJustifyH("LEFT")
     restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Shows act as an Allowlist; Hides act as a Blocklist.")
     tinsert(panel.controls, restrictDesc)
-    y = y - 50
-
-    local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    restrictBtn:SetSize(180, 22)
-    restrictBtn:SetPoint("TOPLEFT", 10, y)
-    restrictBtn:SetText("Edit Filters...")
-    restrictBtn:SetScript("OnClick", function()
-        Wise.pickingRestrictions = true
-        Wise.pickingRestrictionsAction = action
-        Wise:RefreshPropertiesPanel()
-    end)
-    tinsert(panel.controls, restrictBtn)
-    y = y - 30
+    y = y - 35
 
     y = y - 10
 
