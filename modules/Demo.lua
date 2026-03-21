@@ -450,7 +450,7 @@ local Steps = {
             return Wise.OptionsFrame.Middle.AddSlotBtn or Wise.OptionsFrame.Middle
         end,
         point = HelpTip.Point.RightEdgeCenter,
-        buttonStyle = HelpTip.ButtonStyle.None,
+        buttonStyle = HelpTip.ButtonStyle.GotIt,
         onEnter = function()
             local btn = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.AddSlotBtn
             Glow(btn)
