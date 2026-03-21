@@ -1,0 +1,22 @@
+﻿7d87ebd fixed some stuff
+e350b9b Merge branch 'perf-toy-string-lower-opt-17572035979877692150' of https://github.com/claytonkimber/Wise into perf-toy-string-lower-opt-17572035979877692150
+d97a869 perf: cache string.lower in Wise:GetTransportation loops
+6676ee6 Merge fix-leave-vehicle-action branch into main
+a9f2f94 fix: resolve override/vehicle bar icons and hide empty bar slots
+5947b23 updates to prevent breaky
+7aaa850 fixed hide show rules
+68aa391 Fix UI text overlap and update terminology for availability filtering
+1f91025 Update visibility restrictions to Show/Hide rules and fix overlap
+423707c Merge feat-wiser-spec-equip-changer into main
+c1d8b63 fixed spec equip changer
+118dcc4 getting closer to something that's workable
+65be168 fix: add Leave Vehicle button to Override bars category in picker
+a615346 Merge pull request #67 from claytonkimber/visibility-restriction-tree-4401233012359061584
+0858985 Add plain English explanation to the main Properties tab
+f51c8bc Update Visibility Restriction picker text and summary
+0e096c3 Implement two-column Visibility Restriction picker and fix layout clobbering
+c4c6854 Add nil checks for C_EquipmentManager APIs
+af091f6 Add nil checks for C_ClassTalents and C_Traits
+3742bfb feat(visibility): implement two-column tree picker for action restrictions
+a521972 Add Spec and Equipment Changer tool module to Wiser Interfaces
+ab10a4b perf: cache string.lower in Wise:GetTransportation loops
