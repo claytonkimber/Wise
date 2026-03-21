@@ -11,6 +11,7 @@ local type = type
 local inserter = table.insert
 local concat = table.concat
 local InCombatLockdown = InCombatLockdown
+local SecureCmdOptionParse = SecureCmdOptionParse
 local C_Timer = C_Timer
 local GameTooltip = GameTooltip
 local CreateFrame = CreateFrame
@@ -316,36 +317,94 @@ function Wise:CreateStateConfigurationFrame(parent, group, slotIndex)
     end
 
     if currentStrategy == "sequence" and #actions > 0 then
+        -- Build visibility-filtered list (hide states that fail IsActionAllowed entirely).
+        -- States that pass visibility but whose conditions don't currently match are kept but marked dimmed.
+        local visibleActions = {}
+        for i = 1, #actions do
+            local a = actions[i]
+            if type(a) == "table" and Wise:IsActionAllowed(a) then
+                local cond = Wise:ComputeEffectiveConditions(actions, i)
+                local condActive = true
+                if cond and cond ~= "" then
+                    local result = SecureCmdOptionParse(cond .. " true; false")
+                    condActive = (result == "true")
+                end
+                table.insert(visibleActions, { action = a, active = condActive })
+            end
+        end
+
         y = y - 10
         local seqTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         seqTitle:SetPoint("TOPLEFT", 0, y)
         seqTitle:SetText("Sequence Execution Plan:")
         y = y - 15
-        
-        local steps = {}
-        local currentStep = {}
-        for i = 1, #actions do
-            local a = actions[i]
-            local aName = Wise:GetActionName(a.type, a.value, a) or "Unknown"
-            local _, _, isOffGcd = Wise:GetCastTimeText(a.type, a.value)
-            
-            table.insert(currentStep, aName .. (isOffGcd and " (Off-GCD)" or ""))
-            if not isOffGcd then
-                table.insert(steps, currentStep)
-                currentStep = {}
+
+        if #visibleActions == 0 then
+            local noMatch = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            noMatch:SetPoint("TOPLEFT", 10, y)
+            noMatch:SetWidth(frame:GetWidth() - 20)
+            noMatch:SetJustifyH("LEFT")
+            noMatch:SetText("No states visible for this character.")
+            y = y - (noMatch:GetStringHeight() + 2)
+        else
+            -- Group into press-steps (off-GCD actions chain with the next on-GCD action).
+            -- Each entry in a step tracks its own active/dimmed state.
+            local steps = {}
+            local currentStep = {}
+            for i = 1, #visibleActions do
+                local entry = visibleActions[i]
+                local a = entry.action
+                local aName = Wise:GetActionName(a.type, a.value, a) or "Unknown"
+                local _, _, isOffGcd = Wise:GetCastTimeText(a.type, a.value)
+
+                table.insert(currentStep, { name = aName, offGcd = isOffGcd, active = entry.active })
+                if not isOffGcd then
+                    table.insert(steps, currentStep)
+                    currentStep = {}
+                end
             end
-        end
-        if #currentStep > 0 then
-            table.insert(steps, currentStep)
-        end
-        
-        for idx, step in ipairs(steps) do
-            local seqText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            seqText:SetPoint("TOPLEFT", 10, y)
-            seqText:SetWidth(frame:GetWidth() - 20)
-            seqText:SetJustifyH("LEFT")
-            seqText:SetText(string.format("Press %d: %s", idx, table.concat(step, " + ")))
-            y = y - (seqText:GetStringHeight() + 2)
+            if #currentStep > 0 then
+                table.insert(steps, currentStep)
+            end
+
+            for idx, step in ipairs(steps) do
+                -- Check if every entry in this step is active, all dimmed, or mixed
+                local allActive = true
+                local allDimmed = true
+                for _, e in ipairs(step) do
+                    if e.active then allDimmed = false else allActive = false end
+                end
+
+                if allActive or allDimmed then
+                    -- Uniform step: single font string, full or dimmed
+                    local parts = {}
+                    for _, e in ipairs(step) do
+                        table.insert(parts, e.name .. (e.offGcd and " (Off-GCD)" or ""))
+                    end
+                    local seqText = frame:CreateFontString(nil, "OVERLAY", allActive and "GameFontHighlightSmall" or "GameFontDisableSmall")
+                    seqText:SetPoint("TOPLEFT", 10, y)
+                    seqText:SetWidth(frame:GetWidth() - 20)
+                    seqText:SetJustifyH("LEFT")
+                    seqText:SetText(string.format("Press %d: %s", idx, table.concat(parts, " + ")))
+                    y = y - (seqText:GetStringHeight() + 2)
+                else
+                    -- Mixed step: build per-entry font strings on the same line
+                    local prefix = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    prefix:SetPoint("TOPLEFT", 10, y)
+                    prefix:SetText(string.format("Press %d: ", idx))
+                    local xOff = 10 + prefix:GetStringWidth()
+
+                    for ei, e in ipairs(step) do
+                        local label = e.name .. (e.offGcd and " (Off-GCD)" or "")
+                        if ei < #step then label = label .. " + " end
+                        local part = frame:CreateFontString(nil, "OVERLAY", e.active and "GameFontHighlightSmall" or "GameFontDisableSmall")
+                        part:SetPoint("TOPLEFT", xOff, y)
+                        part:SetText(label)
+                        xOff = xOff + part:GetStringWidth()
+                    end
+                    y = y - (prefix:GetStringHeight() + 2)
+                end
+            end
         end
     end
 

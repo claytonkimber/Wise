@@ -1534,10 +1534,12 @@ function Wise:CreateGroupFrame(name, instanceId)
     end)
     
     f:SetScript("OnHide", function(self)
-        -- Reset hover indication on all buttons
-        for _, btn in ipairs(self.buttons or {}) do
-            btn:SetScale(1.0)
-            HideHoverGlow(btn)
+        -- Reset hover indication on all buttons (skip in combat — protected frames)
+        if not InCombatLockdown() then
+            for _, btn in ipairs(self.buttons or {}) do
+                btn:SetScale(1.0)
+                HideHoverGlow(btn)
+            end
         end
 
         -- Cancel nested close-on-leave ticker
