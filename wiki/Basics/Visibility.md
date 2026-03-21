@@ -1,27 +1,72 @@
 # Visibility Settings
 
-Wise gives you powerful control over when and how your interfaces appear on your screen. You can set up interfaces to always show, only show when you hold a key down, or show/hide based on specific game conditions (like being in combat or mounted).
+Visibility controls when an interface is shown on your screen. Wise evaluates visibility conditions every 0.2 seconds using a background ticker, so interfaces respond quickly to game state changes.
 
-## How to Configure Visibility
-1. Open the Wise Options Panel (`/wise`).
-2. Select an interface from the list on the left.
-3. Click the **Settings** tab.
-4. Scroll down to the **Visibility** section.
+> **Important:** An interface with no visibility settings configured is considered **disabled** — it won't load or appear in-game at all. You must configure at least one visibility rule.
 
-## Basic Visibility Options
-The "Easy Mode" visibility checkboxes allow you to quickly set common conditions without writing Lua or macro conditionals.
+## Configuring visibility
 
-*   **In Combat:** Show the interface when you are in combat.
-*   **Out of Combat:** Show the interface when you are out of combat.
-*   **Hold to Show:** If enabled, the interface will only be visible while you hold down its assigned Keybind. When you release the key, the interface hides and the action under your mouse is executed (if applicable).
-*   **Toggle on Press:** If enabled, pressing the assigned Keybind will toggle the interface's visibility on or off.
+1. Open the Options Panel (`/wise`)
+2. Select your interface in the left sidebar
+3. Click the **Settings** tab
+4. Scroll down to the **Visibility** section
 
-## Advanced Visibility Options
-For more complex scenarios, you can use macro conditionals. This allows you to show or hide interfaces based on things like your current form, if you are flying, or if you have a specific target.
+## Easy-mode checkboxes
 
-*   **Show Conditionals:** The interface will be shown if any of these macro conditionals are met. (e.g., `[combat]`, `[mounted]`, `[form:1]`)
-*   **Hide Conditionals:** The interface will be hidden if any of these macro conditionals are met, overriding the "Show" settings.
+These cover the most common use cases without writing any conditionals:
 
-If an interface does not have any visibility settings configured (both Custom Show and Custom Hide are empty, and Hold/Toggle are unchecked), it is considered "Disabled" and will not be loaded or shown.
+| Checkbox | Behavior |
+|---|---|
+| **Always Show** | Interface is always visible when loaded |
+| **In Combat** | Show when you enter combat |
+| **Out of Combat** | Show when you leave combat |
+| **Hold to Show** | Only visible while holding the assigned keybind. Releasing the key hides the interface and executes the button under your cursor (if any). |
+| **Toggle on Press** | Pressing the assigned keybind toggles the interface on/off |
 
-See [Custom Conditionals](../Advanced/Conditionals.md) for more details on writing advanced macro conditionals.
+**Hold** and **Toggle** require a keybind to be set in the Keybind section. See [Keybinds](Keybinds.md).
+
+## Custom conditionals
+
+For anything beyond the checkboxes, use the **Custom Show** and **Custom Hide** fields. These accept standard WoW macro conditional syntax.
+
+**Custom Show** — the interface appears when any of these conditions are met.
+**Custom Hide** — the interface is hidden when any of these conditions are met, overriding the show rules.
+
+### Examples
+
+| Goal | Conditional |
+|---|---|
+| Show only while mounted | `[mounted]` |
+| Show only while in a shapeshift form | `[form:1]` or `[bonusbar:1]` |
+| Show only outdoors | `[outdoors]` |
+| Show only in a raid instance | `[instance:raid]` |
+| Show only while in your main spec | `[spec:1]` |
+| Show only while holding Alt | `[mod:alt]` |
+| Hide while dead | `[dead]` (in the Hide field) |
+
+See [Conditionals Reference](../Advanced/Conditionals.md) for the full list of available conditions, including Wise-specific ones like `[bank]`, `[undermouse]`, and `[zoneability]`.
+
+## How show and hide interact
+
+Wise evaluates them in this order:
+
+1. Check **Custom Hide** — if any hide condition is true, the interface is hidden regardless of show conditions.
+2. Check **Custom Show** — if any show condition is true, show the interface.
+3. Check Easy-mode checkboxes (combat, out-of-combat, etc.).
+4. If nothing matches, the interface hides.
+
+This means **Hide always wins** over Show, which is useful for suppressing an interface in specific situations (e.g., show always except `[dead]`).
+
+## Dynamic filtering (per-character visibility)
+
+Beyond showing/hiding the whole interface, you can also control which **slots** are visible per character using state conditions. Each slot's states can be restricted to specific classes, specs, talents, or characters — slots whose conditions don't match the current character simply don't appear.
+
+This is what makes Wise account-wide: you configure one interface with states for every class you play, and each character only sees the relevant slots.
+
+See [Context-Sensitive Slots](../Advanced/States.md) for details.
+
+## Inherited visibility
+
+When a child interface is nested inside a parent, it inherits the parent's visibility rules. The child can additionally define its own show/hide conditions on top of the inherited ones.
+
+See [Nested Interfaces](../Advanced/Nesting.md) for nesting details.

@@ -1,37 +1,94 @@
-# Setting up your first interface
+# Setting Up Your First Interface
 
-Welcome to Wise! Wise lets you create multiple types of action bar interfaces. This guide will help you create your first one.
+This guide walks you through creating an interface, adding actions, configuring its appearance, and getting it on your screen.
 
 ## Opening the Options Panel
-Type `/wise` in your chat window, or click the Wise minimap button to open the Options Panel.
 
-## Creating an Interface
-1. In the Options Panel, find the input box at the top left to name your new interface.
-2. Select the type of layout you want from the dropdown (Circle, Box, Line, List, Button).
-3. Click the **"+"** button to create it.
-4. Your new interface will appear in the list on the left. Click it to open its configuration.
+Type `/wise` in chat, or click the **Wise** button on your minimap. The Options Panel is your central hub for everything.
 
-## Adding Actions to Slots
-Once you've created an interface, you'll see a list of numbered slots.
-1. Click the **Action** button on a slot to open the Action Picker.
-2. The Action Picker lets you choose what the button will do. You can search for Spells, Items, Macros, Equipment Sets, Mounts, and more.
-3. Select an action. The button will update.
+## The Options Panel layout
 
-## Interface Types
-- **Circle**: A classic ring layout.
-- **Box**: A grid of rows and columns (like a standard action bar).
-- **Line**: A single row or column.
-- **List**: A vertical list with labels.
-- **Button**: A single standalone button.
+- **Left sidebar** — list of all your interfaces (yours + built-in Wiser interfaces)
+- **Middle panel** — slots/actions for the selected interface
+- **Right panel** — properties for the selected slot or state
+- **Top tabs** — Editor · Settings · Conditionals · Info
 
-## Properties and Settings
-In the Options Panel, with your interface selected:
-- **Properties Tab**: This is where you add actions to slots and manage multiple states (see [Context-Sensitive Slots](../Advanced/States.md)).
-- **Settings Tab**: Here you can customize the appearance of the interface (Icon Size, Padding, Columns, Radius, etc.) and configure visibility rules (see [Visibility Settings](Visibility.md)).
+## Creating an interface
 
-## Assigning Keybinds
-If your interface only has one button (or if you just want to trigger a ring or list to appear under your mouse), you can set a **Global Keybind** in the Settings tab.
+1. At the top of the left sidebar, type a name in the input box (e.g. "Cooldowns").
+2. Pick a layout type from the dropdown:
+   - **Circle** — radial ring of buttons, great for hover menus
+   - **Box** — grid (configure rows and columns in Settings)
+   - **Line** — single horizontal or vertical bar
+   - **List** — vertical text list with clickable labels
+   - **Button** — a single standalone button
+3. Click **+** to create it.
 
-For individual buttons within an interface:
-1. Click the **Keybind** button next to a slot in the Properties tab.
-2. Press the key you want to bind to that slot.
+Your new interface appears in the sidebar. Click it to open its configuration.
+
+## Adding actions to slots
+
+1. In the middle panel, click **+ Add Slot** (or the **+** at the bottom of the slot list).
+2. Click the **Action** button on the new slot to open the Action Picker.
+3. Search or browse by category — Spells, Items, Mounts, Macros, Equipment Sets, Interfaces, and more.
+4. Select an action to assign it to the slot.
+
+The slot icon updates immediately. Repeat for each slot you want.
+
+**Tip:** You can drag spells or items directly from your spellbook or bags onto any slot in the Options Panel. Dragging onto an empty slot sets its action; dragging onto the **+** button on an existing slot adds it as a new [state](../Advanced/States.md).
+
+## Reordering slots
+
+Drag the grip handle (the dotted area) on the left side of any slot row up or down to reorder.
+
+## Configuring appearance
+
+Select your interface and click the **Settings** tab. Key options:
+
+| Setting | What it controls |
+|---|---|
+| Icon Size | Size of action icons in pixels |
+| Padding | Space between buttons |
+| Columns / Radius | Grid columns (Box) or ring radius (Circle) |
+| Font / Text Size | Label text below icons |
+| Show Keybinds | Overlay hotkey text on buttons |
+| Hide Empty Slots | Don't show unfilled or condition-failed slots |
+| Show Countdown Text | Cooldown timer numbers on buttons |
+| Show Charge Text | Charge count display position |
+
+## Enabling the interface
+
+An interface only appears in-game when it has at least one **Visibility** setting configured. In the Settings tab, scroll to the **Visibility** section and choose one of:
+
+- **Always Show** — visible whenever the interface is loaded
+- **In Combat / Out of Combat** — quick checkboxes
+- **Hold to Show** — appears only while holding the assigned keybind
+- **Custom Show conditionals** — macro-style conditions (e.g. `[combat]`)
+
+See [Visibility Settings](Visibility.md) for the full reference.
+
+## Assigning a keybind
+
+You can assign a hotkey to the whole interface (to show/hide or trigger it) or to individual slots.
+
+**Interface-level keybind:** Settings tab → Keybind section → click the keybind box and press a key.
+
+**Slot-level keybind:** In the Properties tab, click the **Keybind** button on a slot row and press a key.
+
+See [Keybinds](Keybinds.md) for trigger modes and advanced options.
+
+## Positioning the interface
+
+Use **Edit Mode** (button in the top-right of the Options Panel) to drag interfaces around your screen visually, or use the X/Y nudgers in the Settings tab for pixel-perfect placement.
+
+See [Moving Interfaces](EditMode.md).
+
+## Quick-start example: a combat cooldown ring
+
+1. Create interface "Combat CDs", type **Circle**
+2. Add slots: your major offensive cooldowns as Spell actions
+3. Settings tab → Visibility → check **In Combat**
+4. Settings tab → Keybind → bind to a key with trigger mode **Hold**
+5. Exit Edit Mode after positioning it on screen
+
+Now the ring only appears when you're in combat, and holding your key shows the full ring under your mouse for quick clicking.

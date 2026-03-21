@@ -1,34 +1,79 @@
-# Importing and Exporting Interfaces
+# Importing and Exporting
 
-Wise allows you to share your complex interface configurations with others, or back them up, using an import/export string format.
+Wise lets you export any interface as a shareable string and import strings from others. This is useful for:
+- Sharing setups with friends or guildmates
+- Backing up your configuration before making big changes
+- Distributing community-made interface templates
 
-## Exporting an Interface
+---
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Select the interface you want to share.
-3.  Click the **Export** button (usually located in the top right or near the interface name).
-4.  A text box will appear with a long string of characters. This is the Base64 encoded representation of your interface data.
-5.  Copy this string to your clipboard (`Ctrl+C` or `Cmd+C`).
+## Exporting an interface
 
-## Importing an Interface
+1. Open the Options Panel (`/wise`)
+2. Select the interface you want to export in the left sidebar
+3. Click the **Export** button (near the interface name or in the Settings tab)
+4. A text box appears with a long Base64-encoded string
+5. Copy the string (`Ctrl+C`)
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Click the **Import** button (often near the 'Create New' section).
-3.  Paste the string you copied earlier into the text box (`Ctrl+V` or `Cmd+V`).
-4.  Click **Import**.
+The exported string contains all of your interface's configuration: layout type, every slot and its states, all conditions, appearance settings, position, and visibility rules.
 
-## Handling Import Conflicts
+---
 
-If you try to import an interface that has the same name as one you already have, Wise will detect the conflict.
+## Importing an interface
 
-1.  A popup window (`WISE_IMPORT_RENAME`) will appear.
-2.  It will display the name of the conflicting interface.
-3.  You can choose to:
-    *   **Rename:** Type a new name in the text box and click **Import**.
-    *   **Skip:** Click **Skip** to ignore this interface and proceed with the rest of the import (if multiple interfaces were in the string).
+1. Open the Options Panel (`/wise`)
+2. Click the **Import** button (in the Settings tab or near the "New Interface" area)
+3. Paste the string into the text box (`Ctrl+V`)
+4. Click **Import**
 
-## Important Note on OPie Imports
+Wise decodes and validates the string, then adds the interface to your list. If the import string contains multiple interfaces (a bundle), they're all imported.
 
-If you are trying to import an OPie configuration, Wise **cannot** decompress OPie strings that begin with the header `oetohH7`.
+---
 
-To import an OPie configuration into Wise, you must first export it from OPie using the **'Snapshot > Copy as Lua'** option to generate an uncompressed, compatible string.
+## Handling naming conflicts
+
+If an imported interface has the same name as one you already have, Wise pauses and asks what to do:
+
+1. A rename dialog appears showing the conflicting name
+2. You can either:
+   - **Rename** — type a new name and click Import to add it with the new name
+   - **Skip** — ignore this interface (if importing a bundle, the rest continue)
+
+This prevents accidental overwrites of interfaces you've already customized.
+
+---
+
+## What's included in the export
+
+The export string is a complete snapshot of the interface at the time of export:
+
+- Interface name, type (Circle/Box/Line/List/Button)
+- Every slot and all its states, including conditions and conflict strategies
+- All action types and values (spell IDs, item IDs, macro text, etc.)
+- Appearance settings (icon size, padding, font, colors)
+- Visibility and keybind settings
+- Position (anchor, X/Y offset)
+
+It does **not** include account-specific data like character names used in character-specific state filters (those are stored by name and will still work if the same character exists on the importing account).
+
+---
+
+## Importing from OPie
+
+If you have a ring configured in OPie and want to bring it into Wise, you cannot use OPie's default export format (strings beginning with `oetohH7` are compressed and incompatible with Wise's importer).
+
+**Workaround:**
+1. In OPie, open the ring you want to migrate
+2. Use **Snapshot → Copy as Lua** to generate an uncompressed representation
+3. This format can be parsed by Wise on import
+
+---
+
+## Sharing community configs
+
+When sharing a Wise export string:
+- Post it in a pastebin, Discord message, or wherever you share WoW addon configs
+- Recipients paste the string into their Wise Import dialog
+- All states, conditions, and layout settings come through intact
+
+Spells and items resolve by ID, so they work regardless of game locale. Custom macros are exported as text and come through verbatim.
