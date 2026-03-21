@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.20260321] - 2026-03-21
+
+- [Feature] Add Spec and Equipment Changer tool module to Wiser Interfaces
+- [Feature] Implement two-column visibility restriction picker with plain English summaries and tree-like navigation
+- [Perf] Optimize `Wise:GetTransportation` performance by caching `string.lower` results
+- [Fix] Resolve override/vehicle bar icons and correctly hide empty bar slots
+- [Fix] Add 'Leave Vehicle' button to Override bars category in the action picker
+- [Fix] Fix UI text overlap and update terminology for availability filtering (Show/Hide rules)
+- [Fix] Add robustness with nil checks for `C_EquipmentManager`, `C_ClassTalents`, and `C_Traits` APIs to avoid internal errors
+- [Fix] Fix visibility show/hide rules and layout clobbering in the properties panel
+
 ## [1.0.20260317] - 2026-03-17
 
 - [Feature] Overhaul nesting system with three top-level modes: Jump (Open), Button, and Embedded
