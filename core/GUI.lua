@@ -366,25 +366,60 @@ function Wise:CreateGroup(name, type)
 end
 
 function Wise:DeleteGroup(name)
+    if InCombatLockdown() then
+        print("|cff00ccff[Wise]|r Cannot delete interface in combat (protected).")
+        return
+    end
+
     local f = Wise.frames[name]
     if f then
-        if InCombatLockdown() then
-            print("|cff00ccff[Wise]|r Cannot delete interface in combat (protected).")
-            return
-        end
         f:Hide()
-        if f.toggleBtn then f.toggleBtn:Hide() end
+
+        -- Hide and disable toggle button (keybind target)
+        if f.toggleBtn then
+            f.toggleBtn:Hide()
+            f.toggleBtn:SetAttribute("type", nil)
+        end
+
+        -- Hide visual display overlay
         if f.visualDisplay then f.visualDisplay:Hide() end
+
+        -- Cancel active tickers
+        if f.customVisTicker then
+            f.customVisTicker:Cancel()
+            f.customVisTicker = nil
+        end
+
+        -- Stop undermouse tracking
+        if f.undermouseFrame then
+            f.undermouseFrame:SetScript("OnUpdate", nil)
+            f.undermouseFrame:Hide()
+        end
+
+        -- Unregister state drivers
+        UnregisterStateDriver(f, "game")
+        UnregisterStateDriver(f, "visibility")
+
         -- Unregister events/scripts to stop updates
         f:SetScript("OnUpdate", nil)
         if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
-        
+
         -- Clear from internal frame registry
         Wise.frames[name] = nil
     end
-    
+
     WiseDB.groups[name] = nil
 
+    -- Clear embedded parent references
+    if Wise._embeddedParents then
+        for childName, parentName in pairs(Wise._embeddedParents) do
+            if parentName == name or childName == name then
+                Wise._embeddedParents[childName] = nil
+            end
+        end
+    end
+
+    -- Remove references from other groups that nest this interface
     local modifiedParents = {}
     for gName, group in pairs(WiseDB.groups) do
         if gName ~= name then
@@ -419,6 +454,16 @@ function Wise:DeleteGroup(name)
 
     for pName in pairs(modifiedParents) do
         Wise:UpdateGroupDisplay(pName)
+    end
+
+    -- Rebuild keybinds so deleted group's binding is cleared
+    Wise:UpdateBindings()
+
+    -- Deselect if this was the selected group
+    if Wise.selectedGroup == name then
+        Wise.selectedGroup = nil
+        Wise.selectedSlot = nil
+        Wise.selectedState = nil
     end
 
     Wise:UpdateOptionsUI()
@@ -852,31 +897,151 @@ function Wise:CreateGroupFrame(name, instanceId)
     
     local uiName = "WiseGroup_" .. (instanceId and instanceId:gsub("[: ]", "_") or name)
     local f = CreateFrame("Frame", uiName, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
+
+    -- WoW's CreateFrame reuses existing global frames by name. If a group was deleted
+    -- and recreated with the same name, the old frame comes back with stale attributes,
+    -- child buttons, handlers, etc. Detect this and reset the frame to a clean state.
+    local isStaleReuse = (f.buttons ~= nil)
+    if isStaleReuse then
+        -- Reset stale child buttons' attributes but keep the Lua table/frames intact
+        -- so UpdateGroupDisplay can reuse them (avoiding duplicate texture creation)
+        for _, oldBtn in ipairs(f.buttons) do
+            oldBtn:Hide()
+            oldBtn:SetAttribute("type", nil)
+            oldBtn:SetAttribute("spell", nil)
+            oldBtn:SetAttribute("item", nil)
+            oldBtn:SetAttribute("macro", nil)
+            oldBtn:SetAttribute("macrotext", nil)
+            oldBtn:SetAttribute("clickbutton", nil)
+            oldBtn:SetAttribute("isa_is_interface", nil)
+            oldBtn:SetAttribute("isa_interface_target", nil)
+            oldBtn:SetAttribute("isa_nest_mode", nil)
+            oldBtn:SetAttribute("isa_nest_count", nil)
+            oldBtn:SetAttribute("isa_open_button", nil)
+            oldBtn:SetAttribute("isa_open_direction", nil)
+            oldBtn:SetAttribute("_onenter", nil)
+            oldBtn:SetAttribute("_onclick", nil)
+            -- Clear isa_type/spell/item/macrotext/cond for states
+            for si = 1, (oldBtn:GetAttribute("isa_count") or 0) do
+                oldBtn:SetAttribute("isa_type_" .. si, nil)
+                oldBtn:SetAttribute("isa_spell_" .. si, nil)
+                oldBtn:SetAttribute("isa_item_" .. si, nil)
+                oldBtn:SetAttribute("isa_macrotext_" .. si, nil)
+                oldBtn:SetAttribute("isa_cond_" .. si, nil)
+                oldBtn:SetAttribute("isa_offgcd_" .. si, nil)
+                oldBtn:SetAttribute("isa_clickbutton_name_" .. si, nil)
+            end
+            oldBtn:SetAttribute("isa_count", nil)
+            oldBtn:SetAttribute("isa_conflict", nil)
+            oldBtn:SetAttribute("isa_seq", nil)
+            -- Clear nest child attributes
+            for ni = 1, (oldBtn:GetAttribute("isa_nest_count") or 0) do
+                oldBtn:SetAttribute("isa_nest_type_" .. ni, nil)
+                oldBtn:SetAttribute("isa_nest_spell_" .. ni, nil)
+                oldBtn:SetAttribute("isa_nest_item_" .. ni, nil)
+                oldBtn:SetAttribute("isa_nest_macrotext_" .. ni, nil)
+                oldBtn:SetAttribute("isa_nest_clickbutton_name_" .. ni, nil)
+                oldBtn:SetAttribute("isa_nest_cond_" .. ni, nil)
+            end
+            -- Re-parent to the group frame (in case SetParent was called during delete)
+            oldBtn:SetParent(f)
+        end
+    end
+    if f.toggleBtn then
+        f.toggleBtn:Hide()
+        f.toggleBtn:SetAttribute("type", nil)
+        f.toggleBtn:SetAttribute("spell", nil)
+        f.toggleBtn:SetAttribute("item", nil)
+        f.toggleBtn:SetAttribute("macrotext", nil)
+        f.toggleBtn:SetAttribute("hoveredButton", nil)
+        f.toggleBtn:SetAttribute("buttonCount", nil)
+        f.toggleBtn:SetAttribute("maxButtonRefs", nil)
+        f.toggleBtn:SetAttribute("trigger", nil)
+        f.toggleBtn:SetAttribute("layoutType", nil)
+        f.toggleBtn:SetAttribute("visibleWhenHeld", nil)
+        f.toggleBtn:SetAttribute("toggleOnPress", nil)
+        f.toggleBtn:SetAttribute("hideOnUse", nil)
+        f.toggleBtn:SetAttribute("pressAndHoldAction", nil)
+        f.toggleBtn:SetAttribute("ul_type", nil)
+        f.toggleBtn:SetAttribute("ul_spell", nil)
+        f.toggleBtn:SetAttribute("ul_item", nil)
+        f.toggleBtn:SetAttribute("ul_macrotext", nil)
+    end
+    -- Clear stale secure attributes on the group frame itself
+    f:SetAttribute("state-manual", nil)
+    f:SetAttribute("state-game", nil)
+    f:SetAttribute("state-custom", nil)
+    f:SetAttribute("state-wise-show", nil)
+    f:SetAttribute("state-wise-hide", nil)
+    f:SetAttribute("state-editmode", nil)
+    f:SetAttribute("nestedKeybinds", nil)
+    f:SetAttribute("nested_max_keys", nil)
+    f:SetAttribute("wiseGroupName", nil)
+    -- Clear stale scripts
+    f:SetScript("OnUpdate", nil)
+    if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
+    -- Cancel stale tickers
+    if f.customVisTicker then
+        f.customVisTicker:Cancel()
+        f.customVisTicker = nil
+    end
+    if f.undermouseFrame then
+        f.undermouseFrame:SetScript("OnUpdate", nil)
+        f.undermouseFrame:Hide()
+    end
+    -- Unregister any leftover state drivers
+    UnregisterStateDriver(f, "game")
+    UnregisterStateDriver(f, "visibility")
+
+    f:Hide()
     f:SetSize(50, 50)
     f:EnableMouse(false) -- Default to click-through (enabled only in Edit Mode)
-    
+
     -- Proxy Anchor Pattern:
     -- Create an insecure anchor frame that we can move freely (even in combat).
     -- The Secure Group is anchored to this proxy.
     -- This allows "spawn at mouse" logic to work in combat (mostly).
-    f.Anchor = CreateFrame("Frame", nil, UIParent)
+    if not f.Anchor then
+        f.Anchor = CreateFrame("Frame", nil, UIParent)
+    end
     f.Anchor:SetSize(1, 1)
+    f.Anchor:ClearAllPoints()
     f.Anchor:SetPoint("CENTER")
-    
+
     f:ClearAllPoints()
-    f:SetPoint("CENTER", f.Anchor, "CENTER") 
-    f.buttons = {}
-    
-    -- Visual anchor for Edit Mode
-    f.texture = f:CreateTexture(nil, "BACKGROUND")
-    f.texture:SetAllPoints()
-    f.texture:SetColorTexture(0, 0, 0, 0.5)
+    f:SetPoint("CENTER", f.Anchor, "CENTER")
+    -- Keep existing buttons array on stale reuse (avoids duplicate texture creation)
+    if not isStaleReuse then
+        f.buttons = {}
+    end
+
+    -- Visual anchor for Edit Mode (reuse existing texture on stale frames)
+    if not f.texture then
+        f.texture = f:CreateTexture(nil, "BACKGROUND")
+        f.texture:SetAllPoints()
+        f.texture:SetColorTexture(0, 0, 0, 0.5)
+    end
     f.texture:Hide()
-    
-    -- Secure Toggle Button (Hidden)
+
     -- Secure Toggle Button (Hidden but active)
     -- Must be parented to UIParent (or similar) so it doesn't get hidden when 'f' is hidden by State Driver
-    local toggleBtn = CreateFrame("Button", "WiseGroupToggle_"..(instanceId and instanceId:gsub("[: ]", "_") or name), UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
+    local toggleBtnName = "WiseGroupToggle_"..(instanceId and instanceId:gsub("[: ]", "_") or name)
+    local toggleBtn = CreateFrame("Button", toggleBtnName, UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
+    -- Reset toggle button in case of stale reuse
+    toggleBtn:Hide()
+    toggleBtn:SetAttribute("type", nil)
+    toggleBtn:SetAttribute("spell", nil)
+    toggleBtn:SetAttribute("item", nil)
+    toggleBtn:SetAttribute("macrotext", nil)
+    toggleBtn:SetAttribute("hoveredButton", nil)
+    toggleBtn:SetAttribute("buttonCount", nil)
+    toggleBtn:SetAttribute("maxButtonRefs", nil)
+    toggleBtn:SetAttribute("trigger", nil)
+    toggleBtn:SetAttribute("layoutType", nil)
+    toggleBtn:SetAttribute("visibleWhenHeld", nil)
+    toggleBtn:SetAttribute("toggleOnPress", nil)
+    toggleBtn:SetAttribute("hideOnUse", nil)
+    toggleBtn:SetAttribute("pressAndHoldAction", nil)
     toggleBtn:RegisterForClicks("AnyDown", "AnyUp")
     -- SecureHandlerAttributeTemplate provides SetFrameRef via SecureHandler_OnLoad mixin
     
@@ -3793,10 +3958,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             end
         elseif aType == "spell" then
             -- Check for spell charges first
+            -- pcall guards against tainted return values from C_Spell.GetSpellCharges
+            -- which can occur when called during secure handler execution (e.g. battlegrounds)
             if spellID then
-                local chargeInfo = C_Spell.GetSpellCharges(spellID)
-                if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
-                    count = chargeInfo.currentCharges
+                local chargeOk, chargeMax, chargeCur = pcall(function()
+                    local ci = C_Spell.GetSpellCharges(spellID)
+                    if ci and ci.maxCharges and ci.maxCharges > 1 then
+                        return ci.maxCharges, ci.currentCharges
+                    end
+                end)
+                if chargeOk and chargeMax then
+                    count = chargeCur or 0
                     isChargeSpell = true
                 end
             end
