@@ -1407,12 +1407,16 @@ function Wise:RenderGroupProperties(panel, group, y)
              tinsert(panel.controls, nameLabel)
 
              y = y - 20
+             local isUntitled = group.isUntitled
              local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
              nameEdit:SetSize(180, 20)
              nameEdit:SetPoint("TOPLEFT", 14, y)
              nameEdit:SetAutoFocus(false)
-             nameEdit:SetText(Wise.selectedGroup or "")
+             nameEdit:SetText(isUntitled and "" or (Wise.selectedGroup or ""))
              nameEdit:SetCursorPosition(0)
+
+             -- Store reference for external access (e.g. tutorial targeting)
+             Wise.groupNameEditBox = nameEdit
 
              local statusBtn = CreateFrame("Button", nil, panel)
              statusBtn:SetSize(20, 20)
@@ -1426,11 +1430,16 @@ function Wise:RenderGroupProperties(panel, group, y)
 
                   if not newName then return false end
 
-                  if newName == oldName then
+                  -- For untitled groups, any non-empty valid name is acceptable
+                  if not isUntitled and newName == oldName then
                       return false, nil, false, "No change"
                   end
 
                   if newName:match("^%s*$") then
+                      if isUntitled then
+                          -- Don't show error icon for untitled — just waiting for input
+                          return false, nil, false, nil
+                      end
                       return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Name cannot be empty."
                   end
 
@@ -1475,6 +1484,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 
                      -- Rename Group
                      WiseDB.groups[newName] = WiseDB.groups[oldName]
+                     WiseDB.groups[newName].isUntitled = nil  -- Clear untitled flag
                      WiseDB.groups[oldName] = nil
                      Wise.selectedGroup = newName
 
@@ -1482,9 +1492,12 @@ function Wise:RenderGroupProperties(panel, group, y)
                      local oldF = Wise.frames[oldName]
                      if oldF then
                          oldF:Hide()
+                         if oldF.toggleBtn then oldF.toggleBtn:Hide() end
                          if oldF.visualDisplay then oldF.visualDisplay:Hide() end
+                         if oldF.customVisTicker then oldF.customVisTicker:Cancel() end
                          oldF:SetScript("OnUpdate", nil)
                          if oldF.Anchor then oldF.Anchor:SetScript("OnUpdate", nil) end
+                         UnregisterStateDriver(oldF, "game")
                          UnregisterStateDriver(oldF, "visibility")
                          Wise.frames[oldName] = nil
                      end
@@ -1495,6 +1508,9 @@ function Wise:RenderGroupProperties(panel, group, y)
                      -- Update Bindings (since button name changed)
                      Wise:UpdateBindings()
 
+                     -- Update local state so subsequent edits know we're no longer untitled
+                     isUntitled = false
+
                      -- Refresh UI
                      Wise:UpdateOptionsUI()
                  elseif msg then
@@ -1503,15 +1519,26 @@ function Wise:RenderGroupProperties(panel, group, y)
                      GameTooltip:SetText("Cannot Rename", 1, 0, 0)
                      GameTooltip:AddLine(msg, 1, 1, 1)
                      GameTooltip:Show()
-                 elseif text == Wise.selectedGroup then
+                 elseif not isUntitled and text == Wise.selectedGroup then
                      nameEdit:ClearFocus()
                  end
              end
 
              nameEdit:SetScript("OnEnterPressed", AttemptRename)
-             nameEdit:SetScript("OnEditFocusLost", AttemptRename)
+             nameEdit:SetScript("OnEditFocusLost", function(self)
+                 -- For untitled groups with empty text, don't attempt rename on focus loss
+                 -- (would show confusing error) — just let them keep editing
+                 if isUntitled and self:GetText():match("^%s*$") then
+                     return
+                 end
+                 AttemptRename()
+             end)
              nameEdit:SetScript("OnEscapePressed", function(self)
-                 self:SetText(Wise.selectedGroup or "")
+                 if isUntitled then
+                     self:SetText("")
+                 else
+                     self:SetText(Wise.selectedGroup or "")
+                 end
                  self:ClearFocus()
                  UpdateStatus()
              end)
@@ -1538,6 +1565,13 @@ function Wise:RenderGroupProperties(panel, group, y)
 
              -- Initial update
              UpdateStatus()
+
+             -- Auto-focus for newly created untitled interfaces
+             if Wise.pendingNameFocus then
+                 Wise.pendingNameFocus = nil
+                 nameEdit:SetFocus()
+             end
+
              y = y - 30
          end
     end

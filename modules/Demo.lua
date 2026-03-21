@@ -149,10 +149,49 @@ local function CreateScrollIndicator()
     return f
 end
 
+local function HideScrollIndicator()
+    if scrollIndicator then
+        scrollIndicator.bounceGroup:Stop()
+        scrollIndicator:Hide()
+    end
+end
+
 local function ShowScrollIndicator(targetControl)
     local f = CreateScrollIndicator()
 
-    -- Anchor to the right side of the properties scroll frame
+    -- Check if the target is already visible in the scroll frame — if so, skip
+    if targetControl and Wise.OptionsFrame and Wise.OptionsFrame.Right and Wise.OptionsFrame.Right.Scroll then
+        local scroll = Wise.OptionsFrame.Right.Scroll
+        local ctrlTop = targetControl.GetTop and targetControl:GetTop()
+        local ctrlBottom = targetControl.GetBottom and targetControl:GetBottom()
+        local scrollTop = scroll.GetTop and scroll:GetTop()
+        local scrollBottom = scroll.GetBottom and scroll:GetBottom()
+        if ctrlTop and ctrlBottom and scrollTop and scrollBottom then
+            if ctrlBottom >= scrollBottom and ctrlTop <= scrollTop then
+                -- Target is already visible, just hide any existing indicator and return
+                HideScrollIndicator()
+                return
+            end
+        end
+
+        -- Auto-scroll to the target control
+        local content = Wise.OptionsFrame.Right.Content
+        if content and ctrlTop and content.GetTop then
+            local contentTop = content:GetTop()
+            if contentTop then
+                local offset = contentTop - ctrlTop - 40 -- 40px padding from top
+                if offset < 0 then offset = 0 end
+                local maxScroll = scroll:GetVerticalScrollRange() or 0
+                if offset > maxScroll then offset = maxScroll end
+                scroll:SetVerticalScroll(offset)
+                -- After scrolling, the target should now be visible — don't show bounce
+                HideScrollIndicator()
+                return
+            end
+        end
+    end
+
+    -- Target not found or not in scroll frame — show generic bounce indicator
     f:ClearAllPoints()
     if Wise.OptionsFrame and Wise.OptionsFrame.Right then
         f:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", -30, 10)
@@ -162,38 +201,20 @@ local function ShowScrollIndicator(targetControl)
 
     f:Show()
     f.bounceGroup:Play()
-
-    -- Also try to auto-scroll to the target control
-    if targetControl and Wise.OptionsFrame and Wise.OptionsFrame.Right and Wise.OptionsFrame.Right.Scroll then
-        local scroll = Wise.OptionsFrame.Right.Scroll
-        local content = Wise.OptionsFrame.Right.Content
-        if content and targetControl.GetTop and content.GetTop then
-            local contentTop = content:GetTop()
-            local ctrlTop = targetControl:GetTop()
-            if contentTop and ctrlTop then
-                local offset = contentTop - ctrlTop - 40 -- 40px padding from top
-                if offset < 0 then offset = 0 end
-                local maxScroll = scroll:GetVerticalScrollRange() or 0
-                if offset > maxScroll then offset = maxScroll end
-                scroll:SetVerticalScroll(offset)
-            end
-        end
-    end
-end
-
-local function HideScrollIndicator()
-    if scrollIndicator then
-        scrollIndicator.bounceGroup:Stop()
-        scrollIndicator:Hide()
-    end
 end
 
 -- Ensure the group-level properties panel is showing for the user's interface
 local function EnsureGroupSelected()
     if not demoActive or not lastCreatedGroup then return end
-    
+
+    -- If lastCreatedGroup was renamed, update to track the current selected group
+    if not WiseDB.groups[lastCreatedGroup] and Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup] then
+        lastCreatedGroup = Wise.selectedGroup
+    end
+
     local needsRefresh = false
-    if Wise.selectedGroup ~= lastCreatedGroup then
+    -- Only force-select if the group actually exists
+    if WiseDB.groups[lastCreatedGroup] and Wise.selectedGroup ~= lastCreatedGroup then
         Wise.selectedGroup = lastCreatedGroup
         needsRefresh = true
     end
@@ -211,8 +232,10 @@ end
 
 -- Ensure a specific slot+state is selected so properties show action-level controls
 local function EnsureSlotSelected(slotIdx, stateIdx)
+    stateIdx = stateIdx or 1
+    if Wise.selectedSlot == slotIdx and Wise.selectedState == stateIdx then return end
     Wise.selectedSlot = slotIdx
-    Wise.selectedState = stateIdx or 1
+    Wise.selectedState = stateIdx
     if Wise.RefreshPropertiesPanel then Wise:RefreshPropertiesPanel() end
 end
 
@@ -396,61 +419,71 @@ local Steps = {
         point = HelpTip.Point.RightEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
-            local btn = Wise.OptionsFrame and Wise.OptionsFrame.Sidebar and Wise.OptionsFrame.Sidebar.AddBtn
-            Glow(btn)
-        end,
-        onExit = function()
-            local btn = Wise.OptionsFrame and Wise.OptionsFrame.Sidebar and Wise.OptionsFrame.Sidebar.AddBtn
-            Unglow(btn)
-        end,
-        check = function()
-            return StaticPopup_Visible("WISE_CREATE_GROUP")
-        end,
-    },
-
-    -- 7. Name it and click Create
-    {
-        text = "Type a name for your interface (e.g. 'My Spells') and click Accept.",
-        target = function() return _G["StaticPopup1"] or UIParent end,
-        point = HelpTip.Point.TopEdgeCenter,
-        buttonStyle = HelpTip.ButtonStyle.None,
-        onEnter = function()
             lastCreatedGroup = nil
-        end,
-        check = function()
-            return lastCreatedGroup ~= nil
-        end,
-    },
-
-    -- 8. Select your new interface in the sidebar
-    {
-        text = "Your interface was created! Click it in the sidebar under 'Custom' to select it.",
-        target = function()
-            return Wise.OptionsFrame.Sidebar
-        end,
-        point = HelpTip.Point.RightEdgeTop,
-        buttonStyle = HelpTip.ButtonStyle.None,
-        onEnter = function()
-            local btn = FindSidebarButton(lastCreatedGroup)
+            local btn = Wise.OptionsFrame and Wise.OptionsFrame.Sidebar and Wise.OptionsFrame.Sidebar.AddBtn
             Glow(btn)
         end,
         onExit = function()
-            local btn = FindSidebarButton(lastCreatedGroup)
+            local btn = Wise.OptionsFrame and Wise.OptionsFrame.Sidebar and Wise.OptionsFrame.Sidebar.AddBtn
             Unglow(btn)
         end,
         check = function()
-            return Wise.selectedGroup == lastCreatedGroup
+            return lastCreatedGroup ~= nil and Wise.selectedGroup == lastCreatedGroup
         end,
     },
 
-    -- 9. Add first slot
+    -- 7. Name the new interface
+    {
+        text = "Great! Now give your interface a name (e.g. 'My Spells').\n\nType a name in the 'Interface Name' field and press Enter.",
+        target = function()
+            return Wise.groupNameEditBox or Wise.OptionsFrame.Right
+        end,
+        point = HelpTip.Point.LeftEdgeCenter,
+        buttonStyle = HelpTip.ButtonStyle.None,
+        onEnter = function()
+            local edit = Wise.groupNameEditBox
+            if edit then
+                -- Use a border highlight instead of full glow so cursor/text remain visible
+                if not edit.__WiseTutorialBorder then
+                    local border = CreateFrame("Frame", nil, edit, "BackdropTemplate")
+                    border:SetPoint("TOPLEFT", -4, 4)
+                    border:SetPoint("BOTTOMRIGHT", 4, -4)
+                    border:SetBackdrop({
+                        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                        edgeSize = 12,
+                    })
+                    border:SetBackdropBorderColor(1, 0.82, 0, 1) -- Gold border
+                    border:SetFrameLevel(edit:GetFrameLevel() + 2)
+                    edit.__WiseTutorialBorder = border
+                end
+                edit.__WiseTutorialBorder:Show()
+            end
+        end,
+        onExit = function()
+            local edit = Wise.groupNameEditBox
+            if edit and edit.__WiseTutorialBorder then
+                edit.__WiseTutorialBorder:Hide()
+            end
+            -- Update lastCreatedGroup to the new name after rename
+            if Wise.selectedGroup then
+                lastCreatedGroup = Wise.selectedGroup
+            end
+        end,
+        check = function()
+            -- Pass once the group is no longer untitled (user entered a name)
+            local g = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+            return g and not g.isUntitled
+        end,
+    },
+
+    -- 8. Add first slot
     {
         text = "Your interface is empty. Let's add an action slot.\n\nClick 'Add New Slot'.",
         target = function()
             return Wise.OptionsFrame.Middle.AddSlotBtn or Wise.OptionsFrame.Middle
         end,
         point = HelpTip.Point.RightEdgeCenter,
-        buttonStyle = HelpTip.ButtonStyle.None,
+        buttonStyle = HelpTip.ButtonStyle.GotIt,
         onEnter = function()
             local btn = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.AddSlotBtn
             Glow(btn)
@@ -551,18 +584,20 @@ local Steps = {
     {
         text = "Your interface needs a way to appear!\n\nClick the Keybind button and press a key (e.g. Z or a mouse button).\n\nYou may need to scroll down in the properties panel.",
         target = function()
-            return Wise.OptionsFrame.Right
+            local btn = FindControl("Keybind (Right Click", "Button")
+                     or FindControl("None", "Button")
+                     or FindControl("Press", "Button")
+            return btn or Wise.OptionsFrame.Right
         end,
         point = HelpTip.Point.LeftEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             -- Make sure group-level properties are showing
             EnsureGroupSelected()
-            
+
             -- Wait longer to ensure the UI has updated its layout coordinates and frame sizes
             C_Timer.After(0.1, function()
-                local btn = FindControl("Keybind", "Button") 
-                         or FindControl("Assign a keybind", "Button")
+                local btn = FindControl("Keybind (Right Click", "Button")
                          or FindControl("None", "Button")
                          or FindControl("Press", "Button")
 
@@ -573,12 +608,13 @@ local Steps = {
             end)
         end,
         onExit = function()
-            local btn = FindControl("None", "Button") or FindControl("Keybind", "Button")
+            local btn = FindControl("Keybind (Right Click", "Button")
+                     or FindControl("None", "Button")
             Unglow(btn)
             HideScrollIndicator()
         end,
         check = function()
-            local g = WiseDB.groups[lastCreatedGroup]
+            local g = WiseDB.groups[lastCreatedGroup] or WiseDB.groups[Wise.selectedGroup]
             return g and g.binding and g.binding ~= ""
         end,
     },
@@ -587,7 +623,8 @@ local Steps = {
     {
         text = "Now choose how the keybind works.\n\nCheck 'Hold to Show' so your interface appears while you hold the key.\n\nScroll down if you don't see it.",
         target = function()
-            return Wise.OptionsFrame.Right
+            local btn = FindControl("Hold to Show", "CheckButton")
+            return btn or Wise.OptionsFrame.Right
         end,
         point = HelpTip.Point.LeftEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
@@ -605,7 +642,7 @@ local Steps = {
             HideScrollIndicator()
         end,
         check = function()
-            local g = WiseDB.groups[lastCreatedGroup]
+            local g = WiseDB.groups[lastCreatedGroup] or WiseDB.groups[Wise.selectedGroup]
             return g and g.visibilitySettings and g.visibilitySettings.held == true
         end,
     },
@@ -648,10 +685,10 @@ local Steps = {
             Unglow(btn)
             -- Restore editor tab and select the tutorial group
             if Wise.SetTab then Wise:SetTab("Editor") end
-            if lastCreatedGroup then
+            if lastCreatedGroup and WiseDB.groups[lastCreatedGroup] then
                 Wise.selectedGroup = lastCreatedGroup
-                if Wise.UpdateOptionsUI then Wise:UpdateOptionsUI() end
             end
+            if Wise.UpdateOptionsUI then Wise:UpdateOptionsUI() end
         end,
         check = function()
             return Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
@@ -666,16 +703,13 @@ local Steps = {
     {
         text = "Wise supports different layouts.\n\nSelect your interface in the sidebar, then change the Interface Mode from 'Circle' to 'Line' in the properties panel.",
         target = function()
-            return Wise.OptionsFrame.Right
+            local btn = FindControl("Line", "CheckButton")
+            return btn or Wise.OptionsFrame.Right
         end,
         point = HelpTip.Point.LeftEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             -- Make sure our tutorial group is selected and showing group props
-            if Wise.selectedGroup ~= lastCreatedGroup then
-                Wise.selectedGroup = lastCreatedGroup
-                if Wise.UpdateOptionsUI then Wise:UpdateOptionsUI() end
-            end
             EnsureGroupSelected()
             local btn = FindControl("Line", "CheckButton")
             Glow(btn)
@@ -687,24 +721,27 @@ local Steps = {
             HideScrollIndicator()
         end,
         check = function()
-            local g = WiseDB.groups[lastCreatedGroup]
+            local g = WiseDB.groups[lastCreatedGroup] or WiseDB.groups[Wise.selectedGroup]
             return g and g.type == "line"
         end,
     },
 
     -- 17. Toggle Edit Mode ON
     {
-        text = "Now let's position your interface on screen.\n\nClick 'Edit Mode' to start dragging.",
+        text = "Now let's position your interface on screen.\n\nClick 'Wise Edit Mode' to start dragging.",
         target = function()
-            return Wise.OptionsFrame.EditModeBtn or Wise.OptionsFrame
+            return Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn or Wise.OptionsFrame
         end,
         point = HelpTip.Point.TopEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
-            Glow(Wise.OptionsFrame.EditModeBtn)
+            HideScrollIndicator()
+            local btn = Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn
+            Glow(btn)
         end,
         onExit = function()
-            Unglow(Wise.OptionsFrame.EditModeBtn)
+            local btn = Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn
+            Unglow(btn)
         end,
         check = function()
             return Wise.editMode == true
@@ -713,17 +750,19 @@ local Steps = {
 
     -- 18. Drag & lock
     {
-        text = "Drag your interface to your preferred position.\n\nWhen you're happy, click 'Edit Mode' again to lock it in place.",
+        text = "Drag your interface to your preferred position.\n\nWhen you're happy, click 'Wise Edit Mode' again to lock it in place.",
         target = function()
-            return Wise.OptionsFrame.EditModeBtn or Wise.OptionsFrame
+            return Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn or Wise.OptionsFrame
         end,
         point = HelpTip.Point.TopEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
-            Glow(Wise.OptionsFrame.EditModeBtn)
+            local btn = Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn
+            Glow(btn)
         end,
         onExit = function()
-            Unglow(Wise.OptionsFrame.EditModeBtn)
+            local btn = Wise.OptionsFrame.WiseOnlyEditModeBtn or Wise.OptionsFrame.EditModeBtn
+            Unglow(btn)
         end,
         check = function()
             return Wise.editMode == false
@@ -780,20 +819,38 @@ local Steps = {
     {
         text = "Now let's make them swap automatically.\n\nClick on the FIRST state in Slot 1, then type [combat] in the Conditions field.\n\nThis means that spell will only be active during combat.",
         target = function()
-            return Wise.OptionsFrame.Right
+            local btn = FindControl("Conditions", "EditBox")
+            return btn or Wise.OptionsFrame.Right
         end,
-        point = HelpTip.Point.LeftEdgeCenter,
+        point = HelpTip.Point.TopEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             -- Select slot 1, state 1 to show its conditions
             EnsureSlotSelected(1, 1)
             local btn = FindControl("Conditions", "EditBox")
-            Glow(btn)
+            if btn then
+                -- Use a border highlight instead of the full glow overlay so text remains visible
+                if not btn.__WiseTutorialBorder then
+                    local border = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+                    border:SetPoint("TOPLEFT", -4, 4)
+                    border:SetPoint("BOTTOMRIGHT", 4, -4)
+                    border:SetBackdrop({
+                        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                        edgeSize = 12,
+                    })
+                    border:SetBackdropBorderColor(1, 0.82, 0, 1) -- Gold border
+                    border:SetFrameLevel(btn:GetFrameLevel() + 2)
+                    btn.__WiseTutorialBorder = border
+                end
+                btn.__WiseTutorialBorder:Show()
+            end
             ShowScrollIndicator(btn)
         end,
         onExit = function()
             local btn = FindControl("Conditions", "EditBox")
-            Unglow(btn)
+            if btn and btn.__WiseTutorialBorder then
+                btn.__WiseTutorialBorder:Hide()
+            end
             HideScrollIndicator()
         end,
         check = function()
@@ -811,12 +868,29 @@ local Steps = {
     {
         text = "Wise comes with built-in 'Wiser' interfaces that auto-populate.\n\nClick the 'Specs' interface in the sidebar to see one.",
         target = function()
-            return Wise.OptionsFrame.Sidebar
+            local btn = FindSidebarButton("Specs")
+            return btn or Wise.OptionsFrame.Sidebar
         end,
-        point = HelpTip.Point.RightEdgeTop,
+        point = HelpTip.Point.RightEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
+            -- Scroll the sidebar to make the Specs button visible
             local btn = FindSidebarButton("Specs")
+            if btn then
+                local scroll = Wise.OptionsFrame and Wise.OptionsFrame.Sidebar and Wise.OptionsFrame.Sidebar.Scroll
+                if scroll then
+                    local _, _, _, _, yOfs = btn:GetPoint(1)
+                    local btnTop = math.abs(yOfs or 0)
+                    local btnBottom = btnTop + btn:GetHeight()
+                    local visibleHeight = scroll:GetHeight()
+                    local currentScroll = scroll:GetVerticalScroll()
+                    if btnBottom > currentScroll + visibleHeight then
+                        scroll:SetVerticalScroll(btnBottom - visibleHeight)
+                    elseif btnTop < currentScroll then
+                        scroll:SetVerticalScroll(btnTop)
+                    end
+                end
+            end
             Glow(btn)
         end,
         onExit = function()
@@ -842,7 +916,7 @@ local Steps = {
             .. "- Import/Export to share setups\n"
             .. "- The Conditionals tab for a full reference",
         target = function()
-            return Wise.OptionsFrame
+            return Wise.OptionsFrame.Middle or Wise.OptionsFrame
         end,
         point = HelpTip.Point.TopEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.GotIt,
@@ -1056,11 +1130,8 @@ function Wise.Demo:Advance()
     local step = Steps[currentStepIndex]
     if step and step.onExit then step.onExit() end
 
-    -- Hide tip on current target
-    if step then
-        local target = step.target()
-        if target then HelpTip:Hide(target, step.text) end
-    end
+    -- Hide ALL tutorial tips (target frame references may have changed due to UI rebuilds)
+    HelpTip:HideAllSystem("WiseDemo")
 
     currentStepIndex = currentStepIndex + 1
     self:ShowStep(currentStepIndex)

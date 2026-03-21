@@ -57,8 +57,24 @@ function Wise:CreateOptionsFrame()
     f.Sidebar.AddBtn:SetPoint("TOP", f.Sidebar, "TOP", 0, -20)
     Wise:AddTooltip(f.Sidebar.AddBtn, "Create a new custom interface (ring, bar, grid).")
     f.Sidebar.AddBtn:SetScript("OnClick", function()
-        EnsureCreateGroupPopup()
-        StaticPopup_Show("WISE_CREATE_GROUP")
+        -- Generate a unique untitled placeholder name
+        local baseName = "Untitled"
+        local name = baseName
+        local counter = 2
+        while WiseDB.groups[name] do
+            name = baseName .. " (" .. counter .. ")"
+            counter = counter + 1
+        end
+
+        Wise:CreateGroup(name)
+        WiseDB.groups[name].isUntitled = true
+
+        -- Select the new group and request name focus
+        Wise.selectedGroup = name
+        Wise.selectedSlot = nil
+        Wise.selectedState = nil
+        Wise.pendingNameFocus = true
+        Wise:UpdateOptionsUI()
     end)
 
     -- 2. Middle (Button List / Action Picker)
@@ -394,7 +410,13 @@ function Wise:RefreshGroupList()
             table.insert(customGroups, name)
         end
     end
-    table.sort(customGroups)
+    table.sort(customGroups, function(a, b)
+        local aUntitled = WiseDB.groups[a] and WiseDB.groups[a].isUntitled
+        local bUntitled = WiseDB.groups[b] and WiseDB.groups[b].isUntitled
+        if aUntitled and not bUntitled then return true end
+        if not aUntitled and bUntitled then return false end
+        return a < b
+    end)
     table.sort(wiserGroups)
 
     -- Custom Groups List
@@ -488,7 +510,10 @@ function Wise:RefreshGroupList()
         
         local hasVisErrors = Wise:HasVisibilityErrors(name)
 
-        if hasVisErrors then
+        if data.isUntitled then
+            btn.label:SetText("|cff888888(untitled)|r")
+            btn.errorIcon:Hide()
+        elseif hasVisErrors then
             btn.label:SetText("|cffff0000" .. name .. "|r")
             btn.errorIcon:Show()
         else
@@ -916,6 +941,28 @@ function Wise:RefreshGroupList()
     end
     
     container:SetHeight(math.abs(y) + 20)
+
+    -- Auto-scroll to keep the selected group visible
+    local scroll = Wise.OptionsFrame.Sidebar.Scroll
+    if scroll and Wise.selectedGroup then
+        for _, btn in ipairs(container.buttons) do
+            if btn:IsShown() and btn.groupName == Wise.selectedGroup then
+                -- btn y offset is negative (e.g. -47), so top in content space = abs(y)
+                local _, _, _, _, yOfs = btn:GetPoint(1)
+                local btnTop = math.abs(yOfs or 0)
+                local btnBottom = btnTop + btn:GetHeight()
+                local visibleHeight = scroll:GetHeight()
+                local currentScroll = scroll:GetVerticalScroll()
+
+                if btnBottom > currentScroll + visibleHeight then
+                    scroll:SetVerticalScroll(btnBottom - visibleHeight)
+                elseif btnTop < currentScroll then
+                    scroll:SetVerticalScroll(btnTop)
+                end
+                break
+            end
+        end
+    end
 end
 
 -- Old RefreshActionList removed.
