@@ -828,6 +828,14 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     end
 
     -- Remove Action button
+    local isAutoImportedAction = false
+    if group.isWiser then
+        if group.propertyType == "CooldownWiser" then
+            isAutoImportedAction = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and action.autoLoaded
+        else
+            isAutoImportedAction = true
+        end
+    end
     local removeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
     removeBtn:SetSize(140, 22)
     removeBtn:SetPoint("TOPLEFT", 10, y)
@@ -836,22 +844,34 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
         local rs = removeBtn:GetFontString()
         if rs then rs:SetTextColor(1, 0.2, 0.2) end
     end
-    removeBtn:SetScript("OnClick", function()
-        Wise:RemoveActionFromSlot(Wise.selectedGroup, Wise.selectedSlot, Wise.selectedState)
-        -- Selection might be invalid now, so verify
-        local g = WiseDB.groups[Wise.selectedGroup]
-         if not g.actions[Wise.selectedSlot] or not g.actions[Wise.selectedSlot][Wise.selectedState] then
-              Wise.selectedSlot = nil
-              Wise.selectedState = nil
-         end
-        Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-        Wise:RefreshPropertiesPanel()
-        C_Timer.After(0, function()
-            if not InCombatLockdown() then
-                Wise:UpdateGroupDisplay(Wise.selectedGroup)
-            end
+
+    if isAutoImportedAction then
+        removeBtn:Disable()
+        removeBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Auto-imported action", 1, 0.82, 0, true)
+            GameTooltip:AddLine("This action is managed by Wise and cannot be removed.", 1, 1, 1, true)
+            GameTooltip:Show()
         end)
-    end)
+        removeBtn:SetScript("OnLeave", GameTooltip_Hide)
+    else
+        removeBtn:SetScript("OnClick", function()
+            Wise:RemoveActionFromSlot(Wise.selectedGroup, Wise.selectedSlot, Wise.selectedState)
+            -- Selection might be invalid now, so verify
+            local g = WiseDB.groups[Wise.selectedGroup]
+             if not g.actions[Wise.selectedSlot] or not g.actions[Wise.selectedSlot][Wise.selectedState] then
+                  Wise.selectedSlot = nil
+                  Wise.selectedState = nil
+             end
+            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+    end
     tinsert(panel.controls, removeBtn)
 
     y = y - 35
@@ -1353,6 +1373,14 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          end
 
          -- Delete Slot Button
+         local isAutoImportedSlot = false
+         if group.isWiser then
+             if group.propertyType == "CooldownWiser" then
+                 isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
+             else
+                 isAutoImportedSlot = true
+             end
+         end
          local delBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
          delBtn:SetSize(140, 24)
          delBtn:SetPoint("TOPLEFT", 10, y)
@@ -1360,27 +1388,38 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          local btnText = delBtn:GetFontString()
          if btnText then btnText:SetTextColor(1, 0.2, 0.2) end
 
-         delBtn:SetScript("OnClick", function()
-             StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
-                text = "Delete Slot " .. slotIdx .. " and all its actions?",
-                button1 = "Delete",
-                button2 = "Cancel",
-                OnAccept = function()
-                    Wise:RemoveSlot(Wise.selectedGroup, slotIdx)
-                    Wise.selectedSlot = nil
-                    Wise:UpdateBindings()
-                    Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-                    Wise:RefreshPropertiesPanel()
-                    C_Timer.After(0, function()
-                         if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                    end)
-                end,
-                timeout = 0,
-                whileDead = true,
-                hideOnEscape = true,
-            }
-            StaticPopup_Show("WISE_CONFIRM_DELETE_SLOT")
-         end)
+         if isAutoImportedSlot then
+             delBtn:Disable()
+             delBtn:SetScript("OnEnter", function(self)
+                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                 GameTooltip:SetText("Auto-imported slot", 1, 0.82, 0, true)
+                 GameTooltip:AddLine("This slot is managed by Wise and cannot be deleted.", 1, 1, 1, true)
+                 GameTooltip:Show()
+             end)
+             delBtn:SetScript("OnLeave", GameTooltip_Hide)
+         else
+             delBtn:SetScript("OnClick", function()
+                 StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
+                    text = "Delete Slot " .. slotIdx .. " and all its actions?",
+                    button1 = "Delete",
+                    button2 = "Cancel",
+                    OnAccept = function()
+                        Wise:RemoveSlot(Wise.selectedGroup, slotIdx)
+                        Wise.selectedSlot = nil
+                        Wise:UpdateBindings()
+                        Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+                        Wise:RefreshPropertiesPanel()
+                        C_Timer.After(0, function()
+                             if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
+                        end)
+                    end,
+                    timeout = 0,
+                    whileDead = true,
+                    hideOnEscape = true,
+                }
+                StaticPopup_Show("WISE_CONFIRM_DELETE_SLOT")
+             end)
+         end
          tinsert(panel.controls, delBtn)
     else
          local label = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")

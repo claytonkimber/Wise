@@ -542,8 +542,43 @@ function Wise:ShouldShowAction(action)
     -- "Global" filter -> Show everything
     if filter == "global" then return true end
 
-    -- If there are NO enables, it is effectively global
-    if #enables == 0 then return true end
+    -- If there are NO enables, fall back to legacy category-based filtering
+    if #enables == 0 then
+        local category = action.category
+        if not category or category == "global" then return true end
+        if filter == "spec" and category == "spec" then
+            -- Legacy spec restriction: only show if current spec matches
+            if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
+                for _, reqSpec in ipairs(action.specRequirements) do
+                    if reqSpec == (Wise.characterInfo.specID or 0) then return true end
+                end
+                return false
+            end
+            local checkSpec = action.addedBySpec or action.specRestriction
+            if checkSpec then
+                return checkSpec == (Wise.characterInfo.specID or 0)
+            end
+            return true
+        elseif filter == "class" and category == "class" then
+            local checkClass = action.addedByClass or action.classRestriction
+            if checkClass then
+                local _, pClass = UnitClass("player")
+                return checkClass == pClass
+            end
+            return true
+        elseif filter == "role" and category == "role" then
+            if type(action.roleRequirements) == "table" and #action.roleRequirements > 0 then
+                for _, reqRole in ipairs(action.roleRequirements) do
+                    if reqRole == (Wise.characterInfo.role or "") then return true end
+                end
+                return false
+            end
+            return true
+        end
+        -- Category doesn't match the filter
+        if category ~= "global" and category ~= filter then return false end
+        return true
+    end
 
     for _, tag in ipairs(enables) do
         if filter == "class" and tag:match("^class:") then
@@ -1163,6 +1198,16 @@ end
 function Wise:RemoveSlot(groupName, slotIndex)
     local group = WiseDB.groups[groupName]
     if group and group.actions then
+        -- Wiser interfaces: auto-imported slots cannot be deleted
+        if group.isWiser then
+            -- CooldownWiser allows user-added decimal slots to be deleted
+            if group.propertyType == "CooldownWiser" then
+                if type(slotIndex) == "number" and slotIndex == math.floor(slotIndex) then return end
+            else
+                return
+            end
+        end
+
         -- Remove the slot
         group.actions[slotIndex] = nil
 
@@ -1224,6 +1269,19 @@ end
 function Wise:RemoveActionFromSlot(groupName, slotIndex, actionIndex)
     local group = WiseDB.groups[groupName]
     if group and group.actions and group.actions[slotIndex] then
+        -- Wiser interfaces: block removal of auto-imported actions
+        if group.isWiser then
+            if group.propertyType == "CooldownWiser" then
+                -- CooldownWiser: only protect auto-loaded actions in integer slots
+                if type(slotIndex) == "number" and slotIndex == math.floor(slotIndex) then
+                    local state = group.actions[slotIndex][actionIndex]
+                    if state and state.autoLoaded then return end
+                end
+            else
+                -- All other wiser groups: all actions are auto-imported
+                return
+            end
+        end
         table.remove(group.actions[slotIndex], actionIndex)
         -- If slot is empty, WE KEEP IT (User Requirement: Explicit Delete only)
         -- if #group.actions[slotIndex] == 0 then

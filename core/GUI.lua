@@ -3057,16 +3057,26 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             local slotIdx = slotInfo.index
             local states = slotInfo.states
 
-            -- Filter states based on Visibility Logic (Class/Spec/etc)
+            -- Filter states based on Visibility Logic (Class/Spec/etc) AND spell availability.
             -- This ensures we only generate secure attributes for actions that are valid for this character.
             local validStates = {}
             -- Copy conflictStrategy if present (though usually passed separately)
-            validStates.conflictStrategy = states.conflictStrategy 
+            validStates.conflictStrategy = states.conflictStrategy
             validStates.resetOnCombat = states.resetOnCombat
-            validStates.suppressErrors = states.suppressErrors            
+            validStates.suppressErrors = states.suppressErrors
             for _, state in ipairs(states) do
                 if Wise:IsActionAllowed(state) then
-                     table.insert(validStates, state)
+                    -- Also filter out spells/items that aren't known to the current character.
+                    -- This prevents unknown off-spec talents from winning over valid same-spec spells
+                    -- during condition evaluation.  Only apply to types with meaningful "known" checks.
+                    local sType = state.type
+                    if sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet" then
+                        if Wise:IsActionKnown(sType, state.value) then
+                            table.insert(validStates, state)
+                        end
+                    else
+                        table.insert(validStates, state)
+                    end
                 end
             end
 
@@ -3177,7 +3187,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         validStates.suppressErrors = cStates.suppressErrors
                         for _, st in ipairs(cStates) do
                             if Wise:IsActionAllowed(st) then
-                                table.insert(validStates, st)
+                                local sType = st.type
+                                if sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet" then
+                                    if Wise:IsActionKnown(sType, st.value) then
+                                        table.insert(validStates, st)
+                                    end
+                                else
+                                    table.insert(validStates, st)
+                                end
                             end
                         end
                         if #validStates > 0 then

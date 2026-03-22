@@ -94,72 +94,27 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
     group.dynamic = true
     group.propertyType = "CooldownWiser"
 
-    -- Get current spec ID for dynamically tagging newly loaded spells
-    local specIndex = GetSpecialization()
-    local currentSpecID = specIndex and GetSpecializationInfo(specIndex) or nil
+    -- Replace all integer (auto-loaded) slots with the viewer's current spells 1:1.
+    -- Viewer spell 1 → Slot 1, viewer spell 2 → Slot 2, etc.
+    -- User-added decimal slots (e.g. 1.1, 2.5) are preserved untouched.
 
-    -- Iterate through the detected spells and add them if they don't already exist
-    local numSpells = #spells
-    for i = 1, numSpells do
+    -- 1. Remove all existing integer slots (auto-loaded content from previous spec)
+    local keysToRemove = {}
+    for slotIdx in pairs(group.actions) do
+        if type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) then
+            table.insert(keysToRemove, slotIdx)
+        end
+    end
+    for _, k in ipairs(keysToRemove) do
+        group.actions[k] = nil
+    end
+
+    -- 2. Write current viewer spells into integer slots 1..N
+    for i = 1, #spells do
         local spellID = spells[i]
-        local info = C_Spell.GetSpellInfo(spellID)
-        local name = info and info.name or tostring(spellID)
-
-        -- Check if it already exists (by exact spellID or by name)
-        local exists = false
-        for slotIdx, states in pairs(group.actions) do
-            if type(states) == "table" then
-                for _, state in ipairs(states) do
-                    if state.type == "spell" and (state.value == spellID or state.value == name) then
-                        exists = true
-                        state.autoLoaded = true
-                        -- Upgrade to exact spellID if it was previously saved as a string name
-                        if state.value == name and type(state.value) == "string" then
-                            state.value = spellID
-                        end
-
-                        -- Convert legacy global auto-loaded spells to spec-restricted
-                        if currentSpecID and state.category == "global" and state.autoLoaded then
-                            state.category = "spec"
-                            state.specRequirements = { currentSpecID }
-                        -- If a spec restriction exists, append the current spec if missing
-                        elseif currentSpecID and state.category == "spec" and type(state.specRequirements) == "table" then
-                            local hasSpec = false
-                            for _, id in ipairs(state.specRequirements) do
-                                if id == currentSpecID then
-                                    hasSpec = true
-                                    break
-                                end
-                            end
-                            if not hasSpec then
-                                table.insert(state.specRequirements, currentSpecID)
-                            end
-                        end
-                        break
-                    end
-                end
-            end
-            if exists then break end
-        end
-
-        if not exists then
-            -- Find next available integer slot
-            local nextSlot = 1
-            while group.actions[nextSlot] ~= nil do
-                nextSlot = nextSlot + 1
-            end
-
-            -- If we know the current spec, tag this spell to that spec
-            if currentSpecID then
-                group.actions[nextSlot] = {
-                    { type = "spell", value = spellID, category = "spec", specRequirements = { currentSpecID }, autoLoaded = true }
-                }
-            else
-                group.actions[nextSlot] = {
-                    { type = "spell", value = spellID, category = "global", autoLoaded = true }
-                }
-            end
-        end
+        group.actions[i] = {
+            { type = "spell", value = spellID, autoLoaded = true }
+        }
     end
 
     if Wise.UpdateGroupDisplay and Wise.frames[groupName] and Wise.frames[groupName]:IsShown() then
