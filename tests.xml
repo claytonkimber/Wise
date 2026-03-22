@@ -103,4 +103,13 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_BarCopy_Viewer" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Bar Copy: Viewer Performance Test" type="string"/>
+            <KeyValue key="instructions" value="Verify the optimized Bar Copy tool for viewer-based bars (like Cooldowns).\n1. Ensure the Cooldowns interface is active and has auto-loaded spells.\n2. Open Options -> Sidebar -> Tools -> Bar Copy Tool.\n3. Select 'Cooldown Manager Bar' as the source.\n4. Select a new target interface.\n5. Click 'Copy &amp; Append'.\n6. Verify that the spells are correctly copied and appended to the target interface.\n7. Check the Lua console for any errors." type="string"/>
+            <KeyValue key="action" value="if not Wise.OptionsFrame then Wise:CreateOptionsFrame() end; Wise.OptionsFrame:Show(); Wise.selectedGroup = 'Bar Copy Tool'; Wise:UpdateOptionsUI()" type="string"/>
+            <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
