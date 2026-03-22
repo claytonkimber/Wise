@@ -42,6 +42,7 @@ modules\Options.lua
 modules\Properties.lua
 modules\Nesting.lua
 modules\States.lua
+modules\SlotConfigurator.lua
 modules\Info.lua
 modules\Minimap.lua
 modules\Demo.lua

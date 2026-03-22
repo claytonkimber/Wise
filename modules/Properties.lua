@@ -235,6 +235,121 @@ function Wise:RefreshPropertiesPanel()
     end
     panel.controls = panel.controls or {}
 
+    -- Slot Configurator overlay
+    if Wise.configuringSlot then
+        -- Hide column contents (but keep filter buttons visible)
+        if Wise.OptionsFrame.Sidebar.AddBtn then Wise.OptionsFrame.Sidebar.AddBtn:Hide() end
+        if Wise.OptionsFrame.Sidebar.Scroll then Wise.OptionsFrame.Sidebar.Scroll:Hide() end
+        if Wise.OptionsFrame.Sidebar.Content then Wise.OptionsFrame.Sidebar.Content:Hide() end
+        if Wise.OptionsFrame.Middle.Content then Wise.OptionsFrame.Middle.Content:Hide() end
+        if Wise.OptionsFrame.Middle.ScrollFrame then Wise.OptionsFrame.Middle.ScrollFrame:Hide() end
+        if Wise.OptionsFrame.Middle.AddSlotBtn then Wise.OptionsFrame.Middle.AddSlotBtn:Hide() end
+        if Wise.OptionsFrame.Right.Scroll then Wise.OptionsFrame.Right.Scroll:Hide() end
+        Wise.OptionsFrame.Right.Title:SetText("")
+
+        -- Keep filter buttons visible and hook them for configurator filtering
+        Wise:UpdateFilterButtons()
+        -- Raise filter buttons above the configurator host
+        for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do
+            btn:Show()
+            btn:SetFrameLevel(Wise.OptionsFrame:GetFrameLevel() + 12)
+        end
+
+        -- Dedicated ConfiguratorHost
+        if not Wise.OptionsFrame.ConfiguratorHost then
+            local host = CreateFrame("Frame", nil, Wise.OptionsFrame)
+            host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+            Wise.OptionsFrame.ConfiguratorHost = host
+        end
+
+        local host = Wise.OptionsFrame.ConfiguratorHost
+        host:ClearAllPoints()
+
+        if Wise.pickingCondition then
+            -- Condition picker open: configurator takes Sidebar only, picker takes Middle+Right
+            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Sidebar, "BOTTOMRIGHT", 0, 0)
+        elseif Wise.pickingAction then
+            -- Action picker open: configurator takes Sidebar+Middle, picker takes Right
+            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Middle, "BOTTOMRIGHT", 0, 0)
+        else
+            -- No picker: configurator spans all 3 columns
+            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+        end
+        host:Show()
+
+        if not host.bg then
+            host.bg = host:CreateTexture(nil, "BACKGROUND")
+            host.bg:SetAllPoints()
+            host.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+        end
+        host.bg:Show()
+
+        Wise:CreateSlotConfiguratorUI(host)
+
+        -- If condition picker is open, render it in Middle+Right columns
+        if Wise.pickingCondition then
+            -- Hide the normal Right scroll/title
+            if Wise.OptionsFrame.Right.Scroll then
+                Wise.OptionsFrame.Right.Scroll:Hide()
+            end
+            Wise.OptionsFrame.Right.Title:SetText("")
+
+            if not Wise.OptionsFrame.ConditionPickerHost then
+                local cpHost = CreateFrame("Frame", nil, Wise.OptionsFrame)
+                cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+                Wise.OptionsFrame.ConditionPickerHost = cpHost
+            end
+            local cpHost = Wise.OptionsFrame.ConditionPickerHost
+            cpHost:ClearAllPoints()
+            cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
+            cpHost:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+            cpHost:Show()
+
+            if not cpHost.bg then
+                cpHost.bg = cpHost:CreateTexture(nil, "BACKGROUND")
+                cpHost.bg:SetAllPoints()
+                cpHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+            end
+            cpHost.bg:Show()
+
+            Wise:CreateConditionPickerUI(cpHost)
+
+            -- Hide action picker host if it exists
+            if Wise.OptionsFrame.Right.PickerHost then
+                Wise.OptionsFrame.Right.PickerHost:Hide()
+            end
+            return
+        end
+
+        -- Hide condition picker host when not in condition picking mode
+        if Wise.OptionsFrame.ConditionPickerHost then
+            Wise.OptionsFrame.ConditionPickerHost:Hide()
+        end
+
+        -- If also picking action, fall through to show picker in Right column
+        if not Wise.pickingAction then
+            -- Hide action picker host since configurator now spans all 3 columns
+            if Wise.OptionsFrame.Right.PickerHost then
+                Wise.OptionsFrame.Right.PickerHost:Hide()
+                if Wise.OptionsFrame.Right.PickerHost.bg then
+                    Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+                end
+            end
+            return
+        end
+    else
+        -- Hide configurator host when not in configurator mode
+        if Wise.OptionsFrame.ConfiguratorHost then
+            Wise.OptionsFrame.ConfiguratorHost:Hide()
+        end
+        if Wise.OptionsFrame.ConditionPickerHost then
+            Wise.OptionsFrame.ConditionPickerHost:Hide()
+        end
+    end
+
     -- Embedded picker mode: show picker in the right panel
     if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
         if Wise.pickingRestrictions then
@@ -318,11 +433,20 @@ function Wise:RefreshPropertiesPanel()
                 Wise.OptionsFrame.Right.PickerHost.bg:Hide()
             end
         end
-        if Wise.OptionsFrame.Middle.Content then
-            Wise.OptionsFrame.Middle.Content:Show()
-        end
-        if Wise.OptionsFrame.Middle.ScrollFrame then
-            Wise.OptionsFrame.Middle.ScrollFrame:Show()
+        -- Only restore sidebar/middle if configurator is NOT active
+        -- (configurator hides them and manages its own restoration)
+        if not Wise.configuringSlot then
+            if Wise.OptionsFrame.Middle.Content then
+                Wise.OptionsFrame.Middle.Content:Show()
+            end
+            if Wise.OptionsFrame.Middle.ScrollFrame then
+                Wise.OptionsFrame.Middle.ScrollFrame:Show()
+            end
+            if Wise.OptionsFrame.Sidebar.AddBtn then Wise.OptionsFrame.Sidebar.AddBtn:Show() end
+            if Wise.OptionsFrame.Sidebar.Scroll then Wise.OptionsFrame.Sidebar.Scroll:Show() end
+            if Wise.OptionsFrame.Sidebar.Content then Wise.OptionsFrame.Sidebar.Content:Show() end
+            if Wise.OptionsFrame.Middle.AddSlotBtn then Wise.OptionsFrame.Middle.AddSlotBtn:Show() end
+            for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do btn:Show() end
         end
     end
 
@@ -1361,6 +1485,26 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          note:SetText("This keybind directly triggers this slot.")
          tinsert(panel.controls, note)
          y = y - 40
+
+         -- Slot Configurator Button
+         local configBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+         configBtn:SetSize(200, 24)
+         configBtn:SetPoint("TOPLEFT", 10, y)
+         configBtn:SetText("Open Slot Configurator")
+         configBtn:SetScript("OnClick", function()
+             Wise:OpenSlotConfigurator(Wise.selectedGroup, slotIdx)
+         end)
+         Wise:AddTooltip(configBtn, "Visual editor for conditions, sequences, and modifier breaks.")
+         tinsert(panel.controls, configBtn)
+         y = y - 28
+
+         local configDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+         configDesc:SetPoint("TOPLEFT", 10, y)
+         configDesc:SetWidth(200)
+         configDesc:SetJustifyH("LEFT")
+         configDesc:SetText("Graphically configure spell priority, sequences, and modifier conditions.")
+         tinsert(panel.controls, configDesc)
+         y = y - 35
 
          -- Conflicting Conditionals / State Configuration
          if Wise:HasConflictingConditionals(slot) then

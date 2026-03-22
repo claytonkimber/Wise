@@ -99,6 +99,10 @@ function Wise:CreateOptionsFrame()
              Wise.ActionFilter = filter
              Wise:UpdateFilterButtons()
              Wise:RefreshActionsView(f.Middle.Content)
+             -- Re-render configurator canvas if active (uses Wise.ActionFilter for dimming)
+             if Wise.configuringSlot and Wise.SlotConfigurator then
+                 Wise:CreateSlotConfiguratorUI(Wise.OptionsFrame.ConfiguratorHost)
+             end
         end)
         f.Middle.FilterButtons[filter] = btn
     end
@@ -277,7 +281,28 @@ end
 function Wise:SetTab(viewName)
     local f = Wise.OptionsFrame
     if not f or not f.Views then return end
-    
+
+    -- Close slot configurator when switching away from Editor
+    if Wise.configuringSlot and viewName ~= "Editor" then
+        Wise.configuringSlot = false
+        Wise.configuringSlotGroup = nil
+        Wise.configuringSlotIdx = nil
+        Wise._configuratorPickTarget = nil
+        Wise.pickingAction = false
+        Wise.pickingCondition = false
+        Wise._conditionPickerState = nil
+        Wise._configuratorConditionRow = nil
+        if f.ConfiguratorHost then f.ConfiguratorHost:Hide() end
+        if f.ConditionPickerHost then f.ConditionPickerHost:Hide() end
+        -- Restore sidebar/middle content
+        if f.Sidebar.AddBtn then f.Sidebar.AddBtn:Show() end
+        if f.Sidebar.Scroll then f.Sidebar.Scroll:Show() end
+        if f.Sidebar.Content then f.Sidebar.Content:Show() end
+        if f.Middle.Content then f.Middle.Content:Show() end
+        if f.Middle.ScrollFrame then f.Middle.ScrollFrame:Show() end
+        if f.Middle.AddSlotBtn then f.Middle.AddSlotBtn:Show() end
+    end
+
     Wise.currentTab = viewName
     
     for name, view in pairs(f.Views) do
