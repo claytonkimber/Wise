@@ -2238,16 +2238,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
             secureAttr = "macrotext"
             secureValue = actionData.macroText or ""
         elseif aValue:match("^spec_equip_") then
-            local specIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
+            local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
             secureType = "macro"
             secureAttr = "macrotext"
-            if specIdx then
-                local equipSetName = actionData.equipmentSet or ""
-                if equipSetName ~= "" then
-                    secureValue = "/equipset " .. equipSetName .. "\n/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
-                else
-                    secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIdx .. ") else print('[Wise] SetSpecialization API not found') end"
-                end
+            if slotIdx then
+                secureValue = "/run Wise:ExecuteSpecEquip(" .. slotIdx .. ")"
             else
                 secureValue = "/run print('[Wise] Invalid spec_equip action')"
             end
@@ -3795,7 +3790,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             -- Check for spell charges first
             if spellID then
                 local chargeInfo = C_Spell.GetSpellCharges(spellID)
-                if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
+                if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) > 1 then
                     count = chargeInfo.currentCharges
                     isChargeSpell = true
                 end
@@ -3809,7 +3804,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 count = GetActionCount(tonumber(aValue))
             end
             local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
-            if maxCharges and maxCharges > 1 then
+            if maxCharges and (tonumber(maxCharges) or 0) > 1 then
                 count = charges
                 isChargeSpell = true
             end
@@ -4893,8 +4888,8 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             buttons[i].timerLabel:SetFont(fontPath, textSize, "")
             
             buttons[i].timerLabel:ClearAllPoints()
-            -- Anchor relative to CENTER of button (where Icon is)
-            buttons[i].timerLabel:SetPoint("LEFT", buttons[i], "CENTER", timerOffset, 0)
+            -- Anchor relative to icon center (spine), not button center
+            buttons[i].timerLabel:SetPoint("LEFT", buttons[i].icon, "CENTER", timerOffset, 0)
             -- Hide initially
              buttons[i].timerLabel:SetText("")
             
@@ -4911,17 +4906,26 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             buttons[i].redLine:Hide()
         end
         
-        -- Resize button frame to encompass everything
-        -- Since Icon is CENTERED, we need width to cover the widest side * 2
-        local maxSide = timerOffset + 50 -- Timer is usually furthest right
+        -- Resize button frame to fit actual content, not symmetric padding
+        -- leftSide/rightSide = distance from icon center to content edge on each side
+        local rightSide = timerOffset + 50 -- Timer is usually furthest right
+        local leftSide = listIconSize / 2 -- At minimum, the icon half
         if textAlign == "left" then
-             local leftSide = (listIconSize / 2) + 5 + maxTextWidth + 10
-             if leftSide > maxSide then maxSide = leftSide end
+             leftSide = (listIconSize / 2) + 5 + maxTextWidth + 10
         end
-        local totalWidth = maxSide * 2
-        
+        local totalWidth = leftSide + rightSide
+        -- Shift button center so icon stays at the visual spine (original targetX)
+        local centerShift = (rightSide - leftSide) / 2
+
         for i=1, count do
-             buttons[i]:SetSize(totalWidth, lineHeight) 
+             -- Update targetX to include the shift (used by slide animation)
+             buttons[i].targetX = buttons[i].targetX + centerShift
+             buttons[i]:ClearAllPoints()
+             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+             buttons[i]:SetSize(totalWidth, lineHeight)
+             -- Offset icon back so it stays at the visual spine
+             buttons[i].icon:ClearAllPoints()
+             buttons[i].icon:SetPoint("CENTER", -centerShift, 0)
         end
     else -- circle
         -- Configurable radius with minimum to prevent overlap
@@ -4961,7 +4965,7 @@ function Wise:ApplyLayout(frame, type, count, groupName)
             end
         end
     end
-    
+
     -- Reset non-list buttons to normal size
     if type ~= "list" then
         for i=1, count do
