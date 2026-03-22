@@ -1009,6 +1009,8 @@ end
 
 -- Migrate a group to the new numbered slot structure
 function Wise:MigrateGroupToActions(group)
+    if group.migratedToActions then return end
+
     if not group.actions and group.buttons then
         group.actions = {}
         for i, btnData in ipairs(group.buttons) do
@@ -1074,6 +1076,7 @@ function Wise:MigrateGroupToActions(group)
             end
         end
     end
+    group.migratedToActions = true
 end
 
 -- Add an action to a specific slot (and state index)

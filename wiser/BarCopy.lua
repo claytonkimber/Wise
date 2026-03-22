@@ -414,6 +414,7 @@ function Wise:CopyFromViewer(barIndex, viewerName, targetGroupName, customCondit
     end
 
     local spells = {}
+    local seen = {}
     local viewer = _G[viewerName]
     if viewer and viewer.GetChildren then
         local children = { viewer:GetChildren() }
@@ -430,13 +431,11 @@ function Wise:CopyFromViewer(barIndex, viewerName, targetGroupName, customCondit
                      if info then spellID = info.spellID end
                  end
                  
-                 if spellID then
-                      local alreadyExists = false
-                      for _, s in ipairs(spells) do
-                          if s == spellID then alreadyExists = true break end
-                      end
-                      if not alreadyExists then
-                          table.insert(spells, spellID)
+                 if spellID and not seen[spellID] then
+                      local info = C_Spell.GetSpellInfo(spellID)
+                      if info and info.name and info.iconID then
+                          table.insert(spells, { id = spellID, name = info.name, icon = info.iconID })
+                          seen[spellID] = true
                       end
                  end
             end
@@ -445,37 +444,17 @@ function Wise:CopyFromViewer(barIndex, viewerName, targetGroupName, customCondit
 
     Wise:MigrateGroupToActions(group)
 
-    for i, spellID in ipairs(spells) do
-        local info = C_Spell.GetSpellInfo(spellID)
-        if info and info.name and info.iconID then
-            local thisExtra = nil
-            if extraData then
-                thisExtra = {}
-                for k,v in pairs(extraData) do thisExtra[k] = v end
-            end
-            
-            -- Add to slot 1 so it prepends iteratively or can just append by passing the specific index, 
-            -- actually targetSlot could be just slot 1 to append? Wait, AddAction inserts at slot 1.
-            -- We want to append them maybe?
-            -- To preserve order from viewer, we should insert at index 1 in reverse, or append.
-            -- Since AddAction with index=1 prepends, we do reverse insertion.
-        end
-    end
-
     -- Insert in reverse to preserve order if prepending at index 1
     for i = #spells, 1, -1 do
-        local spellID = spells[i]
-        local info = C_Spell.GetSpellInfo(spellID)
-        if info and info.name and info.iconID then
-            local thisExtra = nil
-            if extraData then
-                thisExtra = {}
-                for k,v in pairs(extraData) do thisExtra[k] = v end
-            end
-
-            Wise:AddAction(targetGroupName, 1, "spell", info.name, "global", thisExtra, 1)
-            copiedCount = copiedCount + 1
+        local spell = spells[i]
+        local thisExtra = nil
+        if extraData then
+            thisExtra = {}
+            for k,v in pairs(extraData) do thisExtra[k] = v end
         end
+
+        Wise:AddAction(targetGroupName, 1, "spell", spell.id, "global", thisExtra, 1)
+        copiedCount = copiedCount + 1
     end
 
     if copiedCount > 0 then
