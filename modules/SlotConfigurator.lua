@@ -1367,28 +1367,10 @@ function Wise:OpenConfiguratorPicker(targetRow, targetCol)
     Wise:RefreshPropertiesPanel()
 end
 
--- Check if an action passes the current filter (uses Wise.ActionFilter from main editor)
+-- Check if an action passes the current filter (delegates to shared toon-based filter)
 ActionPassesFilter = function(action)
     if not action then return false end
-    local filter = Wise.ActionFilter or "global"
-    if filter == "global" then return true end
-
-    -- Use the same category-based filtering as the main editor
-    local category = action.category or "global"
-
-    if filter == "class" then
-        return category == "class" or category == "global"
-    elseif filter == "role" then
-        return category == "role" or category == "global"
-    elseif filter == "spec" then
-        return category == "spec" or category == "global"
-    elseif filter == "talent" then
-        return category == "talent" or category == "global"
-    elseif filter == "character" then
-        return category == "character" or category == "global"
-    end
-
-    return true
+    return Wise:ShouldShowAction(action)
 end
 
 -- ═══════════════════════════════════════════════════════════════

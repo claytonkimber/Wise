@@ -537,67 +537,86 @@ end
 
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
-    local enables = action.visibilityEnable or {}
 
     -- "Global" filter -> Show everything
     if filter == "global" then return true end
 
-    -- If there are NO enables, fall back to legacy category-based filtering
-    if #enables == 0 then
-        local category = action.category
-        if not category or category == "global" then return true end
-        if filter == "spec" and category == "spec" then
-            -- Legacy spec restriction: only show if current spec matches
-            if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
-                for _, reqSpec in ipairs(action.specRequirements) do
-                    if reqSpec == (Wise.characterInfo.specID or 0) then return true end
-                end
-                return false
+    -- Filters now check applicability to the CURRENT toon, not the saved category tag.
+    -- Non-spell actions (items, toys, mounts, macros, etc.) are always shown for class/spec/talent
+    -- since they aren't inherently restricted to a spell-book source.
+    local aType = action.type
+
+    if filter == "class" then
+        -- Show actions that belong to my class (class or spec spells, plus all non-spell actions)
+        if aType == "spell" then
+            local resolved = Wise:ResolveSpellCategory(action.value)
+            -- class or spec spells are in our spellbook → belong to our class
+            if resolved == "class" or resolved == "spec" then return true end
+            -- "global" from ResolveSpellCategory means either General/Warband spell
+            -- OR the spell wasn't found in our spellbook at all (e.g. Mage spell on Druid).
+            -- Only show if we actually know the spell.
+            if resolved == "global" then return Wise:IsActionKnown(aType, action.value) end
+            return false
+        end
+        -- Non-spell actions: always applicable to your class
+        return true
+
+    elseif filter == "role" then
+        -- Show actions applicable to my current role
+        -- For spells: check if this spell is in a spec line whose role matches
+        if aType == "spell" then
+            local resolved, resolvedSpecID = Wise:ResolveSpellCategory(action.value)
+            if resolved == "class" then return true end
+            if resolved == "spec" and resolvedSpecID then
+                -- Check if this spec's role matches the current role
+                local _, _, _, _, specRole = GetSpecializationInfoByID(resolvedSpecID)
+                return specRole == (Wise.characterInfo.role or "")
             end
-            local checkSpec = action.addedBySpec or action.specRestriction
-            if checkSpec then
-                return checkSpec == (Wise.characterInfo.specID or 0)
+            -- "global" or not found: only show if actually known
+            return Wise:IsActionKnown(aType, action.value)
+        end
+        -- Non-spell: always applicable
+        return true
+
+    elseif filter == "spec" then
+        -- Show actions that belong to my current spec (or are class spells)
+        if aType == "spell" then
+            local resolved, resolvedSpecID = Wise:ResolveSpellCategory(action.value)
+            if resolved == "class" then return true end
+            if resolved == "spec" then
+                return resolvedSpecID == (Wise.characterInfo.specID or 0)
             end
-            return true
-        elseif filter == "class" and category == "class" then
-            local checkClass = action.addedByClass or action.classRestriction
-            if checkClass then
-                local _, pClass = UnitClass("player")
-                return checkClass == pClass
+            -- "global" or not found: only show if actually known
+            return Wise:IsActionKnown(aType, action.value)
+        end
+        return true
+
+    elseif filter == "talent" then
+        -- Show actions that the player currently knows (i.e., available through current talents)
+        -- This is the broadest "what can I use right now" filter
+        return Wise:IsActionKnown(aType, action.value)
+
+    elseif filter == "character" then
+        -- Show only actions added by/restricted to THIS character
+        local charKey = UnitName("player") .. "-" .. GetRealmName()
+        -- Check visibility tags first
+        local enables = action.visibilityEnable or {}
+        for _, tag in ipairs(enables) do
+            if tag:match("^char:") then
+                return tag == "char:" .. charKey
             end
-            return true
-        elseif filter == "role" and category == "role" then
-            if type(action.roleRequirements) == "table" and #action.roleRequirements > 0 then
-                for _, reqRole in ipairs(action.roleRequirements) do
-                    if reqRole == (Wise.characterInfo.role or "") then return true end
-                end
-                return false
-            end
+        end
+        -- Legacy fallback
+        if action.category == "character" then
+            local checkChar = action.addedByCharacter or action.characterRestriction
+            if checkChar then return checkChar == charKey end
             return true
         end
-        -- Category doesn't match the filter
-        if category ~= "global" and category ~= filter then return false end
+        -- If no character restriction, show it (it's available to this character)
         return true
     end
 
-    for _, tag in ipairs(enables) do
-        if filter == "class" and tag:match("^class:") then
-            local _, pClass = UnitClass("player")
-            if tag == "class:" .. pClass then return true end
-        elseif filter == "role" and tag:match("^role:") then
-            if tag == "role:" .. (Wise.characterInfo.role or "") then return true end
-        elseif filter == "spec" and tag:match("^spec:") then
-            if tag == "spec:" .. (Wise.characterInfo.specID or "") then return true end
-        elseif filter == "talent" and tag:match("^talent:") then
-            -- Let's just show it in the list if they select talent
-            return true
-        elseif filter == "character" and tag:match("^char:") then
-            local charKey = UnitName("player") .. "-" .. GetRealmName()
-            if tag == "char:" .. charKey then return true end
-        end
-    end
-
-    return false
+    return true
 end
 
 Wise.ActionTypes = {

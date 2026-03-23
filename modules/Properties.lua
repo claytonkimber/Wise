@@ -4776,7 +4776,7 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
     local y = 0
     local btnWidth = ep.Content:GetWidth() - 10
 
-    local function CreateRow(indent, labelText, tag, isNode, nodeKey, nodeSubKey)
+    local function CreateRow(indent, labelText, tag, isNode, nodeKey, nodeSubKey, selectionCount)
         local btn = ep.buttons[btnIndex]
         if not btn then
             btn = CreateFrame("Frame", nil, ep.Content)
@@ -4801,7 +4801,16 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
             btn.chkDisable.text:SetPoint("LEFT", btn.chkDisable, "RIGHT", 2, 0)
             btn.chkDisable.text:SetText("Hide")
 
+            btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            btn.countLabel:SetJustifyH("LEFT")
+
             table.insert(ep.buttons, btn)
+        end
+
+        -- Lazily create countLabel for rows cached before this feature existed
+        if not btn.countLabel then
+            btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            btn.countLabel:SetJustifyH("LEFT")
         end
 
         btn:ClearAllPoints()
@@ -4840,6 +4849,16 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 
         btn.label:SetPoint("LEFT", btn.expandBtn, "RIGHT", 5, 0)
         btn.label:SetText(labelText)
+
+        -- Show "N selected" count on collapsed node rows that have child selections
+        btn.countLabel:ClearAllPoints()
+        if selectionCount and selectionCount > 0 then
+            btn.countLabel:SetPoint("LEFT", btn.label, "RIGHT", 6, 0)
+            btn.countLabel:SetText("|cff888888" .. selectionCount .. " selected|r")
+            btn.countLabel:Show()
+        else
+            btn.countLabel:Hide()
+        end
 
         if not tag then
             btn.chkEnable:Hide()
@@ -4884,11 +4903,29 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
         btnIndex = btnIndex + 1
     end
 
+    -- Helper: count how many tags matching a prefix are selected (in enable or disable)
+    local function CountTagsWithPrefix(prefix)
+        local count = 0
+        for _, tag in ipairs(action.visibilityEnable) do
+            if tag:match("^" .. prefix) then count = count + 1 end
+        end
+        for _, tag in ipairs(action.visibilityDisable) do
+            if tag:match("^" .. prefix) then count = count + 1 end
+        end
+        return count
+    end
+
+    -- Helper: check if a tag is selected in either enable or disable
+    local function IsTagSelected(tag)
+        return HasTag(action.visibilityEnable, tag) or HasTag(action.visibilityDisable, tag)
+    end
+
     -- 1. Global
     CreateRow(5, "All", "global", false)
 
     -- 2. Roles
-    CreateRow(5, "Roles", nil, true, "roles")
+    local rolesCount = not ep.expanded.roles and CountTagsWithPrefix("role:") or nil
+    CreateRow(5, "Roles", nil, true, "roles", nil, rolesCount)
     if ep.expanded.roles then
         CreateRow(25, "Tank", "role:TANK", false)
         CreateRow(25, "Healer", "role:HEALER", false)
@@ -4896,17 +4933,41 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
     end
 
     -- 3. Classes
-    CreateRow(5, "Classes", nil, true, "classes")
-    if ep.expanded.classes then
-        local classes = {}
-        for i = 1, GetNumClasses() do
-            local name, tag, id = GetClassInfo(i)
-            if tag then table.insert(classes, {name=name, tag=tag, id=id}) end
-        end
-        table.sort(classes, function(a,b) return a.name < b.name end)
+    local classes = {}
+    for i = 1, GetNumClasses() do
+        local name, tag, id = GetClassInfo(i)
+        if tag then table.insert(classes, {name=name, tag=tag, id=id}) end
+    end
+    table.sort(classes, function(a,b) return a.name < b.name end)
 
+    -- Count all class/spec/talent selections for the top-level "Classes" node
+    local classesTopCount = nil
+    if not ep.expanded.classes then
+        classesTopCount = CountTagsWithPrefix("class:") + CountTagsWithPrefix("spec:") + CountTagsWithPrefix("talent:")
+    end
+    CreateRow(5, "Classes", nil, true, "classes", nil, classesTopCount)
+
+    if ep.expanded.classes then
         for _, cInfo in ipairs(classes) do
-            CreateRow(25, cInfo.name, "class:"..cInfo.tag, true, "specs", cInfo.tag)
+            -- Count child selections under this class (specs + talents, NOT the class tag itself)
+            -- Only show count when the class node is collapsed
+            local perClassCount = nil
+            if not ep.expanded.specs[cInfo.tag] then
+                perClassCount = 0
+                for i = 1, 4 do
+                    local specID = GetSpecializationInfoForClassID(cInfo.id, i)
+                    if specID then
+                        if IsTagSelected("spec:" .. specID) then
+                            perClassCount = perClassCount + 1
+                        end
+                    end
+                end
+                -- Talent tags are only shown under the player's active spec/class
+                if cInfo.tag == Wise.characterInfo.class then
+                    perClassCount = perClassCount + CountTagsWithPrefix("talent:")
+                end
+            end
+            CreateRow(25, cInfo.name, "class:"..cInfo.tag, true, "specs", cInfo.tag, perClassCount)
 
             if ep.expanded.specs[cInfo.tag] then
                 for i = 1, 4 do
@@ -4916,7 +4977,12 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
                         local specNodeTitle = isCurrentSpec and (name .. " (Active)") or name
                         local specIsNode = isCurrentSpec
 
-                        CreateRow(45, specNodeTitle, "spec:"..id, specIsNode, "talents", id)
+                        -- Count talent selections under this spec (only when collapsed and it's the active spec)
+                        local specTalentCount = nil
+                        if specIsNode and not (ep.expanded.talents and ep.expanded.talents[id]) then
+                            specTalentCount = CountTagsWithPrefix("talent:")
+                        end
+                        CreateRow(45, specNodeTitle, "spec:"..id, specIsNode, "talents", id, specTalentCount)
 
                         if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
                             local configID = C_ClassTalents.GetActiveConfigID()
@@ -4962,7 +5028,8 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
     end
 
     -- 4. Characters
-    CreateRow(5, "Characters", nil, true, "chars")
+    local charsCount = not ep.expanded.chars and CountTagsWithPrefix("char:") or nil
+    CreateRow(5, "Characters", nil, true, "chars", nil, charsCount)
     if ep.expanded.chars then
         local chars = {}
         if WiseDB and WiseDB.knownCharacters then
