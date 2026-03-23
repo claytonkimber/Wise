@@ -560,6 +560,8 @@ function Wise:RefreshGroupList()
             Wise.selectedGroup = name
             Wise.selectedSlot = nil
             Wise.selectedState = nil
+            Wise.pickingRestrictions = false
+            Wise.pickingRestrictionsAction = nil
             Wise:UpdateOptionsUI()
         end)
         
@@ -731,6 +733,8 @@ function Wise:RefreshGroupList()
              Wise.selectedGroup = name
              Wise.selectedSlot = nil
              Wise.selectedState = nil
+             Wise.pickingRestrictions = false
+             Wise.pickingRestrictionsAction = nil
              Wise:UpdateOptionsUI()
          end)
          
@@ -798,6 +802,8 @@ function Wise:RefreshGroupList()
             Wise.selectedGroup = Wise.BAR_COPY_TEMPLATE
             Wise.selectedSlot = nil
             Wise.selectedState = nil
+            Wise.pickingRestrictions = false
+            Wise.pickingRestrictionsAction = nil
             Wise:UpdateOptionsUI()
         end)
 
@@ -872,6 +878,8 @@ function Wise:RefreshGroupList()
             Wise.selectedGroup = Wise.SMART_ITEM_TEMPLATE
             Wise.selectedSlot = nil
             Wise.selectedState = nil
+            Wise.pickingRestrictions = false
+            Wise.pickingRestrictionsAction = nil
             Wise:UpdateOptionsUI()
         end)
     else
