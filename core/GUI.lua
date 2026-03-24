@@ -3069,8 +3069,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     -- Also filter out spells/items that aren't known to the current character.
                     -- This prevents unknown off-spec talents from winning over valid same-spec spells
                     -- during condition evaluation.  Only apply to types with meaningful "known" checks.
+                    -- Skip the filter for states with conditions (e.g. [overridebar]) — those are
+                    -- temporary/encounter spells whose availability is gated by the condition itself.
                     local sType = state.type
-                    if sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet" then
+                    local hasCond = state.conditions and state.conditions ~= ""
+                    if not hasCond and (sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet") then
                         if Wise:IsActionKnown(sType, state.value) then
                             table.insert(validStates, state)
                         end
@@ -3188,7 +3191,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         for _, st in ipairs(cStates) do
                             if Wise:IsActionAllowed(st) then
                                 local sType = st.type
-                                if sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet" then
+                                local hasCond = st.conditions and st.conditions ~= ""
+                                if not hasCond and (sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet") then
                                     if Wise:IsActionKnown(sType, st.value) then
                                         table.insert(validStates, st)
                                     end
@@ -3833,7 +3837,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     
     -- Sync Visual Display Buttons
     if f.visualDisplay then
-        local visualIconSize, _, _, _, _, _, _, _, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
+        local visualIconSize, _, visualFontPath, visualShowKB, visualKBPos, visualKBSize, visualChargeSize, visualChargePos, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
         -- Nested instances inherit icon size from parent
         if f.inheritedIconSize then
             visualIconSize = f.inheritedIconSize
@@ -3933,36 +3937,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  end
              end
              
-             -- Sync count (mirror position, font, and text from real button)
+             -- Sync count (apply position from settings, copy text from real button)
              local realBtn = f.buttons[i]
              if realBtn and realBtn.count and realBtn.count:IsShown() then
                  vBtn.count:SetText(realBtn.count:GetText())
-                 vBtn.count:SetFont(realBtn.count:GetFont())
-                 vBtn.count:ClearAllPoints()
-                 local p, r, rp, x, y = realBtn.count:GetPoint()
-                 if p then
-                     vBtn.count:SetPoint(p, vBtn, p, x, y)
-                 else
-                     vBtn.count:SetPoint("BOTTOMRIGHT", -2, 2)
-                 end
+                 vBtn.count:SetFont(visualFontPath, visualChargeSize, "OUTLINE")
+                 Wise:Text_ApplyPosition(vBtn.count, visualChargePos or "TOP")
                  vBtn.count:Show()
              else
                  vBtn.count:Hide()
              end
-             
+
              -- Sync keybind
              if realBtn and realBtn.keybind and realBtn.keybind:IsShown() then
                  vBtn.keybind:SetText(realBtn.keybind:GetText())
-                 vBtn.keybind:SetFont(realBtn.keybind:GetFont())
-                 vBtn.keybind:ClearAllPoints()
-                 
-                 local p, r, rp, x, y = realBtn.keybind:GetPoint()
-                 if p then
-                     vBtn.keybind:SetPoint(p, r, rp, x, y)
-                 else
-                     -- Fallback if GetPoint returns nil (shouldn't happen if Shown, but safe)
-                     vBtn.keybind:SetPoint("TOP", 0, -2)
-                 end
+                 vBtn.keybind:SetFont(visualFontPath, visualKBSize, "OUTLINE")
+                 Wise:Text_ApplyPosition(vBtn.keybind, visualKBPos or "BOTTOM")
                  vBtn.keybind:Show()
              else
                  vBtn.keybind:Hide()
@@ -4611,32 +4601,10 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
         Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
         
-        -- If this is a visual clone, ensure its keybind text is also synchronized
-        if btn.visualClone and btn.visualClone.keybind then
-             if btn.keybind and btn.keybind:IsShown() then
-                 btn.visualClone.keybind:SetText(btn.keybind:GetText())
-                 btn.visualClone.keybind:SetFont(btn.keybind:GetFont())
-                 btn.visualClone.keybind:ClearAllPoints()
-                 local p, r, rp, x, y = btn.keybind:GetPoint()
-                 if p then btn.visualClone.keybind:SetPoint(p, r, rp, x, y) end
-                 btn.visualClone.keybind:Show()
-             else
-                 btn.visualClone.keybind:Hide()
-             end
-        end
-        -- Sync interface keybind to visual clone
-        if btn.visualClone and btn.visualClone.interfaceKeybind then
-             if btn.interfaceKeybind and btn.interfaceKeybind:IsShown() then
-                 btn.visualClone.interfaceKeybind:SetText(btn.interfaceKeybind:GetText())
-                 btn.visualClone.interfaceKeybind:SetFont(btn.interfaceKeybind:GetFont())
-                 btn.visualClone.interfaceKeybind:SetTextColor(btn.interfaceKeybind:GetTextColor())
-                 btn.visualClone.interfaceKeybind:ClearAllPoints()
-                 local p, r, rp, x, y = btn.interfaceKeybind:GetPoint()
-                 if p then btn.visualClone.interfaceKeybind:SetPoint(p, r, rp, x, y) end
-                 btn.visualClone.interfaceKeybind:Show()
-             else
-                 btn.visualClone.interfaceKeybind:Hide()
-             end
+        -- Sync keybind and interface keybind to visual clone via Text module
+        if btn.visualClone then
+            Wise:Text_UpdateKeybind(btn.visualClone, groupName, showKeybinds)
+            Wise:Text_UpdateInterfaceKeybind(btn.visualClone, groupName, showInterfaceKeybind)
         end
     end
 
@@ -5298,10 +5266,16 @@ function Wise:UpdateButtonCooldown(btn)
         end
     end
     
-    btn.cooldown:SetCooldown(start, duration)
-    
+    local cdOk = pcall(btn.cooldown.SetCooldown, btn.cooldown, start, duration)
+    if not cdOk then
+        btn.cooldown:SetCooldown(0, 0)
+    end
+
     if visualClone and visualClone.cooldown then
-        visualClone.cooldown:SetCooldown(start, duration)
+        local cloneOk = pcall(visualClone.cooldown.SetCooldown, visualClone.cooldown, start, duration)
+        if not cloneOk then
+            visualClone.cooldown:SetCooldown(0, 0)
+        end
         visualClone.cooldown:Show()
     end
     
@@ -5434,8 +5408,12 @@ function Wise:UpdateButtonCharges(btn)
     if success and isValidCharge then
         -- Re-apply position and font via Text (ensures settings changes are reflected)
         local groupName = btn.groupName
+        local fontPath, chargeTextSize, chargeTextPosition
         if groupName then
-            local _, _, fontPath, _, _, _, chargeTextSize, chargeTextPosition, _, _, _, _, _, _, showChargeText = Wise:GetGroupDisplaySettings(groupName)
+            local _, _, fp, _, _, _, cts, ctp, _, _, _, _, _, _, showChargeText = Wise:GetGroupDisplaySettings(groupName)
+            fontPath = fp
+            chargeTextSize = cts
+            chargeTextPosition = ctp
             if not showChargeText then
                 btn.count:Hide()
                 local visualClone = (meta and meta.visualClone) or btn.visualClone
@@ -5447,20 +5425,20 @@ function Wise:UpdateButtonCharges(btn)
             Wise:Text_ApplyPosition(btn.count, chargeTextPosition or "TOP")
             btn.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
         end
-        
+        -- Defaults for when groupName is nil
+        fontPath = fontPath or "Fonts\\FRIZQT__.TTF"
+        chargeTextSize = chargeTextSize or 12
+        chargeTextPosition = chargeTextPosition or "TOP"
+
         btn.count:SetText(currentCharges)
         btn.count:Show()
-        
+
         -- Sync visual clone
         local visualClone = (meta and meta.visualClone) or btn.visualClone
         if visualClone and visualClone.count then
             visualClone.count:SetText(currentCharges)
-            -- Mirror position from real button
-            visualClone.count:ClearAllPoints()
-            local p, r, rp, x, y = btn.count:GetPoint()
-            if p then
-                visualClone.count:SetPoint(p, visualClone, p, x, y)
-            end
+            Wise:Text_ApplyPosition(visualClone.count, chargeTextPosition)
+            visualClone.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
             visualClone.count:Show()
         end
     end
@@ -5819,7 +5797,7 @@ eventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 -- Usability events
 eventFrame:RegisterEvent("SPELL_UPDATE_USABLE")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("UNIT_AURA")
+eventFrame:RegisterUnitEvent("UNIT_AURA", "player", "target")
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_SHOW")
 eventFrame:RegisterEvent("SPELL_ACTIVATION_OVERLAY_GLOW_HIDE")
 -- Spell override events (procs that change spell icons, e.g. Maul -> Raze)
@@ -5850,11 +5828,12 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
         Wise:UpdateAllStates()
     elseif event == "SPELL_UPDATE_CHARGES" then
         Wise:UpdateAllCharges()
+    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
+        Wise:UpdateAllCooldowns()
     else
-        -- Cooldown events
+        -- BAG_UPDATE_COOLDOWN
         Wise:UpdateAllCooldowns()
         Wise:UpdateAllCharges()
-        Wise:UpdateAllStates()
     end
 end)
 
