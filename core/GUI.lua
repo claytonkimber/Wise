@@ -1015,7 +1015,12 @@ function Wise:CreateGroupFrame(name, instanceId)
                             end
                             if _line ~= "" then
                                 if _newMacro == "" then
-                                    _newMacro = "#showtooltip\n" .. _line
+                                    -- Macro-type lines already contain their own directives
+                                    if _mt == "macro" then
+                                        _newMacro = _line
+                                    else
+                                        _newMacro = "#showtooltip\n" .. _line
+                                    end
                                 else
                                     _newMacro = _newMacro .. "\n" .. _line
                                 end
@@ -1395,7 +1400,7 @@ function Wise:CreateGroupFrame(name, instanceId)
 
     -- Error suppression: check ANY button in this group for isa_suppress before the action fires.
     -- For keybind presses on button layouts, hoveredButton is nil, so we must check all group buttons.
-    toggleBtn:HookScript("PreClick", function(self)
+    toggleBtn:HookScript("PreClick", function(self, mouseButton, isDown)
         local groupName = self:GetAttribute("groupName")
         if groupName and Wise.frames[groupName] then
             for _, btn in ipairs(Wise.frames[groupName].buttons) do
@@ -1404,6 +1409,24 @@ function Wise:CreateGroupFrame(name, instanceId)
                     return
                 end
             end
+        end
+        -- Debug: log resolved action after secure PreClick (/wise resolve)
+        if Wise.debugResolve then
+            local t = self:GetAttribute("type") or "nil"
+            local s = self:GetAttribute("spell") or ""
+            local m = self:GetAttribute("macrotext") or ""
+            local hovered = self:GetAttribute("hoveredButton") or "none"
+            local preview = m ~= "" and m:sub(1, 80):gsub("\n", "\\n") or s
+            print(string.format("|cffFFD700[Wise Resolve]|r toggle=%s down=%s hovered=%s type=%s → %s",
+                self:GetName() or "?", tostring(isDown), hovered, t, tostring(preview)))
+            self._resolveTime = debugprofilestop()
+        end
+    end)
+    toggleBtn:HookScript("PostClick", function(self)
+        if Wise.debugResolve and self._resolveTime then
+            local elapsed = debugprofilestop() - self._resolveTime
+            print(string.format("|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r", self:GetName() or "?", elapsed))
+            self._resolveTime = nil
         end
     end)
 
@@ -3064,6 +3087,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             validStates.conflictStrategy = states.conflictStrategy
             validStates.resetOnCombat = states.resetOnCombat
             validStates.suppressErrors = states.suppressErrors
+            validStates.pressAndHold = states.pressAndHold
             for _, state in ipairs(states) do
                 if Wise:IsActionAllowed(state) then
                     -- Also filter out spells/items that aren't known to the current character.
@@ -3112,12 +3136,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         end
 
                         if shouldShow and isKnown and not isSpacer and not isOnCooldown and conditionMet then
-                            table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, activeState = chosenIdx})
+                            table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
                         end
                     else
                         -- Static interfaces: preserve slot positions to prevent collapsing.
                         if Wise.editMode or isKnown then
-                            table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, activeState = chosenIdx})
+                            table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
                         else
                             -- Action not known on this character: insert empty placeholder to hold the slot position
                             table.insert(actionsToShow, {data = {type="empty", value=nil}, known = true, categoryMatch = true, slot = slotIdx})
@@ -3188,6 +3212,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         validStates.conflictStrategy = cStates.conflictStrategy
                         validStates.resetOnCombat = cStates.resetOnCombat
                         validStates.suppressErrors = cStates.suppressErrors
+                        validStates.pressAndHold = cStates.pressAndHold
                         for _, st in ipairs(cStates) do
                             if Wise:IsActionAllowed(st) then
                                 local sType = st.type
@@ -3212,11 +3237,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                         (cData.name == "Empty" or (not cData.macroText or cData.macroText == ""))
                                     local isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
                                     if cKnown and not isSpacer and not isOnCD then
-                                        table.insert(expanded, {data = cData, known = true, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, suppressErrors = validStates.suppressErrors, activeState = chosenIdx, embeddedFrom = childGroupName})
+                                        table.insert(expanded, {data = cData, known = true, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx, embeddedFrom = childGroupName})
                                     end
                                 else
                                     if Wise.editMode or cKnown then
-                                        table.insert(expanded, {data = cData, known = cKnown, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, activeState = chosenIdx, embeddedFrom = childGroupName})
+                                        table.insert(expanded, {data = cData, known = cKnown, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx, embeddedFrom = childGroupName})
                                     end
                                 end
                             end
@@ -3387,6 +3412,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         btn:SetAttribute("type", secureType)
         if secureType then
             btn:SetAttribute(secureAttr, secureValue)
+        end
+
+        -- Press-and-hold: disabled by default, opt-in per-slot
+        if actionInfo.pressAndHold then
+            btn:SetAttribute("pressAndHoldAction", 1)
+        else
+            btn:SetAttribute("pressAndHoldAction", nil)
         end
 
         -- Mark interface buttons with nesting attributes
@@ -3650,9 +3682,34 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 btn.isaConditionWrapped = true
 
                 -- Error suppression hook (insecure, once per button)
-                btn:HookScript("PreClick", function(self)
+                btn:HookScript("PreClick", function(self, mouseButton, isDown)
                     if self:GetAttribute("isa_suppress") == 1 then
                         Wise:BeginErrorSuppression()
+                    end
+                    -- Debug: log resolved action after secure PreClick (/wise resolve)
+                    if Wise.debugResolve then
+                        local t = self:GetAttribute("type") or "nil"
+                        -- Only log the phase that actually fires (secure guard filters the other)
+                        local downOnly = self:GetAttribute("isa_action_on_down")
+                        local willFire = (isDown and downOnly) or (not isDown and not downOnly)
+                        if willFire and t ~= "nil" then
+                            local s = self:GetAttribute("spell") or ""
+                            local m = self:GetAttribute("macrotext") or ""
+                            local seq = self:GetAttribute("isa_seq") or "?"
+                            local conflict = self:GetAttribute("isa_conflict") or "?"
+                            local preview = m ~= "" and m:gsub("\n", "\\n") or s
+                            print(string.format("|cffFFD700[Wise Resolve]|r %s seq=%s %s type=%s",
+                                self:GetName() or "?", tostring(seq), conflict, t))
+                            print(string.format("|cffFFD700  →|r %s", preview))
+                            self._resolveTime = debugprofilestop()
+                        end
+                    end
+                end)
+                btn:HookScript("PostClick", function(self)
+                    if Wise.debugResolve and self._resolveTime then
+                        local elapsed = debugprofilestop() - self._resolveTime
+                        print(string.format("|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r", self:GetName() or "?", elapsed))
+                        self._resolveTime = nil
                     end
                 end)
             end

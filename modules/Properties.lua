@@ -1484,7 +1484,29 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          note:SetJustifyH("LEFT")
          note:SetText("This keybind directly triggers this slot.")
          tinsert(panel.controls, note)
-         y = y - 40
+         y = y - 30
+
+         -- Press and Hold option
+         local pahCheck = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+         pahCheck:SetPoint("TOPLEFT", 10, y)
+         pahCheck:SetChecked(slot.pressAndHold == true) -- Default off
+         pahCheck.Text:SetText("Press and Hold to repeat")
+         pahCheck.Text:SetFontObject("GameFontHighlightSmall")
+         pahCheck:SetScript("OnClick", function(self)
+             if self:GetChecked() then
+                 slot.pressAndHold = true
+             else
+                 slot.pressAndHold = nil -- nil = default = disabled
+             end
+             C_Timer.After(0, function()
+                 if not InCombatLockdown() then
+                     Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                 end
+             end)
+         end)
+         Wise:AddTooltip(pahCheck, "When enabled, holding the keybind will repeat-fire the action. Disable for one-shot actions like mounts or interface toggles.")
+         tinsert(panel.controls, pahCheck)
+         y = y - 30
 
          -- Slot Configurator Button
          local configBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")

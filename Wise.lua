@@ -1520,6 +1520,12 @@ SlashCmdList["WISE"] = function(msg)
         return
     end
 
+    if cmd == "resolve" then
+        Wise.debugResolve = not Wise.debugResolve
+        print("|cff00ccff[Wise]|r Resolve debug " .. (Wise.debugResolve and "|cff00ff00ON|r — press keys to see what fires" or "|cffff0000OFF|r"))
+        return
+    end
+
     if cmd == "bugreport" then
         if Wise.ShowBugReportWindow then
             Wise:ShowBugReportWindow()

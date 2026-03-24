@@ -365,6 +365,7 @@ local function ExportToSlotData()
     newActions.keybind = actions.keybind
     newActions.resetOnCombat = actions.resetOnCombat
     newActions.suppressErrors = actions.suppressErrors
+    newActions.pressAndHold = actions.pressAndHold
 
     for r = 1, state.numRows do
         if state.grid[r] then
