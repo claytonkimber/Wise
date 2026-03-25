@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.0.20260325] - 2026-03-25
+
+- [Feature] Adopt WoW 11.1+ DurationObject API for combat-safe cooldown swipes on spells
+- [Feature] Extend press-and-hold trigger to all layout types, firing the hovered slot's action
+- [Feature] Add charge-spell recharge tracking via `GetSpellChargeDuration`
+- [Feature] Add "Explore Advanced Functionality" step to the tutorial before the finale
+- [Fix] Harden cooldown countdown timer against secret numbers with pcall fallbacks
+- [Fix] Prevent press trigger from toggling interface visibility instead of casting
+- [Fix] Stop CooldownWiser interfaces from hiding actions that are on cooldown
+- [Fix] Fix hover scale flicker by scaling icon/hotkey/count textures instead of the button frame
+- [Fix] Fix line layout slot overlap on hover by raising FrameLevel
+- [Fix] Tighten list layout button hit area to match visible content
+- [Fix] Show "Slot Keybind" placeholder in properties when no slot is selected
+- [Improve] Tutorial: smarter scroll indicator direction, better step targeting, sidebar auto-scroll, clearer hint text
+- [Chore] Wrap debug files in `#@debug@` packager directives for clean releases
+
+## [1.0.20260324] - 2026-03-24
+
+- [Feature] Add Slot Configurator with visual condition picker
+- [Feature] Add preliminary press-and-hold support for interface buttons
+- [Perf] Optimize Bar Copy Tool by eliminating N+1 API pattern and reducing loop complexity
+- [Perf] Improve mouseover performance
+- [Fix] Squash multiple sources of taint across secure handlers
+- [Fix] Fix single-button assistant sluggishness
+- [Fix] Fix visibility filter not updating when selecting a different interface
+- [Fix] Fix availability filters and global filters not applying correctly
+- [Fix] Prevent deletion of dynamically loaded Wiser interfaces that would be repopulated
+
 ## [1.0.20260321] - 2026-03-21
 
 - [Feature] Add Spec and Equipment Changer tool module to Wiser Interfaces

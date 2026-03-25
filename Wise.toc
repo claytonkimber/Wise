@@ -19,8 +19,10 @@ Libs\LibSharedMedia-3.0\WiseMedia.lua
 Libs\exui\exui.xml
 
 # Debug
+#@debug@
 tests.xml
 modules\Debug.lua
+#@end-debug@
 
 # Core
 Wise.lua

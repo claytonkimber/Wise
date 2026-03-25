@@ -3600,6 +3600,22 @@ function Wise:RenderGroupProperties(panel, group, y)
          tinsert(panel.controls, hint)
 
          y = y - 10
+    elseif group.actions and #group.actions > 0 then
+         y = y - 30
+
+         local slotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+         slotLabel:SetPoint("TOPLEFT", 10, y)
+         slotLabel:SetText("Slot Keybind:")
+         tinsert(panel.controls, slotLabel)
+         y = y - 20
+
+         local disabledBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+         disabledBtn:SetSize(140, 22)
+         disabledBtn:SetPoint("TOPLEFT", 10, y)
+         disabledBtn:SetText("Select a slot first")
+         disabledBtn:SetEnabled(false)
+         tinsert(panel.controls, disabledBtn)
+         y = y - 10
     end
 
     y = y - 30
@@ -4098,8 +4114,8 @@ function Wise:RenderGroupProperties(panel, group, y)
                 end
 
                 if triggerVal == "press" then
-                    -- Only allowed for "button" type interfaces
-                    return (group.type == "button")
+                    -- Allowed for all layout types (button, line, circle, list, grid)
+                    return true
                 elseif triggerVal == "release_mouseover" or triggerVal == "release_repeat" then
                     -- Only allowed for NON-"button" type interfaces
                     return (group.type ~= "button")

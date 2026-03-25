@@ -434,21 +434,45 @@ Wise.CooldownUpdateFrame:Hide()
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
     local now = GetTime()
     local hasActive = false
-    
+
     for btn, info in pairs(Wise.ActiveCooldownButtons) do
         hasActive = true
         local start = info.start
         local duration = info.duration
         local groupName = info.groupName
         local isListMode = info.isListMode
-        
+
+        -- Compute remaining time. start/duration may be secret numbers in combat,
+        -- so fall back to cooldown frame's GetCooldownDuration if arithmetic fails.
         local rem = 0
         local success, val = pcall(function() return (start + duration) - now end)
-        if success then rem = val end
-        
-        if rem <= 0 then
+        if success then
+            rem = val
+        elseif btn.cooldown and btn.cooldown.GetCooldownDuration then
+            -- Fallback: query remaining duration from the cooldown frame itself
+            local ok2, cdRem = pcall(btn.cooldown.GetCooldownDuration, btn.cooldown)
+            if ok2 and cdRem then
+                -- GetCooldownDuration returns total duration, not remaining.
+                -- Use IsShown as a proxy: if cooldown frame is visible, it's active.
+                if btn.cooldown:IsShown() then
+                    rem = 1 -- Placeholder: we know it's active but can't compute exact remaining
+                end
+            end
+        end
+
+        -- Check if cooldown is finished
+        local finished = false
+        local ok3, cmp = pcall(function() return rem <= 0 end)
+        if ok3 then
+            finished = cmp
+        else
+            -- rem is a secret: check cooldown frame visibility instead
+            finished = not (btn.cooldown and btn.cooldown:IsShown())
+        end
+
+        if finished then
             Wise.ActiveCooldownButtons[btn] = nil
-            
+
             -- Cooldown Finished
             if isListMode then
                 if btn.timerLabel then btn.timerLabel:SetText("") end
@@ -456,7 +480,6 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                 if btn.cooldown then btn.cooldown:SetAlpha(0) end
             else
                 Wise:Text_UpdateCountdown(btn, groupName, "")
-                -- Sync Visual Clone
                 local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
                 local vClone = (meta and meta.visualClone) or btn.visualClone
                 if vClone then
@@ -465,46 +488,56 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
             end
         else
             -- Update Text
+            -- If rem is a secret placeholder (1), skip text formatting
+            local canFormat = false
+            local okFmt = pcall(function() local _ = rem >= 0 end)
+            if okFmt and type(rem) == "number" and rem > 1 then canFormat = true end
+
             if isListMode then
-                local m = floor(rem / 60)
-                local s = floor(rem % 60)
-                local text = strformat("%d:%02d", m, s)
-                if info.lastText ~= text then
-                    if btn.timerLabel then btn.timerLabel:SetText(text) end
-                    info.lastText = text
-                end
-                
-                local maxWidth = 50 -- Fixed width for now, should be dynamic if possible
-                if btn.redLine then 
-                     local pct = rem / duration
-                     if pct > 1 then pct = 1 end
-                     btn.redLine:SetWidth(maxWidth * pct) 
+                if canFormat then
+                    local m = floor(rem / 60)
+                    local s = floor(rem % 60)
+                    local text = strformat("%d:%02d", m, s)
+                    if info.lastText ~= text then
+                        if btn.timerLabel then btn.timerLabel:SetText(text) end
+                        info.lastText = text
+                    end
+
+                    local maxWidth = 50
+                    if btn.redLine then
+                         local ok4, pct = pcall(function() return rem / duration end)
+                         if ok4 then
+                             if pct > 1 then pct = 1 end
+                             btn.redLine:SetWidth(maxWidth * pct)
+                         end
+                    end
                 end
             else
-                -- Standard Mode
-                local text = ""
-                if rem >= 3600 then
-                    text = strformat("%dh", ceil(rem / 3600))
-                elseif rem >= 60 then
-                    text = strformat("%dm", ceil(rem / 60))
-                else
-                    text = strformat("%d", ceil(rem))
-                end
-                
-                if info.lastText ~= text then
-                    Wise:Text_UpdateCountdown(btn, groupName, text)
-                    -- Sync Visual Clone
-                    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                    local vClone = (meta and meta.visualClone) or btn.visualClone
-                    if vClone then
-                        Wise:Text_UpdateCountdown(vClone, groupName, text)
+                if canFormat then
+                    -- Standard Mode
+                    local text = ""
+                    if rem >= 3600 then
+                        text = strformat("%dh", ceil(rem / 3600))
+                    elseif rem >= 60 then
+                        text = strformat("%dm", ceil(rem / 60))
+                    else
+                        text = strformat("%d", ceil(rem))
                     end
-                    info.lastText = text
+
+                    if info.lastText ~= text then
+                        Wise:Text_UpdateCountdown(btn, groupName, text)
+                        local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+                        local vClone = (meta and meta.visualClone) or btn.visualClone
+                        if vClone then
+                            Wise:Text_UpdateCountdown(vClone, groupName, text)
+                        end
+                        info.lastText = text
+                    end
                 end
             end
         end
     end
-    
+
     if not hasActive then
         self:Hide()
     end
@@ -772,26 +805,45 @@ local function HideHoverGlow(btn)
     end
 end
 
+local function ApplyHoverScale(btn, scale)
+    if btn.icon then
+        btn.icon:SetScale(scale)
+    end
+    if btn.hotkey then
+        btn.hotkey:SetScale(scale)
+    end
+    if btn.count then
+        btn.count:SetScale(scale)
+    end
+end
+
 function Wise:AddHoverIndication(btn)
     if not btn then return end
 
     btn:HookScript("OnEnter", function(self)
-        if not InCombatLockdown() then
-            local parentFrame = self:GetParent()
-            local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
-            if not isListLayout then
-                -- Scale up by 5% (skip for list — would distort text layout)
-                self:SetScale(HOVER_SCALE)
-            end
+        local parentFrame = self:GetParent()
+        local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+        local isLineLayout = parentFrame and parentFrame.effectiveDisplayType == "line"
+        if not isListLayout then
+            -- Scale icon texture by 5% (not the button frame, to avoid hit-rect flicker)
+            ApplyHoverScale(self, HOVER_SCALE)
+        end
+        -- Raise FrameLevel on line layout to prevent slot overlap
+        if isLineLayout and not InCombatLockdown() then
+            self._savedFrameLevel = self:GetFrameLevel()
+            self:SetFrameLevel(self:GetFrameLevel() + 5)
         end
         -- Show dim glow (overlay frame, not protected)
         ShowHoverGlow(self)
     end)
 
     btn:HookScript("OnLeave", function(self)
-        if not InCombatLockdown() then
-            -- Reset scale
-            self:SetScale(1.0)
+        -- Reset icon scale
+        ApplyHoverScale(self, 1.0)
+        -- Restore FrameLevel on line layout
+        if self._savedFrameLevel and not InCombatLockdown() then
+            self:SetFrameLevel(self._savedFrameLevel)
+            self._savedFrameLevel = nil
         end
         -- Hide glow
         HideHoverGlow(self)
@@ -1158,32 +1210,35 @@ function Wise:CreateGroupFrame(name, instanceId)
         -- 'down' is provided by the SecureHandlerWrapScript environment
         if down then
             self:SetAttribute("debug_msg", "Key DOWN. Trigger="..tostring(trigger).." Layout="..tostring(layoutType).." Button="..tostring(button))
-            -- VISIBILITY LOGIC (Key Down)
-            if heldMode then
-                 f:SetAttribute("state-manual", "show")
-            elseif toggleMode then
-                 local f = self:GetFrameRef("group")
-                 local currentManual = f:GetAttribute("state-manual") or "hide"
-                 local targetState = (currentManual == "show") and "hide" or "show"
+            -- VISIBILITY LOGIC (Key Down) - Skip when trigger is "press" to avoid
+            -- toggling visibility instead of casting
+            if trigger ~= "press" then
+                if heldMode then
+                     f:SetAttribute("state-manual", "show")
+                elseif toggleMode then
+                     local f = self:GetFrameRef("group")
+                     local currentManual = f:GetAttribute("state-manual") or "hide"
+                     local targetState = (currentManual == "show") and "hide" or "show"
 
-                 f:SetAttribute("state-manual", targetState)
+                     f:SetAttribute("state-manual", targetState)
 
-                 -- When hiding parent, also hide any open child interfaces
-                 if targetState == "hide" then
-                     local _bc = self:GetAttribute("buttonCount") or 0
-                     for _bi = 1, _bc do
-                         local _pb = self:GetFrameRef("btn" .. _bi)
-                         if _pb and _pb:GetAttribute("isa_is_interface") then
-                             local _cid = _pb:GetAttribute("isa_interface_target")
-                             if _cid then
-                                 local _cf = self:GetFrameRef("nested_" .. _cid)
-                                 if _cf then
-                                     _cf:SetAttribute("state-manual", "hide")
+                     -- When hiding parent, also hide any open child interfaces
+                     if targetState == "hide" then
+                         local _bc = self:GetAttribute("buttonCount") or 0
+                         for _bi = 1, _bc do
+                             local _pb = self:GetFrameRef("btn" .. _bi)
+                             if _pb and _pb:GetAttribute("isa_is_interface") then
+                                 local _cid = _pb:GetAttribute("isa_interface_target")
+                                 if _cid then
+                                     local _cf = self:GetFrameRef("nested_" .. _cid)
+                                     if _cf then
+                                         _cf:SetAttribute("state-manual", "hide")
+                                     end
                                  end
                              end
                          end
                      end
-                 end
+                end
             end
 
             -- EXECUTION LOGIC (Press)
@@ -1215,9 +1270,45 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("debug_msg", "Press+Button: No valid target found. Count="..count)
                     end
                 else
-                    self:SetAttribute("debug_msg", "Press Ignored: Layout is '"..tostring(layoutType).."' (must be 'button')")
-                    self:SetAttribute("type", nil)
-                    self:SetAttribute("pressAndHoldAction", nil)
+                    -- Non-button layout: find the hovered button and execute it
+                    local hovName = self:GetAttribute("hoveredButton")
+                    local targetRef = nil
+                    if hovName then
+                        local count = self:GetAttribute("buttonCount") or 0
+                        for i = 1, count do
+                            local ref = self:GetFrameRef("btn" .. i)
+                            if ref and ref:GetName() == hovName then
+                                targetRef = ref
+                                break
+                            end
+                        end
+                    end
+                    if not targetRef then
+                        -- Fallback: use first button
+                        local count = self:GetAttribute("buttonCount") or 0
+                        for i = 1, count do
+                            local ref = self:GetFrameRef("btn" .. i)
+                            if ref then
+                                targetRef = ref
+                                break
+                            end
+                        end
+                    end
+                    if targetRef then
+                        self:SetAttribute("debug_msg", "Press+Other: Firing target " .. tostring(targetRef))
+                        self:SetAttribute("pressAndHoldAction", 1)
+                        _rv_ref = targetRef
+                        ]] .. RESOLVE_BLOCK .. [[
+                        self:SetAttribute("type", _rv_t)
+                        self:SetAttribute("spell", _rv_s)
+                        self:SetAttribute("item", _rv_i)
+                        self:SetAttribute("macrotext", _rv_m)
+                        if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
+                    else
+                        self:SetAttribute("debug_msg", "Press+Other: No valid target found")
+                        self:SetAttribute("type", nil)
+                        self:SetAttribute("pressAndHoldAction", nil)
+                    end
                 end
             else
                 self:SetAttribute("type", nil)
@@ -1671,10 +1762,10 @@ function Wise:CreateGroupFrame(name, instanceId)
             -- Update hover indication visuals
             for _, btn in ipairs(visible) do
                 if btn:GetName() == newBtn:GetName() then
-                    btn:SetScale(HOVER_SCALE)
+                    ApplyHoverScale(btn, HOVER_SCALE)
                     ShowHoverGlow(btn)
                 else
-                    btn:SetScale(1.0)
+                    ApplyHoverScale(btn, 1.0)
                     HideHoverGlow(btn)
                 end
             end
@@ -3126,7 +3217,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                          (actionData.name == "Empty" or (not actionData.macroText or actionData.macroText == ""))
 
                         -- Also check cooldowns for dynamic mode: hide on-cooldown actions
-                        local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                        -- Skip for CooldownWiser — those interfaces exist to SHOW cooldowns
+                        local isOnCooldown = false
+                        if group.propertyType ~= "CooldownWiser" then
+                            isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                        end
 
                         -- For dynamic groups, evaluate per-slot conditions (e.g. [extrabar], [zoneability])
                         -- to hide slots whose conditions are not currently met.
@@ -3160,7 +3255,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             local shouldShow = Wise:ShouldShowAction(actionData)
             local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
             if isDynamic then
-                local isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                local isOnCooldown = false
+                if group.propertyType ~= "CooldownWiser" then
+                    isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+                end
                 if shouldShow and isKnown and not isOnCooldown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
             else
                 table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = shouldShow, slot = i})
@@ -3235,7 +3333,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 if childIsDynamic or isDynamic then
                                     local isSpacer = (cData.type == "misc" and cData.value == "custom_macro") and
                                         (cData.name == "Empty" or (not cData.macroText or cData.macroText == ""))
-                                    local isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
+                                    local isOnCD = false
+                                    if (childGroup.propertyType ~= "CooldownWiser") and (group.propertyType ~= "CooldownWiser") then
+                                        isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
+                                    end
                                     if cKnown and not isSpacer and not isOnCD then
                                         table.insert(expanded, {data = cData, known = true, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx, embeddedFrom = childGroupName})
                                     end
@@ -4914,10 +5015,10 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         local timerOffset = 0
         if textAlign == "right" then
              -- IconHalf + Gap + Text + Gap
-             timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 40 
+             timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 8
         else
              -- IconHalf + Gap
-             timerOffset = (listIconSize / 2) + 40
+             timerOffset = (listIconSize / 2) + 8
         end
         
         for i=1, count do
@@ -4950,10 +5051,10 @@ function Wise:ApplyLayout(frame, type, count, groupName)
         
         -- Resize button frame to fit actual content, not symmetric padding
         -- leftSide/rightSide = distance from icon center to content edge on each side
-        local rightSide = timerOffset + 50 -- Timer is usually furthest right
+        local rightSide = timerOffset + 35 -- Timer text width (~30px) + small margin
         local leftSide = listIconSize / 2 -- At minimum, the icon half
         if textAlign == "left" then
-             leftSide = (listIconSize / 2) + 5 + maxTextWidth + 10
+             leftSide = (listIconSize / 2) + 5 + maxTextWidth + 5
         end
         local totalWidth = leftSide + rightSide
         -- Shift button center so icon stays at the visual spine (original targetX)
@@ -5186,10 +5287,10 @@ end
 -- Cooldown Update Functions
 function Wise:UpdateButtonCooldown(btn)
     if not btn or not btn.cooldown then return end
-    
+
     -- Retrieve metadata safely
     local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    
+
     if meta and meta.baseSpellID then
         local oldSpellID = meta.spellID
         meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
@@ -5206,96 +5307,202 @@ function Wise:UpdateButtonCooldown(btn)
     local spellID = (meta and meta.spellID) or btn.spellID
     local itemID = (meta and meta.itemID) or btn.itemID
     local visualClone = (meta and meta.visualClone) or btn.visualClone
-    
-    local start, duration = 0, 0
-    
+
     local actionType = (meta and meta.actionType) or btn.actionType
     local actionValue = (meta and meta.actionValue) or btn.actionValue
 
-    if actionType == "action" and tonumber(actionValue) then
-        local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-        start, duration = GetActionCooldown(realID)
-        start = start or 0
-        duration = duration or 0
-    elseif actionType == "misc" and actionValue == "extrabutton" then
-        if HasExtraActionBar and HasExtraActionBar() then
-            start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
+    local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD = Wise:GetGroupDisplaySettings(btn.groupName)
+
+    -- ─── DurationObject path (spells) ───────────────────────────────
+    -- WoW 11.1+ returns secret numbers for cooldown start/duration in combat.
+    -- The DurationObject API passes opaque values the Cooldown frame can consume.
+    local usedDurationObject = false
+    local isOnGCD = false
+    -- start/duration captured for countdown text tracker (may be secret in combat)
+    local start, duration = 0, 0
+
+    if spellID and C_Spell.GetSpellCooldownDuration then
+        -- Detect GCD via isOnGCD field (secret-safe, no numeric comparison)
+        local cdInfo = C_Spell.GetSpellCooldown(spellID)
+        if cdInfo and cdInfo.isOnGCD == true then
+            isOnGCD = true
+        end
+        -- Capture start/duration for countdown text (secret-safe: pcall in ticker)
+        if cdInfo then
+            start = cdInfo.startTime or 0
+            duration = cdInfo.duration or 0
+        end
+
+        -- Swipe color
+        if btn.cooldown.SetSwipeColor then
+            if isOnGCD then
+                btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
+            else
+                btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+            end
+        end
+
+        -- Charge spells use charge duration (tracks recharge, ignores GCD)
+        local chargeInfo = C_Spell.GetSpellCharges(spellID)
+        local isChargeSpell = chargeInfo ~= nil
+
+        if isChargeSpell and C_Spell.GetSpellChargeDuration then
+            -- Override start/duration with recharge timer for countdown text
+            if chargeInfo then
+                local ok, cs, cd = pcall(function()
+                    return chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration
+                end)
+                if ok and cs and cd then
+                    start = cs
+                    duration = cd
+                end
+            end
+
+            local chargeDurObj = C_Spell.GetSpellChargeDuration(spellID)
+            if chargeDurObj then
+                btn.cooldown:SetCooldownFromDurationObject(chargeDurObj, true)
+            else
+                btn.cooldown:SetCooldown(0, 0)
+            end
+        else
+            -- Normal spell: filter GCD if user doesn't want it
+            if isOnGCD and not showGCD then
+                btn.cooldown:SetCooldown(0, 0)
+            else
+                local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+                if durObj then
+                    btn.cooldown:SetCooldownFromDurationObject(durObj, true)
+                else
+                    btn.cooldown:SetCooldown(0, 0)
+                end
+            end
+        end
+
+        if visualClone and visualClone.cooldown then
+            local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+            if durObj then
+                visualClone.cooldown:SetCooldownFromDurationObject(durObj, true)
+            else
+                visualClone.cooldown:SetCooldown(0, 0)
+            end
+            visualClone.cooldown:Show()
+        end
+
+        usedDurationObject = true
+    end
+
+    -- ─── Legacy path (action slots, items, misc) ────────────────────
+    if not usedDurationObject then
+        if actionType == "action" and tonumber(actionValue) then
+            local realID = Wise:ResolveBarActionID(tonumber(actionValue))
+            start, duration = GetActionCooldown(realID)
+            start = start or 0
+            duration = duration or 0
+        elseif actionType == "misc" and actionValue == "extrabutton" then
+            if HasExtraActionBar and HasExtraActionBar() then
+                start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
+                start = start or 0
+                duration = duration or 0
+            end
+        elseif actionType == "misc" and actionValue == "zoneability" then
+            local zoneBtn = GetZoneAbilitySpellButton()
+            if zoneBtn and zoneBtn.spellID then
+                -- Zone ability is a spell — try DurationObject
+                if C_Spell.GetSpellCooldownDuration then
+                    local durObj = C_Spell.GetSpellCooldownDuration(zoneBtn.spellID)
+                    if durObj then
+                        btn.cooldown:SetCooldownFromDurationObject(durObj, true)
+                        usedDurationObject = true
+                    end
+                end
+                if not usedDurationObject then
+                    local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
+                    if cooldownInfo then
+                        start = cooldownInfo.startTime or 0
+                        duration = cooldownInfo.duration or 0
+                    end
+                end
+            end
+        elseif actionType == "misc" and actionValue == "overridebar" then
+            local realID = Wise:ResolveBarActionID(133)
+            start, duration = GetActionCooldown(realID)
+            start = start or 0
+            duration = duration or 0
+        elseif actionType == "misc" and actionValue == "possessbar" then
+            local realID = Wise:ResolveBarActionID(121)
+            start, duration = GetActionCooldown(realID)
+            start = start or 0
+            duration = duration or 0
+        elseif itemID then
+            start, duration = C_Item.GetItemCooldown(itemID)
             start = start or 0
             duration = duration or 0
         end
-    elseif actionType == "misc" and actionValue == "zoneability" then
-        local zoneBtn = GetZoneAbilitySpellButton()
-        if zoneBtn and zoneBtn.spellID then
-            local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
-            if cooldownInfo then
-                start = cooldownInfo.startTime or 0
-                duration = cooldownInfo.duration or 0
+
+        if not usedDurationObject then
+            start = start or 0
+            duration = duration or 0
+
+            -- GCD detection (legacy numeric comparison)
+            local isGCD = false
+            local _, gcdDuration = 0, 0
+            if GetSpellCooldown then
+                _, gcdDuration = GetSpellCooldown(61304)
+            elseif C_Spell.GetSpellCooldown then
+                local info = C_Spell.GetSpellCooldown(61304)
+                if info then gcdDuration = info.duration or 0 end
+            end
+
+            local s = pcall(function()
+                if start > 0 and duration > 0 and gcdDuration and gcdDuration > 0 then
+                    if math.abs(duration - gcdDuration) < 0.1 then
+                        isGCD = true
+                    end
+                end
+            end)
+
+            if isGCD and not showGCD then
+                start = 0
+                duration = 0
+            end
+
+            -- Swipe color
+            if btn.cooldown.SetSwipeColor then
+                if isGCD then
+                    btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
+                else
+                    btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+                end
+            end
+
+            local cdOk = pcall(btn.cooldown.SetCooldown, btn.cooldown, start, duration)
+            if not cdOk then
+                btn.cooldown:SetCooldown(0, 0)
+            end
+
+            if visualClone and visualClone.cooldown then
+                local cloneOk = pcall(visualClone.cooldown.SetCooldown, visualClone.cooldown, start, duration)
+                if not cloneOk then
+                    visualClone.cooldown:SetCooldown(0, 0)
+                end
+                visualClone.cooldown:Show()
             end
         end
-    elseif actionType == "misc" and actionValue == "overridebar" then
-        local realID = Wise:ResolveBarActionID(133)
-        start, duration = GetActionCooldown(realID)
-        start = start or 0
-        duration = duration or 0
-    elseif actionType == "misc" and actionValue == "possessbar" then
-        local realID = Wise:ResolveBarActionID(121)
-        start, duration = GetActionCooldown(realID)
-        start = start or 0
-        duration = duration or 0
-    elseif spellID then
-        local cooldownInfo = C_Spell.GetSpellCooldown(spellID)
-        if cooldownInfo then
-            start = cooldownInfo.startTime or 0
-            duration = cooldownInfo.duration or 0
-        end
-    elseif itemID then
-        start, duration = C_Item.GetItemCooldown(itemID)
-        start = start or 0
-        duration = duration or 0
-    end
-    
-    start = start or 0
-    duration = duration or 0
-    -- GCD Detection and Handling
-    local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD = Wise:GetGroupDisplaySettings(btn.groupName)
-    local isGCD = false
-    local _, gcdDuration = 0, 0
-    if GetSpellCooldown then
-        _, gcdDuration = GetSpellCooldown(61304)
-    elseif C_Spell.GetSpellCooldown then
-        local info = C_Spell.GetSpellCooldown(61304)
-        if info then gcdDuration = info.duration or 0 end
     end
 
-    local success = pcall(function()
-        if start > 0 and duration > 0 and gcdDuration and gcdDuration > 0 then
-            if math.abs(duration - gcdDuration) < 0.1 then
-                isGCD = true
-            end
-        end
-    end)
-
-    if isGCD and not showGCD then
-        start = 0
-        duration = 0
-    end
-    
+    -- ─── Buff overlay (overrides cooldown display with aura timer) ───
     local isBuffActive = false
     if showBuffs and spellID then
         local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
-        
-        -- Fallback: Check by Name if ID fails (common for buffs with different IDs than cast)
-        -- Also try iterating if direct lookup fails (sometimes GetPlayerAuraBySpellID is picky)
         if not aura then
              local spellName = C_Spell.GetSpellName(spellID)
              if spellName then
                  aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
              end
         end
-        
+
         if aura and aura.expirationTime and aura.duration then
             local isValidDur = false
-            -- Secret numbers throw on comparison, meaning they are valid durations
             local s1, res = pcall(function(d) return d > 0 end, aura.duration)
             if s1 then
                 isValidDur = res
@@ -5304,39 +5511,21 @@ function Wise:UpdateButtonCooldown(btn)
             end
 
             if isValidDur then
-                -- Override cooldown display with buff/debuff duration
                 local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, aura.expirationTime, aura.duration)
                 if s2 then
                     start = calcStart
                     duration = calcDuration
                     isBuffActive = true
+                    btn.cooldown:SetCooldown(start, duration)
+                    if visualClone and visualClone.cooldown then
+                        visualClone.cooldown:SetCooldown(start, duration)
+                    end
                 end
             end
         end
     end
-    
-    if btn.cooldown.SetSwipeColor then
-        if isGCD then
-            btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6) -- Custom GCD color (lighter)
-        else
-            btn.cooldown:SetSwipeColor(0, 0, 0, 0.8) -- Default normal cooldown
-        end
-    end
-    
-    local cdOk = pcall(btn.cooldown.SetCooldown, btn.cooldown, start, duration)
-    if not cdOk then
-        btn.cooldown:SetCooldown(0, 0)
-    end
 
-    if visualClone and visualClone.cooldown then
-        local cloneOk = pcall(visualClone.cooldown.SetCooldown, visualClone.cooldown, start, duration)
-        if not cloneOk then
-            visualClone.cooldown:SetCooldown(0, 0)
-        end
-        visualClone.cooldown:Show()
-    end
-    
-    -- Handle Countdown Text
+    -- ─── Countdown text, list mode, active tracking ─────────────────
     local parent = btn:GetParent()
     local isListMode = false
     local groupName = btn.groupName
@@ -5344,25 +5533,27 @@ function Wise:UpdateButtonCooldown(btn)
         isListMode = (WiseDB.groups[parent.groupName].type == "list")
         if not groupName then groupName = parent.groupName end
     end
-    
-    -- 1. Hide Standard Blizzard Numbers (All Modes)
+
     btn.cooldown:SetHideCountdownNumbers(true)
     if visualClone and visualClone.cooldown then
         visualClone.cooldown:SetHideCountdownNumbers(true)
     end
-    
-    -- Safely check cooldown state
+
+    -- Determine active state: for DurationObject path, check if cooldown frame is showing
     local isActive = false
-    local success, result = pcall(function()
-        return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
-    end)
-    if success then isActive = result end
+    if usedDurationObject and not isBuffActive then
+        isActive = btn.cooldown:IsShown()
+    else
+        local s, r = pcall(function()
+            return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
+        end)
+        if s then isActive = r end
+    end
 
     -- Clear old OnUpdate script (crucial for migration/performance)
     btn:SetScript("OnUpdate", nil)
 
     if isActive then
-         -- Register with Central Handler
          Wise.ActiveCooldownButtons[btn] = {
              start = start,
              duration = duration,
@@ -5372,43 +5563,38 @@ function Wise:UpdateButtonCooldown(btn)
              lastText = ""
          }
          Wise.CooldownUpdateFrame:Show()
-         
+
          if isListMode then
-             btn.cooldown:SetAlpha(0) -- Hide swipe in list mode
-             if btn.timerLabel then 
+             btn.cooldown:SetAlpha(0)
+             if btn.timerLabel then
                 btn.timerLabel:Show()
                 if isBuffActive then
-                    btn.timerLabel:SetTextColor(0, 1, 0) -- Green text for buffs
+                    btn.timerLabel:SetTextColor(0, 1, 0)
                 else
-                    btn.timerLabel:SetTextColor(1, 1, 1) -- White text for cooldowns
+                    btn.timerLabel:SetTextColor(1, 1, 1)
                 end
              end
-             if btn.redLine then 
-                btn.redLine:Show() 
+             if btn.redLine then
+                btn.redLine:Show()
                 if isBuffActive then
-                    btn.redLine:SetVertexColor(0, 1, 0) -- Green line for buffs
+                    btn.redLine:SetVertexColor(0, 1, 0)
                 else
-                    btn.redLine:SetVertexColor(1, 0, 0) -- Red line for cooldowns
+                    btn.redLine:SetVertexColor(1, 0, 0)
                 end
              end
          else
-             btn.cooldown:SetAlpha(1) -- Show swipe in normal mode
-             -- Optional: Color the swipe or text for buffs?
-             -- The cooldown frame itself doesn't easily support color changes without replacing texture.
-             -- But we can color the text.
+             btn.cooldown:SetAlpha(1)
          end
     else
-         -- Not Active / Finished
          Wise.ActiveCooldownButtons[btn] = nil
-         
+
          if isListMode then
              if btn.timerLabel then btn.timerLabel:SetText("") end
              if btn.redLine then btn.redLine:SetWidth(0); btn.redLine:Hide() end
-             btn.cooldown:SetAlpha(0) 
+             btn.cooldown:SetAlpha(0)
          else
              btn.cooldown:SetAlpha(1)
              Wise:Text_UpdateCountdown(btn, groupName, "")
-              -- Sync Visual Clone if present
               local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
               local vClone = (meta and meta.visualClone) or btn.visualClone
               if vClone then

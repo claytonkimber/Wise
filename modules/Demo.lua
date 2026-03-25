@@ -152,10 +152,33 @@ end
 local function ShowScrollIndicator(targetControl)
     local f = CreateScrollIndicator()
 
+    -- Determine scroll direction based on target control visibility
+    local scrollDown = true
+    if targetControl and targetControl.GetBottom and Wise.OptionsFrame and Wise.OptionsFrame.Right then
+        local panelTop = Wise.OptionsFrame.Right:GetTop()
+        local ctrlTop = targetControl:GetTop()
+        if panelTop and ctrlTop and ctrlTop > panelTop then
+            scrollDown = false -- Target is above visible area, scroll up
+        end
+    end
+
+    -- Flip arrow texture for scroll direction
+    if scrollDown then
+        f.Arrow:SetTexCoord(0, 1, 0, 1) -- Normal (down)
+        f.Text:SetText("|cffFFD100Scroll Down|r")
+    else
+        f.Arrow:SetTexCoord(0, 1, 1, 0) -- Flipped (up)
+        f.Text:SetText("|cffFFD100Scroll Up|r")
+    end
+
     -- Anchor to the right side of the properties scroll frame
     f:ClearAllPoints()
     if Wise.OptionsFrame and Wise.OptionsFrame.Right then
-        f:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", -30, 10)
+        if scrollDown then
+            f:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", -30, 10)
+        else
+            f:SetPoint("TOPRIGHT", Wise.OptionsFrame.Right, "TOPRIGHT", -30, -10)
+        end
     else
         f:SetPoint("CENTER", UIParent, "CENTER", 200, -100)
     end
@@ -424,11 +447,12 @@ local Steps = {
 
     -- 8. Select your new interface in the sidebar
     {
-        text = "Your interface was created! Click it in the sidebar under 'Custom' to select it.",
+        text = "Your interface was created! Click it in the sidebar to select it.",
         target = function()
-            return Wise.OptionsFrame.Sidebar
+            local btn = FindSidebarButton(lastCreatedGroup)
+            return btn or Wise.OptionsFrame.Sidebar
         end,
-        point = HelpTip.Point.RightEdgeTop,
+        point = HelpTip.Point.RightEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             local btn = FindSidebarButton(lastCreatedGroup)
@@ -520,7 +544,7 @@ local Steps = {
 
     -- 12. Drag & drop a second action
     {
-        text = "You can also add actions by dragging!\n\nOpen your Spellbook (P), then drag any spell onto the 'Add New Slot' area in the middle column.",
+        text = "You can also add actions by dragging!\n\nOpen your Spellbook (P), then drag any spell onto the 'Add New Slot' area in the middle column.\n\n(Use drag-and-drop, not the picker.)",
         target = function()
             return Wise.OptionsFrame.Middle.AddSlotBtn or Wise.OptionsFrame.Middle
         end,
@@ -529,6 +553,9 @@ local Steps = {
         onEnter = function()
             local btn = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.AddSlotBtn
             Glow(btn)
+            -- Track current action count to detect drag-added actions
+            local g = WiseDB.groups[Wise.selectedGroup]
+            Wise._tutorialSlotCountBeforeDrag = g and g.actions and #g.actions or 0
         end,
         onExit = function()
             local btn = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.AddSlotBtn
@@ -536,7 +563,10 @@ local Steps = {
         end,
         check = function()
             local g = WiseDB.groups[Wise.selectedGroup]
-            return g and g.actions and #g.actions >= 2
+            local currentCount = g and g.actions and #g.actions or 0
+            local prevCount = Wise._tutorialSlotCountBeforeDrag or 0
+            -- Accept if a new slot was added (drag or any method) and we have at least 2
+            return currentCount >= 2 and currentCount > prevCount
         end,
         skipIf = function()
             return WiseDB.settings.enableDragDrop == false
@@ -549,11 +579,11 @@ local Steps = {
 
     -- 13. Set a keybind
     {
-        text = "Your interface needs a way to appear!\n\nClick the Keybind button and press a key (e.g. Z or a mouse button).\n\nYou may need to scroll down in the properties panel.",
+        text = "Your interface needs a way to appear!\n\nClick the Keybind button and press a key (e.g. Z or a mouse button).\n\nYou may need to scroll down. Use '< Back' if you see slot properties.",
         target = function()
             return Wise.OptionsFrame.Right
         end,
-        point = HelpTip.Point.LeftEdgeCenter,
+        point = HelpTip.Point.RightEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             -- Make sure group-level properties are showing
@@ -738,9 +768,11 @@ local Steps = {
     {
         text = "A slot can hold multiple actions that swap based on conditions!\n\nClick the '+' button on Slot 1 to add a second state.",
         target = function()
-            return Wise.OptionsFrame.Middle
+            local slots = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.Content and Wise.OptionsFrame.Middle.Content.slots
+            local addBtn = slots and slots[1] and slots[1].AddStateBtn
+            return addBtn or Wise.OptionsFrame.Middle
         end,
-        point = HelpTip.Point.RightEdgeTop,
+        point = HelpTip.Point.RightEdgeCenter,
         buttonStyle = HelpTip.ButtonStyle.None,
         onEnter = function()
             local slots = Wise.OptionsFrame and Wise.OptionsFrame.Middle and Wise.OptionsFrame.Middle.Content and Wise.OptionsFrame.Middle.Content.slots
@@ -809,7 +841,7 @@ local Steps = {
 
     -- 22. Look at a Wiser interface
     {
-        text = "Wise comes with built-in 'Wiser' interfaces that auto-populate.\n\nClick the 'Specs' interface in the sidebar to see one.",
+        text = "Wise comes with built-in 'Wiser' interfaces that auto-populate.\n\nScroll down in the sidebar if needed, then click the 'Specs' interface to see one.",
         target = function()
             return Wise.OptionsFrame.Sidebar
         end,
@@ -818,6 +850,22 @@ local Steps = {
         onEnter = function()
             local btn = FindSidebarButton("Specs")
             Glow(btn)
+            -- Auto-scroll sidebar to make Specs visible
+            if btn and Wise.OptionsFrame.Sidebar.Scroll then
+                local scroll = Wise.OptionsFrame.Sidebar.Scroll
+                local content = Wise.OptionsFrame.Sidebar.Content
+                if content and btn.GetTop and content.GetTop then
+                    local contentTop = content:GetTop()
+                    local btnTop = btn:GetTop()
+                    if contentTop and btnTop then
+                        local offset = contentTop - btnTop - 20
+                        if offset < 0 then offset = 0 end
+                        local maxScroll = scroll:GetVerticalScrollRange() or 0
+                        if offset > maxScroll then offset = maxScroll end
+                        scroll:SetVerticalScroll(offset)
+                    end
+                end
+            end
         end,
         onExit = function()
             local btn = FindSidebarButton("Specs")
@@ -828,7 +876,35 @@ local Steps = {
         end,
     },
 
-    -- 23. Finale
+    -- 23. Explore Advanced Functionality
+    {
+        text = "You've covered the basics! Now explore some advanced features.\n\nCheck out the tabs at the top — 'Wiser', 'Conditionals', and 'Info' have powerful tools.",
+        target = function()
+            if Wise.OptionsFrame and Wise.OptionsFrame.TabButtons then
+                return Wise.OptionsFrame.TabButtons["Wiser"] or Wise.OptionsFrame
+            end
+            return Wise.OptionsFrame
+        end,
+        point = HelpTip.Point.BottomEdgeCenter,
+        buttonStyle = HelpTip.ButtonStyle.None,
+        onEnter = function()
+            if Wise.OptionsFrame and Wise.OptionsFrame.TabButtons then
+                local wiserBtn = Wise.OptionsFrame.TabButtons["Wiser"]
+                Glow(wiserBtn)
+            end
+        end,
+        onExit = function()
+            if Wise.OptionsFrame and Wise.OptionsFrame.TabButtons then
+                local wiserBtn = Wise.OptionsFrame.TabButtons["Wiser"]
+                Unglow(wiserBtn)
+            end
+        end,
+        check = function()
+            return Wise.currentTab == "Wiser" or Wise.currentTab == "Conditionals" or Wise.currentTab == "Info"
+        end,
+    },
+
+    -- 24. Finale
     {
         text = "Tutorial Complete!\n\nYou've learned the basics of Wise:\n"
             .. "- Creating interfaces and adding action slots\n"
