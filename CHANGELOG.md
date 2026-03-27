@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.20260327] - 2026-03-27
+
+- [Feature] Add Enabled/Disabled Opacity controls (global in Settings + per-interface override in Properties)
+- [Feature] Inactive interfaces can remain visible at reduced opacity instead of fully hiding
+- [Feature] Secure gatekeeper supports opacity-based fade for inactive state (combat-safe)
+- [Feature] Add "Empty Slot" option to Miscellaneous actions for explicitly clearing slots
+- [Feature] Dynamic groups now track cooldown state changes to promptly add/remove slots
+- [Fix] Default tooltips to enabled for new installs
+- [Fix] Move Debug.lua outside packager debug block so DebugPrint is always available
+- [Fix] Add no-op DebugPrint fallback in Wise.lua to prevent errors when Debug.lua is stripped
+- [Fix] Fix Smart Item interfaces showing "corrupted or outdated data" by allowing actionless groups in validation
+- [Fix] Fix error in RefreshActionsView when opening Smart Item interfaces with no actions table
+
 ## [1.0.20260325] - 2026-03-25
 
 - [Feature] Adopt WoW 11.1+ DurationObject API for combat-safe cooldown swipes on spells

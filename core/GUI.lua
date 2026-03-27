@@ -948,22 +948,32 @@ function Wise:CreateGroupFrame(name, instanceId)
         local custom = self:GetAttribute("state-custom") or "hide"
         local wiseShow = self:GetAttribute("state-wise-show") or "hide"
         local wiseHide = self:GetAttribute("state-wise-hide") or "hide"
+        local activeOpacity = self:GetAttribute("activeOpacity") or 1
 
         local willShow = false
         if editmode == "show" then
             willShow = true
             self:Show()
+            self:SetAlpha(activeOpacity)
         elseif (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
             willShow = true
             self:Show()
+            self:SetAlpha(activeOpacity)
         else
-            willShow = false
-            self:Hide()
+            local inactiveOpacity = self:GetAttribute("inactiveOpacity")
+            if inactiveOpacity and inactiveOpacity > 0 then
+                willShow = false
+                self:Show()
+                self:SetAlpha(inactiveOpacity)
+            else
+                willShow = false
+                self:Hide()
+            end
         end
-        
+
         local groupName = self:GetAttribute("wiseGroupName")
         local driver = self:GetFrameRef("WiseStateDriver")
-        
+
         if driver and groupName then
              local driverState = willShow and "active" or "inactive"
              driver:RunAttribute("SetState", groupName, driverState)
@@ -2733,22 +2743,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         local custom = self:GetAttribute("state-custom") or "hide"
         local wiseShow = self:GetAttribute("state-wise-show") or "hide"
         local wiseHide = self:GetAttribute("state-wise-hide") or "hide"
+        local activeOpacity = self:GetAttribute("activeOpacity") or 1
 
         local willShow = false
         if editmode == "show" then
             willShow = true
             self:Show()
+            self:SetAlpha(activeOpacity)
         elseif (game == "show" or manual == "show" or custom == "show" or wiseShow == "show") and (wiseHide ~= "show") then
             willShow = true
             self:Show()
+            self:SetAlpha(activeOpacity)
         else
-            willShow = false
-            self:Hide()
+            local inactiveOpacity = self:GetAttribute("inactiveOpacity")
+            if inactiveOpacity and inactiveOpacity > 0 then
+                willShow = false
+                self:Show()
+                self:SetAlpha(inactiveOpacity)
+            else
+                willShow = false
+                self:Hide()
+            end
         end
-        
+
         local groupName = self:GetAttribute("wiseGroupName")
         local driver = self:GetFrameRef("WiseStateDriver")
-        
+
         if driver and groupName then
              local driverState = willShow and "active" or "inactive"
              driver:RunAttribute("SetState", groupName, driverState)
@@ -2760,6 +2780,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     f:SetAttribute("_onstate-wise-show", gatekeeper)
     f:SetAttribute("_onstate-wise-hide", gatekeeper)
     f:SetAttribute("_onstate-editmode", gatekeeper)
+
+    -- Set opacity attributes for gatekeeper
+    local activeOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
+    local inactiveOpacity = group.inactiveOpacity or (WiseDB.settings and WiseDB.settings.inactiveOpacity)
+    if not InCombatLockdown() then
+        f:SetAttribute("activeOpacity", activeOpacity < 1 and activeOpacity or nil)
+        f:SetAttribute("inactiveOpacity", inactiveOpacity and inactiveOpacity > 0 and inactiveOpacity or nil)
+    end
 
     -- Initialize Manual and Wise State if missing (Prevent reset on config update)
     if not InCombatLockdown() then
@@ -2909,7 +2937,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 -- If we were showing via visualDisplay in combat, clean up on transition
                 if wasShowingInCombat then
                     f.visualDisplay:Hide()
-                    f:SetAlpha(1)
+                    f:SetAlpha(activeOpacity)
                     wasShowingInCombat = false
                 end
                 local target = customShow and "show" or "hide"
@@ -2976,6 +3004,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
         if shouldShow then
             f:Show()
+            f:SetAlpha(activeOpacity)
+        elseif inactiveOpacity and inactiveOpacity > 0 then
+            f:Show()
+            f:SetAlpha(inactiveOpacity)
         else
             f:Hide()
         end
@@ -3001,7 +3033,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
             -- Undermouse OnUpdate handles combat show/hide — don't interfere.
             -- Only restore alpha when leaving combat (OnUpdate handles the rest).
             if event == "PLAYER_REGEN_ENABLED" then
-                f:SetAlpha(1)
+                f:SetAlpha(activeOpacity)
             end
         elseif isAlwaysVisibleMouse then
             if event == "PLAYER_REGEN_DISABLED" then
@@ -3009,23 +3041,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 f:SetAlpha(0)
             elseif event == "PLAYER_REGEN_ENABLED" then
                 self:Hide()
-                f:SetAlpha(1)
+                f:SetAlpha(activeOpacity)
             end
         else
             self:Hide()
-            f:SetAlpha(1)
+            f:SetAlpha(activeOpacity)
         end
     end)
     f.visualDisplay:RegisterEvent("PLAYER_REGEN_DISABLED")
     f.visualDisplay:RegisterEvent("PLAYER_REGEN_ENABLED")
-    
+
     -- Initial State
     if InCombatLockdown() and isAlwaysVisibleMouse then
         f.visualDisplay:Show()
         f:SetAlpha(0)
     else
         f.visualDisplay:Hide()
-        f:SetAlpha(1)
+        f:SetAlpha(activeOpacity)
     end
     
     -- ... (Positioning Logic for Proxy Anchor) ...
@@ -4232,6 +4264,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
     -- visible buttons yet, but the ticker must run to detect when they become available.
     local AVAILABILITY_MISC = {extrabutton=true, zoneability=true, overridebar=true, possessbar=true}
     local hasDynamicConditions = false
+    local hasDynamicCooldowns = false
     if isDynamic and group.actions then
         for _, states in pairs(group.actions) do
             if type(states) == "table" then
@@ -4239,14 +4272,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     if (state.conditions and state.conditions ~= "") or
                        (state.type == "misc" and AVAILABILITY_MISC[state.value]) then
                         hasDynamicConditions = true
-                        break
+                    end
+                    -- Track cooldown-filterable action types for dynamic groups
+                    if group.propertyType ~= "CooldownWiser" and
+                       (state.type == "spell" or state.type == "item" or state.type == "toy") then
+                        hasDynamicCooldowns = true
                     end
                 end
             end
-            if hasDynamicConditions then break end
         end
     end
-    if hasDynamicConditions then needsTicker = true end
+    if hasDynamicConditions or hasDynamicCooldowns then needsTicker = true end
     for _, btn in ipairs(f.buttons) do
         if btn:IsShown() then
             local meta = Wise.buttonMeta[btn]
@@ -4280,6 +4316,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         end
         f._dynamicCondSnapshot = condSnapshot
     end
+    -- Track cooldown state for dynamic groups so slot add/remove happens promptly
+    if hasDynamicCooldowns then
+        local cdSnapshot = {}
+        if group.actions then
+            for slotIdx, states in pairs(group.actions) do
+                if type(states) == "table" then
+                    for _, state in ipairs(states) do
+                        if state.type == "spell" or state.type == "item" or state.type == "toy" then
+                            local isKnown = Wise:IsActionKnown(state.type, state.value)
+                            cdSnapshot[slotIdx] = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state) or false
+                        end
+                    end
+                end
+            end
+        end
+        f._dynamicCDSnapshot = cdSnapshot
+    end
     if needsTicker then
         f.conditionTicker = C_Timer.NewTicker(0.2, function()
             -- For dynamic groups with conditional/availability slots, check if state changed
@@ -4299,6 +4352,31 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx] then
                                     changed = true
                                     break
+                                end
+                            end
+                        end
+                        if changed then break end
+                    end
+                end
+                if changed then
+                    Wise:UpdateGroupDisplay(name)
+                    return
+                end
+            end
+            -- For dynamic groups with cooldown-filterable slots, detect CD state changes
+            if hasDynamicCooldowns and f._dynamicCDSnapshot and not InCombatLockdown() then
+                local changed = false
+                if group.actions then
+                    for slotIdx, states in pairs(group.actions) do
+                        if type(states) == "table" then
+                            for _, state in ipairs(states) do
+                                if state.type == "spell" or state.type == "item" or state.type == "toy" then
+                                    local isKnown = Wise:IsActionKnown(state.type, state.value)
+                                    local nowOnCD = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state) or false
+                                    if nowOnCD ~= f._dynamicCDSnapshot[slotIdx] then
+                                        changed = true
+                                        break
+                                    end
                                 end
                             end
                         end

@@ -44,6 +44,11 @@ local UnitName = UnitName
 
 Wise.characterInfo = {}
 
+-- No-op fallback so calls to DebugPrint never error if Debug.lua isn't loaded
+if not Wise.DebugPrint then
+    function Wise:DebugPrint() end
+end
+
 function Wise:GetOverrideSpellID(spellID)
     if not spellID then return nil end
     if type(spellID) == "string" then
@@ -1015,13 +1020,13 @@ function frame:OnEvent(event, arg1)
                     showGlows = true, -- Default: Enable Proc Glows
                     showBuffs = false, -- Default: Disable Buff Durations
                     enableDragDrop = true, -- Default: Enable Drag and Drop
-                    showTooltips = false, -- Default: Disable Interface Tooltips
+                    showTooltips = true, -- Default: Enable Interface Tooltips
                 },
             }
         end
         -- Ensure global settings exist for existing users
         if WiseDB.settings then
-            if WiseDB.settings.showTooltips == nil then WiseDB.settings.showTooltips = false end
+            if WiseDB.settings.showTooltips == nil then WiseDB.settings.showTooltips = true end
             if WiseDB.settings.iconSize == nil then WiseDB.settings.iconSize = 30 end
             if WiseDB.settings.textSize == nil then WiseDB.settings.textSize = 12 end
             if WiseDB.settings.font == nil then WiseDB.settings.font = "Fonts\\FRIZQT__.TTF" end
@@ -1572,6 +1577,10 @@ function Wise:ValidateGroup(groupName)
     end
     
     if type(group.actions) ~= "table" then
+        -- Smart Item interfaces don't use actions; they populate dynamically
+        if group.isSmartItem then
+            return true
+        end
         return false, "Missing 'actions' table"
     end
     

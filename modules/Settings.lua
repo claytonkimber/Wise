@@ -997,6 +997,114 @@ function Wise:PopulateSettingsView(panel)
     table.insert(panel.children, showBuffs.text)
     ry = ry - 40
 
+    -- Opacity
+    local opacityHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, opacityHeader, rx, ry)
+    opacityHeader:SetText("Opacity")
+    ry = ry - 20
+
+    -- Enabled Opacity
+    local enabledOpacityLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    AddToContent(rightContent, enabledOpacityLabel, rx, ry)
+    enabledOpacityLabel:SetText("Enabled Opacity:")
+    ry = ry - 28
+
+    local globalEnabledPct = math.floor((WiseDB.settings.activeOpacity or 1) * 100 + 0.5)
+    local enabledOpacitySlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
+    AddToContent(rightContent, enabledOpacitySlider, rx+40, ry)
+    enabledOpacitySlider:SetSize(panelWidth - 100, 16)
+    enabledOpacitySlider:SetMinMaxValues(0, 100)
+    enabledOpacitySlider:SetValueStep(5)
+    enabledOpacitySlider:SetObeyStepOnDrag(true)
+    enabledOpacitySlider:SetValue(globalEnabledPct)
+    enabledOpacitySlider.Low:SetText("0%")
+    enabledOpacitySlider.High:SetText("100%")
+    enabledOpacitySlider.Text:SetText(globalEnabledPct .. "%")
+    enabledOpacitySlider:SetScript("OnValueChanged", function(self, val)
+        val = math.floor(val + 0.5)
+        WiseDB.settings.activeOpacity = val / 100
+        self.Text:SetText(val .. "%")
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then
+                for gname in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(gname) end
+            end
+        end)
+    end)
+    ry = ry - 40
+
+    local enabledOpacityMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    enabledOpacityMinusBtn:SetSize(27, 27)
+    enabledOpacityMinusBtn:SetPoint("RIGHT", enabledOpacitySlider, "LEFT", -2, 0)
+    enabledOpacityMinusBtn:SetText("-")
+    enabledOpacityMinusBtn:SetScript("OnClick", function()
+        local v = enabledOpacitySlider:GetValue() - 5
+        local min, max = enabledOpacitySlider:GetMinMaxValues()
+        if v >= min then enabledOpacitySlider:SetValue(v) end
+    end)
+    table.insert(panel.children, enabledOpacityMinusBtn)
+
+    local enabledOpacityPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    enabledOpacityPlusBtn:SetSize(27, 27)
+    enabledOpacityPlusBtn:SetPoint("LEFT", enabledOpacitySlider, "RIGHT", 2, 0)
+    enabledOpacityPlusBtn:SetText("+")
+    enabledOpacityPlusBtn:SetScript("OnClick", function()
+        local v = enabledOpacitySlider:GetValue() + 5
+        local min, max = enabledOpacitySlider:GetMinMaxValues()
+        if v <= max then enabledOpacitySlider:SetValue(v) end
+    end)
+    table.insert(panel.children, enabledOpacityPlusBtn)
+
+    -- Disabled Opacity
+    local disabledOpacityLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    AddToContent(rightContent, disabledOpacityLabel, rx, ry)
+    disabledOpacityLabel:SetText("Disabled Opacity:")
+    ry = ry - 28
+
+    local globalDisabledPct = math.floor((WiseDB.settings.inactiveOpacity or 0) * 100 + 0.5)
+    local disabledOpacitySlider = CreateFrame("Slider", nil, rightContent, "OptionsSliderTemplate")
+    AddToContent(rightContent, disabledOpacitySlider, rx+40, ry)
+    disabledOpacitySlider:SetSize(panelWidth - 100, 16)
+    disabledOpacitySlider:SetMinMaxValues(0, 100)
+    disabledOpacitySlider:SetValueStep(5)
+    disabledOpacitySlider:SetObeyStepOnDrag(true)
+    disabledOpacitySlider:SetValue(globalDisabledPct)
+    disabledOpacitySlider.Low:SetText("Hidden")
+    disabledOpacitySlider.High:SetText("100%")
+    disabledOpacitySlider.Text:SetText(globalDisabledPct == 0 and "Hidden" or (globalDisabledPct .. "%"))
+    disabledOpacitySlider:SetScript("OnValueChanged", function(self, val)
+        val = math.floor(val + 0.5)
+        WiseDB.settings.inactiveOpacity = val > 0 and (val / 100) or nil
+        self.Text:SetText(val == 0 and "Hidden" or (val .. "%"))
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then
+                for gname in pairs(WiseDB.groups) do Wise:UpdateGroupDisplay(gname) end
+            end
+        end)
+    end)
+    ry = ry - 40
+
+    local disabledOpacityMinusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    disabledOpacityMinusBtn:SetSize(27, 27)
+    disabledOpacityMinusBtn:SetPoint("RIGHT", disabledOpacitySlider, "LEFT", -2, 0)
+    disabledOpacityMinusBtn:SetText("-")
+    disabledOpacityMinusBtn:SetScript("OnClick", function()
+        local v = disabledOpacitySlider:GetValue() - 5
+        local min, max = disabledOpacitySlider:GetMinMaxValues()
+        if v >= min then disabledOpacitySlider:SetValue(v) end
+    end)
+    table.insert(panel.children, disabledOpacityMinusBtn)
+
+    local disabledOpacityPlusBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+    disabledOpacityPlusBtn:SetSize(27, 27)
+    disabledOpacityPlusBtn:SetPoint("LEFT", disabledOpacitySlider, "RIGHT", 2, 0)
+    disabledOpacityPlusBtn:SetText("+")
+    disabledOpacityPlusBtn:SetScript("OnClick", function()
+        local v = disabledOpacitySlider:GetValue() + 5
+        local min, max = disabledOpacitySlider:GetMinMaxValues()
+        if v <= max then disabledOpacitySlider:SetValue(v) end
+    end)
+    table.insert(panel.children, disabledOpacityPlusBtn)
+
     -- GCD Indicators
     local gcdHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     AddToContent(rightContent, gcdHeader, rx, ry)

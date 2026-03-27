@@ -2197,7 +2197,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         -- Show "(Custom)" or "(Global)" indicator
         local displayHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         displayHint:SetPoint("LEFT", displayLabel, "RIGHT", 8, 0)
-        local hasOverride = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or (group.hideEmptySlots ~= nil)
+        local hasOverride = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or (group.activeOpacity ~= nil) or (group.inactiveOpacity ~= nil) or (group.hideEmptySlots ~= nil)
         displayHint:SetText(hasOverride and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
         tinsert(panel.controls, displayHint)
 
@@ -2287,7 +2287,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
 
         local function UpdateDisplayStatus()
-            local over = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or group.countdownTextSize or group.countdownTextPosition or (group.showGCD ~= nil) or (group.showChargeText ~= nil) or (group.showCountdownText ~= nil) or (group.hideEmptySlots ~= nil)
+            local over = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or group.countdownTextSize or group.countdownTextPosition or (group.activeOpacity ~= nil) or (group.inactiveOpacity ~= nil) or (group.showGCD ~= nil) or (group.showChargeText ~= nil) or (group.showCountdownText ~= nil) or (group.hideEmptySlots ~= nil)
             displayHint:SetText(over and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
 
             local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
@@ -3120,6 +3120,120 @@ function Wise:RenderGroupProperties(panel, group, y)
 
         y = y - 35
 
+        -- Per-Interface Enabled Opacity
+        local piEnabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        piEnabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
+        local effectiveEnabledOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
+        local effectiveEnabledPct = math.floor(effectiveEnabledOpacity * 100 + 0.5)
+        piEnabledOpacityLabel:SetText("Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
+        tinsert(panel.controls, piEnabledOpacityLabel)
+        y = y - 30
+
+        local piEnabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+        piEnabledSlider:SetPoint("TOPLEFT", 37, y)
+        piEnabledSlider:SetSize(126, 16)
+        piEnabledSlider:SetMinMaxValues(0, 100)
+        piEnabledSlider:SetValueStep(5)
+        piEnabledSlider:SetObeyStepOnDrag(true)
+        piEnabledSlider:SetValue(effectiveEnabledPct)
+        piEnabledSlider.Low:SetText("0%")
+        piEnabledSlider.High:SetText("100%")
+        piEnabledSlider.Text:SetText(effectiveEnabledPct .. "%")
+        piEnabledSlider:SetScript("OnValueChanged", function(self, val)
+            val = math.floor(val + 0.5)
+            group.activeOpacity = val / 100
+            self.Text:SetText(val .. "%")
+            piEnabledOpacityLabel:SetText("Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
+            UpdateDisplayStatus()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+        tinsert(panel.controls, piEnabledSlider)
+
+        local piEnabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piEnabledMinusBtn:SetSize(27, 27)
+        piEnabledMinusBtn:SetPoint("RIGHT", piEnabledSlider, "LEFT", -2, 0)
+        piEnabledMinusBtn:SetText("-")
+        piEnabledMinusBtn:SetScript("OnClick", function()
+            local v = piEnabledSlider:GetValue() - 5
+            local min, max = piEnabledSlider:GetMinMaxValues()
+            if v >= min then piEnabledSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piEnabledMinusBtn)
+
+        local piEnabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piEnabledPlusBtn:SetSize(27, 27)
+        piEnabledPlusBtn:SetPoint("LEFT", piEnabledSlider, "RIGHT", 2, 0)
+        piEnabledPlusBtn:SetText("+")
+        piEnabledPlusBtn:SetScript("OnClick", function()
+            local v = piEnabledSlider:GetValue() + 5
+            local min, max = piEnabledSlider:GetMinMaxValues()
+            if v <= max then piEnabledSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piEnabledPlusBtn)
+
+        y = y - 35
+
+        -- Per-Interface Disabled Opacity
+        local piDisabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        piDisabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
+        local effectiveDisabledOpacity = group.inactiveOpacity or (WiseDB.settings and WiseDB.settings.inactiveOpacity) or 0
+        local effectiveDisabledPct = math.floor(effectiveDisabledOpacity * 100 + 0.5)
+        piDisabledOpacityLabel:SetText("Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
+        tinsert(panel.controls, piDisabledOpacityLabel)
+        y = y - 30
+
+        local piDisabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+        piDisabledSlider:SetPoint("TOPLEFT", 37, y)
+        piDisabledSlider:SetSize(126, 16)
+        piDisabledSlider:SetMinMaxValues(0, 100)
+        piDisabledSlider:SetValueStep(5)
+        piDisabledSlider:SetObeyStepOnDrag(true)
+        piDisabledSlider:SetValue(effectiveDisabledPct)
+        piDisabledSlider.Low:SetText("Hidden")
+        piDisabledSlider.High:SetText("100%")
+        piDisabledSlider.Text:SetText(effectiveDisabledPct == 0 and "Hidden" or (effectiveDisabledPct .. "%"))
+        piDisabledSlider:SetScript("OnValueChanged", function(self, val)
+            val = math.floor(val + 0.5)
+            group.inactiveOpacity = val / 100
+            self.Text:SetText(val == 0 and "Hidden" or (val .. "%"))
+            piDisabledOpacityLabel:SetText("Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
+            UpdateDisplayStatus()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end)
+        tinsert(panel.controls, piDisabledSlider)
+
+        local piDisabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piDisabledMinusBtn:SetSize(27, 27)
+        piDisabledMinusBtn:SetPoint("RIGHT", piDisabledSlider, "LEFT", -2, 0)
+        piDisabledMinusBtn:SetText("-")
+        piDisabledMinusBtn:SetScript("OnClick", function()
+            local v = piDisabledSlider:GetValue() - 5
+            local min, max = piDisabledSlider:GetMinMaxValues()
+            if v >= min then piDisabledSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piDisabledMinusBtn)
+
+        local piDisabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        piDisabledPlusBtn:SetSize(27, 27)
+        piDisabledPlusBtn:SetPoint("LEFT", piDisabledSlider, "RIGHT", 2, 0)
+        piDisabledPlusBtn:SetText("+")
+        piDisabledPlusBtn:SetScript("OnClick", function()
+            local v = piDisabledSlider:GetValue() + 5
+            local min, max = piDisabledSlider:GetMinMaxValues()
+            if v <= max then piDisabledSlider:SetValue(v) end
+        end)
+        tinsert(panel.controls, piDisabledPlusBtn)
+
+        y = y - 35
+
         -- Per-Interface GCD Setting
         local piGCDLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         piGCDLabel:SetPoint("TOPLEFT", 10, y)
@@ -3158,7 +3272,7 @@ function Wise:RenderGroupProperties(panel, group, y)
         resetGlobalBtn:SetText("Reset to Global Settings")
 
         -- Initial State Check
-        if not group.iconStyle and not group.iconSize and not group.textSize and not group.font and group.showKeybinds == nil and not group.keybindPosition and not group.keybindTextSize and not group.chargeTextSize and not group.chargeTextPosition and not group.countdownTextSize and not group.countdownTextPosition and group.showGCD == nil and group.showChargeText == nil and group.showCountdownText == nil and group.hideEmptySlots == nil then
+        if not group.iconStyle and not group.iconSize and not group.textSize and not group.font and group.showKeybinds == nil and not group.keybindPosition and not group.keybindTextSize and not group.chargeTextSize and not group.chargeTextPosition and not group.countdownTextSize and not group.countdownTextPosition and group.activeOpacity == nil and group.inactiveOpacity == nil and group.showGCD == nil and group.showChargeText == nil and group.showCountdownText == nil and group.hideEmptySlots == nil then
             resetGlobalBtn:Disable()
         end
 
@@ -3176,6 +3290,8 @@ function Wise:RenderGroupProperties(panel, group, y)
             group.showCountdownText = nil
             group.countdownTextSize = nil
             group.countdownTextPosition = nil
+            group.activeOpacity = nil
+            group.inactiveOpacity = nil
             group.showGCD = nil
             group.hideEmptySlots = nil
 

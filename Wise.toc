@@ -18,11 +18,11 @@ Libs\LibSharedMedia-3.0\lib.xml
 Libs\LibSharedMedia-3.0\WiseMedia.lua
 Libs\exui\exui.xml
 
-# Debug
+# Debug (tests.xml only exists in dev — stripped by packager)
 #@debug@
 tests.xml
-modules\Debug.lua
 #@end-debug@
+modules\Debug.lua
 
 # Core
 Wise.lua

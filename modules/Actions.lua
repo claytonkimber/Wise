@@ -3289,6 +3289,11 @@ function Wise:GetMiscellaneous(filter)
             table.insert(misc, {name="Loot Spec: " .. name, val="lootspec_"..id, icon=icon})
         end
     end
+    -- Empty Slot utility — lets users explicitly clear a slot
+    if not filter or string.find("empty slot", filter, 1, true) then
+        table.insert(items, {type="empty", value=nil, name="Empty Slot", icon="Interface\\PaperDoll\\UI-Backpack-EmptySlot"})
+    end
+
     for _, m in ipairs(misc) do
         if not filter or string.find(string.lower(m.name), filter, 1, true) then
             table.insert(items, {type="misc", value=m.val, name=m.name, icon=m.icon})
@@ -3393,7 +3398,7 @@ function Wise:RefreshActionsView(container)
 
     -- Find max slot
     local maxSlot = 0
-    for k, v in pairs(group.actions) do
+    for k, v in pairs(group.actions or {}) do
         if type(k) == "number" and k > maxSlot then maxSlot = k end
     end
     
