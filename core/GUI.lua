@@ -2192,7 +2192,7 @@ function Wise:GetSecureAttributes(actionData, conditions)
         end
 
         if element == "editmode" then
-             secureValue = "/run VideoOptionsFrame_SetCurrentLayout(\"" .. state .. "\")"
+             secureValue = "/run if EditModeManagerFrame and EditModeManagerFrame.SelectLayoutByName then EditModeManagerFrame:SelectLayoutByName(\"" .. state .. "\") else if C_EditMode and C_EditMode.GetLayouts then local layouts = C_EditMode.GetLayouts().layouts; for i, l in ipairs(layouts) do if l.layoutName == \"" .. state .. "\" then C_EditMode.SetActiveLayout(l.layoutType, i-1) break end end end end"
         elseif element == "chat" then
              local op = ""
              if state == "show" then op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"
