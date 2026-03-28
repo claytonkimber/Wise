@@ -353,7 +353,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         end
 
         g.isWiser = true -- Mark as Wiser
-        if name ~= "Cooldowns" and name ~= "Utilities" and name ~= "Spec and Equipment Changer" then
+        if name ~= "Cooldowns" and name ~= "Utilities" and name ~= "Spec and Equipment Changer" and name ~= "Addon Loading Magic" then
             g.buttons = {} -- Clear for rebuild
             g.actions = nil -- Clear actions to force migration from new buttons list
         end
@@ -472,37 +472,60 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     -- 5. Addon Loading Magic
     local amGroup = EnsureWiserGroup("Addon Loading Magic", "circle")
     WiseDB.addonMagicSlots = WiseDB.addonMagicSlots or {}
-    for i, slot in ipairs(WiseDB.addonMagicSlots) do
-        local slotName = slot.name or ("Slot " .. i)
-        local addonCount = slot.addons and #slot.addons or 0
-        local subText
-        if addonCount == 0 then
-            subText = "No addons selected"
-        elseif addonCount == 1 then
-            subText = slot.addons[1]
-        else
-            subText = addonCount .. " addons"
-        end
-        table.insert(amGroup.buttons, {
-            type = "misc",
-            value = "addon_magic_" .. i,
-            name = slotName,
-            icon = "Interface\\Icons\\INV_Misc_EngGizmos_11",
-            category = "global"
-        })
-    end
-    -- Immediately migrate buttons to actions so keybinds can be restored
-    if Wise.MigrateGroupToActions then
-        Wise:MigrateGroupToActions(amGroup)
-    end
-    -- Restore per-slot keybinds from canonical storage (WiseDB.addonMagicSlots)
-    for i, slot in ipairs(WiseDB.addonMagicSlots) do
-        if slot.keybind and slot.keybind ~= "" and amGroup.actions[i] then
-            amGroup.actions[i].keybind = slot.keybind
+
+    -- Check if rebuild is needed (slot count changed vs current buttons)
+    local amNeedsRebuild = not amGroup.actions
+        or not amGroup.buttons
+        or #amGroup.buttons ~= #WiseDB.addonMagicSlots
+
+    -- Also rebuild if any slot name changed
+    if not amNeedsRebuild and amGroup.buttons then
+        for i, slot in ipairs(WiseDB.addonMagicSlots) do
+            local btn = amGroup.buttons[i]
+            if not btn or btn.name ~= (slot.name or ("Slot " .. i)) then
+                amNeedsRebuild = true
+                break
+            end
         end
     end
-    if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
-        Wise:UpdateGroupDisplay("Addon Loading Magic")
+
+    if amNeedsRebuild then
+        amGroup.buttons = {}
+        amGroup.actions = nil
+        amGroup.migratedToActions = false
+
+        for i, slot in ipairs(WiseDB.addonMagicSlots) do
+            local slotName = slot.name or ("Slot " .. i)
+            local addonCount = slot.addons and #slot.addons or 0
+            local subText
+            if addonCount == 0 then
+                subText = "No addons selected"
+            elseif addonCount == 1 then
+                subText = slot.addons[1]
+            else
+                subText = addonCount .. " addons"
+            end
+            table.insert(amGroup.buttons, {
+                type = "misc",
+                value = "addon_magic_" .. i,
+                name = slotName,
+                icon = "Interface\\Icons\\INV_Misc_EngGizmos_11",
+                category = "global"
+            })
+        end
+        -- Immediately migrate buttons to actions so keybinds can be restored
+        if Wise.MigrateGroupToActions then
+            Wise:MigrateGroupToActions(amGroup)
+        end
+        -- Restore per-slot keybinds from canonical storage (WiseDB.addonMagicSlots)
+        for i, slot in ipairs(WiseDB.addonMagicSlots) do
+            if slot.keybind and slot.keybind ~= "" and amGroup.actions[i] then
+                amGroup.actions[i].keybind = slot.keybind
+            end
+        end
+        if Wise.frames["Addon Loading Magic"] and Wise.frames["Addon Loading Magic"]:IsShown() then
+            Wise:UpdateGroupDisplay("Addon Loading Magic")
+        end
     end
     -- 6. Spec and Equipment Changer (persistent slots — only rebuild when slot count changes)
     local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle")
@@ -527,6 +550,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if seNeedsRebuild then
         specEquipGroup.buttons = {}
         specEquipGroup.actions = nil
+        specEquipGroup.migratedToActions = false
 
         for i, slot in ipairs(WiseDB.specEquipSlots) do
             local slotName = slot.name or ("Slot " .. i)
