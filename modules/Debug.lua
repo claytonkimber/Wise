@@ -309,6 +309,12 @@ function Wise:PopulateDebugTests()
         if type(testInstructions) == "string" then
             testInstructions = string.gsub(testInstructions, "\\n", "\n")
         end
+        if type(testAction) == "string" then
+            testAction = string.gsub(testAction, "\\n", "\n")
+        end
+        if type(testClearAction) == "string" then
+            testClearAction = string.gsub(testClearAction, "\\n", "\n")
+        end
 
         local btn = buttons[i]
         if not btn then

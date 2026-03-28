@@ -103,4 +103,13 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_NewlineTest" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Newline Processing Test" type="string"/>
+            <KeyValue key="instructions" value="This test verifies that escaped newlines in the 'action' attribute are processed correctly.\n1. Run the test.\n2. Verify that two separate print statements are executed (check the chat frame)." type="string"/>
+            <KeyValue key="action" value="print('Executing Line 1')\nprint('Executing Line 2')" type="string"/>
+            <KeyValue key="clearAction" value="print('Clearing Line 1')\nprint('Clearing Line 2')" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
