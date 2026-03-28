@@ -1,60 +1,150 @@
 # Context-Sensitive Slots (Multiple States)
 
-One of Wise's most powerful features is the ability to assign multiple "States" to a single slot in your interface. This allows a single button to perform different actions depending on specific conditions (like your class, spec, talents, or even macro conditionals like `[mod:shift]`).
+The most powerful feature of Wise is the ability to give a single slot **multiple states** — different actions that activate based on conditions. This is what makes one interface work across all your characters without profiles.
 
-Instead of creating separate bars or profiles for every character, you configure a slot once, and it intelligently decides what to do.
+---
 
-## How States Work
+## What is a state?
 
-Think of a slot as a priority list of actions. Wise evaluates the states from top to bottom. The **first** state whose conditions are met is the one that becomes active on that button.
+A state is one possible action a slot can perform, paired with conditions that determine when it's active. Each slot evaluates its states in order and uses the **first one whose conditions are met**.
 
-For example, you could have a single slot configured like this:
+Think of a slot as a layered decision:
 
-1.  **State 1:** Cast *Moonfire* (Condition: Druid, Balance Spec)
-2.  **State 2:** Cast *Chomp* (Condition: Druid, Feral Spec)
-3.  **State 3:** Cast *Eye Beam* (Condition: Demon Hunter, Havoc Spec)
-4.  **State 4:** Use *Healthstone* (Condition: `[mod:shift]`)
-5.  **State 5:** Cast *Mount* (No conditions - Default fallback)
+```
+Slot: "Gap Closer"
+  State 1: Charge          → [warrior, spec:1] (Arms Warrior)
+  State 2: Intercept       → [warrior, spec:2] (Fury Warrior)
+  State 3: Blink           → [mage]
+  State 4: Disengage       → [hunter]
+  State 5: (no conditions) → Rocket Boots  ← fallback
+```
 
-If you log into your Havoc Demon Hunter and press Shift, the button will use a Healthstone (State 4 overrides State 5, but State 3 is skipped because you are holding Shift, wait, no, actually State 3 is checked *first*. Let's fix that logic: If you want Shift to override, it must be higher in the list!).
+Log in on your Mage? The button shows Blink. Log in on your Hunter? It shows Disengage. No matching character? It falls back to Rocket Boots.
 
-Let's re-order for a better example:
+---
 
-1.  **State 1:** Use *Healthstone* (Condition: `[mod:shift]`)
-2.  **State 2:** Cast *Moonfire* (Condition: Druid, Balance Spec)
-3.  **State 3:** Cast *Chomp* (Condition: Druid, Feral Spec)
-4.  **State 4:** Cast *Eye Beam* (Condition: Demon Hunter, Havoc Spec)
-5.  **State 5:** Cast *Mount* (No conditions - Default fallback)
+## Conflict strategies
 
-Now, if you hold Shift on *any* character, it uses a Healthstone. If you don't hold Shift, it checks your class/spec. If you are a Havoc DH, it casts Eye Beam. If none of the specific conditions match, it casts your Mount.
+When multiple states' conditions are true at the same time, the **conflict strategy** determines which one wins:
 
-## Adding States to a Slot
+### Priority *(default)*
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Select your interface and go to the **Properties** tab.
-3.  On the slot you want to modify, click the **"+"** button next to the primary Action button to "Add State".
-4.  A new row will appear below the primary action for that slot.
-5.  Click the **Action** button on this new state to choose what it does.
+States are checked top-to-bottom. The first state with a true condition is used. This is the standard behavior and works well for most cases.
 
-## Configuring State Conditions
+### Sequence
 
-Once you've added a state, you need to tell Wise *when* it should be active. Click the small **Gear Icon** next to the state's Action button to open its settings.
+States cycle through in order on each button press. Only states whose conditions are currently true participate in the cycle. Useful for rotating through multiple cooldowns on one button.
 
-Here you can set restrictions:
+Optional: **Reset on combat start** — the cycle resets back to state 1 when you enter combat, so you always start from the top.
 
-*   **Class:** Only active for a specific class (e.g., Mage, Warrior).
-*   **Spec:** Only active for a specific specialization (e.g., Fire Mage, Protection Warrior).
-*   **Talent Build:** Only active when a specific talent loadout is active.
-*   **Character:** Only active for a specific character name and realm.
-*   **Macro Conditionals:** The most flexible option. You can enter standard WoW macro conditionals like `[stealth]`, `[combat]`, `[flyable]`, `[mod:alt]`, or Wise's custom conditionals (see [Custom Conditionals](Conditionals.md)).
+### Random
 
-## Drag and Drop
+Each press picks a random state from those whose conditions are currently met. Useful for randomizing taunts, emotes, mount groups, or any scenario where you want variety.
 
-You can drag and drop spells/items directly from your spellbook or bags onto a slot in the Wise Options Panel.
+---
 
-*   **Replace:** Dragging onto the primary Action button will replace the current action.
-*   **Append:** Dragging onto the **"+"** (Add State) button will automatically create a new state at the bottom of the list with that action.
+## Adding states to a slot
 
-## Important Note on Dynamic Spell Replacement
+1. Open the Options Panel (`/wise`)
+2. Select your interface → **Properties** tab
+3. On the slot you want, click the **+** button to add a new state
+4. Click the **Action** button on the new state row to assign an action
+5. Click the **gear icon** on the state to set its conditions
 
-Wise automatically handles spell replacements due to talents (e.g., Paladin's 'Wake of Ashes' becoming 'Hammer of Light'). You usually don't need to create separate states for these; just set the base spell, and Wise will update the icon and action dynamically when the talent is active.
+---
+
+## Configuring state conditions
+
+Click the **gear icon** (or the conditions field) on any state to open its settings:
+
+### Availability filters (checkboxes)
+
+These are simple per-character filters that Wise evaluates at login and when your character changes:
+
+| Filter | What it restricts to |
+|---|---|
+| **Class** | Only show for characters of a specific class |
+| **Role** | Only show for a specific role (tank, healer, DPS) |
+| **Spec** | Only show for a specific specialization |
+| **Talent Build** | Only show when a specific saved talent loadout is active |
+| **Character** | Only show for a specific character name + realm |
+
+You can combine these — e.g., "Mage + Fire Spec" only matches Fire Mages.
+
+### Macro conditionals
+
+For real-time conditions (things that change during play), use the **Conditionals** field. Enter standard WoW macro conditional syntax:
+
+```
+[mod:shift]        → only when Shift is held
+[combat]           → only in combat
+[stealth]          → only while stealthed
+[form:2]           → only in bear form (Druid)
+[spec:1]           → only in spec 1
+```
+
+Multiple conditions in one bracket are AND'd: `[mod:shift,combat]` means "Shift held AND in combat."
+
+See [Conditionals Reference](Conditionals.md) for every available conditional.
+
+---
+
+## State ordering matters (Priority mode)
+
+In Priority mode, order determines which state wins when multiple conditions are true.
+
+**Best practice:** put the most specific conditions at the top, and the broadest fallback at the bottom (often with no conditions, so it's always active as a default).
+
+Bad order (fallback fires immediately, specific states never checked):
+```
+State 1: Mount           (no conditions)
+State 2: Charge          [warrior]
+State 3: Blink           [mage]
+```
+
+Correct order:
+```
+State 1: Charge          [warrior]
+State 2: Blink           [mage]
+State 3: Mount           (no conditions — fallback)
+```
+
+You can drag state rows to reorder them using the grip handle on the left.
+
+---
+
+## Drag and drop
+
+- **Replace:** Drag a spell/item from your spellbook or bags onto an existing state's Action button to replace it.
+- **Append:** Drag onto the **+** button of a slot to add a new state at the bottom with that action pre-filled.
+
+---
+
+## Automatic spell override resolution
+
+Wise resolves talent-upgraded spells automatically. If a talent replaces a spell (e.g., a Hero Talent modifying a core ability), you don't need a separate state — just assign the base spell and Wise handles the upgrade at runtime. The button will show the upgraded icon and cast the correct spell.
+
+---
+
+## Suppressing errors
+
+If a state's action isn't available (wrong spec, item not in bags, etc.) and the button is pressed, WoW normally plays an error sound and shows a message. You can disable this per-slot with **Suppress Errors** in the state settings — useful for fallback states that you intentionally might not have available.
+
+---
+
+## Example: universal utility button
+
+```
+Slot: "Utility"
+Conflict strategy: Priority
+
+State 1: Soulstone         [warlock]
+State 2: Rebirth           [druid]
+State 3: Raise Ally        [deathknight]
+State 4: Heroism           [shaman]
+State 5: Bloodlust         [shaman, spec:2]
+State 6: Time Warp         [mage]
+State 7: Healthstone       (no conditions — fallback)
+```
+
+One button. Works differently on every relevant class. Defaults to Healthstone on anything else.

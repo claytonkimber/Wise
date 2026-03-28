@@ -1,24 +1,44 @@
 # Moving Interfaces (Edit Mode)
 
-Wise includes its own Edit Mode to visually drag and position your interfaces around the screen. You don't have to guess X/Y coordinates manually!
+Wise has its own Edit Mode for repositioning interfaces visually on your screen. All active interfaces are shown simultaneously so you can lay them out relative to each other.
 
-## How to use Edit Mode
+## Entering Edit Mode
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Click the **Edit Mode** button at the top right of the main window.
-3.  All of your active interfaces will appear on screen with a green overlay bounding box.
-4.  Click and drag the green overlay of any interface to move it.
-5.  When you're happy with the placement, click the **Exit Edit Mode** button that appeared in the middle of your screen to save the positions.
+Click the **Edit Mode** button in the top-right corner of the Options Panel. A large **Exit Edit Mode** button appears in the center of your screen confirming you're in Edit Mode.
 
-## Precise Positioning (Nudgers)
+All active interfaces (those with visibility settings configured) appear on screen with a colored bounding-box overlay for dragging.
 
-If you need pixel-perfect alignment, you can use the Nudgers in the Settings tab.
+## Dragging interfaces
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Select the interface you want to position.
-3.  Click the **Settings** tab.
-4.  In the Position section, you'll see X and Y coordinate boxes.
-5.  Use the up/down arrows next to the coordinates to move the interface one pixel at a time.
-6.  You can also choose the Anchor Point (e.g., CENTER, BOTTOMLEFT) to align the interface relative to that point on the screen.
+Click and hold the colored overlay of any interface, then drag it to the desired position. Release to drop it there. The position is saved automatically.
 
-**Note:** Nested Interfaces cannot be moved using Edit Mode, as they are anchored to their parent slot. See [Nested Interfaces](../Advanced/Nesting.md) for more details.
+> Nested (child) interfaces cannot be moved in Edit Mode — they are anchored to their parent slot. Their position is determined by the parent layout and the configured **Open Direction**.
+
+## Exiting Edit Mode
+
+Click **Exit Edit Mode** in the center of your screen. All positions are saved to your SavedVariables.
+
+## Precise positioning (nudgers)
+
+For pixel-perfect placement without entering Edit Mode:
+
+1. Select your interface in the sidebar
+2. Click the **Settings** tab
+3. In the **Position** section, you'll see X and Y coordinate fields
+4. Click the **+** / **−** arrows to move one pixel at a time, or type a value directly
+
+You can also change the **Anchor Point** (e.g. CENTER, BOTTOMLEFT, TOPRIGHT). The interface is positioned relative to that anchor point on the screen.
+
+| Anchor | Interface positions its... |
+|---|---|
+| CENTER | center at the X/Y coordinates |
+| BOTTOMLEFT | bottom-left corner at X/Y |
+| TOPRIGHT | top-right corner at X/Y |
+
+## Resetting position
+
+Set X and Y to 0 and anchor to CENTER to return the interface to the middle of the screen.
+
+## WoW native Edit Mode compatibility
+
+Wise interfaces are compatible with the built-in WoW Edit Mode (`Escape → Edit Mode`). However, Wise's own Edit Mode is recommended for moving Wise interfaces, as it provides overlay feedback specific to Wise's layout types (especially circles and lists where the bounding box makes more sense).

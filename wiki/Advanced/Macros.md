@@ -1,41 +1,135 @@
 # Macros
 
-Wise allows you to create and use an unlimited number of custom macros, entirely separate from the built-in World of Warcraft macro system. This means you don't have to worry about the 18-character limit per account or character, and you don't need to copy macros between characters.
+Wise has its own macro system, completely separate from WoW's built-in macros. You get unlimited macros that don't count against WoW's 18-per-account / 18-per-character cap, and they're stored account-wide so they work on every character.
 
-## Creating a Custom Macro
+---
 
-1.  Open the Wise Options Panel (`/wise`).
-2.  Select the interface and slot you want to add a macro to in the **Properties** tab.
-3.  Click the **Action** button on that slot to open the Action Picker.
-4.  In the Action Picker, go to the **Macro** tab.
-5.  Click the **New Macro** button at the bottom of the list.
-6.  The **Macro Editor** will open on the right side of the Options Panel.
+## Creating a macro
 
-## Using the Macro Editor
+1. Open the Options Panel (`/wise`)
+2. Select your interface → **Properties** tab
+3. On a slot, click **Action** to open the Action Picker
+4. Go to the **Macro** tab
+5. Click **New Macro**
+6. The Macro Editor opens on the right side of the Options Panel
 
-The Macro Editor gives you a large text area to write your macro commands.
+---
 
-1.  **Name:** Give your macro a short name (this is mostly for your reference).
-2.  **Icon:** Click the icon button to open the Icon Picker and choose an image for your macro.
-3.  **Macro Text:** Enter your macro commands here.
+## The Macro Editor
 
-### Syntax Highlighting
+| Field | Description |
+|---|---|
+| **Name** | A label for your reference (shown in the macro list) |
+| **Icon** | Click to open the Icon Picker and choose a custom icon |
+| **Macro Text** | The full macro body — same syntax as WoW macros |
 
-The Wise Macro Editor includes basic syntax highlighting:
-*   **Blue Text:** Spell names that exist in the game.
-*   **Red Text:** Typos or spell names that Wise cannot find.
+### Syntax highlighting
 
-## How Wise Macros Work
+The editor highlights macro text in real time:
+- **Blue** — spell or item name recognized by Wise
+- **Red** — unrecognized name (possible typo)
 
-Wise handles custom macros slightly differently than the default game UI, allowing for more dynamic behavior:
+This helps you catch misspelled spell names before you commit the macro.
 
-*   **Dynamic Resolution:** Wise parses your macro text (using `SecureCmdOptionParse`) to figure out what spell or item it's trying to cast based on your current conditions (e.g., `[mod:shift] Spell A; Spell B`).
-*   **Tooltips and Icons:** It prioritizes `#showtooltip` or `#show` directives. If found, it uses that specific spell/item for the icon and tooltip. If not found, it scans the macro for the first `/cast` or `/use` command to determine the appropriate icon and tooltip.
-*   **Real-time Updates:** If your macro's conditions change (e.g., you change forms or targets), Wise's `conditionTicker` loop evaluates the custom macro and dynamically updates the button's icon, cooldown, and usability state in real-time.
-*   **Nil Resolution:** If a custom macro resolves to `nil` (meaning its conditions are not met and it has nothing to cast), Wise explicitly resets the button icon to the default Question Mark texture and clears any stale cooldown data.
-*   **Security:** Wise sanitizes inputs to `SecureCmdOptionParse` to prevent macro breakout errors, ensuring safe execution even in restricted environments. It also prevents the injection of newlines (`\n`) or carriage returns (`\r`) in conditional strings.
-*   **Dynamic Conditionals Injection:** If you use an action type of `macro` that begins with a slash command (like `/click`), Wise dynamically injects conditionals into the string (e.g., converting `/click ActionButton1` into `/click [possessbar] ActionButton1`) to ensure proper evaluation within the secure state driver.
+---
 
-## Adding a Macro to a Slot
+## How Wise macros work
 
-Once you've created and saved a macro in the Macro Editor, it will appear in the **Custom Macros** list in the Action Picker. Select it to assign it to the current slot.
+### Dynamic icon and tooltip resolution
+
+Wise parses your macro text to determine the correct icon and tooltip for the button. Resolution priority:
+
+1. `#showtooltip SpellOrItem` — uses that spell/item
+2. `#show SpellOrItem` — uses that spell/item for the icon (no tooltip text)
+3. First `/cast` or `/use` command found — uses the first actionable line
+4. Nothing resolvable → shows the default question-mark icon
+
+If your macro uses conditionals (`/cast [mod:shift] Spell A; Spell B`), Wise evaluates the conditionals in real time and updates the icon to match whatever would actually fire given your current game state.
+
+### Real-time updates
+
+Wise's background ticker (every 0.2s) re-evaluates your macro's conditionals continuously. This means:
+- The icon changes when you shift-hold, go in/out of combat, change forms, etc.
+- Cooldown overlays and usability state update live
+- If the macro resolves to nothing (`nil`), the button resets to the question-mark icon and clears cooldown data
+
+### Security
+
+Wise sanitizes macro inputs before passing them to `SecureCmdOptionParse` to prevent macro breakout errors. Newlines and carriage returns are stripped from conditional strings. This means Wise macros are safe to use in restricted (secure) contexts.
+
+### Conditional injection
+
+For macros that begin with `/click` (e.g., `/click ActionButton1`), Wise automatically injects conditionals to ensure proper behavior in different bar states:
+
+```
+/click ActionButton1
+→ becomes →
+/click [possessbar] ActionButton1
+```
+
+This happens transparently; you don't need to do anything special.
+
+---
+
+## Writing macros
+
+Wise macros support the full WoW macro language:
+
+```
+/cast [mod:shift] Healthstone; Fireball
+/use 13
+/stopmacro [dead]
+/script DoSomeFunction()
+```
+
+### Common patterns
+
+**Modifier override:**
+```
+/cast [mod:shift] Pyroblast; Fireball
+```
+Casts Pyroblast when Shift is held, Fireball otherwise.
+
+**Combat-conditional cast:**
+```
+/cast [combat] Recklessness; [nocombat] Heroic Leap
+```
+
+**Conditional item use:**
+```
+/use [combat] 14; [nocombat] Hearthstone
+```
+
+**Macro with showtooltip:**
+```
+#showtooltip Fireball
+/cast [mod:shift] Pyroblast; Fireball
+```
+Icon and tooltip always shows Fireball info regardless of which spell fires.
+
+**Self-targeting:**
+```
+/cast [@player] Power Word: Shield
+```
+
+---
+
+## Assigning a macro to a slot
+
+Once you've created a macro, it appears in the **Custom Macros** list in the Action Picker's Macro tab. Click it to assign it to the current slot.
+
+Macros can also be used as states — assign the same macro to multiple states with different visibility conditions.
+
+---
+
+## Inline macrotext (without saving)
+
+You can also enter macro text directly in a slot's action as "inline macrotext" without saving it to the macro library. This is useful for one-off or slot-specific macros you don't need to reuse. In the Action Picker, choose **Macro** → **Inline** and type the text directly.
+
+---
+
+## Tips
+
+- For spells that just need a conditional (like `[mod:shift] SpellA; SpellB`), consider using [States](States.md) instead of macros — states give you better icon resolution, per-character filtering, and don't require macro syntax knowledge.
+- Use macros for things that genuinely require `/script` or multi-step `/cast` logic that states can't express.
+- Unlimited macros means you can be specific: one macro per spec, one per situation, without worrying about running out.
