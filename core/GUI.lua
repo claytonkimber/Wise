@@ -4684,7 +4684,14 @@ function Wise:ApplyIconStyle(btn, style)
     -- Clear previous mask if exists
     if btn.styleMask then
         btn.icon:RemoveMaskTexture(btn.styleMask)
+        if btn.activeHighlight then btn.activeHighlight:RemoveMaskTexture(btn.styleMask) end
         btn.styleMask:Hide()
+    end
+
+    -- Reset cooldown shape to default square
+    if btn.cooldown then
+        btn.cooldown:SetUseCircularEdge(false)
+        btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
     end
 
     if style == "rounded" then
@@ -4704,8 +4711,14 @@ function Wise:ApplyIconStyle(btn, style)
         btn.styleMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
+        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        -- Circular cooldown swipe
+        if btn.cooldown then
+            btn.cooldown:SetUseCircularEdge(true)
+            btn.cooldown:SetSwipeTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+        end
     elseif style == "hexagon" then
         if not btn.styleMask then
             btn.styleMask = btn:CreateMaskTexture()
@@ -4714,8 +4727,13 @@ function Wise:ApplyIconStyle(btn, style)
         btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
+        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        -- Hexagon-shaped cooldown swipe
+        if btn.cooldown then
+            btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
+        end
     elseif style == "octagon" then
         if not btn.styleMask then
             btn.styleMask = btn:CreateMaskTexture()
@@ -4724,8 +4742,13 @@ function Wise:ApplyIconStyle(btn, style)
         btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         btn.styleMask:Show()
         btn.icon:AddMaskTexture(btn.styleMask)
+        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
         btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        -- Octagon-shaped cooldown swipe
+        if btn.cooldown then
+            btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
+        end
     end
 end
 
