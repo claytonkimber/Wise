@@ -112,4 +112,12 @@
             <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_DataBroker" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="DataBroker and Addon Configuration Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that DataBroker plugins and Addon options appear in the Action Picker.\n1. Open Options and create a new interface.\n2. Add a new action and open the Action Picker.\n3. Search or filter for 'DataBroker' category.\n4. Verify that installed DataBroker plugins and Addon slash commands appear in the list.\n5. Select one, place it on the bar, and click it out of combat to verify it opens the addon options or triggers the LDB action." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
