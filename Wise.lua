@@ -1569,13 +1569,13 @@ function Wise:ValidateGroup(groupName)
     
     -- Check structure
     if group.buttons and not group.actions then
-        if group.isWiser then
-            return true  -- Wiser interfaces use buttons, not actions
+        if group.isWiser or group.isSmartItem then
+            return true  -- Wiser/Smart Item interfaces use buttons, not actions
         else
             return false, "Old Data (Migration Needed)"
         end
     end
-    
+
     if type(group.actions) ~= "table" then
         -- Smart Item interfaces don't use actions; they populate dynamically
         if group.isSmartItem then
