@@ -111,26 +111,24 @@ There will be bugs, I'm very new to this and also, it's a very new addon
 
 ## Compatibility
 
-Wise creates its own frames, and doesn't use the default WoW action bar frames, so as far as I know, Wise is compatible with:
+Wise **creates its own frames**, and doesn't use the default WoW action bar frames, so as far as I know, Wise is compatible with:
 * OPie
 * GSE (Gnome Sequencer Enhanced)
 * Bartender / Dominos / ElvUI
 * Any addon that uses the standard WoW API for action bars
 
-There is hotkey mapping deconfliction for the native UI, but I haven't implemented checking for other addons completely yet.
+There is hotkey mapping deconfliction for the native UI, but I haven't implemented checking for other addons completely yet.  That being said, hotkeys from your original UI will not show up on Wise interfaces because they aren't a skin of your action bars.  They are their own thing.
 
-## Known Issues
+## Known Major Issues
 * Nesting isn't completely implemented how I would like it to work yet
-* Single-Button Assistant is working, but feels off, so I'm looking into it
 * Some Spells fail to copy when using the Bar Copy Tool, still looking into this
 * The options interface is a mess, see roadmap below
-* Auto push to CF isn't working yet, but I'm now approved in CF, so that's progress
 
 ## Roadmap
-* Version 1.0.[date code] - **we are here**
-* bug fixes
+* Version 1.0.[date code]
+* bug fixes - **we are here**
 * Version 1.1.[date code] Make the options window better - it currently sucks
-* bug fixes\
+* bug fixes - 
 * Version 1.2.[date code] Make the annimations smooth.  They aren't polished, and it looks jank.
 * we'll see
 
