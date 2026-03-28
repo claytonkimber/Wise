@@ -78,6 +78,25 @@ local function GetZoneAbilitySpellButton()
     return nil
 end
 
+function Wise:SelectEditModeLayout(name)
+    if not EditModeManagerFrame then return end
+    -- Presets are at fixed indices and not returned by GetLayouts()
+    if name == "Modern" then EditModeManagerFrame:SelectLayout(1) return end
+    if name == "Classic" then EditModeManagerFrame:SelectLayout(2) return end
+    -- Custom layouts start at index 3
+    if C_EditMode and C_EditMode.GetLayouts then
+        local layoutInfo = C_EditMode.GetLayouts()
+        if layoutInfo and layoutInfo.layouts then
+            for i, layout in ipairs(layoutInfo.layouts) do
+                if layout.layoutName == name then
+                    EditModeManagerFrame:SelectLayout(i + 2)
+                    return
+                end
+            end
+        end
+    end
+end
+
 -- Expose on Wise table for use in other modules (Actions.lua)
 function Wise:GetZoneAbilitySpellButton()
     return GetZoneAbilitySpellButton()
@@ -2192,7 +2211,7 @@ function Wise:GetSecureAttributes(actionData, conditions)
         end
 
         if element == "editmode" then
-             secureValue = "/run if EditModeManagerFrame and EditModeManagerFrame.SelectLayoutByName then EditModeManagerFrame:SelectLayoutByName(\"" .. state .. "\") else if C_EditMode and C_EditMode.GetLayouts then local layouts = C_EditMode.GetLayouts().layouts; for i, l in ipairs(layouts) do if l.layoutName == \"" .. state .. "\" then C_EditMode.SetActiveLayout(l.layoutType, i-1) break end end end end"
+             secureValue = "/run Wise:SelectEditModeLayout(\"" .. state .. "\")"
         elseif element == "chat" then
              local op = ""
              if state == "show" then op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"

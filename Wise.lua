@@ -356,6 +356,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         if name ~= "Cooldowns" and name ~= "Utilities" and name ~= "Spec and Equipment Changer" then
             g.buttons = {} -- Clear for rebuild
             g.actions = nil -- Clear actions to force migration from new buttons list
+            g.migratedToActions = nil -- Allow re-migration from fresh buttons
         end
         
         -- Store metadata for context (helper for debugging/future features)
@@ -561,13 +562,51 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         end
     end
 
-    -- 7. Cooldowns (default: box layout, width 4, fixed anchor)
+    -- 7. Edit Mode Layouts
+    local editModeGroup = EnsureWiserGroup("Edit Mode Layouts", "circle")
+    -- Always include the two built-in presets
+    table.insert(editModeGroup.buttons, {
+        type = "uivisibility",
+        value = "editmode:Modern",
+        name = "Edit Mode: Modern",
+        icon = "Interface\\Icons\\INV_Misc_EngGizmos_17",
+        category = "global"
+    })
+    table.insert(editModeGroup.buttons, {
+        type = "uivisibility",
+        value = "editmode:Classic",
+        name = "Edit Mode: Classic",
+        icon = "Interface\\Icons\\INV_Misc_EngGizmos_17",
+        category = "global"
+    })
+    -- Add all custom layouts
+    if C_EditMode and C_EditMode.GetLayouts then
+        local layoutInfo = C_EditMode.GetLayouts()
+        if layoutInfo and layoutInfo.layouts then
+            for _, layout in ipairs(layoutInfo.layouts) do
+                if layout.layoutName then
+                    table.insert(editModeGroup.buttons, {
+                        type = "uivisibility",
+                        value = "editmode:" .. layout.layoutName,
+                        name = "Edit Mode: " .. layout.layoutName,
+                        icon = "Interface\\Icons\\INV_Misc_EngGizmos_17",
+                        category = "global"
+                    })
+                end
+            end
+        end
+    end
+    if Wise.frames["Edit Mode Layouts"] and Wise.frames["Edit Mode Layouts"]:IsShown() then
+        Wise:UpdateGroupDisplay("Edit Mode Layouts")
+    end
+
+    -- 8. Cooldowns (default: box layout, width 4, fixed anchor)
     local cooldownsGroup = EnsureWiserGroup("Cooldowns", "box", {type = "box", boxWidth = 4})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
     end
 
-    -- 8. Utilities (default: box layout, width 2, fixed anchor)
+    -- 9. Utilities (default: box layout, width 2, fixed anchor)
     local utilitiesGroup = EnsureWiserGroup("Utilities", "box", {type = "box", boxWidth = 2})
     if Wise.UpdateCooldownWiser then
         Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")
