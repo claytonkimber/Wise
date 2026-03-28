@@ -2387,12 +2387,13 @@ function Wise:RenderGroupProperties(panel, group, y)
             local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
             radSlider:SetPoint("TOPLEFT", 37, y)
             radSlider:SetSize(126, 16)
-            radSlider:SetMinMaxValues(minRadius, 200)
+            local maxRadius = math.max(200, minRadius + 100)
+            radSlider:SetMinMaxValues(minRadius, maxRadius)
             radSlider:SetValue(currentRadius)
             radSlider:SetValueStep(1)
             radSlider:SetObeyStepOnDrag(true)
             radSlider.Low:SetText(tostring(minRadius))
-            radSlider.High:SetText("200")
+            radSlider.High:SetText(tostring(maxRadius))
             radSlider.Text:SetText(tostring(currentRadius))
 
 
@@ -2400,7 +2401,7 @@ function Wise:RenderGroupProperties(panel, group, y)
                         local function UpdateRadius(v)
                 v = math.floor(v)
                 if v < minRadius then v = minRadius end
-                if v > 200 then v = 200 end
+                if v > maxRadius then v = maxRadius end
                 group.circleRadius = v
                 radSlider:SetValue(v)
                 radLabel:SetText("Radius: " .. v)
