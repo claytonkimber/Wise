@@ -1356,6 +1356,7 @@ Wise.BlizzardFrames = {
     { key = "hideBagsBar", label = "Bags Bar", frames = {"BagsBar", "BagBarExpandable"} },
     { key = "hideExtraActionBar", label = "Extra Action Button", frames = {"ExtraActionBarFrame"} },
     { key = "hideZoneAbility", label = "Zone Ability Button", frames = {"ZoneAbilityFrame"} },
+    { key = "hidePuzzleUI", label = "Puzzle Event UI", frames = {} },
 }
 
 -- Hook into Edit Mode to re-apply visibility when exiting Edit Mode
@@ -1369,6 +1370,35 @@ if EditModeManagerFrame then
 end
 
 Wise.managedFrames = Wise.managedFrames or {}
+
+-- Programmatic check for an active puzzle event
+-- Puzzles generally give the player an Override Action Bar but do NOT put them
+-- in a traditional vehicle or possess state.
+local function IsPuzzleActive()
+    local hasOverride = HasOverrideActionBar and HasOverrideActionBar()
+    local inVehicle = UnitInVehicle("player") or UnitHasVehicleUI("player")
+    local isPossess = IsPossessBarVisible and IsPossessBarVisible()
+    return hasOverride and not inVehicle and not isPossess
+end
+
+local lastPuzzleState = false
+
+-- Event frame for puzzle UI hiding
+local puzzleEventFrame = CreateFrame("Frame")
+puzzleEventFrame:RegisterEvent("UPDATE_UI_WIDGET")
+puzzleEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+puzzleEventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
+puzzleEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
+puzzleEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+puzzleEventFrame:SetScript("OnEvent", function(self, event, ...)
+    local currentState = IsPuzzleActive()
+    if currentState ~= lastPuzzleState then
+        lastPuzzleState = currentState
+        if Wise.UpdateBlizzardUI then
+            Wise:UpdateBlizzardUI()
+        end
+    end
+end)
 
 -- Hidden parent frame for reparenting Blizzard frames that taint with RegisterStateDriver
 local hiddenParent = CreateFrame("Frame", nil, UIParent)
@@ -1390,8 +1420,23 @@ function Wise:UpdateBlizzardUI()
 
     local settings = WiseDB.settings.blizzardUI or {}
 
+    local puzzleActive = false
+    if settings["hidePuzzleUI"] then
+        puzzleActive = IsPuzzleActive()
+    end
+
+    if not InCombatLockdown() and Wise.frames then
+        for _, f in pairs(Wise.frames) do
+            if puzzleActive then
+                f:SetAttribute("state-wise-hide", "show")
+            else
+                f:SetAttribute("state-wise-hide", "hide")
+            end
+        end
+    end
+
     for _, info in ipairs(Wise.BlizzardFrames) do
-        local shouldHide = settings[info.key]
+        local shouldHide = settings[info.key] or (settings["hidePuzzleUI"] and puzzleActive and info.key ~= "hideOverrideBar" and info.key ~= "hideZoneAbility")
         for _, frameName in ipairs(info.frames) do
             local frame = _G[frameName]
             if frame then
@@ -1423,7 +1468,7 @@ function Wise:UpdateBlizzardUI()
     end
 
     -- Special handling for Action Bar 1: buttons + decorative art elements
-    local hideAB1 = settings["hideActionBar1"]
+    local hideAB1 = settings["hideActionBar1"] or (settings["hidePuzzleUI"] and puzzleActive)
 
     -- Action Buttons 1-12
     -- Reparent instead of RegisterStateDriver to avoid tainting secure attributes
