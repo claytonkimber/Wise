@@ -614,6 +614,20 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 
 
 
+    -- 9. Addons (Dynamic list of all Addon configurations and DataBroker plugins)
+    local addonsGroup = EnsureWiserGroup("Addons", "circle")
+    addonsGroup.isLocked = true -- Make it uneditable by the user
+    addonsGroup.buttons = {} -- Clear previous buttons
+    if Wise.GetAddons then
+        local addonItems = Wise:GetAddons()
+        for _, item in ipairs(addonItems) do
+            table.insert(addonsGroup.buttons, item)
+        end
+    end
+    if Wise.frames["Addons"] and Wise.frames["Addons"]:IsShown() then
+        Wise:UpdateGroupDisplay("Addons")
+    end
+
     -- Refresh Options UI if open to show new/updated groups
     if Wise.UpdateOptionsUI then
         Wise:UpdateOptionsUI()

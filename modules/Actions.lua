@@ -2287,7 +2287,7 @@ function Wise:CreateEmbeddedPicker(parent)
     local categories = {
         "Spell", "Items", "Equipped", "Battle pets", "Mounts", "Macros",
         "Equipment sets", "Raid markers", "Toys", "UI panel", "UI Visibility", "Skyriding",
-        "Professions", "Interface", "DataBroker", "Miscellaneous", "Special Action bars", "Transportation"
+        "Professions", "Interface", "Addons", "Miscellaneous", "Special Action bars", "Transportation"
     }
 
     local prevItem
@@ -3234,7 +3234,7 @@ function Wise:GetProfessions(filter)
     return items
 end
 
-function Wise:GetDataBroker(filter)
+function Wise:GetAddons(filter)
     local items = {}
     local seen = {}
 
@@ -3253,8 +3253,8 @@ function Wise:GetDataBroker(filter)
                         value = macroText,
                         name = name,
                         icon = icon,
-                        category = "DataBroker",
-                        tooltipFunc = function() GameTooltip:SetText(name .. " (DataBroker)") end
+                        category = "Addons",
+                        tooltipFunc = function() GameTooltip:SetText(name .. " (Addons)") end
                     })
                     seen[lName] = true
                 end
@@ -3316,7 +3316,7 @@ function Wise:GetDataBroker(filter)
                                     value = foundCmd,
                                     name = title,
                                     icon = icon,
-                                    category = "DataBroker",
+                                    category = "Addons",
                                     tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. foundCmd) end
                                 })
                                 seen[lName] = true
