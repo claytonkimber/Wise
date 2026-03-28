@@ -1318,12 +1318,14 @@ end
 
 Wise.managedFrames = Wise.managedFrames or {}
 
--- Midnight-safe check for an active puzzle widget
+-- Programmatic check for an active puzzle event
+-- Puzzles generally give the player an Override Action Bar but do NOT put them
+-- in a traditional vehicle or possess state.
 local function IsPuzzleActive()
-    if not C_UIWidgetManager or not C_UIWidgetManager.GetTopCenterWidgetSetID then return false end
-    local widgetSetID = C_UIWidgetManager.GetTopCenterWidgetSetID()
-    -- In 12.0, some IDs are 'Secret', but the ID itself is usually readable
-    return (widgetSetID and widgetSetID > 0) or UnitInVehicle("player")
+    local hasOverride = HasOverrideActionBar and HasOverrideActionBar()
+    local inVehicle = UnitInVehicle("player") or UnitHasVehicleUI("player")
+    local isPossess = IsPossessBarVisible and IsPossessBarVisible()
+    return hasOverride and not inVehicle and not isPossess
 end
 
 local lastPuzzleState = false
@@ -1331,6 +1333,8 @@ local lastPuzzleState = false
 -- Event frame for puzzle UI hiding
 local puzzleEventFrame = CreateFrame("Frame")
 puzzleEventFrame:RegisterEvent("UPDATE_UI_WIDGET")
+puzzleEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+puzzleEventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 puzzleEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 puzzleEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
 puzzleEventFrame:SetScript("OnEvent", function(self, event, ...)
