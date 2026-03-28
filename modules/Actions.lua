@@ -1518,6 +1518,10 @@ function Wise:GetActionName(actionType, value, extraData)
     elseif actionType == "uivisibility" then
         local element, state = string.match(value, "^(.-):(.+)$")
         if element and state then
+            if element == "editmode" then
+                return "Edit Mode: " .. state
+            end
+
             local eName = element:gsub("^%l", string.upper)
             if element == "xpbar" then eName = "XP Bar"
             elseif element == "repbar" then eName = "Reputation Bar"
@@ -1681,6 +1685,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
          local element = string.match(value, "^(.-):")
          if element == "minimap" then texture = "Interface\\Icons\\INV_Misc_Spyglass_03"
          elseif element == "micromenu" then texture = "Interface\\Icons\\INV_Misc_EngGizmos_17"
+         elseif element == "editmode" then texture = "Interface\\Icons\\INV_Misc_EngGizmos_17"
          elseif element == "bags" then texture = "Interface\\Icons\\INV_Misc_Bag_08"
          elseif element == "xpbar" then texture = "Interface\\Icons\\Spell_Holy_DivineProvidence"
          elseif element == "repbar" then texture = "Interface\\Icons\\Achievement_Reputation_01"
@@ -3055,6 +3060,20 @@ function Wise:GetUIVisibility(filter)
             if not filter or string.find(string.lower(fullName), filter, 1, true) then
                 local val = el.id .. ":" .. stateKeys[state]
                 table.insert(items, {type="uivisibility", value=val, name=fullName, icon=el.icon})
+            end
+        end
+    end
+
+    if C_EditMode and C_EditMode.GetLayouts then
+        local layoutInfo = C_EditMode.GetLayouts()
+        if layoutInfo and layoutInfo.layouts then
+            for _, layout in ipairs(layoutInfo.layouts) do
+                if layout.layoutName then
+                    local fullName = "Edit Mode: " .. layout.layoutName
+                    if not filter or string.find(string.lower(fullName), filter, 1, true) then
+                        table.insert(items, {type="uivisibility", value="editmode:" .. layout.layoutName, name=fullName, icon="Interface\\Icons\\INV_Misc_EngGizmos_17"})
+                    end
+                end
             end
         end
     end

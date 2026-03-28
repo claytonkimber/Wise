@@ -2191,7 +2191,9 @@ function Wise:GetSecureAttributes(actionData, conditions)
         elseif element == "debuffs" then frameName = "DebuffFrame"
         end
 
-        if element == "chat" then
+        if element == "editmode" then
+             secureValue = "/run VideoOptionsFrame_SetCurrentLayout(\"" .. state .. "\")"
+        elseif element == "chat" then
              local op = ""
              if state == "show" then op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"
              elseif state == "hide" then op = "ChatFrame1:Hide(); if GeneralDockManager then GeneralDockManager:Hide() end"
