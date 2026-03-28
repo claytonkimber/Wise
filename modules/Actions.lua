@@ -3215,7 +3215,104 @@ function Wise:GetProfessions(filter)
     return items
 end
 
-function Wise:GetDataBroker(filter) return {} end
+function Wise:GetDataBroker(filter)
+    local items = {}
+    local seen = {}
+
+    -- 1. LibDataBroker
+    local ldb = LibStub and LibStub("LibDataBroker-1.1", true)
+    if ldb then
+        for name, dataObj in ldb:DataObjectIterator() do
+            local lName = string.lower(name)
+            if not filter or string.find(lName, filter, 1, true) then
+                if dataObj.OnClick or dataObj.type == "launcher" or dataObj.type == "data source" then
+                    local icon = dataObj.icon or "Interface\\Icons\\INV_Misc_EngGizmos_20"
+                    local macroText = string.format('/run local o=LibStub("LibDataBroker-1.1"):GetDataObjectByName("%s"); if o and o.OnClick then o.OnClick(UIParent, "LeftButton") end', name)
+
+                    table.insert(items, {
+                        type = "macro",
+                        value = macroText,
+                        name = name,
+                        icon = icon,
+                        category = "DataBroker",
+                        tooltipFunc = function() GameTooltip:SetText(name .. " (DataBroker)") end
+                    })
+                    seen[lName] = true
+                end
+            end
+        end
+    end
+
+    -- 2. Addon Options Commands
+    -- Pre-calculate Slash commands to easily match
+    local slashCmds = {}
+    if SlashCmdList then
+        for k, _ in pairs(SlashCmdList) do
+            local cmdVar = "SLASH_" .. k .. "1"
+            if _G[cmdVar] then
+                slashCmds[string.upper(k)] = _G[cmdVar]
+            end
+        end
+    end
+
+    if C_AddOns and C_AddOns.GetNumAddOns then
+        for i = 1, C_AddOns.GetNumAddOns() do
+            if C_AddOns.IsAddOnLoaded(i) then
+                local addonName = C_AddOns.GetAddOnInfo(i)
+                if addonName and not string.find(addonName, "^Blizzard_") then
+                    local title = C_AddOns.GetAddOnMetadata(i, "Title") or addonName
+                    -- Clean up title (remove color codes)
+                    title = string.gsub(title, "|c%x%x%x%x%x%x%x%x", "")
+                    title = string.gsub(title, "|r", "")
+
+                    local lName = string.lower(title)
+                    local lAddonName = string.lower(addonName)
+                    if not filter or string.find(lName, filter, 1, true) or string.find(lAddonName, filter, 1, true) then
+                        -- If we haven't seen this from LDB
+                        if not seen[lName] and not seen[lAddonName] then
+                            -- Find matching slash command
+                            local foundCmd = nil
+                            local upperName = string.upper(addonName)
+                            local upperTitle = string.upper(title)
+
+                            -- Direct match
+                            if slashCmds[upperName] then
+                                foundCmd = slashCmds[upperName]
+                            else
+                                -- Fuzzy match
+                                for k, cmd in pairs(slashCmds) do
+                                    if string.find(upperName, k, 1, true) or string.find(k, upperName, 1, true) or
+                                       string.find(upperTitle, k, 1, true) or string.find(k, upperTitle, 1, true) then
+                                        foundCmd = cmd
+                                        break
+                                    end
+                                end
+                            end
+
+                            if foundCmd then
+                                -- Use icon from Addon if available (WoW 10.0+ supports addon icons)
+                                local icon = C_AddOns.GetAddOnMetadata(i, "IconTexture") or "Interface\\Icons\\INV_Misc_EngGizmos_11"
+                                table.insert(items, {
+                                    type = "macro",
+                                    value = foundCmd,
+                                    name = title,
+                                    icon = icon,
+                                    category = "DataBroker",
+                                    tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. foundCmd) end
+                                })
+                                seen[lName] = true
+                                seen[lAddonName] = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(items, function(a, b) return a.name < b.name end)
+    return items
+end
 
 function Wise:GetOverridebars(filter)
     local items = {}
