@@ -95,10 +95,10 @@
         </KeyValues>
     </Frame>
 
-    <Frame name="WiseDebugTest_Overridebars_LeaveVehicle" inherits="WiseDebugTestsData">
+    <Frame name="WiseDebugTest_SpecialActionBars_LeaveVehicle" inherits="WiseDebugTestsData">
         <KeyValues>
-            <KeyValue key="testName" value="Override bars: Leave Vehicle Action" type="string"/>
-            <KeyValue key="instructions" value="Verify that 'Leave Vehicle' is shown in the 'Override bars' category.\n1. Open Options.\n2. Select or create an Interface.\n3. Add an action and open the Action Picker.\n4. Change Category to 'Override bars'.\n5. Verify that 'Leave Vehicle' is in the list." type="string"/>
+            <KeyValue key="testName" value="Special Action bars: Leave Vehicle Action" type="string"/>
+            <KeyValue key="instructions" value="Verify that 'Leave Vehicle', 'Extra Action Button 1', 'Zone Ability', 'Override Bar', and 'Possess Bar' are shown in the 'Special Action bars' category.\n1. Open Options.\n2. Select or create an Interface.\n3. Add an action and open the Action Picker.\n4. Change Category to 'Special Action bars'.\n5. Verify that the actions are in the list." type="string"/>
             <KeyValue key="action" value="" type="string"/>
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>

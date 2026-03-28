@@ -2282,7 +2282,7 @@ function Wise:CreateEmbeddedPicker(parent)
     local categories = {
         "Spell", "Items", "Equipped", "Battle pets", "Mounts", "Macros",
         "Equipment sets", "Raid markers", "Toys", "UI panel", "UI Visibility", "Skyriding",
-        "Professions", "Interface", "DataBroker", "Miscellaneous", "Override bars", "Transportation"
+        "Professions", "Interface", "DataBroker", "Miscellaneous", "Special Action bars", "Transportation"
     }
 
     local prevItem
@@ -3217,7 +3217,7 @@ end
 
 function Wise:GetDataBroker(filter) return {} end
 
-function Wise:GetOverridebars(filter)
+function Wise:GetSpecialActionbars(filter)
     local items = {}
 
     local overrideBarName = "Override Bar Button "
@@ -3231,7 +3231,7 @@ function Wise:GetOverridebars(filter)
                 value = actionID,
                 name = name,
                 icon = "Interface\\Icons\\INV_Misc_QuestionMark",
-                category = "Override bars",
+                category = "Special Action bars",
                 conditions = "[overridebar]"
             })
         end
@@ -3249,7 +3249,7 @@ function Wise:GetOverridebars(filter)
                 value = actionID,
                 name = name,
                 icon = "Interface\\Icons\\INV_Misc_QuestionMark",
-                category = "Override bars",
+                category = "Special Action bars",
                 conditions = "[possessbar]"
             })
         end
@@ -3261,8 +3261,20 @@ function Wise:GetOverridebars(filter)
             value = "leave_vehicle",
             name = "Leave Vehicle",
             icon = "Interface\\Vehicles\\UI-Vehicles-Button-Exit-Up",
-            category = "Override bars"
+            category = "Special Action bars"
         })
+    end
+
+    local specialActionMisc = {
+         {name="Extra Action Button 1", val="extrabutton", icon="Interface\\Icons\\Temp"},
+         {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
+         {name="Override Bar", val="overridebar", icon="Interface\\Icons\\Temp"},
+         {name="Possess Bar", val="possessbar", icon="Interface\\Icons\\Temp"},
+    }
+    for _, m in ipairs(specialActionMisc) do
+        if not filter or string.find(string.lower(m.name), filter, 1, true) then
+            table.insert(items, {type="misc", value=m.val, name=m.name, icon=m.icon, category="Special Action bars"})
+        end
     end
 
     return items
@@ -3272,10 +3284,6 @@ function Wise:GetMiscellaneous(filter)
     local items = {}
     local misc = {
          {name="New Custom Macro", val="custom_macro", icon="Interface\\Icons\\Macro_Create"},
-         {name="Extra Action Button 1", val="extrabutton", icon="Interface\\Icons\\Temp"},
-         {name="Zone Ability", val="zoneability", icon="Interface\\Icons\\Temp"},
-         {name="Override Bar", val="overridebar", icon="Interface\\Icons\\Temp"},
-         {name="Possess Bar", val="possessbar", icon="Interface\\Icons\\Temp"},
          {name="Toggle Sound", val="toggle_sound", icon="Interface\\AddOns\\Wise\\Media\\SoundToggle.tga"},
          {name="Toggle Sound Effects", val="toggle_sfx", icon="Interface\\AddOns\\Wise\\Media\\SFXToggle.tga"},
          {name="Volume Up", val="vol_up", icon="Interface\\AddOns\\Wise\\Media\\VolUp.tga"},
