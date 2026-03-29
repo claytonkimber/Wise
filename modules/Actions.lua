@@ -538,7 +538,7 @@ end
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
 
-    -- "Global" filter -> Show everything
+    -- "All" filter -> Show everything
     if filter == "global" then return true end
 
     -- Filters now check applicability to the CURRENT toon, not the saved category tag.
@@ -627,7 +627,7 @@ Wise.ActionTypes = {
 -- Category constants
 Wise.Categories = {"global", "class", "role", "spec", "talent", "character"}
 Wise.CategoryLabels = {
-    global = "Global",
+    global = "All",
     class = "Class",
     role = "Role",
     spec = "Spec",
@@ -1148,7 +1148,7 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
     end
     
     -- Resolve Category and Spec Source
-    -- Default to Global if not provided
+    -- Default to "global" (All) if not provided
     local resolvedCategory = "global"
     if category and category ~= "global" then resolvedCategory = category end
     if extraData and extraData.category then resolvedCategory = extraData.category end
@@ -1695,6 +1695,9 @@ function Wise:GetActionIcon(actionType, value, extraData)
          elseif element == "target" then texture = "Interface\\Icons\\Ability_Hunter_SniperShot"
          elseif element == "buffs" then texture = "Interface\\Icons\\Spell_Holy_WordFortitude"
          elseif element == "debuffs" then texture = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
+         elseif element == "social" then texture = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+         elseif element == "chatchannels" then texture = "Interface\\Icons\\Ability_Warrior_RallyingCry"
+         elseif element == "quickchat" then texture = "Interface\\Icons\\INV_Misc_ChatBubble"
          else texture = "Interface\\Icons\\INV_Misc_QuestionMark" end
 
     elseif actionType == "uipanel" then
@@ -2327,9 +2330,9 @@ function Wise:CreateEmbeddedPicker(parent)
     ep.FilterFrame:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -8)
     tinsert(parent.controls, ep.FilterFrame)
 
-    -- Spell filter buttons: In-Spec / Off-Spec / Global
+    -- Spell filter buttons: In-Spec / Off-Spec / All
     ep.SpellFilterButtons = {}
-    local spellFilters = {"In-Spec", "Off-Spec", "Global"}
+    local spellFilters = {"In-Spec", "Off-Spec", "All"}
     local filterX = 0
     for _, filterName in ipairs(spellFilters) do
         local filterBtn = CreateFrame("Button", nil, ep.FilterFrame, "BackdropTemplate")
@@ -2711,7 +2714,7 @@ function Wise:GetSpell(filter)
             local skillLineName = info.name
             local specID = info.specID
             
-            local displayCategory = "Global"
+            local displayCategory = "All"
             local realCategory = "global"
             local sourceSpecID = nil
 
@@ -2724,7 +2727,7 @@ function Wise:GetSpell(filter)
                 realCategory = "spec"
                 sourceSpecID = specID
             elseif skillLineName == "General" or skillLineName == "Warbands" then
-                displayCategory = "Global"
+                displayCategory = "All"
                 realCategory = "global"
             else
                 -- Class Spells (No SpecID, not General)
@@ -2805,7 +2808,7 @@ function Wise:GetSpell(filter)
         }
     }
 
-    if classSpells[playerClass] and (Wise.PickerSpellFilter == "In-Spec" or Wise.PickerSpellFilter == "Global") then
+    if classSpells[playerClass] and (Wise.PickerSpellFilter == "In-Spec" or Wise.PickerSpellFilter == "All") then
         for _, spellName in ipairs(classSpells[playerClass]) do
             if not seen[spellName] then
                 local info = C_Spell.GetSpellInfo(spellName)
@@ -2826,7 +2829,7 @@ function Wise:GetSpell(filter)
     end
 
     -- Manual Exclusions/Inclusions
-    if Wise.PickerSpellFilter == "Global" then
+    if Wise.PickerSpellFilter == "All" then
         -- Assist (often missed by spellbook iterators)
         if not seen["Assist"] then
              local info = C_Spell.GetSpellInfo("Assist")
@@ -3049,6 +3052,9 @@ function Wise:GetUIVisibility(filter)
         {id="target", name="Target Frame", icon="Interface\\Icons\\Ability_Hunter_SniperShot"},
         {id="buffs", name="Buffs", icon="Interface\\Icons\\Spell_Holy_WordFortitude"},
         {id="debuffs", name="Debuffs", icon="Interface\\Icons\\Spell_Shadow_CurseOfTounges"},
+        {id="social", name="Social Button", icon="Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"},
+        {id="chatchannels", name="Chat Channels", icon="Interface\\Icons\\Ability_Warrior_RallyingCry"},
+        {id="quickchat", name="Quick Chat", icon="Interface\\Icons\\INV_Misc_ChatBubble"},
     }
 
     local states = {"On", "Off", "Toggle"}
@@ -3764,7 +3770,7 @@ function Wise:RefreshActionsView(container)
                  local disables = action.visibilityDisable or {}
 
                  local function formatTag(tag)
-                     if tag == "global" then return "Global" end
+                     if tag == "global" then return "All" end
                      local prefix, val = strsplit(":", tag, 2)
                      if not val then return tag end
                      if prefix == "role" then return Wise.RoleLabels and Wise.RoleLabels[val] or val

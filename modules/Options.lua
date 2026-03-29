@@ -345,7 +345,7 @@ function Wise:SetTab(viewName)
         end
     end
 
-    -- Show/Hide Filter Buttons (Global, Class, etc.)
+    -- Show/Hide Filter Buttons (All, Class, etc.)
     -- They are parented to the main frame, so we must manually toggle them.
     if f.Middle and f.Middle.FilterButtons then
         for _, btn in pairs(f.Middle.FilterButtons) do

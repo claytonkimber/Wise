@@ -2208,6 +2208,9 @@ function Wise:GetSecureAttributes(actionData, conditions)
         elseif element == "target" then frameName = "TargetFrame"
         elseif element == "buffs" then frameName = "BuffFrame"
         elseif element == "debuffs" then frameName = "DebuffFrame"
+        elseif element == "social" then frameName = "QuickJoinToastButton"
+        elseif element == "chatchannels" then frameName = "ChatFrameChannelButton"
+        elseif element == "quickchat" then frameName = "ChatFrameMenuButton"
         end
 
         if element == "editmode" then
