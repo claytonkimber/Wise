@@ -129,4 +129,27 @@
             <KeyValue key="clearAction" value="if Wise.OptionsFrame then Wise.OptionsFrame:Hide() end" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_EmptySlots" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Empty Slots Highlight" type="string"/>
+            <KeyValue key="instructions" value="1. Hover over the middle slot (the empty slot). It should NOT highlight or scale.\n2. Verify the empty slot acts as a spacer." type="string"/>
+            <KeyValue key="action" value="
+                WiseDB.groups['Test_EmptySlots'] = {
+                    type = 'line',
+                    dynamic = false,
+                    hideEmptySlots = true,
+                    actions = {
+                        [1] = {{type = 'spell', value = 118, name = 'Polymorph'}},
+                        [2] = {{type = 'empty', value = nil, name = 'Empty Slot'}},
+                        [3] = {{type = 'spell', value = 2139, name = 'Counterspell'}}
+                    },
+                    anchor = {point = 'CENTER', x = 0, y = 100}
+                }
+                Wise:UpdateGroupDisplay('Test_EmptySlots')
+                Wise.frames['Test_EmptySlots']:Show()
+            " type="string"/>
+            <KeyValue key="clearAction" value="if Wise.frames['Test_EmptySlots'] then Wise.frames['Test_EmptySlots']:Hide() end; WiseDB.groups['Test_EmptySlots'] = nil" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
