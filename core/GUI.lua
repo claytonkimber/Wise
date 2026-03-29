@@ -771,6 +771,17 @@ end
 local HOVER_SCALE = 1.05
 local HOVER_GLOW_ALPHA = 0.5
 
+local function IsHiddenEmptySlot(btn)
+    local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
+    local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
+    local groupName = btn.groupName or (btn:GetParent() and btn:GetParent().groupName)
+    if groupName and btnActionType == "empty" then
+        local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, btnHideEmpty = Wise:GetGroupDisplaySettings(groupName)
+        return btnHideEmpty == true
+    end
+    return false
+end
+
 local function CreateHoverGlow(parent)
     local glow = CreateFrame("Frame", nil, parent)
     glow:SetFrameLevel(parent:GetFrameLevel() + 3)
@@ -795,6 +806,8 @@ local function CreateHoverGlow(parent)
 end
 
 local function ShowHoverGlow(btn)
+    if IsHiddenEmptySlot(btn) then return end
+
     if not btn._hoverGlow then
         btn._hoverGlow = CreateHoverGlow(btn)
     end
@@ -825,6 +838,8 @@ local function HideHoverGlow(btn)
 end
 
 local function ApplyHoverScale(btn, scale)
+    if IsHiddenEmptySlot(btn) then return end
+
     if btn.icon then
         btn.icon:SetScale(scale)
     end
@@ -840,6 +855,8 @@ function Wise:AddHoverIndication(btn)
     if not btn then return end
 
     btn:HookScript("OnEnter", function(self)
+        if IsHiddenEmptySlot(self) then return end
+
         local parentFrame = self:GetParent()
         local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
         local isLineLayout = parentFrame and parentFrame.effectiveDisplayType == "line"
