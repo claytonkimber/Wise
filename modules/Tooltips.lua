@@ -31,12 +31,8 @@ function Wise:AddInterfaceTooltip(btn)
         -- Check setting
         if not WiseDB.settings.showTooltips then return end
 
-        -- Check if button is an invisible empty slot
-        local groupName = self.groupName or (self:GetParent() and self:GetParent().groupName)
-        if groupName and Wise.GetGroupDisplaySettings then
-            local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, tipHideEmpty = Wise:GetGroupDisplaySettings(groupName)
-            if tipHideEmpty and self.actionType == "empty" then return end
-        end
+        -- Empty slots are invisible space maintainers — no tooltip
+        if self.actionType == "empty" then return end
 
         -- Determine Anchor
         -- Using ANCHOR_CURSOR to avoid obscuring other ring buttons

@@ -46,32 +46,40 @@ end
 function Wise:Text_CreateFontStrings(btn)
     if btn._textReady then return end
 
+    -- Create an overlay frame above the cooldown so text is never hidden by the swipe
+    if not btn._textOverlay then
+        btn._textOverlay = CreateFrame("Frame", nil, btn)
+        btn._textOverlay:SetAllPoints()
+        btn._textOverlay:SetFrameLevel((btn.cooldown and btn.cooldown:GetFrameLevel() or btn:GetFrameLevel()) + 2)
+    end
+    local overlay = btn._textOverlay
+
     -- Charges / Item Count
     if not btn.count then
-        btn.count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.count = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
     -- Keybind (slot-level)
     if not btn.keybind then
-        btn.keybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.keybind = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         btn.keybind:SetShadowOffset(1, -1)
     end
 
     -- Interface Keybind (group-level toggle binding)
     if not btn.interfaceKeybind then
-        btn.interfaceKeybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.interfaceKeybind = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         btn.interfaceKeybind:SetShadowOffset(1, -1)
     end
 
     -- Countdown (new)
     if not btn.countdown then
-        btn.countdown = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.countdown = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         -- Default to center, but will be updated by Text_UpdateCountdown
     end
 
     -- Custom Text (stub – not populated yet, but the FontString is ready)
     if not btn.customText then
-        btn.customText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.customText = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
     btn._textReady = true
@@ -192,7 +200,8 @@ end
 function Wise:Text_UpdateCountdown(btn, groupName, text)
     if not btn.countdown then
         -- Create it if missing (should be created in CreateFontStrings, but safe fallback)
-        btn.countdown = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        local parent = btn._textOverlay or btn
+        btn.countdown = parent:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
     
     local _, _, fontPath, _, _, _, _, _, countdownTextSize, countdownTextPosition, _, _, _, _, _, showCountdownText = Wise:GetGroupDisplaySettings(groupName)

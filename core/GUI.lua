@@ -774,12 +774,7 @@ local HOVER_GLOW_ALPHA = 0.5
 local function IsHiddenEmptySlot(btn)
     local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
     local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
-    local groupName = btn.groupName or (btn:GetParent() and btn:GetParent().groupName)
-    if groupName and btnActionType == "empty" then
-        local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, btnHideEmpty = Wise:GetGroupDisplaySettings(groupName)
-        return btnHideEmpty == true
-    end
-    return false
+    return btnActionType == "empty"
 end
 
 local function CreateHoverGlow(parent)
@@ -3276,7 +3271,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                 local conflictStrategy = validStates.conflictStrategy or "priority"
                 local chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
                 local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
-    
+
                 if actionData then
                     -- Check category metadata filter ONLY for the options UI, not the bar renderer itself.
                     local shouldShow = true
@@ -3308,12 +3303,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         end
                     else
                         -- Static interfaces: preserve slot positions to prevent collapsing.
-                        if Wise.editMode or isKnown then
-                            table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
-                        else
-                            -- Action not known on this character: insert empty placeholder to hold the slot position
-                            table.insert(actionsToShow, {data = {type="empty", value=nil}, known = true, categoryMatch = true, slot = slotIdx})
+                        -- If the chosen state is not known, try to find another valid state that IS known
+                        -- (e.g. conditional override bar won priority but isn't available — fall back to a real spell)
+                        if not isKnown and not Wise.editMode and #validStates > 1 then
+                            for fallbackIdx, fallbackState in ipairs(validStates) do
+                                if fallbackIdx ~= chosenIdx and Wise:IsActionKnown(fallbackState.type, fallbackState.value) then
+                                    chosenIdx = fallbackIdx
+                                    actionData = fallbackState
+                                    isKnown = true
+                                    break
+                                end
+                            end
                         end
+                        -- Always preserve the slot with its actual data (known actions render normally,
+                        -- unknown ones render desaturated). Only user-placed "empty" type slots go invisible.
+                        table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
                     end
                 end
             elseif not isDynamic then
@@ -3986,21 +3990,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
         btn.isValid = isValid
         
         local isEmptySlot = (aType == "empty")
-        if hideEmptySlots and isEmptySlot then
+        if isEmptySlot then
+            -- Empty slots are pure space maintainers — completely invisible
+            btn:SetAlpha(0)
             btn:EnableMouse(false)
-            btn.icon:SetAlpha(0)
-            if btn.cooldown then btn.cooldown:SetAlpha(0) end
-            if btn.activeHighlight then btn.activeHighlight:SetAlpha(0) end
-            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(0) end
-            if btn.count then btn.count:SetAlpha(0) end
-            if btn.keybind then btn.keybind:SetAlpha(0) end
+            if btn._textOverlay then btn._textOverlay:Hide() end
         else
+            btn:SetAlpha(1)
             btn:EnableMouse(true)
-            if btn.cooldown then btn.cooldown:SetAlpha(1) end
-            if btn.activeHighlight then btn.activeHighlight:SetAlpha(1) end
-            if btn:GetNormalTexture() then btn:GetNormalTexture():SetAlpha(1) end
-            if btn.count then btn.count:SetAlpha(1) end
-            if btn.keybind then btn.keybind:SetAlpha(1) end
+            if btn.activeHighlight then btn.activeHighlight:Hide() end
 
             if isValid then
                 -- Initial state saturated; Usability check will refine this later
@@ -4144,21 +4142,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                  end
              end
              
-             -- Apply Desaturation (same as real button)
+             -- Empty slots are pure space maintainers — completely invisible
              local vIsEmpty = (actionData.type == "empty")
-             if visualHideEmpty and vIsEmpty then
-                 vBtn.icon:SetAlpha(0)
-                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(0) end
-                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(0) end
-                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(0) end
-                 if vBtn.count then vBtn.count:SetAlpha(0) end
-                 if vBtn.keybind then vBtn.keybind:SetAlpha(0) end
+             if vIsEmpty then
+                 vBtn:SetAlpha(0)
              else
-                 if vBtn.cooldown then vBtn.cooldown:SetAlpha(1) end
-                 if vBtn.activeHighlight then vBtn.activeHighlight:SetAlpha(1) end
-                 if vBtn:GetNormalTexture() then vBtn:GetNormalTexture():SetAlpha(1) end
-                 if vBtn.count then vBtn.count:SetAlpha(1) end
-                 if vBtn.keybind then vBtn.keybind:SetAlpha(1) end
+                 vBtn:SetAlpha(1)
+                 if vBtn.activeHighlight then vBtn.activeHighlight:Hide() end
                  if isKnown and categoryMatch then
                     vBtn.icon:SetDesaturated(false)
                     vBtn.icon:SetAlpha(1)
@@ -4626,6 +4616,24 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 btn.actionValue = state.value
                                 btn.actionData = state
 
+                                -- Apply/remove empty slot visual treatment (alpha is safe in combat, EnableMouse is not)
+                                if state.type == "empty" then
+                                    btn:SetAlpha(0)
+                                    if canSetAttrs then btn:EnableMouse(false) end
+                                else
+                                    btn:SetAlpha(1)
+                                    if canSetAttrs then btn:EnableMouse(true) end
+                                    -- Restore keybinds when switching away from empty
+                                    local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(f.groupName or name)
+                                    Wise:Text_UpdateKeybind(btn, f.groupName or name, showKeybinds)
+                                    Wise:Text_UpdateInterfaceKeybind(btn, f.groupName or name, showInterfaceKeybind)
+                                    local vClone = meta.visualClone or btn.visualClone
+                                    if vClone then
+                                        Wise:Text_UpdateKeybind(vClone, f.groupName or name, showKeybinds)
+                                        Wise:Text_UpdateInterfaceKeybind(vClone, f.groupName or name, showInterfaceKeybind)
+                                    end
+                                end
+
                                 -- Update secure attributes when not in combat
                                 -- BUT NOT for sequence strategy: the PreClick secure snippet
                                 -- manages type/macrotext exclusively for sequences.
@@ -4638,7 +4646,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                     btn:SetAttribute("macrotext", nil)
                                     btn:SetAttribute("clickbutton", nil)
                                     btn:SetAttribute("type", sType)
-                                    btn:SetAttribute(sAttr, sValue)
+                                    if sAttr then
+                                        btn:SetAttribute(sAttr, sValue)
+                                    end
                                 end
 
                                 -- Update cooldown tracking for new active state
@@ -4664,6 +4674,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 meta.actionValue = state.value
                                 meta.actionData = state
                                 Wise:UpdateButtonCooldown(btn)
+
+                                -- Sync visual clone
+                                local vClone = meta.visualClone or btn.visualClone
+                                if vClone then
+                                    if state.type == "empty" then
+                                        vClone:SetAlpha(0)
+                                    else
+                                        vClone:SetAlpha(1)
+                                        if vClone.icon then
+                                            vClone.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
@@ -4896,15 +4919,27 @@ function Wise:ApplyLayout(frame, type, count, groupName)
     for i=1, count do
         local btn = buttons[i]
         btn:Show()
-        
-        -- Update Keybind Display via Text
-        Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
-        Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
-        
+
+        -- Skip keybind display for empty slots (they are invisible space maintainers)
+        local btnIsEmpty = btn.actionType == "empty"
+        if not btnIsEmpty then
+            -- Update Keybind Display via Text
+            Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
+            Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
+        else
+            if btn.keybind then btn.keybind:Hide() end
+            if btn.interfaceKeybind then btn.interfaceKeybind:Hide() end
+        end
+
         -- Sync keybind and interface keybind to visual clone via Text module
         if btn.visualClone then
-            Wise:Text_UpdateKeybind(btn.visualClone, groupName, showKeybinds)
-            Wise:Text_UpdateInterfaceKeybind(btn.visualClone, groupName, showInterfaceKeybind)
+            if not btnIsEmpty then
+                Wise:Text_UpdateKeybind(btn.visualClone, groupName, showKeybinds)
+                Wise:Text_UpdateInterfaceKeybind(btn.visualClone, groupName, showInterfaceKeybind)
+            else
+                if btn.visualClone.keybind then btn.visualClone.keybind:Hide() end
+                if btn.visualClone.interfaceKeybind then btn.visualClone.interfaceKeybind:Hide() end
+            end
         end
     end
 
@@ -5414,7 +5449,7 @@ function Wise:UpdateBindings()
         if f and f.buttons then
             local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(name)
             for _, btn in ipairs(f.buttons) do
-                if btn:IsShown() then
+                if btn:IsShown() and btn.actionType ~= "empty" then
                     Wise:Text_UpdateKeybind(btn, name, showKeybinds)
                     Wise:Text_UpdateInterfaceKeybind(btn, name, showInterfaceKeybind)
                 end
@@ -6311,7 +6346,9 @@ function Wise:ResetSequences()
                         btn:SetAttribute("macrotext", nil)
                         btn:SetAttribute("clickbutton", nil)
                         btn:SetAttribute("type", sType)
-                        btn:SetAttribute(sAttr, sValue)
+                        if sAttr then
+                            btn:SetAttribute(sAttr, sValue)
+                        end
                     end
                 end
             end
