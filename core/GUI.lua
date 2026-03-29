@@ -5659,9 +5659,12 @@ function Wise:UpdateButtonCooldown(btn)
         if not groupName then groupName = parent.groupName end
     end
 
-    btn.cooldown:SetHideCountdownNumbers(true)
+    local _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, showCountdownText = Wise:GetGroupDisplaySettings(groupName)
+
+    -- If Wise's custom countdown text is disabled, allow Blizzard/OmniCC to show text by passing false to SetHideCountdownNumbers
+    btn.cooldown:SetHideCountdownNumbers(showCountdownText)
     if visualClone and visualClone.cooldown then
-        visualClone.cooldown:SetHideCountdownNumbers(true)
+        visualClone.cooldown:SetHideCountdownNumbers(showCountdownText)
     end
 
     -- Determine active state: for DurationObject path, check if cooldown frame is showing
