@@ -46,32 +46,39 @@ end
 function Wise:Text_CreateFontStrings(btn)
     if btn._textReady then return end
 
+    if not btn.textFrame then
+        btn.textFrame = CreateFrame("Frame", nil, btn)
+        btn.textFrame:SetAllPoints(btn)
+        -- Ensure textFrame renders above the cooldown overlay
+        btn.textFrame:SetFrameLevel(btn:GetFrameLevel() + 5)
+    end
+
     -- Charges / Item Count
     if not btn.count then
-        btn.count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.count = btn.textFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
     -- Keybind (slot-level)
     if not btn.keybind then
-        btn.keybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.keybind = btn.textFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         btn.keybind:SetShadowOffset(1, -1)
     end
 
     -- Interface Keybind (group-level toggle binding)
     if not btn.interfaceKeybind then
-        btn.interfaceKeybind = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.interfaceKeybind = btn.textFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         btn.interfaceKeybind:SetShadowOffset(1, -1)
     end
 
     -- Countdown (new)
     if not btn.countdown then
-        btn.countdown = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.countdown = btn.textFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         -- Default to center, but will be updated by Text_UpdateCountdown
     end
 
     -- Custom Text (stub – not populated yet, but the FontString is ready)
     if not btn.customText then
-        btn.customText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.customText = btn.textFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
     btn._textReady = true
