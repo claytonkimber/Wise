@@ -645,7 +645,16 @@ function Wise:Initialize()
     end
 
     print("|cff00ccffWise|r Loaded. Type /wise to open options.")
-    
+
+    -- Log to MechanicLib debug buffer (visible even when debug mode is off)
+    if Wise.debugBuffer then
+        local tocVersion = C_AddOns.GetAddOnMetadata(addonName, "Version") or "unknown"
+        table.insert(Wise.debugBuffer, { msg = "Wise v" .. tocVersion .. " initialized", time = GetTime() })
+    end
+    if Wise.MechanicLib and Wise.MechanicLib.Log then
+        Wise.MechanicLib:Log("Wise", "Initialized", Wise.MechanicLib.Categories and Wise.MechanicLib.Categories.CORE or nil)
+    end
+
     -- Cache current character info
     if Wise.UpdateCharacterInfo then
         Wise:UpdateCharacterInfo()
@@ -1119,11 +1128,85 @@ function frame:OnEvent(event, arg1)
                 end
             end
         end
-        -- Register with MechanicLib for external data logging
+        -- Register with MechanicLib for full Mechanic integration
         local MechanicLib = LibStub and LibStub("MechanicLib-1.0", true)
         if MechanicLib then
             local tocVersion = C_AddOns.GetAddOnMetadata(addonName, "Version") or "unknown"
-            MechanicLib:Register("Wise", { version = tocVersion })
+
+            -- Debug buffer for Mechanic console
+            Wise.debugBuffer = Wise.debugBuffer or {}
+
+            MechanicLib:Register("Wise", {
+                version = tocVersion,
+
+                -- Console: expose debug buffer for Mechanic's pull model
+                getDebugBuffer = function()
+                    return Wise.debugBuffer
+                end,
+                clearDebugBuffer = function()
+                    if Wise.debugBuffer then
+                        wipe(Wise.debugBuffer)
+                    end
+                end,
+
+                -- Inspect: register key frames for Mechanic's frame watch list
+                inspect = {
+                    getWatchFrames = function()
+                        local frames = {}
+                        if Wise.frames then
+                            for groupName, f in pairs(Wise.frames) do
+                                table.insert(frames, {
+                                    label = "Group: " .. groupName,
+                                    frame = f,
+                                    property = "Visibility",
+                                })
+                            end
+                        end
+                        if Wise.DebugFrame then
+                            table.insert(frames, {
+                                label = "Debug Panel",
+                                frame = Wise.DebugFrame,
+                                property = "Visibility",
+                            })
+                        end
+                        return frames
+                    end,
+                },
+
+                -- Tools: quick actions panel in Mechanic's Tools tab
+                tools = {
+                    createPanel = function(container)
+                        Wise:CreateMechanicToolsPanel(container)
+                    end,
+                },
+
+                -- Settings exposed in Mechanic UI
+                settings = {
+                    debugMode = {
+                        type = "toggle",
+                        name = "Debug Mode",
+                        get = function() return WiseDB and WiseDB.settings and WiseDB.settings.debug end,
+                        set = function(v)
+                            if WiseDB and WiseDB.settings then
+                                WiseDB.settings.debug = v
+                                if Wise.ToggleDebugInterface then
+                                    Wise:ToggleDebugInterface(v)
+                                end
+                            end
+                        end,
+                    },
+                    showKeybinds = {
+                        type = "toggle",
+                        name = "Show Keybinds",
+                        get = function() return WiseDB and WiseDB.settings and WiseDB.settings.showKeybinds end,
+                        set = function(v)
+                            if WiseDB and WiseDB.settings then
+                                WiseDB.settings.showKeybinds = v
+                            end
+                        end,
+                    },
+                },
+            })
             Wise.MechanicLib = MechanicLib
         end
 
@@ -1651,6 +1734,89 @@ SlashCmdList["WISE"] = function(msg)
     else
         print("|cff00ccff[Wise]|r Options not loaded properly.")
     end
+end
+
+-- Mechanic Tools Panel (shown in Mechanic's Tools tab)
+function Wise:CreateMechanicToolsPanel(container)
+    local function CreateToolButton(parent, x, y, width, text, onClick)
+        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        btn:SetSize(width, 24)
+        btn:SetText(text)
+        btn:SetScript("OnClick", onClick)
+        return btn
+    end
+
+    local title = container:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 10, -10)
+    title:SetText("Wise Tools")
+
+    local desc = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    desc:SetPoint("TOPLEFT", 10, -35)
+    desc:SetText("Quick actions for Wise action bar addon.")
+
+    -- Row 1: Options & Edit Mode
+    local row1Label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row1Label:SetPoint("TOPLEFT", 10, -65)
+    row1Label:SetText("Panels:")
+
+    CreateToolButton(container, 80, -60, 120, "Open Options", function()
+        if Wise.ToggleOptions then Wise:ToggleOptions() end
+    end)
+
+    CreateToolButton(container, 205, -60, 120, "Toggle Edit Mode", function()
+        if not InCombatLockdown() and Wise.ToggleEditMode then
+            Wise:ToggleEditMode()
+        else
+            print("|cff00ccffWise:|r Cannot toggle edit mode in combat.")
+        end
+    end)
+
+    -- Row 2: Debug
+    local row2Label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row2Label:SetPoint("TOPLEFT", 10, -100)
+    row2Label:SetText("Debug:")
+
+    CreateToolButton(container, 80, -95, 120, "Toggle Debug", function()
+        if WiseDB and WiseDB.settings then
+            WiseDB.settings.debug = not WiseDB.settings.debug
+            if Wise.ToggleDebugInterface then
+                Wise:ToggleDebugInterface(WiseDB.settings.debug)
+            end
+            print("|cff00ccffWise:|r Debug " .. (WiseDB.settings.debug and "ON" or "OFF"))
+        end
+    end)
+
+    CreateToolButton(container, 205, -95, 120, "Bug Report", function()
+        if Wise.ShowBugReportWindow then
+            Wise:ShowBugReportWindow()
+        end
+    end)
+
+    -- Row 3: Interfaces info
+    local row3Label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row3Label:SetPoint("TOPLEFT", 10, -135)
+    row3Label:SetText("Info:")
+
+    CreateToolButton(container, 80, -130, 120, "List Interfaces", function()
+        if WiseDB and WiseDB.groups then
+            local count = 0
+            for name, g in pairs(WiseDB.groups) do
+                local status = (Wise.frames and Wise.frames[name] and Wise.frames[name]:IsShown()) and "|cff00ff00shown|r" or "|cffff0000hidden|r"
+                print(string.format("|cff00ccffWise:|r  %s [%s] %s", name, g.type or "?", status))
+                count = count + 1
+            end
+            print(string.format("|cff00ccffWise:|r %d interface(s) total.", count))
+        end
+    end)
+
+    CreateToolButton(container, 205, -130, 120, "Demo Tour", function()
+        if Wise.Demo then Wise.Demo:Start() end
+    end)
+
+    local footer = container:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer:SetPoint("BOTTOM", 0, 10)
+    footer:SetText("Use /wise for more options.")
 end
 
 function Wise:ToggleOptions()

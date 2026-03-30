@@ -20,6 +20,23 @@ function Wise:DebugPrint(...)
         local msg = string.format(...)
         print("|cff00ccff[Wise Debug]|r", msg)
 
+        -- Feed into MechanicLib debug buffer for console integration
+        if Wise.debugBuffer then
+            table.insert(Wise.debugBuffer, {
+                msg = msg,
+                time = GetTime(),
+            })
+            -- Cap buffer to prevent memory bloat
+            if #Wise.debugBuffer > 500 then
+                table.remove(Wise.debugBuffer, 1)
+            end
+        end
+
+        -- Log to Mechanic's console directly (if available)
+        if Wise.MechanicLib and Wise.MechanicLib.Log then
+            Wise.MechanicLib:Log("Wise", msg, Wise.MechanicLib.Categories and Wise.MechanicLib.Categories.CORE or nil)
+        end
+
         if Wise.LogFrame then
             local timestamp = date("%H:%M:%S")
             local current = Wise.LogFrame:GetText() or ""
