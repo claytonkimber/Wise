@@ -8,7 +8,7 @@
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1473207
 ## SavedVariables: WiseDB
-## OptionalDeps: LargerMacroIconSelection, Masque
+## OptionalDeps: LargerMacroIconSelection, Masque, MechanicLib
 ## IconTexture: Interface\AddOns\Wise\Media\WiseLogoSquare_512.tga
 
 # Libraries

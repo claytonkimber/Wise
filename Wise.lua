@@ -1119,6 +1119,14 @@ function frame:OnEvent(event, arg1)
                 end
             end
         end
+        -- Register with MechanicLib for external data logging
+        local MechanicLib = LibStub and LibStub("MechanicLib-1.0", true)
+        if MechanicLib then
+            local tocVersion = C_AddOns.GetAddOnMetadata(addonName, "Version") or "unknown"
+            MechanicLib:Register("Wise", { version = tocVersion })
+            Wise.MechanicLib = MechanicLib
+        end
+
         -- Initialize modules if needed
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
