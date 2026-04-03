@@ -2227,6 +2227,16 @@ function Wise:GetSecureAttributes(actionData, conditions)
 
         if element == "editmode" then
              secureValue = "/run Wise:SelectEditModeLayout(\"" .. state .. "\")"
+        elseif element == "friendlynameplates" or element == "enemynameplates" then
+             local cvar = element == "friendlynameplates" and "nameplateShowFriends" or "nameplateShowEnemies"
+             local op = ""
+             if state == "show" then op = "SetCVar(\"" .. cvar .. "\", 1)"
+             elseif state == "hide" then op = "SetCVar(\"" .. cvar .. "\", 0)"
+             elseif state == "toggle" then op = "SetCVar(\"" .. cvar .. "\", GetCVar(\"" .. cvar .. "\") == \"1\" and 0 or 1)"
+             end
+             if op ~= "" then
+                 secureValue = "/run " .. op
+             end
         elseif element == "chat" then
              local op = ""
              if state == "show" then op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"

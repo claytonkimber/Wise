@@ -1528,6 +1528,8 @@ function Wise:GetActionName(actionType, value, extraData)
             elseif element == "micromenu" then eName = "Micro Menu"
             elseif element == "minimap" then eName = "Minimap"
             elseif element == "bags" then eName = "Bags Bar"
+            elseif element == "friendlynameplates" then eName = "Friendly Nameplates"
+            elseif element == "enemynameplates" then eName = "Enemy Nameplates"
             end
 
             local sName = state:gsub("^%l", string.upper)
@@ -1698,6 +1700,8 @@ function Wise:GetActionIcon(actionType, value, extraData)
          elseif element == "social" then texture = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
          elseif element == "chatchannels" then texture = "Interface\\Icons\\Ability_Warrior_RallyingCry"
          elseif element == "quickchat" then texture = "Interface\\Icons\\INV_Misc_ChatBubble"
+         elseif element == "friendlynameplates" then texture = "Interface\\Icons\\Achievement_ReputationCity_Friendly"
+         elseif element == "enemynameplates" then texture = "Interface\\Icons\\Ability_Creature_Cursed_02"
          else texture = "Interface\\Icons\\INV_Misc_QuestionMark" end
 
     elseif actionType == "uipanel" then
@@ -3055,6 +3059,8 @@ function Wise:GetUIVisibility(filter)
         {id="social", name="Social Button", icon="Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"},
         {id="chatchannels", name="Chat Channels", icon="Interface\\Icons\\Ability_Warrior_RallyingCry"},
         {id="quickchat", name="Quick Chat", icon="Interface\\Icons\\INV_Misc_ChatBubble"},
+        {id="friendlynameplates", name="Friendly Nameplates", icon="Interface\\Icons\\Achievement_ReputationCity_Friendly"},
+        {id="enemynameplates", name="Enemy Nameplates", icon="Interface\\Icons\\Ability_Creature_Cursed_02"},
     }
 
     local states = {"On", "Off", "Toggle"}

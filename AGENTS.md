@@ -8,6 +8,7 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - Framework:
 - IDE: Antigravity 2026
 - Agent Trio: Claude Code (Logic), Jules (Background Ops), Gemini (Arch)
+- Tooling: Mechanic MCP (addon lifecycle automation)
 
 ## Taint Avoidance (MANDATORY)
 
@@ -197,6 +198,10 @@ f:SetAttribute("_onhide", [[
 
 **Never** set override bindings from an insecure `OnShow` script during combat — use the secure attribute handler instead.
 
+### Automated Security Analysis
+
+Use `mcp__mechanic__addon-security` to detect combat lockdown violations, taint risks, and unsafe eval patterns. Run this after any changes to secure frame code or visibility logic. This complements the manual checklist below.
+
 ### Quick Reference: Taint Danger Checklist
 
 Before merging any code, verify:
@@ -219,13 +224,19 @@ Before merging any code, verify:
 - **Table Management:** When clearing tables, use the built-in `wipe(table)` function to safely and efficiently clear the contents without creating memory garbage collection overhead.
 - **Code Organization:** To prevent bloating `Wise.lua`, large default configurations and standard loadout bars (such as the Demo bar) should be created as separate files in the `modules/` directory and dynamically hooked into `Wise.lua` for initialization and resets.
 - **Optimization:** Optimize performance where possible, e.g., pre-parsing condition strings or using O(1) lookups in `modules/States.lua`.
+- **Formatting:** Use `mcp__mechanic__addon-format` (StyLua) to auto-format code to match project style guidelines.
+- **Deprecations:** Use `mcp__mechanic__addon-deprecations` to scan for deprecated API calls that need updating for current and upcoming WoW versions.
+- **Dead Code:** Use `mcp__mechanic__addon-deadcode` to detect unused functions, orphaned files, and dead exports.
+- **Complexity:** Use `mcp__mechanic__addon-complexity` to detect deep nesting, long functions, and magic numbers.
 
 ## Verification Workflow
-- **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names.
+- **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names. Use `mcp__mechanic__api-search` to look up APIs by name pattern and `mcp__mechanic__api-info` to get detailed signatures and documentation for a specific API. Use `mcp__mechanic__api-list` to browse all APIs in a namespace (e.g., `C_Spell`).
 - **Automated Tests:** Do not write custom automated tests for the addon, as executing and passing them requires the actual World of Warcraft game client to be running.
 - **tests.xml Workflow:** Every bug fix, feature, or test must add a debugging/testing procedure to `tests.xml`. Before every merge, review `tests.xml` to check if existing tests are still needed, ensuring the file stays clean and unpolluted.
-- **Syntax Validation:** The development/shell environment for this repository lacks a native Lua interpreter by default. To perform syntax validation for Lua files, install luajit (`sudo apt-get install -y luajit`) and run `luajit -bl <file>`.
+- **Syntax Validation:** Use `mcp__mechanic__addon-lint` (Luacheck) to validate Lua syntax and catch code quality issues. Use `mcp__mechanic__addon-validate` to validate the `.toc` file for common issues before release.
 - **Unit Testing:** Unit tests that mock core APIs via monkey-patching should be excluded from `Wise.toc` and should always restore the original functions immediately after execution to prevent side effects in the production environment.
+- **Sandbox Testing:** Use `mcp__mechanic__sandbox-exec` to test Lua code with WoW API stubs without launching the game. This is the preferred method for quick validation of logic.
+- **In-Game Testing:** Use `mcp__mechanic__lua-queue` to queue Lua snippets for in-game execution (requires `/reload` in WoW), then `mcp__mechanic__lua-results` to read the output. Use `mcp__mechanic__addon-output` to get the latest errors, test results, and console output from the game.
 
 ## Textures and Media
 - **TGA Format:** Custom `.tga` mask textures for WoW must be saved as uncompressed 32-bit TGA files with an 8-bit alpha channel (RGBA), where the mask shape is opaque white and the background is transparent black.
@@ -233,6 +244,8 @@ Before merging any code, verify:
 - **Texture Wrapping:** Custom alpha mask textures used with `CreateMaskTexture()` require specific texture wrapping mode arguments `"CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE"` in `SetTexture()` to apply correctly without edge bleeding.
 - **Dynamic Masking:** When dynamically applying mask textures to UI elements, ensure `SetTexture(...)` is called outside of the initial `CreateMaskTexture()` creation block so that texture changes update visually at runtime.
 - **Generation:** The development environment supports generating custom `.tga` media files using Python's `Pillow` library. Install via `python3 -m pip install pillow --break-system-packages` if missing.
+- **Asset Pipeline:** Use `mcp__mechanic__assets-sync` to convert PNG source assets to TGA and sync them to the addon. Use `mcp__mechanic__assets-list` to list current assets.
+- **Atlas Icons:** Use `mcp__mechanic__atlas-search` to find Blizzard UI atlas icons by name pattern when selecting icons for UI elements.
 
 ## UI Specifics
 - **Solid Backgrounds:** When creating solid backgrounds for UI frames in WoW using `BackdropTemplate`, use `Interface\Buttons\WHITE8X8` combined with `SetBackdropColor(r, g, b, a)` for a fully opaque, customizable background.
@@ -246,3 +259,11 @@ Before merging any code, verify:
 - **Interface Conditionals:** Interface conditionals (e.g., `[wise:groupName]`) and Addon Loading Magic conditionals (e.g., `[aml:slotname]`) are dynamically generated and evaluated in `core/Conditionals.lua`.
 - **Specializations:** Action visibility based on specializations uses the 'spec' category. The `action.specRequirements` field stores a table of required spec IDs.
 - **Nesting Cycles:** `Wise:WouldCreateNestingCycle` in `modules/Nesting.lua` proactively prevents circular interface nesting by traversing the hierarchy via `Wise:GetParentInfo`.
+
+## Performance
+- **Baselines:** Use `mcp__mechanic__perf-baseline` to record memory/CPU baselines after stable releases. Use `mcp__mechanic__perf-compare` to check for regressions against the baseline after changes.
+- **Reports:** Use `mcp__mechanic__perf-report` to view performance history and trends.
+
+## Research
+- **Web Search:** Use `mcp__mechanic__research-query` to search the web for addon development information, WoW API behavior, and best practices when documentation is insufficient.
+- **SavedVariables:** Use `mcp__mechanic__sv-parse` to extract data from WoW SavedVariables files after game sessions for debugging or data analysis.
