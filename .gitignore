@@ -12,3 +12,4 @@ GEMINI.md
 
 # Testing scripts
 *.py
+.mcp.json
