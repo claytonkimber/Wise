@@ -450,6 +450,14 @@ Wise.CooldownUpdateFrame = CreateFrame("Frame")
 Wise.ActiveCooldownButtons = {}
 Wise.CooldownUpdateFrame:Hide()
 
+-- ─── Combat-safe countdown: Blizzard native text fallback ──────────
+-- WoW 11.1+ returns "secret numbers" for cooldown start/duration in combat.
+-- We cannot do arithmetic on them. Instead, when secrets are detected we:
+--   1. Enable Blizzard's built-in countdown on the cooldown widget
+--   2. Reparent & restyle its FontString to match our custom positioning
+--   3. Hide our own btn.countdown FontString to avoid double text
+-- Outside combat, we compute remaining time normally and use our own text.
+
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
     local now = GetTime()
     local hasActive = false
@@ -461,36 +469,38 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
         local groupName = info.groupName
         local isListMode = info.isListMode
 
-        -- Compute remaining time. start/duration may be secret numbers in combat,
-        -- so fall back to cooldown frame's GetCooldownDuration if arithmetic fails.
+        -- Try to compute remaining time. start/duration may be secret in combat.
         local rem = 0
+        local secretMode = false
         local success, val = pcall(function() return (start + duration) - now end)
         if success then
             rem = val
-        elseif btn.cooldown and btn.cooldown.GetCooldownDuration then
-            -- Fallback: query remaining duration from the cooldown frame itself
-            local ok2, cdRem = pcall(btn.cooldown.GetCooldownDuration, btn.cooldown)
-            if ok2 and cdRem then
-                -- GetCooldownDuration returns total duration, not remaining.
-                -- Use IsShown as a proxy: if cooldown frame is visible, it's active.
-                if btn.cooldown:IsShown() then
-                    rem = 1 -- Placeholder: we know it's active but can't compute exact remaining
-                end
-            end
+        else
+            secretMode = true
         end
 
         -- Check if cooldown is finished
         local finished = false
-        local ok3, cmp = pcall(function() return rem <= 0 end)
-        if ok3 then
-            finished = cmp
-        else
-            -- rem is a secret: check cooldown frame visibility instead
+        if secretMode then
             finished = not (btn.cooldown and btn.cooldown:IsShown())
+        else
+            finished = (rem <= 0)
         end
 
         if finished then
             Wise.ActiveCooldownButtons[btn] = nil
+
+            -- Restore our custom text mode
+            if btn.cooldown then
+                btn.cooldown:SetHideCountdownNumbers(true)
+            end
+            if btn._wiseBlizzCDActive then
+                btn._wiseBlizzCDActive = nil
+                local fs = btn.cooldown and btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
+                if fs then
+                    pcall(fs.SetParent, fs, btn.cooldown)
+                end
+            end
 
             -- Cooldown Finished
             if isListMode then
@@ -505,53 +515,76 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
                      Wise:Text_UpdateCountdown(vClone, groupName, "")
                 end
             end
+        elseif secretMode then
+            -- Secret numbers: let Blizzard render its own countdown text.
+            -- Enable Blizzard countdown on the cooldown widget and style it.
+            if not btn._wiseBlizzCDActive then
+                btn._wiseBlizzCDActive = true
+                btn.cooldown:SetHideCountdownNumbers(false)
+                -- Hide our custom countdown to avoid double text
+                if btn.countdown then btn.countdown:Hide() end
+                -- Style Blizzard's countdown FontString to match our look
+                local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
+                if fs then
+                    local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
+                    if fontPath and countdownTextSize then
+                        pcall(fs.SetFont, fs, fontPath, countdownTextSize, "OUTLINE")
+                    end
+                    -- Reparent to text overlay so it renders above the cooldown swipe
+                    local overlay = btn._textOverlay or btn
+                    pcall(fs.SetParent, fs, overlay)
+                end
+            end
         else
-            -- Update Text
-            -- If rem is a secret placeholder (1), skip text formatting
-            local canFormat = false
-            local okFmt = pcall(function() local _ = rem >= 0 end)
-            if okFmt and type(rem) == "number" and rem > 1 then canFormat = true end
+            -- Normal mode: we have numeric remaining time
+            -- Ensure Blizzard countdown is off, our custom text is active
+            if btn._wiseBlizzCDActive then
+                btn._wiseBlizzCDActive = nil
+                btn.cooldown:SetHideCountdownNumbers(true)
+                -- Restore Blizzard FontString parent if we changed it
+                local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
+                if fs then
+                    pcall(fs.SetParent, fs, btn.cooldown)
+                end
+            end
 
             if isListMode then
-                if canFormat then
-                    local m = floor(rem / 60)
-                    local s = floor(rem % 60)
-                    local text = strformat("%d:%02d", m, s)
-                    if info.lastText ~= text then
-                        if btn.timerLabel then btn.timerLabel:SetText(text) end
-                        info.lastText = text
-                    end
+                local m = floor(rem / 60)
+                local s = floor(rem % 60)
+                local text = strformat("%d:%02d", m, s)
+                if info.lastText ~= text then
+                    if btn.timerLabel then btn.timerLabel:SetText(text) end
+                    info.lastText = text
+                end
 
-                    local maxWidth = 50
-                    if btn.redLine then
-                         local ok4, pct = pcall(function() return rem / duration end)
-                         if ok4 then
-                             if pct > 1 then pct = 1 end
-                             btn.redLine:SetWidth(maxWidth * pct)
-                         end
-                    end
+                local maxWidth = 50
+                if btn.redLine then
+                     local ok4, pct = pcall(function() return rem / info.duration end)
+                     if ok4 and type(pct) == "number" then
+                         if pct > 1 then pct = 1 end
+                         if pct < 0 then pct = 0 end
+                         btn.redLine:SetWidth(maxWidth * pct)
+                     end
                 end
             else
-                if canFormat then
-                    -- Standard Mode
-                    local text = ""
-                    if rem >= 3600 then
-                        text = strformat("%dh", ceil(rem / 3600))
-                    elseif rem >= 60 then
-                        text = strformat("%dm", ceil(rem / 60))
-                    else
-                        text = strformat("%d", ceil(rem))
-                    end
+                -- Standard Mode
+                local text = ""
+                if rem >= 3600 then
+                    text = strformat("%dh", ceil(rem / 3600))
+                elseif rem >= 60 then
+                    text = strformat("%dm", ceil(rem / 60))
+                else
+                    text = strformat("%d", ceil(rem))
+                end
 
-                    if info.lastText ~= text then
-                        Wise:Text_UpdateCountdown(btn, groupName, text)
-                        local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                        local vClone = (meta and meta.visualClone) or btn.visualClone
-                        if vClone then
-                            Wise:Text_UpdateCountdown(vClone, groupName, text)
-                        end
-                        info.lastText = text
+                if info.lastText ~= text then
+                    Wise:Text_UpdateCountdown(btn, groupName, text)
+                    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+                    local vClone = (meta and meta.visualClone) or btn.visualClone
+                    if vClone then
+                        Wise:Text_UpdateCountdown(vClone, groupName, text)
                     end
+                    info.lastText = text
                 end
             end
         end
@@ -2101,10 +2134,20 @@ function Wise:GetSecureAttributes(actionData, conditions)
         end
         -- Final fallback: use the stored display name from the action data
         local fallbackName = spellName or actionData.name or aValue
+        -- Build subtext-qualified name for /cast commands (e.g. "Whirling Surge(Skyriding)")
+        -- Some spells like skyriding abilities share names across subsystems and require the
+        -- subtext qualifier to be castable via /cast in macros.
+        local castName = fallbackName
+        if n and C_Spell.GetSpellSubtext then
+            local subtext = C_Spell.GetSpellSubtext(castID or n)
+            if subtext and subtext ~= "" then
+                castName = fallbackName .. "(" .. subtext .. ")"
+            end
+        end
         if hasCond then
             secureType = "macro"
             secureAttr = "macrotext"
-            secureValue = "/cast " .. conditions .. " " .. fallbackName
+            secureValue = "/cast " .. conditions .. " " .. castName
         else
             secureType = "spell"
             secureAttr = "spell"
@@ -3824,7 +3867,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                     local computedCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
                     local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond)
                     -- Only store string-safe values for secure snippets (clickbutton is a frame ref)
-                    local spellVal = (sAttr == "spell") and tostring(sValue) or ""
+                    -- For spell type, build subtext-qualified name for /cast in RESOLVE_BLOCK
+                    -- (e.g. "Whirling Surge(Skyriding)") so skyriding abilities resolve correctly.
+                    local spellVal = ""
+                    if sAttr == "spell" then
+                        local rawName = tostring(sValue)
+                        local sid = tonumber(stateAction.value)
+                        if sid and C_Spell.GetSpellSubtext then
+                            local castID = Wise:GetOverrideSpellID(sid) or sid
+                            local subtext = C_Spell.GetSpellSubtext(castID) or C_Spell.GetSpellSubtext(sid)
+                            if subtext and subtext ~= "" then
+                                rawName = rawName .. "(" .. subtext .. ")"
+                            end
+                        end
+                        spellVal = rawName
+                    end
                     local itemVal = (sAttr == "item") and tostring(sValue) or ""
                     local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
                     local cbName = ""
@@ -5721,15 +5778,29 @@ function Wise:UpdateButtonCooldown(btn)
         if not groupName then groupName = parent.groupName end
     end
 
-    btn.cooldown:SetHideCountdownNumbers(true)
+    -- Hide Blizzard countdown text by default; the OnUpdate ticker will
+    -- enable it during combat when secret numbers prevent our custom text.
+    -- If the ticker already activated Blizzard countdown (secret mode), don't
+    -- reset it — that causes visual flickering on rapid cooldown updates.
+    if not btn._wiseBlizzCDActive then
+        btn.cooldown:SetHideCountdownNumbers(true)
+    end
     if visualClone and visualClone.cooldown then
         visualClone.cooldown:SetHideCountdownNumbers(true)
     end
 
     -- Determine active state: for DurationObject path, check if cooldown frame is showing
+    -- Also fall back to numeric start/duration check since the cooldown frame from
+    -- SetCooldownFromDurationObject may not be visible yet (async rendering).
     local isActive = false
     if usedDurationObject and not isBuffActive then
         isActive = btn.cooldown:IsShown()
+        if not isActive then
+            local s, r = pcall(function()
+                return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
+            end)
+            if s and r then isActive = true end
+        end
     else
         local s, r = pcall(function()
             return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
@@ -6258,6 +6329,7 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
         Wise:UpdateAllStates()
     elseif event == "SPELL_UPDATE_CHARGES" then
         Wise:UpdateAllCharges()
+        Wise:UpdateAllCooldowns()
     elseif event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
         Wise:UpdateAllCooldowns()
     else
@@ -6320,12 +6392,14 @@ pendingFrame:SetScript("OnEvent", function(self, event)
     if Wise.pendingUpdates then
         local updates = Wise.pendingUpdates
         Wise.pendingUpdates = nil -- Clear first to avoid loops if errors occur
-        
 
         for name, _ in pairs(updates) do
             Wise:UpdateGroupDisplay(name)
         end
     end
+    -- Refresh all cooldowns on combat end so start/duration secret numbers
+    -- are replaced with real values for accurate countdown text.
+    Wise:UpdateAllCooldowns()
 end)
 
 
