@@ -2135,12 +2135,13 @@ function Wise:GetSecureAttributes(actionData, conditions)
         -- Final fallback: use the stored display name from the action data
         local fallbackName = spellName or actionData.name or aValue
         -- Build subtext-qualified name for /cast commands (e.g. "Whirling Surge(Skyriding)")
-        -- Some spells like skyriding abilities share names across subsystems and require the
-        -- subtext qualifier to be castable via /cast in macros.
+        -- Only append subtext "Skyriding" — those abilities share names across subsystems
+        -- and require the qualifier.  Other subtexts (e.g. form-specific labels on Wild
+        -- Charge) are form-dependent and break /cast when the player changes shapeshift form.
         local castName = fallbackName
         if n and C_Spell.GetSpellSubtext then
             local subtext = C_Spell.GetSpellSubtext(castID or n)
-            if subtext and subtext ~= "" then
+            if subtext and subtext == "Skyriding" then
                 castName = fallbackName .. "(" .. subtext .. ")"
             end
         end
@@ -3876,7 +3877,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         if sid and C_Spell.GetSpellSubtext then
                             local castID = Wise:GetOverrideSpellID(sid) or sid
                             local subtext = C_Spell.GetSpellSubtext(castID) or C_Spell.GetSpellSubtext(sid)
-                            if subtext and subtext ~= "" then
+                            if subtext and subtext == "Skyriding" then
                                 rawName = rawName .. "(" .. subtext .. ")"
                             end
                         end

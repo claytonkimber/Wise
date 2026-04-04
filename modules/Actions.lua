@@ -553,10 +553,35 @@ function Wise:ShouldShowAction(action)
             -- class or spec spells are in our spellbook → belong to our class
             if resolved == "class" or resolved == "spec" then return true end
             -- "global" from ResolveSpellCategory means either General/Warband spell
-            -- OR the spell wasn't found in our spellbook at all (e.g. Mage spell on Druid).
-            -- Only show if we actually know the spell.
-            if resolved == "global" then return Wise:IsActionKnown(aType, action.value) end
-            return false
+            -- OR the spell wasn't found in our spellbook at all (e.g. off-spec spell).
+            -- Check visibility tags: if tagged with a class, honour that.
+            local enables = action.visibilityEnable or {}
+            if #enables > 0 then
+                for _, tag in ipairs(enables) do
+                    if tag:match("^class:") then
+                        return tag == "class:" .. (Wise.characterInfo.class or "")
+                    end
+                    -- spec: tag — verify the spec belongs to the player's class
+                    if tag:match("^spec:") then
+                        local savedSpecID = tonumber(tag:sub(6))
+                        if savedSpecID then
+                            local _, _, classID = UnitClass("player")
+                            local numSpecs = GetNumSpecializationsForClassID(classID)
+                            for si = 1, numSpecs do
+                                local sid = GetSpecializationInfoForClassID(classID, si)
+                                if sid == savedSpecID then return true end
+                            end
+                        end
+                        return false
+                    end
+                    -- role: tag — check addedByClass metadata to verify it's ours
+                    if tag:match("^role:") then
+                        return action.addedByClass == Wise.characterInfo.class
+                    end
+                end
+            end
+            -- No saved tags either: fall back to whether the spell is actually known
+            return Wise:IsActionKnown(aType, action.value)
         end
         -- Non-spell actions: always applicable to your class
         return true
@@ -572,7 +597,27 @@ function Wise:ShouldShowAction(action)
                 local _, _, _, _, specRole = GetSpecializationInfoByID(resolvedSpecID)
                 return specRole == (Wise.characterInfo.role or "")
             end
-            -- "global" or not found: only show if actually known
+            -- Spell not in spellbook — check saved visibility tags for spec/role info
+            -- First verify the action belongs to our class at all
+            if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then return false end
+            local enables = action.visibilityEnable or {}
+            if #enables > 0 then
+                for _, tag in ipairs(enables) do
+                    -- Explicit role tag: match directly
+                    if tag:match("^role:") then
+                        return tag == "role:" .. (Wise.characterInfo.role or "")
+                    end
+                    -- Spec tag: derive the role from the saved spec ID
+                    if tag:match("^spec:") then
+                        local savedSpecID = tonumber(tag:sub(6))
+                        if savedSpecID then
+                            local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
+                            return specRole == (Wise.characterInfo.role or "")
+                        end
+                    end
+                end
+            end
+            -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
         end
         -- Non-spell: always applicable
@@ -586,7 +631,23 @@ function Wise:ShouldShowAction(action)
             if resolved == "spec" then
                 return resolvedSpecID == (Wise.characterInfo.specID or 0)
             end
-            -- "global" or not found: only show if actually known
+            -- Spell not in spellbook — check saved visibility tags for spec info
+            -- First verify the action belongs to our class at all
+            if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then return false end
+            local enables = action.visibilityEnable or {}
+            if #enables > 0 then
+                for _, tag in ipairs(enables) do
+                    if tag:match("^spec:") then
+                        local savedSpecID = tonumber(tag:sub(6))
+                        return savedSpecID == (Wise.characterInfo.specID or 0)
+                    end
+                    -- Role tag: derive whether this role matches
+                    if tag:match("^role:") then
+                        return tag == "role:" .. (Wise.characterInfo.role or "")
+                    end
+                end
+            end
+            -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
         end
         return true
