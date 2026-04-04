@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.20260404] - 2026-04-04
+
+- [Feature] Add "Addons" Wiser Interface for browsing and launching addon configuration panels
+- [Feature] Implement DataBroker and Addon configuration categories in Action Picker [WIP]
+- [Feature] Add Edit Mode Layouts Wiser interface with layout switching support
+- [Feature] Add Edit Mode layout options to UI Visibility controls
+- [Feature] Add option to selectively hide UI during puzzle events (e.g., Delves puzzles) [WIP]
+- [Fix] Fix Smart Item tool breaking due to regression
+- [Fix] Fix skyriding spells not resolving correctly and spell counter display
+- [Fix] Fix spell builder filter regression
+- [Fix] Fix wipers not aligning to mask textures
+- [Fix] Fix sizing issue in interface layouts
+- [Fix] Disable hover highlights and scale effects for hidden empty slots
+- [Fix] Fix hotkey display and partial visibility issues across multiple interfaces
+- [Changed] Rename "Override" bars to "Special Action" bars and reorganize miscellaneous items
+- [Changed] Expand UI visibility button options
+- [Chore] Comprehensive wiki documentation overhaul
+- [Chore] Integrate Mechanic MCP tooling for addon lifecycle automation
+
 ## [1.0.20260327] - 2026-03-27
 
 - [Feature] Add Enabled/Disabled Opacity controls (global in Settings + per-interface override in Properties)
