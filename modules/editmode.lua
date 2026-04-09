@@ -558,6 +558,7 @@ end
 
 function Wise:SetFrameEditMode(f, name, enabled)
     if not f then return end
+    if InCombatLockdown() then return end
 
     if enabled then
         f:EnableMouse(true)
@@ -786,6 +787,11 @@ function Wise:SetFrameEditMode(f, name, enabled)
 end
 
 function Wise:ToggleWiseOnlyEditMode()
+    if InCombatLockdown() then
+        print("|cffff0000Wise:|r Cannot toggle Edit Mode while in combat.")
+        return
+    end
+
     if Wise.editMode then
         Wise.wiseOnlyEditMode = false
         Wise:ExitEditMode()
@@ -867,6 +873,10 @@ function Wise:UpdateExitEditModeFrameVisibility()
 end
 
 function Wise:EnterEditMode()
+    if InCombatLockdown() then
+        print("|cffff0000Wise:|r Cannot enter Edit Mode while in combat.")
+        return
+    end
     Wise.editMode = true
     if WiseDB and WiseDB.groups then
         for name, group in pairs(WiseDB.groups) do
@@ -891,6 +901,10 @@ function Wise:EnterEditMode()
 end
 
 function Wise:ExitEditMode()
+    if InCombatLockdown() then
+        print("|cffff0000Wise:|r Cannot exit Edit Mode while in combat.")
+        return
+    end
     HideSelectionPopup()
     Wise.editMode = false
     Wise.wiseOnlyEditMode = false
@@ -911,6 +925,11 @@ function Wise:ExitEditMode()
 end
 
 function Wise:ToggleEditMode()
+    if InCombatLockdown() then
+        print("|cffff0000Wise:|r Cannot toggle Edit Mode while in combat.")
+        return
+    end
+    
     if Wise.editMode then
         -- Already in edit mode - exit by hiding native Edit Mode panel
         if EditModeManagerFrame and EditModeManagerFrame:IsShown() then

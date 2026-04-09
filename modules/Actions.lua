@@ -399,6 +399,8 @@ FinalizeSlotReorder = function()
 
         -- Remove the source slot
         group.actions[sourceKey] = nil
+        local movedSlotName = group.slotNames and group.slotNames[sourceKey]
+        if group.slotNames then group.slotNames[sourceKey] = nil end
 
         -- Determine the new decimal key based on target visual position
         -- Adjust target for removal shift
@@ -446,6 +448,10 @@ FinalizeSlotReorder = function()
         end
 
         group.actions[newKey] = movedData
+        if movedSlotName then
+            group.slotNames = group.slotNames or {}
+            group.slotNames[newKey] = movedSlotName
+        end
 
         -- Update selection tracking
         if Wise.selectedSlot == sourceKey then
@@ -459,8 +465,17 @@ FinalizeSlotReorder = function()
             ordered[i] = group.actions[k]
         end
 
+        -- Build ordered list of slot names
+        local orderedNames = {}
+        if group.slotNames then
+            for i, k in ipairs(keys) do
+                orderedNames[i] = group.slotNames[k]
+            end
+        end
+
         -- Remove source from ordered list
         local movedData = table.remove(ordered, srcVis)
+        local movedName = table.remove(orderedNames, srcVis)
 
         -- Adjust target for removal shift
         local insertAt = targetVis
@@ -471,6 +486,7 @@ FinalizeSlotReorder = function()
         if insertAt > #ordered + 1 then insertAt = #ordered + 1 end
 
         table.insert(ordered, insertAt, movedData)
+        table.insert(orderedNames, insertAt, movedName)
 
         -- Rebuild group.actions with sequential keys
         local newActions = {}
@@ -478,6 +494,17 @@ FinalizeSlotReorder = function()
             newActions[i] = data
         end
         group.actions = newActions
+
+        -- Rebuild group.slotNames with sequential keys
+        local newSlotNames = {}
+        local hasAny = false
+        for i, name in ipairs(orderedNames) do
+            if name then
+                newSlotNames[i] = name
+                hasAny = true
+            end
+        end
+        group.slotNames = hasAny and newSlotNames or nil
 
         -- Update selection tracking
         if Wise.selectedSlot == reorderDrag.sourceSlotID then
@@ -583,7 +610,30 @@ function Wise:ShouldShowAction(action)
             -- No saved tags either: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
         end
-        -- Non-spell actions: always applicable to your class
+        -- Non-spell actions: check visibility tags if present
+        local enables = action.visibilityEnable or {}
+        if #enables > 0 then
+            for _, tag in ipairs(enables) do
+                if tag:match("^class:") then
+                    return tag == "class:" .. (Wise.characterInfo.class or "")
+                end
+                if tag:match("^spec:") then
+                    local savedSpecID = tonumber(tag:sub(6))
+                    if savedSpecID then
+                        local _, _, classID = UnitClass("player")
+                        local numSpecs = GetNumSpecializationsForClassID(classID)
+                        for si = 1, numSpecs do
+                            local sid = GetSpecializationInfoForClassID(classID, si)
+                            if sid == savedSpecID then return true end
+                        end
+                    end
+                    return false
+                end
+                if tag:match("^role:") then
+                    return action.addedByClass == Wise.characterInfo.class
+                end
+            end
+        end
         return true
 
     elseif filter == "role" then
@@ -620,7 +670,22 @@ function Wise:ShouldShowAction(action)
             -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
         end
-        -- Non-spell: always applicable
+        -- Non-spell actions: check visibility tags if present
+        local enables = action.visibilityEnable or {}
+        if #enables > 0 then
+            for _, tag in ipairs(enables) do
+                if tag:match("^role:") then
+                    return tag == "role:" .. (Wise.characterInfo.role or "")
+                end
+                if tag:match("^spec:") then
+                    local savedSpecID = tonumber(tag:sub(6))
+                    if savedSpecID then
+                        local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
+                        return specRole == (Wise.characterInfo.role or "")
+                    end
+                end
+            end
+        end
         return true
 
     elseif filter == "spec" then
@@ -649,6 +714,19 @@ function Wise:ShouldShowAction(action)
             end
             -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
+        end
+        -- Non-spell actions: check visibility tags if present
+        local enables = action.visibilityEnable or {}
+        if #enables > 0 then
+            for _, tag in ipairs(enables) do
+                if tag:match("^spec:") then
+                    local savedSpecID = tonumber(tag:sub(6))
+                    return savedSpecID == (Wise.characterInfo.specID or 0)
+                end
+                if tag:match("^role:") then
+                    return tag == "role:" .. (Wise.characterInfo.role or "")
+                end
+            end
         end
         return true
 
@@ -1117,42 +1195,50 @@ function Wise:MigrateGroupToActions(group)
                 action.talentBuildRestriction = nil
             end
 
-            -- Convert old category/addedBy logic to visibilityEnable / visibilityDisable
-            if action.category and (not action.visibilityEnable and not action.visibilityDisable) then
-                action.visibilityEnable = {}
-                action.visibilityDisable = {}
-                local cat = action.category
+            local function AddUniqueTag(tbl, tag)
+                for _, t in ipairs(tbl) do
+                    if t == tag then return end
+                end
+                table.insert(tbl, tag)
+            end
 
+            -- Ensure tables exist
+            action.visibilityEnable = action.visibilityEnable or {}
+            action.visibilityDisable = action.visibilityDisable or {}
+
+            -- Convert old category/addedBy logic to visibilityEnable / visibilityDisable
+            -- Global arrays ALWAYS migrate regardless of the category string
+            if type(action.roleRequirements) == "table" then
+                for _, r in ipairs(action.roleRequirements) do
+                    AddUniqueTag(action.visibilityEnable, "role:" .. r)
+                end
+            end
+            if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
+                for _, sp in ipairs(action.specRequirements) do
+                    AddUniqueTag(action.visibilityEnable, "spec:" .. sp)
+                end
+            end
+            if type(action.talentRequirements) == "table" then
+                for _, t in ipairs(action.talentRequirements) do
+                    AddUniqueTag(action.visibilityEnable, "talent:" .. t)
+                end
+            end
+
+            -- Legacy strict strings only apply based on the initial category 
+            if action.category then
+                local cat = action.category
                 if cat == "class" then
                     local cls = action.addedByClass or action.classRestriction
-                    if cls then table.insert(action.visibilityEnable, "class:" .. cls) end
-                elseif cat == "role" then
-                    if type(action.roleRequirements) == "table" then
-                        for _, r in ipairs(action.roleRequirements) do
-                            table.insert(action.visibilityEnable, "role:" .. r)
-                        end
-                    end
+                    if cls then AddUniqueTag(action.visibilityEnable, "class:" .. cls) end
                 elseif cat == "spec" then
-                    if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
-                        for _, sp in ipairs(action.specRequirements) do
-                            table.insert(action.visibilityEnable, "spec:" .. sp)
-                        end
-                    else
-                        local sp = action.addedBySpec or action.specRestriction
-                        if sp then table.insert(action.visibilityEnable, "spec:" .. sp) end
-                    end
-                elseif cat == "talent" then
-                    if type(action.talentRequirements) == "table" then
-                        for _, t in ipairs(action.talentRequirements) do
-                            table.insert(action.visibilityEnable, "talent:" .. t)
-                        end
+                    local sp = action.addedBySpec or action.specRestriction
+                    if sp and not (type(action.specRequirements) == "table" and #action.specRequirements > 0) then 
+                        AddUniqueTag(action.visibilityEnable, "spec:" .. sp) 
                     end
                 elseif cat == "character" then
                     local ch = action.addedByCharacter or action.characterRestriction
-                    if ch then table.insert(action.visibilityEnable, "char:" .. ch) end
+                    if ch then AddUniqueTag(action.visibilityEnable, "char:" .. ch) end
                 end
-
-                -- action.category = nil -- Don't delete it yet just in case, but rely on new structure
             end
         end
     end
@@ -1293,6 +1379,9 @@ function Wise:RemoveSlot(groupName, slotIndex)
 
         -- Remove the slot
         group.actions[slotIndex] = nil
+        if group.slotNames then
+            group.slotNames[slotIndex] = nil
+        end
 
         -- CooldownWiser: don't shift slots — integer keys are import-stable, decimals are custom
         if group.propertyType == "CooldownWiser" then
@@ -1309,6 +1398,11 @@ function Wise:RemoveSlot(groupName, slotIndex)
             if group.actions[i+1] then
                 group.actions[i] = group.actions[i+1]
                 group.actions[i+1] = nil
+            end
+            -- Shift slot names along with actions
+            if group.slotNames then
+                group.slotNames[i] = group.slotNames[i+1]
+                group.slotNames[i+1] = nil
             end
         end
     end
@@ -3747,11 +3841,12 @@ function Wise:RefreshActionsView(container)
             end
         end)
         
-        -- Format slot header (clean decimal display for CooldownWiser custom slots)
+        -- Format slot header (show custom name if set)
+        local slotDisplayName = Wise:GetSlotDisplayName(group, sIdx)
         if sIdx ~= math.floor(sIdx) then
-            slotFrame.Header:SetText("Slot " .. string.format("%.1f", sIdx) .. " |cff66ccff(custom)|r")
+            slotFrame.Header:SetText(slotDisplayName .. " |cff66ccff(custom)|r")
         else
-            slotFrame.Header:SetText("Slot " .. sIdx)
+            slotFrame.Header:SetText(slotDisplayName)
         end
 
         -- Keybind

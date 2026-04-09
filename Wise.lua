@@ -184,62 +184,36 @@ end
 function Wise:IsActionAllowed(action)
     local enables = action.visibilityEnable or {}
     local disables = action.visibilityDisable or {}
-
-    -- Legacy Migration Support - if missing both, treat as global/allowed by default
-    -- We do a runtime fallback just in case migration hasn't run on this specific object.
-    if #enables == 0 and #disables == 0 and action.category then
-        -- Mimic old logic if the data is purely old format
-        local category = action.category or "global"
-        local isAllowed = true
-        if category == "class" then
-            local checkClass = action.addedByClass or action.classRestriction
-            if checkClass and checkClass ~= self.characterInfo.class then isAllowed = false end
-        elseif category == "role" then
-            local reqs = action.roleRequirements
-            if reqs and #reqs > 0 then
-                isAllowed = false
-                for _, reqRole in ipairs(reqs) do
-                    if reqRole == self.characterInfo.role then isAllowed = true; break end
-                end
-            end
-        elseif category == "spec" then
-            if type(action.specRequirements) == "table" and #action.specRequirements > 0 then
-                isAllowed = false
-                for _, reqSpec in ipairs(action.specRequirements) do
-                    if reqSpec == self.characterInfo.specID then isAllowed = true; break end
-                end
-            else
-                local checkSpec = action.addedBySpec or action.specRestriction
-                if checkSpec and checkSpec ~= self.characterInfo.specID then isAllowed = false end
-            end
-        elseif category == "talent" or category == "build" then
-            local reqs = action.talentRequirements
-            if type(reqs) == "string" then
-                if reqs ~= self.characterInfo.talentBuild then isAllowed = false end
-            elseif type(reqs) == "table" then
-                for _, spellID in ipairs(reqs) do
-                    if not IsPlayerSpell(spellID) and not IsSpellKnownOrOverridesKnown(spellID) then
-                        isAllowed = false
-                        break
-                    end
-                end
-            end
-        elseif category == "character" then
-            local checkChar = action.addedByCharacter or action.characterRestriction
-            local charKey = UnitName("player") .. "-" .. GetRealmName()
-            if checkChar and checkChar ~= charKey then isAllowed = false end
-        end
-        return isAllowed
-    end
-
     local isAllowed = false
 
     -- If there are ANY enables, default to false. Must match one to become true.
     -- If NO enables, default to true.
     if #enables > 0 then
+        -- Group enables by prefix
+        local catEnables = {}
         for _, tag in ipairs(enables) do
-            if self:MatchesRestrictionTag(tag) then
-                isAllowed = true
+            local prefix = tag:match("^([^:]+):") or tag
+            catEnables[prefix] = catEnables[prefix] or {}
+            table.insert(catEnables[prefix], tag)
+        end
+        
+        isAllowed = true
+        for prefix, tags in pairs(catEnables) do
+            local prefixMatched = false
+            
+            if prefix == "global" then
+                prefixMatched = true
+            else
+                for _, tag in ipairs(tags) do
+                    if self:MatchesRestrictionTag(tag) then
+                        prefixMatched = true
+                        break
+                    end
+                end
+            end
+            
+            if not prefixMatched then
+                isAllowed = false
                 break
             end
         end

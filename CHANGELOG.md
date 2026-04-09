@@ -14,6 +14,8 @@
 - [Fix] Fix sizing issue in interface layouts
 - [Fix] Disable hover highlights and scale effects for hidden empty slots
 - [Fix] Fix hotkey display and partial visibility issues across multiple interfaces
+- [Fix] Fix action visibility filter logic allowing cross-category restriction overrides
+- [Fix] Fix ADDON_ACTION_BLOCKED errors by disabling Edit Mode modifications during combat
 - [Changed] Rename "Override" bars to "Special Action" bars and reorganize miscellaneous items
 - [Changed] Expand UI visibility button options
 - [Chore] Comprehensive wiki documentation overhaul

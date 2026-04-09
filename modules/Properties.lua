@@ -14,6 +14,17 @@ local function EnsureBindingErrorPopup()
     end
 end
 
+function Wise:GetSlotDisplayName(group, slotIdx)
+    local customName = group.slotNames and group.slotNames[slotIdx]
+    if customName and customName ~= "" then
+        return customName
+    end
+    if slotIdx ~= math.floor(slotIdx) then
+        return "Slot " .. string.format("%.1f", slotIdx)
+    end
+    return "Slot " .. slotIdx
+end
+
 function Wise:ValidateMouseWheelBinding(group, isSlot)
     if isSlot then
          return false, "Direct slot bindings require a button release event, which Mouse Wheel does not support."
@@ -658,7 +669,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
     local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     label:SetPoint("TOPLEFT", 10, y)
-    label:SetText("Action (Slot " .. slotIdx .. " State " .. stateIdx .. "):")
+    local slotDisplayName = Wise:GetSlotDisplayName(group, slotIdx)
+    label:SetText("Action (" .. slotDisplayName .. " State " .. stateIdx .. "):")
     tinsert(panel.controls, label)
 
     y = y - 20
@@ -1373,10 +1385,39 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
     local slot = group.actions[slotIdx]
 
     if slot then
+         local displayName = Wise:GetSlotDisplayName(group, slotIdx)
          local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
          label:SetPoint("TOPLEFT", 10, y)
-         label:SetText("Slot " .. slotIdx .. " Properties:")
+         label:SetText(displayName .. " Properties:")
          tinsert(panel.controls, label)
+         y = y - 30
+
+         -- Slot Name Editor
+         local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+         nameLabel:SetPoint("TOPLEFT", 10, y)
+         nameLabel:SetText("Slot Name:")
+         tinsert(panel.controls, nameLabel)
+         y = y - 20
+
+         local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+         nameEdit:SetSize(200, 24)
+         nameEdit:SetPoint("TOPLEFT", 15, y)
+         nameEdit:SetAutoFocus(false)
+         nameEdit:SetText((group.slotNames and group.slotNames[slotIdx]) or "")
+         nameEdit:SetScript("OnEnterPressed", function(self)
+             local text = strtrim(self:GetText())
+             group.slotNames = group.slotNames or {}
+             if text == "" then
+                 group.slotNames[slotIdx] = nil
+             else
+                 group.slotNames[slotIdx] = text
+             end
+             self:ClearFocus()
+             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+             Wise:RefreshPropertiesPanel()
+         end)
+         nameEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+         tinsert(panel.controls, nameEdit)
          y = y - 30
 
          -- Keybind UI
@@ -1566,7 +1607,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          else
              delBtn:SetScript("OnClick", function()
                  StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
-                    text = "Delete Slot " .. slotIdx .. " and all its actions?",
+                    text = "Delete '" .. Wise:GetSlotDisplayName(group, slotIdx) .. "' and all its actions?",
                     button1 = "Delete",
                     button2 = "Cancel",
                     OnAccept = function()
@@ -4630,6 +4671,19 @@ function Wise:CreateEmbeddedSpecPicker(parent, action)
                     table.insert(action.specRequirements, id)
                 end
             end
+
+            -- Mirror to visibilityEnable
+            action.visibilityEnable = action.visibilityEnable or {}
+            for i = #action.visibilityEnable, 1, -1 do
+                if action.visibilityEnable[i]:match("^spec:") then
+                    table.remove(action.visibilityEnable, i)
+                end
+            end
+            for id, selected in pairs(selectedMap) do
+                if selected then
+                    table.insert(action.visibilityEnable, "spec:" .. id)
+                end
+            end
         end)
 
         y = y - 24
@@ -4815,6 +4869,19 @@ function Wise:CreateEmbeddedTalentPicker(parent, action)
             for id, selected in pairs(selectedMap) do
                 if selected then
                     table.insert(action.talentRequirements, id)
+                end
+            end
+
+            -- Mirror to visibilityEnable
+            action.visibilityEnable = action.visibilityEnable or {}
+            for i = #action.visibilityEnable, 1, -1 do
+                if action.visibilityEnable[i]:match("^talent:") then
+                    table.remove(action.visibilityEnable, i)
+                end
+            end
+            for id, selected in pairs(selectedMap) do
+                if selected then
+                    table.insert(action.visibilityEnable, "talent:" .. id)
                 end
             end
         end)

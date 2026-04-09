@@ -304,6 +304,8 @@ end
 -- Export: Grid -> Slot Data
 -- ═══════════════════════════════════════════════════════════════
 local function ExportToSlotData()
+    -- Guard: only export when we have valid state
+    if not configuratorState.groupName or not configuratorState.slotIdx then return end
     local state = configuratorState
     local groupName = state.groupName
     local slotIdx = state.slotIdx
@@ -425,6 +427,11 @@ local function ExportToSlotData()
             Wise:UpdateGroupDisplay(groupName)
         end
     end)
+end
+
+-- Expose for use by other modules (Options.lua close paths)
+function Wise:ExportSlotConfiguratorData()
+    ExportToSlotData()
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -2043,6 +2050,8 @@ function Wise:CreateSlotConfiguratorUI(host)
     sc.cancelBtn:SetPoint("TOPLEFT", 8, -8)
     sc.cancelBtn:SetText("< Back")
     sc.cancelBtn:SetScript("OnClick", function()
+        -- Auto-save changes before closing
+        ExportToSlotData()
         -- Close condition picker if open
         Wise.pickingCondition = false
         Wise._conditionPickerState = nil
@@ -2128,6 +2137,8 @@ end
 -- ═══════════════════════════════════════════════════════════════
 function Wise:CloseSlotConfigurator()
     if not Wise.configuringSlot then return end
+    -- Auto-save changes before closing
+    ExportToSlotData()
     Wise.pickingCondition = false
     Wise._conditionPickerState = nil
     Wise._configuratorConditionRow = nil

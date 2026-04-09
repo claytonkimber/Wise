@@ -284,6 +284,8 @@ function Wise:SetTab(viewName)
 
     -- Close slot configurator when switching away from Editor
     if Wise.configuringSlot and viewName ~= "Editor" then
+        -- Auto-save changes before closing
+        Wise:ExportSlotConfiguratorData()
         Wise.configuringSlot = false
         Wise.configuringSlotGroup = nil
         Wise.configuringSlotIdx = nil

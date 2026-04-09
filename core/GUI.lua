@@ -1688,6 +1688,15 @@ function Wise:CreateGroupFrame(name, instanceId)
             self._rebuildingOnShow = nil
         end
 
+        -- Refresh usability and active state for all buttons on show
+        -- (e.g. addon magic slots need to reflect current addon load state)
+        if self.buttons then
+            for _, btn in ipairs(self.buttons) do
+                Wise:UpdateButtonUsability(btn)
+                Wise:UpdateButtonState(btn)
+            end
+        end
+
         local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
         if shouldAnimate then
             -- Animate: slide buttons from center to target
@@ -6219,6 +6228,23 @@ function Wise:UpdateButtonState(btn)
                 local vClone = (meta and meta.visualClone) or btn.visualClone
                 if vClone and vClone.icon then
                     vClone.icon:SetTexture(formIcon)
+                end
+            end
+        end
+        local amIdx = actionValue:match("^addon_magic_(%d+)")
+        if amIdx then
+            amIdx = tonumber(amIdx)
+            if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+                local slot = WiseDB.addonMagicSlots[amIdx]
+                if slot.addons and #slot.addons > 0 then
+                    isActive = true
+                    for _, addon in ipairs(slot.addons) do
+                        addon = strtrim(addon)
+                        if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
+                            isActive = false
+                            break
+                        end
+                    end
                 end
             end
         end
