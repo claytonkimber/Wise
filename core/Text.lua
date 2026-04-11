@@ -82,6 +82,12 @@ function Wise:Text_CreateFontStrings(btn)
         btn.customText = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end
 
+    -- Buff stack counter (separate from charges so both can coexist)
+    if not btn.buffStack then
+        btn.buffStack = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.buffStack:SetShadowOffset(1, -1)
+    end
+
     btn._textReady = true
 end
 
@@ -190,6 +196,33 @@ function Wise:Text_UpdateCustomText(btn, text, position)
     else
         btn.customText:Hide()
     end
+end
+
+--- Apply buff stack counter position, font, and value on a button.
+--- Renders into btn.buffStack, which is independent from btn.count (charges),
+--- so stacks and charges can be shown in different corners simultaneously.
+---@param btn Button
+---@param groupName string
+---@param stacks number|nil  Active buff stack count (nil/0/1 hides)
+function Wise:Text_UpdateBuffStack(btn, groupName, stacks)
+    if not btn.buffStack then
+        local parent = btn._textOverlay or btn
+        btn.buffStack = parent:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        btn.buffStack:SetShadowOffset(1, -1)
+    end
+
+    local _, _, fontPath, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, showBuffStacks, buffStackPosition, buffStackTextSize = Wise:GetGroupDisplaySettings(groupName)
+
+    if not showBuffStacks or not stacks or stacks <= 1 then
+        btn.buffStack:Hide()
+        return
+    end
+
+    local pos = buffStackPosition or "TOPRIGHT"
+    Wise:Text_ApplyPosition(btn.buffStack, pos)
+    btn.buffStack:SetFont(fontPath, buffStackTextSize or 12, "OUTLINE")
+    btn.buffStack:SetText(stacks)
+    btn.buffStack:Show()
 end
 
 --- Apply countdown text position, font, and value on a button.

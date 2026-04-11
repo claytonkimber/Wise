@@ -995,6 +995,125 @@ function Wise:PopulateSettingsView(panel)
         end)
     end)
     table.insert(panel.children, showBuffs.text)
+    ry = ry - 28
+
+    -- Buff stack counter
+    local showBuffStacks = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, showBuffStacks, rx, ry)
+    if WiseDB.settings.showBuffStacks == nil then WiseDB.settings.showBuffStacks = true end
+    showBuffStacks:SetChecked(WiseDB.settings.showBuffStacks)
+    showBuffStacks.text = showBuffStacks:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    showBuffStacks.text:SetPoint("LEFT", showBuffStacks, "RIGHT", 5, 0)
+    showBuffStacks.text:SetText("Show Buff Stack Counter")
+    showBuffStacks:SetScript("OnClick", function(self)
+        WiseDB.settings.showBuffStacks = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+        end)
+    end)
+    table.insert(panel.children, showBuffStacks.text)
+    ry = ry - 24
+
+    -- Buff stack position picker (shared 9-anchor grid)
+    local stackPosLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, stackPosLabel, rx, ry)
+    stackPosLabel:SetText("Stack Position:")
+    ry = ry - 20
+
+    local stackPos = WiseDB.settings.buffStackPosition or "TOPRIGHT"
+    local stackStartY = ry
+    for i, posMode in ipairs(positions) do
+        local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+        local col = (i-1) % 3
+        local row = math.floor((i-1) / 3)
+        AddToContent(rightContent, radio, rx + (col * 60), stackStartY - (row * 20))
+        radio:SetChecked(stackPos == posMode.val)
+        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+        radio.text:SetText(posMode.text)
+
+        radio:SetScript("OnClick", function(self)
+            WiseDB.settings.buffStackPosition = posMode.val
+            Wise:PopulateSettingsView(panel)
+            C_Timer.After(0.1, function()
+                if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+            end)
+        end)
+        table.insert(panel.children, radio.text)
+    end
+    ry = ry - 70
+
+    -- Debuffs on Target
+    local debuffHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, debuffHeader, rx, ry)
+    debuffHeader:SetText("Debuffs on Target")
+    ry = ry - 20
+
+    local showDebuffs = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, showDebuffs, rx, ry)
+    if WiseDB.settings.showDebuffs == nil then WiseDB.settings.showDebuffs = true end
+    showDebuffs:SetChecked(WiseDB.settings.showDebuffs)
+    showDebuffs.text = showDebuffs:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    showDebuffs.text:SetPoint("LEFT", showDebuffs, "RIGHT", 5, 0)
+    showDebuffs.text:SetText("Show Target Debuff Duration (hides CD when no debuff)")
+    showDebuffs:SetScript("OnClick", function(self)
+        WiseDB.settings.showDebuffs = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+        end)
+    end)
+    table.insert(panel.children, showDebuffs.text)
+    ry = ry - 40
+
+    -- Swipe Direction
+    local swipeHeader = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    AddToContent(rightContent, swipeHeader, rx, ry)
+    swipeHeader:SetText("Swipe Direction")
+    ry = ry - 20
+
+    local cdReverse = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, cdReverse, rx, ry)
+    cdReverse:SetChecked(WiseDB.settings.cooldownSwipeReverse == true)
+    cdReverse.text = cdReverse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cdReverse.text:SetPoint("LEFT", cdReverse, "RIGHT", 5, 0)
+    cdReverse.text:SetText("Reverse Cooldown Swipe")
+    cdReverse:SetScript("OnClick", function(self)
+        WiseDB.settings.cooldownSwipeReverse = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+        end)
+    end)
+    table.insert(panel.children, cdReverse.text)
+    ry = ry - 24
+
+    local buffReverse = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, buffReverse, rx, ry)
+    buffReverse:SetChecked(WiseDB.settings.buffSwipeReverse == true)
+    buffReverse.text = buffReverse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    buffReverse.text:SetPoint("LEFT", buffReverse, "RIGHT", 5, 0)
+    buffReverse.text:SetText("Reverse Buff Swipe")
+    buffReverse:SetScript("OnClick", function(self)
+        WiseDB.settings.buffSwipeReverse = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+        end)
+    end)
+    table.insert(panel.children, buffReverse.text)
+    ry = ry - 24
+
+    local debuffReverse = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+    AddToContent(rightContent, debuffReverse, rx, ry)
+    debuffReverse:SetChecked(WiseDB.settings.debuffSwipeReverse == true)
+    debuffReverse.text = debuffReverse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    debuffReverse.text:SetPoint("LEFT", debuffReverse, "RIGHT", 5, 0)
+    debuffReverse.text:SetText("Reverse Debuff Swipe")
+    debuffReverse:SetScript("OnClick", function(self)
+        WiseDB.settings.debuffSwipeReverse = self:GetChecked()
+        C_Timer.After(0.1, function()
+            if not InCombatLockdown() then Wise:UpdateAllCooldowns() end
+        end)
+    end)
+    table.insert(panel.children, debuffReverse.text)
     ry = ry - 40
 
     -- Opacity
