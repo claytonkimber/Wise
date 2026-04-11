@@ -2817,6 +2817,8 @@ function Wise:PickerRefresh(filter)
                     if self.data.category then extra.category = self.data.category end
                     if self.data.sourceSpecID then extra.sourceSpecID = self.data.sourceSpecID end
                     if self.data.conditions then extra.conditions = self.data.conditions end
+                    if self.data.addonName then extra.addonName = self.data.addonName end
+                    if self.data.availableCommands then extra.availableCommands = self.data.availableCommands end
                     Wise.PickerCallback(self.data.type, self.data.value, extra)
                 end
                 Wise.pickingAction = false
@@ -3405,13 +3407,17 @@ function Wise:GetAddons(filter)
     local items = {}
     local seen = {}
 
-    -- 1. LibDataBroker
+    -- 1. LibDataBroker — also build icon lookup for use in section 2
     local ldb = LibStub and LibStub("LibDataBroker-1.1", true)
+    local ldbIcons = {}
     if ldb then
         for name, dataObj in ldb:DataObjectIterator() do
             local lName = string.lower(name)
+            if dataObj.icon then
+                ldbIcons[lName] = dataObj.icon
+            end
             if not filter or string.find(lName, filter, 1, true) then
-                if dataObj.OnClick or dataObj.type == "launcher" or dataObj.type == "data source" then
+                if dataObj.OnClick then
                     local icon = dataObj.icon or "Interface\\Icons\\INV_Misc_EngGizmos_20"
                     local macroText = string.format('/run local o=LibStub("LibDataBroker-1.1"):GetDataObjectByName("%s"); if o and o.OnClick then o.OnClick(UIParent, "LeftButton") end', name)
 
@@ -3421,7 +3427,7 @@ function Wise:GetAddons(filter)
                         name = name,
                         icon = icon,
                         category = "Addons",
-                        tooltipFunc = function() GameTooltip:SetText(name .. " (Addons)") end
+                        tooltipFunc = function() GameTooltip:SetText(name .. " (LDB Plugin)") end
                     })
                     seen[lName] = true
                 end
@@ -3429,17 +3435,49 @@ function Wise:GetAddons(filter)
         end
     end
 
-    -- 2. Addon Options Commands
-    -- Pre-calculate Slash commands to easily match
-    local slashCmds = {}
-    if SlashCmdList then
-        for k, _ in pairs(SlashCmdList) do
-            local cmdVar = "SLASH_" .. k .. "1"
-            if _G[cmdVar] then
-                slashCmds[string.upper(k)] = _G[cmdVar]
+    -- Build addon compartment icon lookup
+    local compartmentIcons = {}
+    if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then
+        for _, entry in ipairs(AddonCompartmentFrame.registeredAddons) do
+            if entry.text and entry.icon then
+                compartmentIcons[string.lower(entry.text)] = entry.icon
             end
         end
     end
+
+    -- 2. All loaded addons (one button per addon)
+    -- Pre-calculate Slash commands: collect ALL variants per entry (SLASH_X1, SLASH_X2, etc.)
+    local slashCmds = {}
+    if SlashCmdList then
+        for k, _ in pairs(SlashCmdList) do
+            local variants = {}
+            for n = 1, 20 do
+                local cmdVar = "SLASH_" .. k .. n
+                if _G[cmdVar] then
+                    table.insert(variants, _G[cmdVar])
+                else
+                    break
+                end
+            end
+            if #variants > 0 then
+                slashCmds[string.upper(k)] = variants
+            end
+        end
+    end
+
+    -- Keywords that indicate an options/config command (preferred default)
+    local optionsKeywords = { "option", "config", "setting", "setup", "menu", "panel", "pref" }
+    local function ScoreCommand(cmd)
+        local lower = string.lower(cmd)
+        for _, kw in ipairs(optionsKeywords) do
+            if string.find(lower, kw, 1, true) then return 2 end
+        end
+        return 1
+    end
+
+    -- Initialize user overrides tables
+    WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
+    WiseDB.addonSlashArgs = WiseDB.addonSlashArgs or {}
 
     if C_AddOns and C_AddOns.GetNumAddOns then
         for i = 1, C_AddOns.GetNumAddOns() do
@@ -3454,37 +3492,99 @@ function Wise:GetAddons(filter)
                     local lName = string.lower(title)
                     local lAddonName = string.lower(addonName)
                     if not filter or string.find(lName, filter, 1, true) or string.find(lAddonName, filter, 1, true) then
-                        -- If we haven't seen this from LDB
-                        if not seen[lName] and not seen[lAddonName] then
-                            -- Find matching slash command
-                            local foundCmd = nil
+                        -- Skip sub-addons (e.g. Journalator_Auctionator) if parent is already seen
+                        local parentName = string.match(lAddonName, "^([^_]+)_")
+                        local isSubAddon = parentName and seen[parentName]
+
+                        -- If we haven't seen this from LDB and it's not a sub-addon duplicate
+                        if not isSubAddon and not seen[lName] and not seen[lAddonName] then
+                            -- Find ALL matching slash commands for this addon
+                            local allCommands = {}
+                            local allCommandsSeen = {}
                             local upperName = string.upper(addonName)
                             local upperTitle = string.upper(title)
 
                             -- Direct match
                             if slashCmds[upperName] then
-                                foundCmd = slashCmds[upperName]
-                            else
-                                -- Fuzzy match
-                                for k, cmd in pairs(slashCmds) do
-                                    if string.find(upperName, k, 1, true) or string.find(k, upperName, 1, true) or
-                                       string.find(upperTitle, k, 1, true) or string.find(k, upperTitle, 1, true) then
-                                        foundCmd = cmd
-                                        break
+                                for _, cmd in ipairs(slashCmds[upperName]) do
+                                    if not allCommandsSeen[cmd] then
+                                        table.insert(allCommands, cmd)
+                                        allCommandsSeen[cmd] = true
                                     end
                                 end
                             end
 
-                            if foundCmd then
-                                -- Use icon from Addon if available (WoW 10.0+ supports addon icons)
-                                local icon = C_AddOns.GetAddOnMetadata(i, "IconTexture") or "Interface\\Icons\\INV_Misc_EngGizmos_11"
+                            -- Fuzzy match — only match when the slash command key
+                            -- contains the addon name/title (command derived from addon),
+                            -- or the addon name/title contains the full command key AND the
+                            -- key is long enough to be meaningful (>=4 chars to avoid
+                            -- short keys like "TI" matching everything)
+                            for k, variants in pairs(slashCmds) do
+                                if k ~= upperName then
+                                    local matched = false
+                                    -- Command key contains addon name (e.g. key "ADVANCEDINTERFACEOPTIONS" contains addon "ADVANCED")
+                                    if string.find(k, upperName, 1, true) or string.find(k, upperTitle, 1, true) then
+                                        matched = true
+                                    -- Addon name contains command key, but only if key is long enough
+                                    elseif #k >= 4 and (string.find(upperName, k, 1, true) or string.find(upperTitle, k, 1, true)) then
+                                        matched = true
+                                    end
+                                    if matched then
+                                        for _, cmd in ipairs(variants) do
+                                            if not allCommandsSeen[cmd] then
+                                                table.insert(allCommands, cmd)
+                                                allCommandsSeen[cmd] = true
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+
+                            if #allCommands > 0 then
+                                -- Pick the best default: user override > options-keyword match > first found
+                                local foundCmd = nil
+                                local userOverride = WiseDB.addonSlashOverrides[addonName]
+                                if userOverride and allCommandsSeen[userOverride] then
+                                    foundCmd = userOverride
+                                else
+                                    -- Score commands and pick the best one (favoring options/config commands)
+                                    local bestScore = 0
+                                    for _, cmd in ipairs(allCommands) do
+                                        local score = ScoreCommand(cmd)
+                                        if score > bestScore then
+                                            bestScore = score
+                                            foundCmd = cmd
+                                        end
+                                    end
+                                end
+
+                                -- Resolve icon: TOC IconTexture > AddonCompartment > LDB > default
+                                local icon = C_AddOns.GetAddOnMetadata(i, "IconTexture")
+                                if not icon or icon == "" then
+                                    icon = compartmentIcons[lAddonName] or compartmentIcons[lName]
+                                end
+                                if not icon or icon == "" then
+                                    icon = ldbIcons[lAddonName] or ldbIcons[lName]
+                                end
+                                if not icon or icon == "" then
+                                    icon = "Interface\\Icons\\INV_Misc_Gear_01"
+                                end
+                                local activeCmd = foundCmd
+                                local savedArgs = WiseDB.addonSlashArgs[addonName]
+                                local displayCmd = activeCmd
+                                if savedArgs and savedArgs ~= "" then
+                                    displayCmd = activeCmd .. " " .. savedArgs
+                                end
                                 table.insert(items, {
                                     type = "macro",
                                     value = foundCmd,
                                     name = title,
                                     icon = icon,
                                     category = "Addons",
-                                    tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. foundCmd) end
+                                    addonName = addonName,
+                                    availableCommands = allCommands,
+                                    slashArgs = savedArgs,
+                                    tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. displayCmd) end
                                 })
                                 seen[lName] = true
                                 seen[lAddonName] = true

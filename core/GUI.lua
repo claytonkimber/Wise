@@ -2183,22 +2183,27 @@ function Wise:GetSecureAttributes(actionData, conditions)
         end
     elseif aType == "macro" then
         secureType = "macro"
-        if string.sub(aValue, 1, 1) == "/" then
+        -- Append slash command arguments if present (e.g. "/ti" + "window" → "/ti window")
+        local effectiveValue = aValue
+        if actionData.slashArgs and actionData.slashArgs ~= "" then
+            effectiveValue = aValue .. " " .. actionData.slashArgs
+        end
+        if string.sub(effectiveValue, 1, 1) == "/" then
             secureAttr = "macrotext"
             if hasCond then
                 -- e.g. "/click ActionButton1" -> "/click [possessbar] ActionButton1"
-                local cmd, rest = string.match(aValue, "^(/%a+)%s+(.*)$")
+                local cmd, rest = string.match(effectiveValue, "^(/%a+)%s+(.*)$")
                 if cmd and rest then
                     secureValue = cmd .. " " .. conditions .. " " .. rest
                 else
-                    secureValue = aValue
+                    secureValue = effectiveValue
                 end
             else
-                secureValue = aValue
+                secureValue = effectiveValue
             end
         else
             secureAttr = "macro"
-            secureValue = aValue
+            secureValue = effectiveValue
         end
     elseif aType == "action" then
         if hasCond then

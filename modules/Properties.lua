@@ -535,7 +535,11 @@ function Wise:RefreshPropertiesPanel()
 
     local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
-    if group and group.isLocked then
+    -- Allow addon action properties through even when locked (for slash command selection)
+    local hasSlotSelected = Wise.selectedSlot
+    local isAddonGroup = Wise.selectedGroup == "Addons"
+
+    if group and group.isLocked and not (isAddonGroup and hasSlotSelected) then
         Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
         local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lockedLabel:SetPoint("TOPLEFT", 10, -30)
@@ -545,20 +549,6 @@ function Wise:RefreshPropertiesPanel()
         tinsert(panel.controls, lockedLabel)
         return
     end
-
-    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
-
-    if group and group.isLocked then
-        Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
-        local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockedLabel:SetPoint("TOPLEFT", 10, -30)
-        lockedLabel:SetWidth(200)
-        lockedLabel:SetJustifyH("LEFT")
-        lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
-        tinsert(panel.controls, lockedLabel)
-        return
-    end
-    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
     -- Check Validation
     if group then
@@ -723,6 +713,10 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
             if extra then
                  if extra.icon then action.icon = extra.icon end
                  if extra.name then action.name = extra.name end
+                 if extra.addonName then action.addonName = extra.addonName else action.addonName = nil end
+                 if extra.availableCommands then action.availableCommands = extra.availableCommands else action.availableCommands = nil end
+                 -- Clear args when changing action (user sets new args in properties)
+                 action.slashArgs = nil
             end
             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
             Wise:RefreshPropertiesPanel()
@@ -738,6 +732,160 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
     tinsert(panel.controls, pickBtn)
 
     y = y - 35
+
+    -- Slash Command Selector for Addon actions
+    if action.category == "Addons" and action.addonName then
+        -- Helper to refresh after a change
+        local function CommitAddonCmd()
+            local title = action.name or "Addon"
+            local fullCmd = action.value or ""
+            if action.slashArgs and action.slashArgs ~= "" then
+                fullCmd = fullCmd .. " " .. action.slashArgs
+            end
+            action.tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. fullCmd) end
+            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+            Wise:RefreshPropertiesPanel()
+            C_Timer.After(0, function()
+                if not InCombatLockdown() then
+                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
+                end
+            end)
+        end
+
+        local cmdLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        cmdLabel:SetPoint("TOPLEFT", 10, y)
+        cmdLabel:SetText("Slash Command:")
+        tinsert(panel.controls, cmdLabel)
+        y = y - 20
+
+        -- Base command picker (dropdown button)
+        local cmds = action.availableCommands
+        if cmds and #cmds > 1 then
+            local cmdBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+            cmdBtn:SetSize(200, 22)
+            cmdBtn:SetPoint("TOPLEFT", 10, y)
+            cmdBtn:SetText(action.value or "")
+            cmdBtn:SetScript("OnClick", function(self)
+                if self.dropdown and self.dropdown:IsShown() then
+                    self.dropdown:Hide()
+                    return
+                end
+
+                if not self.dropdown then
+                    local itemHeight = 22
+                    local maxVisible = 8
+                    local visibleCount = math.min(#cmds, maxVisible)
+                    local dropdownHeight = (visibleCount * itemHeight) + 16
+
+                    local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
+                    self.dropdown = d
+                    d:SetSize(220, dropdownHeight)
+                    d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+                    d:SetFrameStrata("DIALOG")
+                    d:SetBackdrop({
+                        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                        tile = true, tileSize = 32, edgeSize = 16,
+                        insets = { left = 5, right = 5, top = 5, bottom = 5 }
+                    })
+
+                    local scrollContent
+                    if #cmds > maxVisible then
+                        local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
+                        scrollFrame:SetPoint("TOPLEFT", 8, -8)
+                        scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
+                        scrollContent = CreateFrame("Frame", nil, scrollFrame)
+                        scrollContent:SetSize(175, itemHeight * #cmds)
+                        scrollFrame:SetScrollChild(scrollContent)
+                    else
+                        scrollContent = CreateFrame("Frame", nil, d)
+                        scrollContent:SetPoint("TOPLEFT", 8, -8)
+                        scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
+                    end
+
+                    for i, cmd in ipairs(cmds) do
+                        local row = CreateFrame("Button", nil, scrollContent)
+                        row:SetSize(175, itemHeight - 2)
+                        row:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
+                        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+                        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        row.text:SetPoint("LEFT", 5, 0)
+                        row.text:SetPoint("RIGHT", -5, 0)
+                        row.text:SetJustifyH("LEFT")
+                        row.text:SetText((cmd == action.value and "|cff00ff00" or "") .. cmd .. (cmd == action.value and " *|r" or ""))
+
+                        row:SetScript("OnClick", function()
+                            action.value = cmd
+                            if action.addonName and Wise.selectedGroup == "Addons" then
+                                WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
+                                WiseDB.addonSlashOverrides[action.addonName] = cmd
+                            end
+                            d:Hide()
+                            CommitAddonCmd()
+                        end)
+                    end
+                end
+                self.dropdown:Show()
+            end)
+            tinsert(panel.controls, cmdBtn)
+            y = y - 28
+        else
+            -- Single command — show as read-only
+            local cmdValue = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            cmdValue:SetPoint("TOPLEFT", 10, y)
+            cmdValue:SetText(action.value or "")
+            tinsert(panel.controls, cmdValue)
+            y = y - 22
+        end
+
+        -- Parameters text box
+        local argsLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        argsLabel:SetPoint("TOPLEFT", 10, y)
+        argsLabel:SetText("Parameters:")
+        tinsert(panel.controls, argsLabel)
+        y = y - 20
+
+        local argsEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+        argsEdit:SetSize(180, 20)
+        argsEdit:SetPoint("TOPLEFT", 14, y)
+        argsEdit:SetAutoFocus(false)
+        argsEdit:SetText(action.slashArgs or "")
+        argsEdit:SetCursorPosition(0)
+
+        local function SaveSlashArgs(text)
+            action.slashArgs = (text ~= "") and text or nil
+            -- Persist for Addons wiser group (survives rebuilds)
+            if action.addonName and Wise.selectedGroup == "Addons" then
+                WiseDB.addonSlashArgs = WiseDB.addonSlashArgs or {}
+                WiseDB.addonSlashArgs[action.addonName] = action.slashArgs
+            end
+        end
+
+        argsEdit:SetScript("OnEnterPressed", function(self)
+            SaveSlashArgs(strtrim(self:GetText()))
+            self:ClearFocus()
+            CommitAddonCmd()
+        end)
+        argsEdit:SetScript("OnEscapePressed", function(self)
+            self:SetText(action.slashArgs or "")
+            self:ClearFocus()
+        end)
+        argsEdit:SetScript("OnEditFocusLost", function(self)
+            SaveSlashArgs(strtrim(self:GetText()))
+            CommitAddonCmd()
+        end)
+        tinsert(panel.controls, argsEdit)
+        y = y - 25
+
+        local argsNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        argsNote:SetPoint("TOPLEFT", 10, y)
+        argsNote:SetWidth(200)
+        argsNote:SetJustifyH("LEFT")
+        argsNote:SetText("e.g. \"window\" to send /ti window")
+        tinsert(panel.controls, argsNote)
+        y = y - 25
+    end
 
     -- Custom Name Input
     local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
