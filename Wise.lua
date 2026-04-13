@@ -53,14 +53,16 @@ function Wise:GetOverrideSpellID(spellID)
     if not spellID then return nil end
     if type(spellID) == "string" then
         local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
-        if info then
+        if info and info.spellID then
             spellID = info.spellID
         else
             return spellID
         end
     end
     if C_Spell and C_Spell.GetOverrideSpell then
-        return C_Spell.GetOverrideSpell(spellID)
+        local ok, result = pcall(C_Spell.GetOverrideSpell, spellID)
+        if ok then return result end
+        return spellID
     elseif FindSpellOverrideByID then
         return FindSpellOverrideByID(spellID)
     end
