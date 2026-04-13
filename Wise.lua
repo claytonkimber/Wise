@@ -113,6 +113,41 @@ function Wise:UpdateCharacterInfo(sourceEvent)
     end
 end
 
+-- Force-refresh all displays, cooldowns, usability, and visual state.
+-- Called after spec changes and deferred talent loadouts to ensure nothing is stale.
+function Wise:ForceRefreshAllDisplays()
+    if InCombatLockdown() then return end
+
+    -- Re-sync cooldown/utility wiser groups from Blizzard's viewer frames
+    if Wise.UpdateCooldownWiser then
+        if WiseDB.groups["Cooldowns"] then
+            local viewerName = WiseDB.groups["Cooldowns"].viewerName or "EssentialCooldownViewer"
+            Wise:UpdateCooldownWiser("Cooldowns", viewerName)
+        end
+        if WiseDB.groups["Utilities"] then
+            local viewerName = WiseDB.groups["Utilities"].viewerName or "UtilityCooldownViewer"
+            Wise:UpdateCooldownWiser("Utilities", viewerName)
+        end
+    end
+
+    -- Rebuild all group displays
+    if WiseDB and WiseDB.groups then
+        for name, _ in pairs(WiseDB.groups) do
+            if Wise.UpdateGroupDisplay then
+                Wise:UpdateGroupDisplay(name)
+            end
+        end
+    end
+
+    -- Refresh all real-time visual state
+    if Wise.UpdateAllOverrideIcons then Wise:UpdateAllOverrideIcons() end
+    if Wise.UpdateAllCooldowns then Wise:UpdateAllCooldowns() end
+    if Wise.UpdateAllCharges then Wise:UpdateAllCharges() end
+    if Wise.UpdateAllUsability then Wise:UpdateAllUsability() end
+    if Wise.UpdateAllStates then Wise:UpdateAllStates() end
+    if Wise.UpdateInterfaceIcons then Wise:UpdateInterfaceIcons() end
+end
+
 -- IsGroupAvailable (Needs to be early for updates)
 function Wise:IsGroupAvailable(groupName)
     local group = WiseDB.groups[groupName]
@@ -1198,31 +1233,38 @@ function frame:OnEvent(event, arg1)
              C_Timer.After(2, function() Wise.Demo:Start() end)
         end
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" or event == "PLAYER_ENTERING_WORLD" or event == "SPELLS_CHANGED" or event == "UPDATE_SHAPESHIFT_FORMS" then
-        -- Update character cache
-        if Wise.UpdateCharacterInfo then
-            Wise:UpdateCharacterInfo(event)
+        -- These events fire in bursts spread across multiple frames during spec
+        -- transitions (especially SPELLS_CHANGED). Debounce into a single
+        -- refresh so interfaces settle once instead of thrashing.
+
+        -- Lightweight cache update — always safe to run immediately
+        local _, className = UnitClass("player")
+        Wise.characterInfo.class = className
+        local specIndex = GetSpecialization()
+        if specIndex then
+            local specID, _, _, _, role = GetSpecializationInfo(specIndex)
+            Wise.characterInfo.specID = specID
+            Wise.characterInfo.role = role
         end
-        -- Refresh all groups to apply dynamic filtering
-        if WiseDB and WiseDB.groups then
-            for name, _ in pairs(WiseDB.groups) do
-                if Wise.UpdateGroupDisplay then
-                    Wise:UpdateGroupDisplay(name)
-                end
+
+        -- Bump generation and schedule a single debounced full refresh.
+        -- Every new event resets the timer so we wait for the burst to end.
+        Wise._specRefreshGeneration = (Wise._specRefreshGeneration or 0) + 1
+        local gen = Wise._specRefreshGeneration
+
+        C_Timer.After(0.5, function()
+            if Wise._specRefreshGeneration ~= gen then return end
+            -- Full character info + wiser interfaces rebuild
+            if Wise.UpdateCharacterInfo then
+                Wise:UpdateCharacterInfo("DEBOUNCED_SPEC_REFRESH")
             end
-        end
-        -- Update nested interface icons (may have changed due to spec/spell changes)
-        if Wise.UpdateInterfaceIcons then
-            Wise:UpdateInterfaceIcons()
-        end
-        -- Refresh options UI if open (spell names/icons may have changed due to overrides)
-        if Wise.UpdateOptionsUI then
-            Wise:UpdateOptionsUI()
-        end
-        -- Refresh action picker if it's open (spellbook contents may have changed)
-        if Wise.pickingAction and Wise.EmbeddedPicker and Wise.PickerRefresh then
-            local search = Wise.EmbeddedPicker.Search
-            Wise:PickerRefresh(search and search:GetText() or "")
-        end
+            Wise:ForceRefreshAllDisplays()
+            if Wise.UpdateOptionsUI then Wise:UpdateOptionsUI() end
+            if Wise.pickingAction and Wise.EmbeddedPicker and Wise.PickerRefresh then
+                local search = Wise.EmbeddedPicker.Search
+                Wise:PickerRefresh(search and search:GetText() or "")
+            end
+        end)
     elseif event == "PLAYER_REGEN_ENABLED" then
         -- Process pending updates that were blocked during combat
         if Wise.pendingUpdates then

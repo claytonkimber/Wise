@@ -41,6 +41,34 @@ initFrame:SetScript("OnEvent", function(self, event)
     Wise:InitializeCooldownWiser()
 end)
 
+-- Hook Blizzard viewer Layout so we re-sync whenever the viewer rebuilds its
+-- children (spec change, reload, talent swap, etc.).  This eliminates all
+-- timing guesswork — we read the children right after Blizzard finishes
+-- populating them.
+do
+    local hookedViewers = {}
+    local pendingResync = {}
+
+    function Wise:HookCooldownViewerLayout(viewerName, groupName)
+        if hookedViewers[viewerName] then return end
+        local viewer = _G[viewerName]
+        if not viewer then return end
+        hookedViewers[viewerName] = true
+
+        hooksecurefunc(viewer, "Layout", function()
+            -- Debounce: Layout can fire many times in quick succession
+            if pendingResync[groupName] then return end
+            pendingResync[groupName] = true
+            C_Timer.After(0, function()
+                pendingResync[groupName] = nil
+                local group = WiseDB and WiseDB.groups[groupName]
+                if not group or not group.viewerName then return end
+                Wise:_ReadCooldownViewer(groupName, group.viewerName)
+            end)
+        end)
+    end
+end
+
 function Wise:UpdateCooldownWiser(groupName, viewerName)
     local group = WiseDB.groups[groupName]
     if not group then return end
@@ -50,6 +78,27 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
 
     group.viewerName = viewerName
 
+    -- Hook the viewer's Layout so future rebuilds (spec change, etc.) auto-sync
+    if Wise.HookCooldownViewerLayout then
+        Wise:HookCooldownViewerLayout(viewerName, groupName)
+    end
+
+    -- If the viewer is hidden (e.g. "Hide Game Interface" is on), we must
+    -- temporarily show it so Blizzard populates its children for the current
+    -- spec, then defer the read to give Layout() a frame to run.
+    local needsTempShow = group.hideNativeInterface and not viewer:IsShown()
+    if needsTempShow and not InCombatLockdown() then
+        viewer:Show()
+        -- Defer: let Blizzard's Layout run, then read children and re-hide
+        C_Timer.After(0, function()
+            Wise:_ReadCooldownViewer(groupName, viewerName)
+            if not InCombatLockdown() and group.hideNativeInterface then
+                viewer:Hide()
+            end
+        end)
+        return
+    end
+
     if not InCombatLockdown() then
         if group.hideNativeInterface then
             viewer:Hide()
@@ -57,6 +106,17 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
             viewer:Show()
         end
     end
+
+    Wise:_ReadCooldownViewer(groupName, viewerName)
+end
+
+-- Internal: read spells from a Blizzard CooldownViewer and sync to group actions
+function Wise:_ReadCooldownViewer(groupName, viewerName)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+
+    local viewer = _G[viewerName]
+    if not viewer then return end
 
     local spells = {}
     local seen = {}
@@ -69,6 +129,9 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
         for _, child in ipairs(children) do
             if child:IsShown() then
                  local spellID = child.spellID
+                 if not spellID and child.GetSpellID then
+                     spellID = child:GetSpellID()
+                 end
                  if not spellID and child.cooldownID and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
                      local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(child.cooldownID)
                      if info then spellID = info.spellID end
@@ -117,7 +180,7 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
         }
     end
 
-    if Wise.UpdateGroupDisplay and Wise.frames[groupName] and Wise.frames[groupName]:IsShown() then
+    if Wise.UpdateGroupDisplay and Wise.frames[groupName] then
         Wise:UpdateGroupDisplay(groupName)
     end
 end

@@ -116,6 +116,7 @@ function Wise:ExecuteSpecEquip(slotIndex)
     if Wise.UpdateCharacterInfo then
         C_Timer.After(1, function()
             Wise:UpdateCharacterInfo("SPEC_EQUIP_EXEC")
+            Wise:ForceRefreshAllDisplays()
         end)
     end
 end
@@ -143,6 +144,7 @@ specChangeFrame:SetScript("OnEvent", function(self, event)
         if Wise.UpdateCharacterInfo then
             C_Timer.After(1, function()
                 Wise:UpdateCharacterInfo("SPEC_EQUIP_DEFERRED")
+                Wise:ForceRefreshAllDisplays()
             end)
         end
     end)
