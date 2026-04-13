@@ -59,6 +59,7 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
     end
 
     local spells = {}
+    local seen = {}
     if viewer.GetChildren then
         local children = { viewer:GetChildren() }
         table.sort(children, function(a, b)
@@ -74,12 +75,11 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
                  end
 
                  if spellID then
-                      local alreadyExists = false
-                      for _, s in ipairs(spells) do
-                          if s == spellID then alreadyExists = true break end
-                      end
-                      if not alreadyExists then
-                          table.insert(spells, spellID)
+                      -- Normalize to override spell so base+override don't appear as two entries
+                      local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
+                      if not seen[resolvedID] then
+                          seen[resolvedID] = true
+                          table.insert(spells, resolvedID)
                       end
                  end
             end

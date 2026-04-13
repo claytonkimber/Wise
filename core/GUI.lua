@@ -5613,12 +5613,13 @@ function Wise:UpdateButtonCooldown(btn)
     local function applyCD(cdFrame, newStart, newDur, reverse, source)
         if not cdFrame then return end
         local cache = cdFrame._wiseLastCD
-        if cache
-            and cache.start == newStart
-            and cache.duration == newDur
-            and cache.reverse == reverse then
-            return
-        end
+        local ok, matched = pcall(function()
+            return cache
+                and cache.start == newStart
+                and cache.duration == newDur
+                and cache.reverse == reverse
+        end)
+        if ok and matched then return end
         if cdFrame.SetReverse then
             cdFrame:SetReverse(reverse == true)
         end
@@ -5627,129 +5628,42 @@ function Wise:UpdateButtonCooldown(btn)
     end
     local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
         if not cdFrame then return end
+        -- numStart/numDur may be "secret numbers" in combat (WoW 11.1+) that
+        -- throw on any arithmetic or comparison. pcall the cache check so
+        -- secrets just force a re-write (safe — DurationObject handles them).
         local cache = cdFrame._wiseLastCD
-        if cache
-            and cache.start == numStart
-            and cache.duration == numDur
-            and cache.reverse == reverse then
-            return
-        end
+        local ok, matched = pcall(function()
+            return cache
+                and cache.start == numStart
+                and cache.duration == numDur
+                and cache.reverse == reverse
+        end)
+        if ok and matched then return end
         if cdFrame.SetReverse then
             cdFrame:SetReverse(reverse == true)
         end
         cdFrame:SetCooldownFromDurationObject(durObj, true)
+        -- Store the raw values; next comparison will pcall too.
         cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
     end
     local function clearCD(cdFrame)
         if not cdFrame then return end
         local cache = cdFrame._wiseLastCD
-        if cache and cache.start == 0 and cache.duration == 0 then return end
+        local ok, isZero = pcall(function()
+            return cache and cache.start == 0 and cache.duration == 0
+        end)
+        if ok and isZero then return end
         cdFrame:SetCooldown(0, 0)
         cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
     end
 
-    -- ─── Pre-scan buff / debuff auras (no widget writes yet) ────────
-    -- We scan auras first to decide the swipe "winner" before touching the
-    -- cooldown frame. This avoids double-writing the Cooldown each tick
-    -- (CD → buff → CD → buff …), which caused a visible pulse on GCD-length
-    -- swipes when UNIT_AURA fired frequently in combat.
-    local scanSpellID = spellID
-    if not scanSpellID and itemID and C_Item and C_Item.GetItemSpell then
-        local _, itemSpellID = C_Item.GetItemSpell(itemID)
-        scanSpellID = itemSpellID
+    -- Apply cooldown swipe direction (default: non-reversed). Overlays below
+    -- may override this before calling SetCooldown with their own direction.
+    if btn.cooldown.SetReverse then
+        btn.cooldown:SetReverse(cooldownSwipeReverse == true)
     end
-
-    local isBuffActive = false
-    local buffStart, buffDuration = 0, 0
-    local buffStacks = 0
-    if scanSpellID then
-        local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
-        if not aura then
-            local spellName = C_Spell.GetSpellName(scanSpellID)
-            if spellName then
-                aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
-            end
-        end
-        if aura then
-            buffStacks = aura.applications or aura.charges or 0
-            if showBuffs and aura.expirationTime and aura.duration then
-                local s1, validDur = pcall(function(d) return d > 0 end, aura.duration)
-                if s1 and validDur then
-                    local s2, cs, cd = pcall(function(e, d) return e - d, d end, aura.expirationTime, aura.duration)
-                    if s2 then
-                        buffStart = cs
-                        buffDuration = cd
-                        isBuffActive = true
-                    end
-                end
-            end
-        end
-    end
-
-    local isDebuffActive = false
-    local debuffStart, debuffDuration = 0, 0
-    if showDebuffs and not isBuffActive and UnitExists and UnitExists("target") and scanSpellID then
-        local spellName = C_Spell.GetSpellName(scanSpellID)
-        local debuffAura
-        if spellName then
-            debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
-        end
-        if debuffAura and debuffAura.expirationTime and debuffAura.duration then
-            local s1, validDur = pcall(function(d) return d > 0 end, debuffAura.duration)
-            if s1 and validDur then
-                local s2, cs, cd = pcall(function(e, d) return e - d, d end, debuffAura.expirationTime, debuffAura.duration)
-                if s2 then
-                    debuffStart = cs
-                    debuffDuration = cd
-                    isDebuffActive = true
-                end
-            end
-        end
-    end
-
-    -- Push stack counter (independent of whether buff swipe is active)
-    Wise:Text_UpdateBuffStack(btn, btn.groupName, buffStacks)
-    if visualClone then
-        Wise:Text_UpdateBuffStack(visualClone, btn.groupName, buffStacks)
-    end
-
-    -- start/duration is used by the countdown-text ticker below and by the
-    -- CD path if no overlay owns the swipe. Declare here so both branches
-    -- can populate it without leaking globals.
-    local start, duration = 0, 0
-
-    -- If an overlay owns the swipe, write its values once and skip the
-    -- CD path entirely. Writing the overlay values once is enough; no CD
-    -- update, no redundant DurationObject resolution.
-    local overlayOwns = false
-    if isBuffActive then
-        applyCD(btn.cooldown, buffStart, buffDuration, buffSwipeReverse, "buff")
-        if visualClone and visualClone.cooldown then
-            applyCD(visualClone.cooldown, buffStart, buffDuration, buffSwipeReverse, "buff")
-            visualClone.cooldown:Show()
-        end
-        start = buffStart
-        duration = buffDuration
-        overlayOwns = true
-    elseif isDebuffActive then
-        applyCD(btn.cooldown, debuffStart, debuffDuration, debuffSwipeReverse, "debuff")
-        if visualClone and visualClone.cooldown then
-            applyCD(visualClone.cooldown, debuffStart, debuffDuration, debuffSwipeReverse, "debuff")
-            visualClone.cooldown:Show()
-        end
-        start = debuffStart
-        duration = debuffDuration
-        overlayOwns = true
-    end
-
-    if not overlayOwns then
-        -- Default reverse direction for the CD path (no overlay winner).
-        if btn.cooldown.SetReverse then
-            btn.cooldown:SetReverse(cooldownSwipeReverse == true)
-        end
-        if visualClone and visualClone.cooldown and visualClone.cooldown.SetReverse then
-            visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
-        end
+    if visualClone and visualClone.cooldown and visualClone.cooldown.SetReverse then
+        visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
     end
 
     -- ─── DurationObject path (spells) ───────────────────────────────
@@ -5757,8 +5671,10 @@ function Wise:UpdateButtonCooldown(btn)
     -- The DurationObject API passes opaque values the Cooldown frame can consume.
     local usedDurationObject = false
     local isOnGCD = false
+    -- start/duration captured for countdown text tracker (may be secret in combat)
+    local start, duration = 0, 0
 
-    if not overlayOwns and spellID and C_Spell.GetSpellCooldownDuration then
+    if spellID and C_Spell.GetSpellCooldownDuration then
         -- Detect GCD via isOnGCD field (secret-safe, no numeric comparison)
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
         if cdInfo and cdInfo.isOnGCD == true then
@@ -5829,7 +5745,7 @@ function Wise:UpdateButtonCooldown(btn)
     end
 
     -- ─── Legacy path (action slots, items, misc) ────────────────────
-    if not overlayOwns and not usedDurationObject then
+    if not usedDurationObject then
         if actionType == "action" and tonumber(actionValue) then
             local realID = Wise:ResolveBarActionID(tonumber(actionValue))
             start, duration = GetActionCooldown(realID)
@@ -5914,9 +5830,11 @@ function Wise:UpdateButtonCooldown(btn)
             end
 
             local cache = btn.cooldown._wiseLastCD
-            local unchanged = cache and cache.start == start and cache.duration == duration
-                and cache.reverse == cooldownSwipeReverse
-            if not unchanged then
+            local okC, unchanged = pcall(function()
+                return cache and cache.start == start and cache.duration == duration
+                    and cache.reverse == cooldownSwipeReverse
+            end)
+            if not (okC and unchanged) then
                 local cdOk = pcall(function()
                     if btn.cooldown.SetReverse then
                         btn.cooldown:SetReverse(cooldownSwipeReverse == true)
@@ -5933,9 +5851,11 @@ function Wise:UpdateButtonCooldown(btn)
 
             if visualClone and visualClone.cooldown then
                 local vCache = visualClone.cooldown._wiseLastCD
-                local vUnchanged = vCache and vCache.start == start and vCache.duration == duration
-                    and vCache.reverse == cooldownSwipeReverse
-                if not vUnchanged then
+                local okV, vUnchanged = pcall(function()
+                    return vCache and vCache.start == start and vCache.duration == duration
+                        and vCache.reverse == cooldownSwipeReverse
+                end)
+                if not (okV and vUnchanged) then
                     local cloneOk = pcall(function()
                         if visualClone.cooldown.SetReverse then
                             visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
@@ -5950,6 +5870,107 @@ function Wise:UpdateButtonCooldown(btn)
                     end
                 end
                 visualClone.cooldown:Show()
+            end
+        end
+    end
+
+    -- ─── Buff overlay (overrides cooldown display with aura timer) ───
+    -- Runs AFTER the CD path so the overlay's SetCooldown overwrites the CD
+    -- swipe. Cache guards prevent the next tick's CD path from pulsing.
+    local isBuffActive = false
+    local buffStacks = 0
+    local scanSpellID = spellID
+    if not scanSpellID and itemID and C_Item and C_Item.GetItemSpell then
+        local _, itemSpellID = C_Item.GetItemSpell(itemID)
+        scanSpellID = itemSpellID
+    end
+
+    if showBuffs and scanSpellID then
+        local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
+        if not aura then
+             local spellName = C_Spell.GetSpellName(scanSpellID)
+             if spellName then
+                 aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+             end
+        end
+
+        if aura and aura.expirationTime and aura.duration then
+            local isValidDur = false
+            local s1, res = pcall(function(d) return d > 0 end, aura.duration)
+            if s1 then isValidDur = res else isValidDur = true end
+
+            if isValidDur then
+                local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, aura.expirationTime, aura.duration)
+                if s2 then
+                    start = calcStart
+                    duration = calcDuration
+                    isBuffActive = true
+                    buffStacks = aura.applications or aura.charges or 0
+                    applyCD(btn.cooldown, start, duration, buffSwipeReverse, "buff")
+                    if btn.cooldown.SetSwipeColor then
+                        btn.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
+                    end
+                    if visualClone and visualClone.cooldown then
+                        applyCD(visualClone.cooldown, start, duration, buffSwipeReverse, "buff")
+                        if visualClone.cooldown.SetSwipeColor then
+                            visualClone.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Pick up stack count even when buff swipe overlay is off
+    if buffStacks == 0 and scanSpellID then
+        local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
+        if not aura then
+            local spellName = C_Spell.GetSpellName(scanSpellID)
+            if spellName then
+                aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+            end
+        end
+        if aura then
+            buffStacks = aura.applications or aura.charges or 0
+        end
+    end
+    Wise:Text_UpdateBuffStack(btn, btn.groupName, buffStacks)
+    if visualClone then
+        Wise:Text_UpdateBuffStack(visualClone, btn.groupName, buffStacks)
+    end
+
+    -- ─── Debuff overlay (target only, player-applied harmful auras) ──
+    -- Precedence: buff > debuff > cooldown.
+    local isDebuffActive = false
+    if showDebuffs and not isBuffActive and UnitExists and UnitExists("target") and scanSpellID then
+        local spellName = C_Spell.GetSpellName(scanSpellID)
+        local debuffAura
+        if spellName then
+            debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
+        end
+
+        if debuffAura and debuffAura.expirationTime and debuffAura.duration then
+            local isValidDur = false
+            local s1, res = pcall(function(d) return d > 0 end, debuffAura.duration)
+            if s1 then isValidDur = res else isValidDur = true end
+
+            if isValidDur then
+                local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, debuffAura.expirationTime, debuffAura.duration)
+                if s2 then
+                    start = calcStart
+                    duration = calcDuration
+                    isDebuffActive = true
+                    applyCD(btn.cooldown, start, duration, debuffSwipeReverse, "debuff")
+                    if btn.cooldown.SetSwipeColor then
+                        btn.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
+                    end
+                    if visualClone and visualClone.cooldown then
+                        applyCD(visualClone.cooldown, start, duration, debuffSwipeReverse, "debuff")
+                        if visualClone.cooldown.SetSwipeColor then
+                            visualClone.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
+                        end
+                    end
+                end
             end
         end
     end
@@ -6513,18 +6534,46 @@ eventFrame:RegisterEvent("SPELL_UPDATE_ICON")
 -- Active state (checked) events
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
+-- Defer cooldown updates by one frame to avoid tainting Blizzard's secure
+-- event handlers. WoW 11.1+ uses "secret numbers" for cooldown values in
+-- combat; touching them in an addon event handler taints the execution
+-- context, which then prevents Blizzard's ActionButton_UpdateCooldown from
+-- calling SetCooldown with those same secret values. By deferring to the
+-- next frame via C_Timer.After(0, ...), Wise's cooldown work runs outside
+-- the Blizzard event dispatch chain and cannot propagate taint.
+local pendingCooldownUpdate = false
+local pendingChargeUpdate = false
+local function scheduleCooldownUpdate()
+    if not pendingCooldownUpdate then
+        pendingCooldownUpdate = true
+        C_Timer.After(0, function()
+            pendingCooldownUpdate = false
+            Wise:UpdateAllCooldowns()
+        end)
+    end
+end
+local function scheduleChargeUpdate()
+    if not pendingChargeUpdate then
+        pendingChargeUpdate = true
+        C_Timer.After(0, function()
+            pendingChargeUpdate = false
+            Wise:UpdateAllCharges()
+        end)
+    end
+end
+
 eventFrame:SetScript("OnEvent", function(self, event, unit)
     if event == "UNIT_AURA" then
         if unit == "target" or unit == "player" then
             Wise:UpdateAllUsability()
-            Wise:UpdateAllCooldowns()
+            scheduleCooldownUpdate()
         end
         if unit == "player" then
             Wise:UpdateAllStates()
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         Wise:UpdateAllUsability()
-        Wise:UpdateAllCooldowns()
+        scheduleCooldownUpdate()
     elseif event == "SPELL_UPDATE_USABLE" then
         Wise:UpdateAllUsability()
     elseif event == "SPELL_UPDATE_ICON" then
@@ -6535,14 +6584,14 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
     elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_UPDATE_STATE" then
         Wise:UpdateAllStates()
     elseif event == "SPELL_UPDATE_CHARGES" then
-        Wise:UpdateAllCharges()
-        Wise:UpdateAllCooldowns()
+        scheduleChargeUpdate()
+        scheduleCooldownUpdate()
     elseif event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
-        Wise:UpdateAllCooldowns()
+        scheduleCooldownUpdate()
     else
         -- BAG_UPDATE_COOLDOWN
-        Wise:UpdateAllCooldowns()
-        Wise:UpdateAllCharges()
+        scheduleCooldownUpdate()
+        scheduleChargeUpdate()
     end
 end)
 
