@@ -484,12 +484,56 @@ Wise.CooldownUpdateFrame:Hide()
 --   3. Hide our own btn.countdown FontString to avoid double text
 -- Outside combat, we compute remaining time normally and use our own text.
 
+-- Forward declaration — real implementation follows after UpdateAllCooldowns.
+local scheduleCooldownUpdate
+
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
     local now = GetTime()
     local hasActive = false
 
+    -- Throttled aura re-validation for buff/debuff timers (~10 Hz)
+    self._auraCheckElapsed = (self._auraCheckElapsed or 0) + elapsed
+    local doAuraCheck = self._auraCheckElapsed >= 0.1
+    if doAuraCheck then self._auraCheckElapsed = 0 end
+
     for btn, info in pairs(Wise.ActiveCooldownButtons) do
         hasActive = true
+
+        -- Re-validate buff/debuff auras periodically. If the aura was
+        -- dispelled, expired early, or the target changed, schedule a
+        -- full re-evaluation so the button falls back to showing its
+        -- regular cooldown (or clears entirely).
+        if doAuraCheck and info.scanSpellID and (info.isBuffActive or info.isDebuffActive) then
+            local auraGone = false
+            local spellName = C_Spell.GetSpellName(info.scanSpellID)
+            if info.isBuffActive then
+                local aura = C_UnitAuras.GetPlayerAuraBySpellID(info.scanSpellID)
+                if not aura and spellName then
+                    aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+                end
+                if not aura then auraGone = true end
+            elseif info.isDebuffActive then
+                if not UnitExists("target") then
+                    auraGone = true
+                else
+                    local debuffAura
+                    if spellName then
+                        debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
+                    end
+                    if not debuffAura then auraGone = true end
+                end
+            end
+            if auraGone then
+                -- Clear the aura flags so this entry is treated as a
+                -- regular cooldown until the deferred re-evaluation runs.
+                info.isBuffActive = false
+                info.isDebuffActive = false
+                info.scanSpellID = nil
+                -- Schedule a proper re-evaluation (taint-safe, deferred)
+                scheduleCooldownUpdate()
+            end
+        end
+
         local start = info.start
         local duration = info.duration
         local groupName = info.groupName
@@ -6025,6 +6069,7 @@ function Wise:UpdateButtonCooldown(btn)
              isListMode = isListMode,
              isBuffActive = isBuffActive,
              isDebuffActive = isDebuffActive,
+             scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil,
              lastText = ""
          }
          Wise.CooldownUpdateFrame:Show()
@@ -6543,7 +6588,7 @@ eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 -- the Blizzard event dispatch chain and cannot propagate taint.
 local pendingCooldownUpdate = false
 local pendingChargeUpdate = false
-local function scheduleCooldownUpdate()
+scheduleCooldownUpdate = function()
     if not pendingCooldownUpdate then
         pendingCooldownUpdate = true
         C_Timer.After(0, function()

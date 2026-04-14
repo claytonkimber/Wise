@@ -61,6 +61,9 @@ do
             pendingResync[groupName] = true
             C_Timer.After(0, function()
                 pendingResync[groupName] = nil
+                -- Skip during combat: spell list can't change mid-fight and
+                -- frame properties may be secret values that crash table ops.
+                if InCombatLockdown() then return end
                 local group = WiseDB and WiseDB.groups[groupName]
                 if not group or not group.viewerName then return end
                 Wise:_ReadCooldownViewer(groupName, group.viewerName)
@@ -112,6 +115,15 @@ end
 
 -- Internal: read spells from a Blizzard CooldownViewer and sync to group actions
 function Wise:_ReadCooldownViewer(groupName, viewerName)
+    -- Frame child properties (spellID, layoutIndex) are secret values during
+    -- combat that cannot be used as table keys or in comparisons. Defer the
+    -- sync until combat ends — the spell list cannot change mid-fight anyway.
+    if InCombatLockdown() then
+        Wise._pendingViewerSync = Wise._pendingViewerSync or {}
+        Wise._pendingViewerSync[groupName] = viewerName
+        return
+    end
+
     local group = WiseDB.groups[groupName]
     if not group then return end
 
@@ -123,7 +135,9 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
     if viewer.GetChildren then
         local children = { viewer:GetChildren() }
         table.sort(children, function(a, b)
-            return (a.layoutIndex or 0) < (b.layoutIndex or 0)
+            local ai = tonumber(a.layoutIndex) or 0
+            local bi = tonumber(b.layoutIndex) or 0
+            return ai < bi
         end)
 
         for _, child in ipairs(children) do
@@ -138,11 +152,17 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
                  end
 
                  if spellID then
-                      -- Normalize to override spell so base+override don't appear as two entries
-                      local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
-                      if not seen[resolvedID] then
-                          seen[resolvedID] = true
-                          table.insert(spells, resolvedID)
+                      -- tonumber strips taint so the value is safe for table keys and API calls.
+                      -- If tonumber returns nil the value is a combat secret — skip it entirely
+                      -- since secrets cannot be used as table keys or in comparisons.
+                      spellID = tonumber(spellID)
+                      if spellID then
+                          -- Normalize to override spell so base+override don't appear as two entries
+                          local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
+                          if not seen[resolvedID] then
+                              seen[resolvedID] = true
+                              table.insert(spells, resolvedID)
+                          end
                       end
                  end
             end

@@ -61,10 +61,10 @@ function Wise:GetOverrideSpellID(spellID)
     end
     if C_Spell and C_Spell.GetOverrideSpell then
         local ok, result = pcall(C_Spell.GetOverrideSpell, spellID)
-        if ok then return result end
+        if ok then return tonumber(result) or spellID end
         return spellID
     elseif FindSpellOverrideByID then
-        return FindSpellOverrideByID(spellID)
+        return tonumber(FindSpellOverrideByID(spellID)) or spellID
     end
     return spellID
 end
@@ -1282,6 +1282,16 @@ function frame:OnEvent(event, arg1)
         end
         if Wise.pendingBlizzardUIUpdate then
             if Wise.UpdateBlizzardUI then Wise:UpdateBlizzardUI() end
+        end
+        -- Flush any CooldownViewer syncs that were deferred during combat
+        if Wise._pendingViewerSync then
+            local pending = Wise._pendingViewerSync
+            Wise._pendingViewerSync = nil
+            for groupName, viewerName in pairs(pending) do
+                if Wise._ReadCooldownViewer then
+                    Wise:_ReadCooldownViewer(groupName, viewerName)
+                end
+            end
         end
     elseif event == "UPDATE_BINDINGS" then
         if Wise.UpdateBindings then
