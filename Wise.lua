@@ -59,12 +59,18 @@ function Wise:GetOverrideSpellID(spellID)
             return spellID
         end
     end
+    -- Taint-strip: Blizzard's C_Spell.GetOverrideSpell / FindSpellOverrideByID can
+    -- return tainted numbers post-combat. tonumber(n) on a number is identity, so
+    -- we route through tostring→tonumber to force a fresh, untainted value that is
+    -- safe to use as a table key or in comparisons.
     if C_Spell and C_Spell.GetOverrideSpell then
         local ok, result = pcall(C_Spell.GetOverrideSpell, spellID)
-        if ok then return tonumber(result) or spellID end
+        if ok and result then return tonumber(tostring(result)) or spellID end
         return spellID
     elseif FindSpellOverrideByID then
-        return tonumber(FindSpellOverrideByID(spellID)) or spellID
+        local result = FindSpellOverrideByID(spellID)
+        if result then return tonumber(tostring(result)) or spellID end
+        return spellID
     end
     return spellID
 end

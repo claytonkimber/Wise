@@ -152,14 +152,16 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
                  end
 
                  if spellID then
-                      -- tonumber strips taint so the value is safe for table keys and API calls.
-                      -- If tonumber returns nil the value is a combat secret — skip it entirely
-                      -- since secrets cannot be used as table keys or in comparisons.
-                      spellID = tonumber(spellID)
+                      -- tonumber(tostring(...)) forces a fresh untainted number. Plain tonumber()
+                      -- on an already-numeric value returns the same (possibly tainted) value,
+                      -- which is why we route through tostring first. Secrets cannot be used as
+                      -- table keys or in comparisons, so we skip any value that can't be converted.
+                      spellID = tonumber(tostring(spellID))
                       if spellID then
                           -- Normalize to override spell so base+override don't appear as two entries
                           local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
-                          if not seen[resolvedID] then
+                          resolvedID = tonumber(tostring(resolvedID))
+                          if resolvedID and not seen[resolvedID] then
                               seen[resolvedID] = true
                               table.insert(spells, resolvedID)
                           end
