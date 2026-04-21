@@ -573,160 +573,116 @@ function Wise:ShouldShowAction(action)
     -- since they aren't inherently restricted to a spell-book source.
     local aType = action.type
 
+    -- User-set visibilityEnable tags are an explicit allowlist and take
+    -- precedence over spellbook autoclassification. Each helper returns
+    -- (matched, decision): matched=true means a tag in the enable-list spoke
+    -- to this filter and the decision is final; matched=false means no
+    -- relevant tag was found and the caller should fall through.
+    local enables = action.visibilityEnable or {}
+    local function specBelongsToPlayerClass(savedSpecID)
+        if not savedSpecID then return false end
+        local _, _, classID = UnitClass("player")
+        local numSpecs = GetNumSpecializationsForClassID(classID)
+        for si = 1, numSpecs do
+            local sid = GetSpecializationInfoForClassID(classID, si)
+            if sid == savedSpecID then return true end
+        end
+        return false
+    end
+
+    local function classTagDecision()
+        for _, tag in ipairs(enables) do
+            if tag:match("^class:") then
+                return true, tag == "class:" .. (Wise.characterInfo.class or "")
+            end
+            if tag:match("^spec:") then
+                return true, specBelongsToPlayerClass(tonumber(tag:sub(6)))
+            end
+            if tag:match("^role:") then
+                return true, action.addedByClass == Wise.characterInfo.class
+            end
+        end
+        return false, false
+    end
+
+    local function roleTagDecision()
+        for _, tag in ipairs(enables) do
+            if tag:match("^role:") then
+                return true, tag == "role:" .. (Wise.characterInfo.role or "")
+            end
+            if tag:match("^spec:") then
+                local savedSpecID = tonumber(tag:sub(6))
+                if savedSpecID then
+                    local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
+                    return true, specRole == (Wise.characterInfo.role or "")
+                end
+            end
+        end
+        return false, false
+    end
+
+    local function specTagDecision()
+        for _, tag in ipairs(enables) do
+            if tag:match("^spec:") then
+                return true, tonumber(tag:sub(6)) == (Wise.characterInfo.specID or 0)
+            end
+            if tag:match("^role:") then
+                return true, tag == "role:" .. (Wise.characterInfo.role or "")
+            end
+        end
+        return false, false
+    end
+
     if filter == "class" then
-        -- Show actions that belong to my class (class or spec spells, plus all non-spell actions)
+        -- Explicit allowlist tags win for every action type.
+        local matched, decision = classTagDecision()
+        if matched then return decision end
+        -- No tags: for spells, trust the spellbook; everything else passes.
         if aType == "spell" then
             local resolved = Wise:ResolveSpellCategory(action.value)
-            -- class or spec spells are in our spellbook → belong to our class
             if resolved == "class" or resolved == "spec" then return true end
-            -- "global" from ResolveSpellCategory means either General/Warband spell
-            -- OR the spell wasn't found in our spellbook at all (e.g. off-spec spell).
-            -- Check visibility tags: if tagged with a class, honour that.
-            local enables = action.visibilityEnable or {}
-            if #enables > 0 then
-                for _, tag in ipairs(enables) do
-                    if tag:match("^class:") then
-                        return tag == "class:" .. (Wise.characterInfo.class or "")
-                    end
-                    -- spec: tag — verify the spec belongs to the player's class
-                    if tag:match("^spec:") then
-                        local savedSpecID = tonumber(tag:sub(6))
-                        if savedSpecID then
-                            local _, _, classID = UnitClass("player")
-                            local numSpecs = GetNumSpecializationsForClassID(classID)
-                            for si = 1, numSpecs do
-                                local sid = GetSpecializationInfoForClassID(classID, si)
-                                if sid == savedSpecID then return true end
-                            end
-                        end
-                        return false
-                    end
-                    -- role: tag — check addedByClass metadata to verify it's ours
-                    if tag:match("^role:") then
-                        return action.addedByClass == Wise.characterInfo.class
-                    end
-                end
-            end
-            -- No saved tags either: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
-        end
-        -- Non-spell actions: check visibility tags if present
-        local enables = action.visibilityEnable or {}
-        if #enables > 0 then
-            for _, tag in ipairs(enables) do
-                if tag:match("^class:") then
-                    return tag == "class:" .. (Wise.characterInfo.class or "")
-                end
-                if tag:match("^spec:") then
-                    local savedSpecID = tonumber(tag:sub(6))
-                    if savedSpecID then
-                        local _, _, classID = UnitClass("player")
-                        local numSpecs = GetNumSpecializationsForClassID(classID)
-                        for si = 1, numSpecs do
-                            local sid = GetSpecializationInfoForClassID(classID, si)
-                            if sid == savedSpecID then return true end
-                        end
-                    end
-                    return false
-                end
-                if tag:match("^role:") then
-                    return action.addedByClass == Wise.characterInfo.class
-                end
-            end
         end
         return true
 
     elseif filter == "role" then
-        -- Show actions applicable to my current role
-        -- For spells: check if this spell is in a spec line whose role matches
+        local matched, decision = roleTagDecision()
+        if matched then
+            -- Tags win, but still require the action to belong to the player's
+            -- class when that metadata is set (mirrors pre-refactor behavior).
+            if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+                return false
+            end
+            return decision
+        end
         if aType == "spell" then
             local resolved, resolvedSpecID = Wise:ResolveSpellCategory(action.value)
             if resolved == "class" then return true end
             if resolved == "spec" and resolvedSpecID then
-                -- Check if this spec's role matches the current role
                 local _, _, _, _, specRole = GetSpecializationInfoByID(resolvedSpecID)
                 return specRole == (Wise.characterInfo.role or "")
             end
-            -- Spell not in spellbook — check saved visibility tags for spec/role info
-            -- First verify the action belongs to our class at all
             if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then return false end
-            local enables = action.visibilityEnable or {}
-            if #enables > 0 then
-                for _, tag in ipairs(enables) do
-                    -- Explicit role tag: match directly
-                    if tag:match("^role:") then
-                        return tag == "role:" .. (Wise.characterInfo.role or "")
-                    end
-                    -- Spec tag: derive the role from the saved spec ID
-                    if tag:match("^spec:") then
-                        local savedSpecID = tonumber(tag:sub(6))
-                        if savedSpecID then
-                            local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
-                            return specRole == (Wise.characterInfo.role or "")
-                        end
-                    end
-                end
-            end
-            -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
-        end
-        -- Non-spell actions: check visibility tags if present
-        local enables = action.visibilityEnable or {}
-        if #enables > 0 then
-            for _, tag in ipairs(enables) do
-                if tag:match("^role:") then
-                    return tag == "role:" .. (Wise.characterInfo.role or "")
-                end
-                if tag:match("^spec:") then
-                    local savedSpecID = tonumber(tag:sub(6))
-                    if savedSpecID then
-                        local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
-                        return specRole == (Wise.characterInfo.role or "")
-                    end
-                end
-            end
         end
         return true
 
     elseif filter == "spec" then
-        -- Show actions that belong to my current spec (or are class spells)
+        local matched, decision = specTagDecision()
+        if matched then
+            if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+                return false
+            end
+            return decision
+        end
         if aType == "spell" then
             local resolved, resolvedSpecID = Wise:ResolveSpellCategory(action.value)
             if resolved == "class" then return true end
             if resolved == "spec" then
                 return resolvedSpecID == (Wise.characterInfo.specID or 0)
             end
-            -- Spell not in spellbook — check saved visibility tags for spec info
-            -- First verify the action belongs to our class at all
             if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then return false end
-            local enables = action.visibilityEnable or {}
-            if #enables > 0 then
-                for _, tag in ipairs(enables) do
-                    if tag:match("^spec:") then
-                        local savedSpecID = tonumber(tag:sub(6))
-                        return savedSpecID == (Wise.characterInfo.specID or 0)
-                    end
-                    -- Role tag: derive whether this role matches
-                    if tag:match("^role:") then
-                        return tag == "role:" .. (Wise.characterInfo.role or "")
-                    end
-                end
-            end
-            -- No saved tags: fall back to whether the spell is actually known
             return Wise:IsActionKnown(aType, action.value)
-        end
-        -- Non-spell actions: check visibility tags if present
-        local enables = action.visibilityEnable or {}
-        if #enables > 0 then
-            for _, tag in ipairs(enables) do
-                if tag:match("^spec:") then
-                    local savedSpecID = tonumber(tag:sub(6))
-                    return savedSpecID == (Wise.characterInfo.specID or 0)
-                end
-                if tag:match("^role:") then
-                    return tag == "role:" .. (Wise.characterInfo.role or "")
-                end
-            end
         end
         return true
 
