@@ -75,6 +75,8 @@ local nodeCondBubblePool = {}
 
 -- Forward declarations
 local ActionPassesFilter
+local IsFilterHiding
+local IsActionLive
 local HideAllModDropZones
 local RenderConditionalList
 local RenderNodesCanvas
@@ -800,9 +802,34 @@ local function RenderCanvas()
     local sc = Wise.SlotConfigurator
     if sc then sc._rowYPositions = {} end
 
+    -- Decide up-front which rows are wholly hidden by the current filter, so
+    -- we can skip both the row content and the mod break that would sit
+    -- above it. A row is hidden only when it has at least one populated
+    -- cell and *every* populated cell is filter-rejected; rows that are
+    -- entirely empty still render as drop targets.
+    local rowHidden = {}
+    for r = 1, state.numRows do
+        if state.grid[r] then
+            local anyAction, anyVisible = false, false
+            for c = 1, state.numCols do
+                local a = state.grid[r][c]
+                if a then
+                    anyAction = true
+                    if not IsFilterHiding(a) then anyVisible = true break end
+                end
+            end
+            rowHidden[r] = anyAction and not anyVisible
+        end
+    end
+
     -- Render rows
     for r = 1, state.numRows do
         if not state.grid[r] then state.grid[r] = {} end
+
+        if rowHidden[r] then
+            -- Skip this row entirely; its mod break (if any) is suppressed too
+            -- since it would otherwise detach from both neighbours.
+        else
 
         -- Check for mod break BEFORE this row (stored as modBreaks[r-1])
         if r > 1 and state.modBreaks[r - 1] then
@@ -920,7 +947,14 @@ local function RenderCanvas()
             local action = state.grid[r][c]
             local cellX = x0 + (c - 1) * (CELL_WIDTH + CELL_PADDING)
 
-            if action then
+            -- Individual cells filtered out within a visible row are left
+            -- blank so the underlying action data is preserved and cannot be
+            -- accidentally overwritten by a drop onto what looks like an
+            -- empty slot.
+            if action and IsFilterHiding(action) then
+                -- Skip rendering this cell entirely; the gap signals "hidden
+                -- by filter" without destroying saved data.
+            elseif action then
                 -- Filled cell
                 local cell = GetOrCreateCell(canvas, cellIdx)
                 cellIdx = cellIdx + 1
@@ -941,13 +975,13 @@ local function RenderCanvas()
                 local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
                 cell.nameLabel:SetText(name)
 
-                -- Apply filter dimming
-                local passesFilter = ActionPassesFilter(action)
-                if passesFilter then
+                -- Dim actions that are in-filter but not currently usable (e.g.
+                -- spell not learned on this character right now).
+                if IsActionLive(action) then
                     cell:SetAlpha(1)
                     cell:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
                 else
-                    cell:SetAlpha(0.35)
+                    cell:SetAlpha(0.45)
                     cell:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
                 end
 
@@ -1119,6 +1153,7 @@ local function RenderCanvas()
         end
 
         yOffset = yOffset - CELL_HEIGHT - CELL_PADDING
+        end -- end of: if not rowHidden[r]
     end
 
     -- "+ Add Row" area
@@ -1301,6 +1336,12 @@ RenderNodesCanvas = function()
         if not state.grid[r] then state.grid[r] = {} end
         local action = state.grid[r][1] -- phase 1: show col 1 only in nodes view
 
+        -- Skip rows whose action is hidden by the current filter. Empty rows
+        -- still render as placeholder cards (drop targets).
+        if action and IsFilterHiding(action) then
+            -- continue to next row
+        else
+
         -- Arrow from previous node (or from play-button header for first row)
         local arrow = GetOrCreateNodeArrow(canvas, arrowIdx)
         arrowIdx = arrowIdx + 1
@@ -1323,7 +1364,7 @@ RenderNodesCanvas = function()
             local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
             card.nameLabel:SetText(name)
 
-            if ActionPassesFilter(action) then
+            if IsActionLive(action) then
                 card:SetAlpha(1)
                 card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
             else
@@ -1478,6 +1519,7 @@ RenderNodesCanvas = function()
         bubble:Show()
 
         yCursor = yCursor - NODE_CARD_HEIGHT
+        end -- end of: if not filter-hidden
     end
 
     -- "+ Add Node" button at the bottom
@@ -1767,6 +1809,21 @@ end
 ActionPassesFilter = function(action)
     if not action then return false end
     return Wise:ShouldShowAction(action)
+end
+
+-- True when the current filter is actively hiding this action. Empty slots
+-- are never hidden (they are drop targets).
+IsFilterHiding = function(action)
+    if not action then return false end
+    return not Wise:ShouldShowAction(action)
+end
+
+-- True when the action is usable on this character right now (learned, etc).
+-- Used for dimming actions that pass the filter but aren't currently live.
+IsActionLive = function(action)
+    if not action then return true end
+    if not Wise.IsActionKnown then return true end
+    return Wise:IsActionKnown(action.type, action.value) and true or false
 end
 
 -- ═══════════════════════════════════════════════════════════════
