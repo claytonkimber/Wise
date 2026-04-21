@@ -26,6 +26,14 @@ local COL_HEADER_HEIGHT = 28
 local MOD_BREAK_HEIGHT = 26
 local DRAG_THRESHOLD = 8
 
+-- Nodes view constants (vertical flow, Image #3 style)
+local NODE_ICON_SIZE = 56
+local NODE_CARD_WIDTH = 260
+local NODE_CARD_HEIGHT = 68
+local NODE_V_SPACING = 36 -- arrow gap between nodes
+local NODE_HEADER_HEIGHT = 80 -- play-button header area
+local NODE_COND_OFFSET = 14 -- horizontal offset of the condition bubble from the icon
+
 -- Modifier break colors
 local MOD_COLORS = {
     shift = { r = 0.85, g = 0.55, b = 0.1 },
@@ -56,12 +64,21 @@ local configuratorState = {
     dragAction = nil,
     -- Original strategy for preserving random
     originalStrategy = nil,
+    -- Active tab: "grid" (existing table view) or "nodes" (vertical flow, Image #3)
+    activeTab = "grid",
 }
+
+-- Nodes-view UI element pools
+local nodeCardPool = {}
+local nodeArrowPool = {}
+local nodeCondBubblePool = {}
 
 -- Forward declarations
 local ActionPassesFilter
 local HideAllModDropZones
 local RenderConditionalList
+local RenderNodesCanvas
+local RenderActiveTab
 
 -- UI element pools
 local cellPool = {}
@@ -682,6 +699,15 @@ local function GetOrCreateRowInsertIndicator(parent)
 end
 
 -- ═══════════════════════════════════════════════════════════════
+-- Nodes View Pool Hiding
+-- ═══════════════════════════════════════════════════════════════
+local function HideAllNodePooled()
+    for _, c in pairs(nodeCardPool) do c:Hide() end
+    for _, a in pairs(nodeArrowPool) do a:Hide() end
+    for _, b in pairs(nodeCondBubblePool) do b:Hide() end
+end
+
+-- ═══════════════════════════════════════════════════════════════
 -- Canvas Rendering
 -- ═══════════════════════════════════════════════════════════════
 local function HideAllPooled()
@@ -1124,6 +1150,368 @@ local function RenderCanvas()
         local strat = "Priority (single column)"
         if state.numCols > 1 then strat = "Sequence (" .. state.numCols .. " steps)" end
         sc.infoLabel:SetText("Layout: " .. state.numRows .. " row(s), " .. state.numCols .. " step(s) | Mode: " .. strat)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Nodes View Factories
+-- ═══════════════════════════════════════════════════════════════
+local function GetOrCreateNodeCard(parent, index)
+    if nodeCardPool[index] then
+        nodeCardPool[index]:SetParent(parent)
+        return nodeCardPool[index]
+    end
+
+    local card = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    card:SetSize(NODE_CARD_WIDTH, NODE_CARD_HEIGHT)
+    card:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    card:SetBackdropColor(0.10, 0.10, 0.14, 0.95)
+    card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
+
+    card.icon = card:CreateTexture(nil, "ARTWORK")
+    card.icon:SetSize(NODE_ICON_SIZE, NODE_ICON_SIZE)
+    card.icon:SetPoint("LEFT", 6, 0)
+    card.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    card.iconBorder = card:CreateTexture(nil, "OVERLAY")
+    card.iconBorder:SetPoint("TOPLEFT", card.icon, -2, 2)
+    card.iconBorder:SetPoint("BOTTOMRIGHT", card.icon, 2, -2)
+    card.iconBorder:SetColorTexture(0, 0.7, 1, 0.25)
+
+    card.nameLabel = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    card.nameLabel:SetPoint("TOPLEFT", card.icon, "TOPRIGHT", 10, -2)
+    card.nameLabel:SetPoint("RIGHT", -22, 0)
+    card.nameLabel:SetJustifyH("LEFT")
+    card.nameLabel:SetMaxLines(1)
+
+    card.removeBtn = CreateFrame("Button", nil, card)
+    card.removeBtn:SetSize(14, 14)
+    card.removeBtn:SetPoint("TOPRIGHT", -4, -4)
+    card.removeBtn:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
+    card.removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
+
+    card.highlight = card:CreateTexture(nil, "HIGHLIGHT")
+    card.highlight:SetAllPoints()
+    card.highlight:SetColorTexture(1, 0.82, 0, 0.1)
+
+    nodeCardPool[index] = card
+    return card
+end
+
+local function GetOrCreateNodeArrow(parent, index)
+    if nodeArrowPool[index] then
+        nodeArrowPool[index]:SetParent(parent)
+        return nodeArrowPool[index]
+    end
+
+    local arrow = CreateFrame("Frame", nil, parent)
+    arrow:SetSize(4, NODE_V_SPACING)
+
+    arrow.line = arrow:CreateTexture(nil, "ARTWORK")
+    arrow.line:SetColorTexture(0.2, 0.75, 1, 0.9)
+    arrow.line:SetPoint("TOP", 0, 0)
+    arrow.line:SetPoint("BOTTOM", 0, 6)
+    arrow.line:SetWidth(3)
+
+    arrow.head = arrow:CreateTexture(nil, "OVERLAY")
+    arrow.head:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+    arrow.head:SetSize(16, 16)
+    arrow.head:SetPoint("BOTTOM", 0, -2)
+    arrow.head:SetVertexColor(0.2, 0.75, 1, 1)
+
+    arrow.tagLabel = arrow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    arrow.tagLabel:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
+    arrow.tagLabel:SetTextColor(0.4, 0.85, 1, 1)
+
+    nodeArrowPool[index] = arrow
+    return arrow
+end
+
+local function GetOrCreateCondBubble(parent, index)
+    if nodeCondBubblePool[index] then
+        nodeCondBubblePool[index]:SetParent(parent)
+        return nodeCondBubblePool[index]
+    end
+
+    local bubble = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    bubble:SetSize(140, 28)
+    bubble:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    bubble:SetBackdropColor(0.14, 0.14, 0.18, 0.95)
+    bubble:SetBackdropBorderColor(0.5, 0.5, 0.6, 1)
+
+    bubble.label = bubble:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    bubble.label:SetPoint("LEFT", 8, 0)
+    bubble.label:SetPoint("RIGHT", -8, 0)
+    bubble.label:SetJustifyH("LEFT")
+    bubble.label:SetMaxLines(1)
+
+    bubble.highlight = bubble:CreateTexture(nil, "HIGHLIGHT")
+    bubble.highlight:SetAllPoints()
+    bubble.highlight:SetColorTexture(0.3, 0.6, 1, 0.15)
+
+    nodeCondBubblePool[index] = bubble
+    return bubble
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Nodes View Rendering (vertical flow, Image #3 style)
+-- Shares the same configuratorState.grid as the Grid tab.
+-- Each row of the grid becomes a node in vertical order (column 1 only in
+-- phase 1; multi-column sequences still render on the Grid tab).
+-- ═══════════════════════════════════════════════════════════════
+RenderNodesCanvas = function()
+    local sc = Wise.SlotConfigurator
+    if not sc or not sc.nodesCanvas then return end
+
+    local canvas = sc.nodesCanvas
+    local state = configuratorState
+
+    HideAllNodePooled()
+
+    -- Header: play-button graphic at the top
+    if not sc.nodesHeaderPlay then
+        sc.nodesHeaderPlay = canvas:CreateTexture(nil, "ARTWORK")
+        sc.nodesHeaderPlay:SetTexture("Interface\\TimerFrame\\BigTimerButton-Up")
+        sc.nodesHeaderPlay:SetSize(48, 48)
+    end
+    sc.nodesHeaderPlay:ClearAllPoints()
+    sc.nodesHeaderPlay:SetPoint("TOP", canvas, "TOP", 0, -10)
+    sc.nodesHeaderPlay:Show()
+
+    -- Collect nodes: one per populated row in column 1. Empty rows still
+    -- render a placeholder card so the user has somewhere to drop / click.
+    local cardIdx = 1
+    local arrowIdx = 1
+    local bubbleIdx = 1
+
+    local yCursor = -NODE_HEADER_HEIGHT
+    local centerX = NODE_CARD_WIDTH / 2 + 20
+
+    for r = 1, state.numRows do
+        if not state.grid[r] then state.grid[r] = {} end
+        local action = state.grid[r][1] -- phase 1: show col 1 only in nodes view
+
+        -- Arrow from previous node (or from play-button header for first row)
+        local arrow = GetOrCreateNodeArrow(canvas, arrowIdx)
+        arrowIdx = arrowIdx + 1
+        arrow:ClearAllPoints()
+        arrow:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor + 8)
+        arrow.tagLabel:SetText(r == 1 and "" or "fallthrough")
+        arrow:Show()
+
+        yCursor = yCursor - NODE_V_SPACING
+
+        -- Node card
+        local card = GetOrCreateNodeCard(canvas, cardIdx)
+        cardIdx = cardIdx + 1
+        card:ClearAllPoints()
+        card:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor)
+
+        if action then
+            local iconTex = Wise:GetActionIcon(action.type, action.value, action)
+            card.icon:SetTexture(iconTex or "Interface\\Icons\\INV_Misc_QuestionMark")
+            local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
+            card.nameLabel:SetText(name)
+
+            if ActionPassesFilter(action) then
+                card:SetAlpha(1)
+                card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
+            else
+                card:SetAlpha(0.4)
+                card:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.6)
+            end
+
+            card.removeBtn:Show()
+            local removeRow = r
+            card.removeBtn:SetScript("OnClick", function()
+                state.grid[removeRow][1] = nil
+                -- Collapse empty rows so the flow stays tight in the nodes view
+                if state.numRows > 1 then
+                    local allEmpty = true
+                    if state.grid[removeRow] then
+                        for _, v in pairs(state.grid[removeRow]) do
+                            if v then allEmpty = false break end
+                        end
+                    end
+                    if allEmpty then
+                        table.remove(state.grid, removeRow)
+                        table.remove(state.rowConditions, removeRow)
+                        table.remove(state.rowExclusive, removeRow)
+                        local newBreaks = {}
+                        for afterRow, mod in pairs(state.modBreaks) do
+                            if afterRow < removeRow then
+                                newBreaks[afterRow] = mod
+                            elseif afterRow >= removeRow and afterRow < state.numRows then
+                                newBreaks[afterRow - 1] = mod
+                            end
+                        end
+                        state.modBreaks = newBreaks
+                        state.numRows = state.numRows - 1
+                        if state.numRows < 1 then
+                            state.numRows = 1
+                            state.grid[1] = {}
+                            state.rowConditions[1] = ""
+                            state.rowExclusive[1] = false
+                        end
+                    end
+                end
+                RenderNodesCanvas()
+            end)
+
+            card:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            local clickRow = r
+            card:SetScript("OnClick", function(self, button)
+                if button == "RightButton" then
+                    Wise:OpenConfiguratorPicker(clickRow, 1)
+                end
+            end)
+
+            card:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(name, 1, 1, 1)
+                if action.type then
+                    GameTooltip:AddLine("Type: " .. action.type, 0.8, 0.8, 0.8)
+                end
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("Right-click to replace. Click X to remove.", 0.6, 0.6, 0.6, true)
+                GameTooltip:Show()
+            end)
+            card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        else
+            card.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            card.nameLabel:SetText("|cff888888(empty)|r")
+            card:SetAlpha(0.7)
+            card:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.7)
+            card.removeBtn:Hide()
+
+            card:RegisterForClicks("LeftButtonUp")
+            local clickRow = r
+            card:SetScript("OnClick", function(self)
+                local cursorType, id = GetCursorInfo()
+                if cursorType then
+                    local actionData = Wise:CursorToActionData(cursorType, id)
+                    if actionData then
+                        state.grid[clickRow][1] = actionData
+                        ClearCursor()
+                        RenderNodesCanvas()
+                        return
+                    end
+                end
+                Wise:OpenConfiguratorPicker(clickRow, 1)
+            end)
+            card:SetScript("OnReceiveDrag", function(self)
+                local cursorType, id = GetCursorInfo()
+                if cursorType then
+                    local actionData = Wise:CursorToActionData(cursorType, id)
+                    if actionData then
+                        state.grid[clickRow][1] = actionData
+                        ClearCursor()
+                        RenderNodesCanvas()
+                    end
+                end
+            end)
+
+            card:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Empty Node", 1, 1, 1)
+                GameTooltip:AddLine("Click to open the spell picker.", 0.8, 0.8, 0.8, true)
+                GameTooltip:AddLine("Or drag a spell from the spellbook.", 0.6, 0.6, 0.6, true)
+                GameTooltip:Show()
+            end)
+            card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        card:Show()
+
+        -- Condition bubble to the right of the card, linked by short line
+        local bubble = GetOrCreateCondBubble(canvas, bubbleIdx)
+        bubbleIdx = bubbleIdx + 1
+        bubble:ClearAllPoints()
+        bubble:SetPoint("LEFT", card, "RIGHT", NODE_COND_OFFSET, 0)
+
+        local condText = state.rowConditions[r] or ""
+        if condText == "" then
+            bubble.label:SetText("|cff888888[Default/Always]|r")
+        else
+            bubble.label:SetText(condText)
+        end
+
+        local bubbleRow = r
+        bubble:SetScript("OnClick", function()
+            if Wise.pickingCondition and Wise._conditionPickerState then
+                local prevRow = Wise._configuratorConditionRow
+                if prevRow and state.rowConditions then
+                    state.rowConditions[prevRow] = BuildConditionString(Wise._conditionPickerState.groups)
+                end
+            end
+            Wise._conditionPickerState = {
+                row = bubbleRow,
+                groups = ParseConditionString(state.rowConditions[bubbleRow] or ""),
+                activeGroup = 1,
+            }
+            Wise._configuratorConditionRow = bubbleRow
+            Wise.pickingCondition = true
+            Wise:RefreshPropertiesPanel()
+        end)
+
+        bubble:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Node Condition", 1, 1, 1)
+            if condText == "" then
+                GameTooltip:AddLine("No condition - always active", 0.8, 0.8, 0.8, true)
+            else
+                GameTooltip:AddLine(condText, 0.8, 0.8, 0.8, true)
+            end
+            GameTooltip:AddLine("Click to edit.", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        bubble:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        bubble:Show()
+
+        yCursor = yCursor - NODE_CARD_HEIGHT
+    end
+
+    -- "+ Add Node" button at the bottom
+    if not sc.nodesAddBtn then
+        sc.nodesAddBtn = CreateFrame("Button", canvas:GetName() and (canvas:GetName() .. "AddBtn") or nil, canvas, "GameMenuButtonTemplate")
+        sc.nodesAddBtn:SetSize(140, 24)
+        sc.nodesAddBtn:SetText("+ Add Node")
+        sc.nodesAddBtn:SetScript("OnClick", function()
+            configuratorState.numRows = configuratorState.numRows + 1
+            configuratorState.grid[configuratorState.numRows] = {}
+            configuratorState.rowConditions[configuratorState.numRows] = ""
+            configuratorState.rowExclusive[configuratorState.numRows] = false
+            RenderNodesCanvas()
+        end)
+        Wise:AddTooltip(sc.nodesAddBtn, "Add another action node to the flow.")
+    end
+    sc.nodesAddBtn:ClearAllPoints()
+    sc.nodesAddBtn:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor - 18)
+    sc.nodesAddBtn:Show()
+
+    -- Resize canvas to content
+    local totalHeight = math.abs(yCursor) + 60
+    local totalWidth = centerX + NODE_CARD_WIDTH / 2 + NODE_COND_OFFSET + 160
+    canvas:SetSize(math.max(totalWidth, 500), totalHeight)
+end
+
+-- Dispatch render based on active tab
+RenderActiveTab = function()
+    local sc = Wise.SlotConfigurator
+    if not sc then return end
+    if configuratorState.activeTab == "nodes" then
+        RenderNodesCanvas()
+    else
+        RenderCanvas()
     end
 end
 
@@ -2017,6 +2405,40 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- Main UI Creation
 -- ═══════════════════════════════════════════════════════════════
+-- Show/hide the correct tab content and toolbar items, then render.
+local function ApplyTabVisibility()
+    local sc = Wise.SlotConfigurator
+    if not sc then return end
+    local isNodes = (configuratorState.activeTab == "nodes")
+
+    if sc.canvasScroll then
+        if isNodes then sc.canvasScroll:Hide() else sc.canvasScroll:Show() end
+    end
+    if sc.nodesCanvasScroll then
+        if isNodes then sc.nodesCanvasScroll:Show() else sc.nodesCanvasScroll:Hide() end
+    end
+
+    -- Modifier palette is a Grid-tab concept (modBreaks are stacked mod rows
+    -- across the table). Hide it while on the Nodes tab to avoid suggesting
+    -- functionality the nodes view doesn't expose yet.
+    if sc.modPalette then
+        if isNodes or Wise.pickingCondition then sc.modPalette:Hide() else sc.modPalette:Show() end
+    end
+
+    -- Tab button visuals
+    if sc.tabGrid and sc.tabNodes then
+        if isNodes then
+            sc.tabGrid:Enable()
+            sc.tabNodes:Disable()
+        else
+            sc.tabGrid:Disable()
+            sc.tabNodes:Enable()
+        end
+    end
+
+    RenderActiveTab()
+end
+
 function Wise:CreateSlotConfiguratorUI(host)
     local sc = Wise.SlotConfigurator
     if sc and sc.host == host then
@@ -2024,18 +2446,17 @@ function Wise:CreateSlotConfiguratorUI(host)
         sc.cancelBtn:Show()
         sc.titleLabel:Show()
         sc.divider:Show()
-        sc.canvasScroll:Show()
+        if sc.tabGrid then sc.tabGrid:Show() end
+        if sc.tabNodes then sc.tabNodes:Show() end
         -- Hide toolbar items when condition picker is open (they'd overlap)
         if Wise.pickingCondition then
-            sc.modPalette:Hide()
             sc.applyBtn:Hide()
             sc.infoLabel:Hide()
         else
-            sc.modPalette:Show()
             sc.applyBtn:Show()
             sc.infoLabel:Show()
         end
-        RenderCanvas()
+        ApplyTabVisibility()
         return
     end
 
@@ -2069,7 +2490,7 @@ function Wise:CreateSlotConfiguratorUI(host)
     sc.titleLabel:SetPoint("LEFT", sc.cancelBtn, "RIGHT", 8, 0)
     sc.titleLabel:SetText("Slot Configurator")
 
-    -- Modifier palette (same row, after title)
+    -- Modifier palette (same row, after title) - only used by Grid tab
     sc.modPalette = CreateModifierPalette(host)
     sc.modPalette:SetPoint("LEFT", sc.titleLabel, "RIGHT", 12, 0)
 
@@ -2099,16 +2520,46 @@ function Wise:CreateSlotConfiguratorUI(host)
     sc.divider:SetPoint("TOPLEFT", host, "TOPLEFT", 8, -34)
     sc.divider:SetPoint("TOPRIGHT", host, "TOPRIGHT", -8, -34)
 
-    -- Canvas scroll (starts right below divider)
+    -- Tab bar (Grid / Nodes)
+    sc.tabGrid = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+    sc.tabGrid:SetSize(90, 22)
+    sc.tabGrid:SetPoint("TOPLEFT", sc.divider, "BOTTOMLEFT", 0, -4)
+    sc.tabGrid:SetText("Grid")
+    sc.tabGrid:SetNormalFontObject("GameFontHighlightSmall")
+    sc.tabGrid:SetScript("OnClick", function()
+        configuratorState.activeTab = "grid"
+        ApplyTabVisibility()
+    end)
+
+    sc.tabNodes = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+    sc.tabNodes:SetSize(90, 22)
+    sc.tabNodes:SetPoint("LEFT", sc.tabGrid, "RIGHT", 4, 0)
+    sc.tabNodes:SetText("Nodes")
+    sc.tabNodes:SetNormalFontObject("GameFontHighlightSmall")
+    sc.tabNodes:SetScript("OnClick", function()
+        configuratorState.activeTab = "nodes"
+        ApplyTabVisibility()
+    end)
+
+    -- Grid canvas scroll
     sc.canvasScroll = CreateFrame("ScrollFrame", nil, host, "UIPanelScrollFrameTemplate")
-    sc.canvasScroll:SetPoint("TOPLEFT", host, "TOPLEFT", 8, -38)
+    sc.canvasScroll:SetPoint("TOPLEFT", sc.tabGrid, "BOTTOMLEFT", 0, -6)
     sc.canvasScroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -28, 8)
 
     sc.canvas = CreateFrame("Frame", nil, sc.canvasScroll)
     sc.canvas:SetSize(800, 400)
     sc.canvasScroll:SetScrollChild(sc.canvas)
 
-    RenderCanvas()
+    -- Nodes canvas scroll (same geometry, hidden by default)
+    sc.nodesCanvasScroll = CreateFrame("ScrollFrame", nil, host, "UIPanelScrollFrameTemplate")
+    sc.nodesCanvasScroll:SetPoint("TOPLEFT", sc.tabGrid, "BOTTOMLEFT", 0, -6)
+    sc.nodesCanvasScroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -28, 8)
+
+    sc.nodesCanvas = CreateFrame("Frame", nil, sc.nodesCanvasScroll)
+    sc.nodesCanvas:SetSize(600, 400)
+    sc.nodesCanvasScroll:SetScrollChild(sc.nodesCanvas)
+
+    ApplyTabVisibility()
 end
 
 -- ═══════════════════════════════════════════════════════════════
