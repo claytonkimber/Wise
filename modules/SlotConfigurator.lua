@@ -1300,9 +1300,10 @@ end
 
 -- ═══════════════════════════════════════════════════════════════
 -- Nodes View Rendering (vertical flow, Image #3 style)
--- Shares the same configuratorState.grid as the Grid tab.
--- Each row of the grid becomes a node in vertical order (column 1 only in
--- phase 1; multi-column sequences still render on the Grid tab).
+-- Shares the same configuratorState.grid as the Grid tab. Every populated
+-- cell (row, col) in the grid becomes a node, ordered by row-then-column so
+-- the same dataset is represented faithfully in both tabs. Entirely empty
+-- rows still render a single placeholder card as a drop target.
 -- ═══════════════════════════════════════════════════════════════
 RenderNodesCanvas = function()
     local sc = Wise.SlotConfigurator
@@ -1323,203 +1324,245 @@ RenderNodesCanvas = function()
     sc.nodesHeaderPlay:SetPoint("TOP", canvas, "TOP", 0, -10)
     sc.nodesHeaderPlay:Show()
 
-    -- Collect nodes: one per populated row in column 1. Empty rows still
-    -- render a placeholder card so the user has somewhere to drop / click.
     local cardIdx = 1
     local arrowIdx = 1
     local bubbleIdx = 1
 
     local yCursor = -NODE_HEADER_HEIGHT
     local centerX = NODE_CARD_WIDTH / 2 + 20
+    local anyRendered = false
 
+    -- Precompute which rows are fully filter-hidden (every populated cell is
+    -- excluded). Rows with no actions at all still render one placeholder.
+    local rowHidden = {}
     for r = 1, state.numRows do
         if not state.grid[r] then state.grid[r] = {} end
-        local action = state.grid[r][1] -- phase 1: show col 1 only in nodes view
+        local anyAction, anyVisible = false, false
+        for c = 1, state.numCols do
+            local a = state.grid[r][c]
+            if a then
+                anyAction = true
+                if not IsFilterHiding(a) then anyVisible = true break end
+            end
+        end
+        rowHidden[r] = anyAction and not anyVisible
+    end
 
-        -- Skip rows whose action is hidden by the current filter. Empty rows
-        -- still render as placeholder cards (drop targets).
-        if action and IsFilterHiding(action) then
-            -- continue to next row
-        else
-
-        -- Arrow from previous node (or from play-button header for first row)
-        local arrow = GetOrCreateNodeArrow(canvas, arrowIdx)
-        arrowIdx = arrowIdx + 1
-        arrow:ClearAllPoints()
-        arrow:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor + 8)
-        arrow.tagLabel:SetText(r == 1 and "" or "fallthrough")
-        arrow:Show()
-
-        yCursor = yCursor - NODE_V_SPACING
-
-        -- Node card
-        local card = GetOrCreateNodeCard(canvas, cardIdx)
-        cardIdx = cardIdx + 1
-        card:ClearAllPoints()
-        card:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor)
-
-        if action then
-            local iconTex = Wise:GetActionIcon(action.type, action.value, action)
-            card.icon:SetTexture(iconTex or "Interface\\Icons\\INV_Misc_QuestionMark")
-            local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
-            card.nameLabel:SetText(name)
-
-            if IsActionLive(action) then
-                card:SetAlpha(1)
-                card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
+    for r = 1, state.numRows do
+        if not rowHidden[r] then
+            -- Build list of positions to render for this row. Populated
+            -- columns that pass the filter become real nodes; a wholly empty
+            -- row renders a single column-1 placeholder.
+            local positions = {}
+            local hasAny = false
+            for c = 1, state.numCols do
+                if state.grid[r][c] then hasAny = true break end
+            end
+            if hasAny then
+                for c = 1, state.numCols do
+                    local a = state.grid[r][c]
+                    if a and not IsFilterHiding(a) then
+                        table.insert(positions, c)
+                    end
+                end
             else
-                card:SetAlpha(0.4)
-                card:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.6)
+                table.insert(positions, 1) -- placeholder for empty row
             end
 
-            card.removeBtn:Show()
-            local removeRow = r
-            card.removeBtn:SetScript("OnClick", function()
-                state.grid[removeRow][1] = nil
-                -- Collapse empty rows so the flow stays tight in the nodes view
-                if state.numRows > 1 then
-                    local allEmpty = true
-                    if state.grid[removeRow] then
-                        for _, v in pairs(state.grid[removeRow]) do
-                            if v then allEmpty = false break end
-                        end
+            local firstCardInRow = nil
+            for i, col in ipairs(positions) do
+                local action = state.grid[r][col]
+
+                -- Arrow leading into this card. "fallthrough" between rows,
+                -- "step" between sequential steps in the same row.
+                local arrow = GetOrCreateNodeArrow(canvas, arrowIdx)
+                arrowIdx = arrowIdx + 1
+                arrow:ClearAllPoints()
+                arrow:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor + 8)
+                if not anyRendered then
+                    arrow.tagLabel:SetText("")
+                elseif i == 1 then
+                    arrow.tagLabel:SetText("fallthrough")
+                else
+                    arrow.tagLabel:SetText("step " .. col)
+                end
+                arrow:Show()
+
+                yCursor = yCursor - NODE_V_SPACING
+
+                local card = GetOrCreateNodeCard(canvas, cardIdx)
+                cardIdx = cardIdx + 1
+                card:ClearAllPoints()
+                card:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor)
+
+                if action then
+                    local iconTex = Wise:GetActionIcon(action.type, action.value, action)
+                    card.icon:SetTexture(iconTex or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
+                    card.nameLabel:SetText(name)
+
+                    if IsActionLive(action) then
+                        card:SetAlpha(1)
+                        card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
+                    else
+                        card:SetAlpha(0.4)
+                        card:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.6)
                     end
-                    if allEmpty then
-                        table.remove(state.grid, removeRow)
-                        table.remove(state.rowConditions, removeRow)
-                        table.remove(state.rowExclusive, removeRow)
-                        local newBreaks = {}
-                        for afterRow, mod in pairs(state.modBreaks) do
-                            if afterRow < removeRow then
-                                newBreaks[afterRow] = mod
-                            elseif afterRow >= removeRow and afterRow < state.numRows then
-                                newBreaks[afterRow - 1] = mod
+
+                    card.removeBtn:Show()
+                    local removeRow, removeCol = r, col
+                    card.removeBtn:SetScript("OnClick", function()
+                        state.grid[removeRow][removeCol] = nil
+                        if state.numRows > 1 then
+                            local allEmpty = true
+                            if state.grid[removeRow] then
+                                for _, v in pairs(state.grid[removeRow]) do
+                                    if v then allEmpty = false break end
+                                end
+                            end
+                            if allEmpty then
+                                table.remove(state.grid, removeRow)
+                                table.remove(state.rowConditions, removeRow)
+                                table.remove(state.rowExclusive, removeRow)
+                                local newBreaks = {}
+                                for afterRow, mod in pairs(state.modBreaks) do
+                                    if afterRow < removeRow then
+                                        newBreaks[afterRow] = mod
+                                    elseif afterRow >= removeRow and afterRow < state.numRows then
+                                        newBreaks[afterRow - 1] = mod
+                                    end
+                                end
+                                state.modBreaks = newBreaks
+                                state.numRows = state.numRows - 1
+                                if state.numRows < 1 then
+                                    state.numRows = 1
+                                    state.grid[1] = {}
+                                    state.rowConditions[1] = ""
+                                    state.rowExclusive[1] = false
+                                end
                             end
                         end
-                        state.modBreaks = newBreaks
-                        state.numRows = state.numRows - 1
-                        if state.numRows < 1 then
-                            state.numRows = 1
-                            state.grid[1] = {}
-                            state.rowConditions[1] = ""
-                            state.rowExclusive[1] = false
+                        RenderNodesCanvas()
+                    end)
+
+                    card:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                    local clickRow, clickCol = r, col
+                    card:SetScript("OnClick", function(self, button)
+                        if button == "RightButton" then
+                            Wise:OpenConfiguratorPicker(clickRow, clickCol)
+                        end
+                    end)
+
+                    local actionType = action.type
+                    card:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(name, 1, 1, 1)
+                        if actionType then
+                            GameTooltip:AddLine("Type: " .. actionType, 0.8, 0.8, 0.8)
+                        end
+                        GameTooltip:AddLine("Step " .. col, 0.7, 0.7, 0.9)
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Right-click to replace. Click X to remove.", 0.6, 0.6, 0.6, true)
+                        GameTooltip:Show()
+                    end)
+                    card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                else
+                    card.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+                    card.nameLabel:SetText("|cff888888(empty)|r")
+                    card:SetAlpha(0.7)
+                    card:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.7)
+                    card.removeBtn:Hide()
+
+                    card:RegisterForClicks("LeftButtonUp")
+                    local clickRow, clickCol = r, col
+                    card:SetScript("OnClick", function(self)
+                        local cursorType, id = GetCursorInfo()
+                        if cursorType then
+                            local actionData = Wise:CursorToActionData(cursorType, id)
+                            if actionData then
+                                state.grid[clickRow][clickCol] = actionData
+                                ClearCursor()
+                                RenderNodesCanvas()
+                                return
+                            end
+                        end
+                        Wise:OpenConfiguratorPicker(clickRow, clickCol)
+                    end)
+                    card:SetScript("OnReceiveDrag", function(self)
+                        local cursorType, id = GetCursorInfo()
+                        if cursorType then
+                            local actionData = Wise:CursorToActionData(cursorType, id)
+                            if actionData then
+                                state.grid[clickRow][clickCol] = actionData
+                                ClearCursor()
+                                RenderNodesCanvas()
+                            end
+                        end
+                    end)
+
+                    card:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText("Empty Node", 1, 1, 1)
+                        GameTooltip:AddLine("Click to open the spell picker.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine("Or drag a spell from the spellbook.", 0.6, 0.6, 0.6, true)
+                        GameTooltip:Show()
+                    end)
+                    card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+                card:Show()
+
+                if not firstCardInRow then firstCardInRow = card end
+                anyRendered = true
+                yCursor = yCursor - NODE_CARD_HEIGHT
+            end
+
+            -- One condition bubble per row, anchored to the first card
+            if firstCardInRow then
+                local bubble = GetOrCreateCondBubble(canvas, bubbleIdx)
+                bubbleIdx = bubbleIdx + 1
+                bubble:ClearAllPoints()
+                bubble:SetPoint("LEFT", firstCardInRow, "RIGHT", NODE_COND_OFFSET, 0)
+
+                local condText = state.rowConditions[r] or ""
+                if condText == "" then
+                    bubble.label:SetText("|cff888888[Default/Always]|r")
+                else
+                    bubble.label:SetText(condText)
+                end
+
+                local bubbleRow = r
+                bubble:SetScript("OnClick", function()
+                    if Wise.pickingCondition and Wise._conditionPickerState then
+                        local prevRow = Wise._configuratorConditionRow
+                        if prevRow and state.rowConditions then
+                            state.rowConditions[prevRow] = BuildConditionString(Wise._conditionPickerState.groups)
                         end
                     end
-                end
-                RenderNodesCanvas()
-            end)
+                    Wise._conditionPickerState = {
+                        row = bubbleRow,
+                        groups = ParseConditionString(state.rowConditions[bubbleRow] or ""),
+                        activeGroup = 1,
+                    }
+                    Wise._configuratorConditionRow = bubbleRow
+                    Wise.pickingCondition = true
+                    Wise:RefreshPropertiesPanel()
+                end)
 
-            card:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            local clickRow = r
-            card:SetScript("OnClick", function(self, button)
-                if button == "RightButton" then
-                    Wise:OpenConfiguratorPicker(clickRow, 1)
-                end
-            end)
-
-            card:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(name, 1, 1, 1)
-                if action.type then
-                    GameTooltip:AddLine("Type: " .. action.type, 0.8, 0.8, 0.8)
-                end
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("Right-click to replace. Click X to remove.", 0.6, 0.6, 0.6, true)
-                GameTooltip:Show()
-            end)
-            card:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        else
-            card.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            card.nameLabel:SetText("|cff888888(empty)|r")
-            card:SetAlpha(0.7)
-            card:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.7)
-            card.removeBtn:Hide()
-
-            card:RegisterForClicks("LeftButtonUp")
-            local clickRow = r
-            card:SetScript("OnClick", function(self)
-                local cursorType, id = GetCursorInfo()
-                if cursorType then
-                    local actionData = Wise:CursorToActionData(cursorType, id)
-                    if actionData then
-                        state.grid[clickRow][1] = actionData
-                        ClearCursor()
-                        RenderNodesCanvas()
-                        return
+                bubble:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Node Condition", 1, 1, 1)
+                    if condText == "" then
+                        GameTooltip:AddLine("No condition - always active", 0.8, 0.8, 0.8, true)
+                    else
+                        GameTooltip:AddLine(condText, 0.8, 0.8, 0.8, true)
                     end
-                end
-                Wise:OpenConfiguratorPicker(clickRow, 1)
-            end)
-            card:SetScript("OnReceiveDrag", function(self)
-                local cursorType, id = GetCursorInfo()
-                if cursorType then
-                    local actionData = Wise:CursorToActionData(cursorType, id)
-                    if actionData then
-                        state.grid[clickRow][1] = actionData
-                        ClearCursor()
-                        RenderNodesCanvas()
-                    end
-                end
-            end)
-
-            card:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Empty Node", 1, 1, 1)
-                GameTooltip:AddLine("Click to open the spell picker.", 0.8, 0.8, 0.8, true)
-                GameTooltip:AddLine("Or drag a spell from the spellbook.", 0.6, 0.6, 0.6, true)
-                GameTooltip:Show()
-            end)
-            card:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        end
-        card:Show()
-
-        -- Condition bubble to the right of the card, linked by short line
-        local bubble = GetOrCreateCondBubble(canvas, bubbleIdx)
-        bubbleIdx = bubbleIdx + 1
-        bubble:ClearAllPoints()
-        bubble:SetPoint("LEFT", card, "RIGHT", NODE_COND_OFFSET, 0)
-
-        local condText = state.rowConditions[r] or ""
-        if condText == "" then
-            bubble.label:SetText("|cff888888[Default/Always]|r")
-        else
-            bubble.label:SetText(condText)
-        end
-
-        local bubbleRow = r
-        bubble:SetScript("OnClick", function()
-            if Wise.pickingCondition and Wise._conditionPickerState then
-                local prevRow = Wise._configuratorConditionRow
-                if prevRow and state.rowConditions then
-                    state.rowConditions[prevRow] = BuildConditionString(Wise._conditionPickerState.groups)
-                end
+                    GameTooltip:AddLine("Click to edit.", 0.6, 0.6, 0.6, true)
+                    GameTooltip:Show()
+                end)
+                bubble:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                bubble:Show()
             end
-            Wise._conditionPickerState = {
-                row = bubbleRow,
-                groups = ParseConditionString(state.rowConditions[bubbleRow] or ""),
-                activeGroup = 1,
-            }
-            Wise._configuratorConditionRow = bubbleRow
-            Wise.pickingCondition = true
-            Wise:RefreshPropertiesPanel()
-        end)
-
-        bubble:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Node Condition", 1, 1, 1)
-            if condText == "" then
-                GameTooltip:AddLine("No condition - always active", 0.8, 0.8, 0.8, true)
-            else
-                GameTooltip:AddLine(condText, 0.8, 0.8, 0.8, true)
-            end
-            GameTooltip:AddLine("Click to edit.", 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
-        end)
-        bubble:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        bubble:Show()
-
-        yCursor = yCursor - NODE_CARD_HEIGHT
-        end -- end of: if not filter-hidden
+        end
     end
 
     -- "+ Add Node" button at the bottom
