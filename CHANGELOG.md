@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.20260423] - 2026-04-23
+
+- [Feature] Add Buff and Debuff wipe interfaces with tracking and configuration
+- [Feature] Add ability to name individual slots
+- [Feature] Overhaul Addons wiser interface with functional action and properties integration
+- [Feature] Add cooldown timer swipes to Cooldown wiser interfaces
+- [Feature] Support WoW 12.0.5 (TOC Interface: 120000, 120001, 120005)
+- [Fix] Honor `visibilityEnable` tags over spellbook autoclassification in class, role, and spec filters
+- [Fix] Fix duplicate spell entries surfacing in Cooldown wiser
+- [Fix] Fix utilities and cooldowns not repopulating correctly when swapping specs
+- [Fix] Additional taint stripping hardening in core and Cooldown wiser paths
+
 ## [1.0.20260404] - 2026-04-04
 
 - [Feature] Add "Addons" Wiser Interface for browsing and launching addon configuration panels
