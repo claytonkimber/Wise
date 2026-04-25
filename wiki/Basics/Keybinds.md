@@ -66,6 +66,17 @@ WoW supports modifier combinations: `Shift+key`, `Ctrl+key`, `Alt+key`, and comb
 
 You can also use modifier conditionals in slot states to make one button do different things depending on which modifier you hold. See [Conditionals Reference](../Advanced/Conditionals.md) for `[mod:shift]`, `[mod:ctrl]`, `[mod:alt]`.
 
+### Wise claims modifier variants of every keybind
+
+When you bind a slot or interface to an unmodified key (e.g. `-`, `=`, `F8`), Wise **also claims `Shift-`, `Ctrl-`, and `Alt-` versions of that same key**. The press is routed to the same slot regardless of which modifier (if any) you hold, so your `[mod:shift]` / `[mod:ctrl]` / `[mod:alt]` conditionals can decide what actually happens.
+
+**Why:** WoW's binding system swallows modified keypresses if a global binding exists for that combo — even one set to `NONE`. Without this claim, an entry like `bind SHIFT-- NONE` in your bindings cache would silently eat `Shift+-` before your slot ever saw it. Mirroring the modifier variants guarantees the slot fires and your conditionals get to evaluate.
+
+**Implications:**
+- Don't bind `Shift+X` in WoW's keybinding UI to anything else if `X` is also a Wise slot keybind — Wise will override it while the addon is loaded. Pick a different key for the WoW binding instead.
+- If you *want* `Shift+X` and plain `X` to do different things on the same slot, use `[mod:shift]` inside that slot's macro or conditions, not separate keybinds.
+- A keybind that's already modifier-prefixed (e.g. you bound the slot to `Shift-3` directly) is left alone — Wise won't further claim `Ctrl-Shift-3` etc.
+
 ---
 
 ## Mouse buttons

@@ -50,6 +50,32 @@ local function GetMouseClickName(key)
     return MOUSE_BUTTON_CLICK_NAME[base]
 end
 
+-- True when the key already carries an explicit modifier prefix.
+-- We intentionally don't treat a literal "-" (the minus key) as a prefix:
+-- e.g. plain "-" or "SHIFT--" both end with the bare key after the last dash.
+local function HasModifierPrefix(key)
+    if not key or key == "" then return false end
+    return key:find("^SHIFT%-") or key:find("^CTRL%-") or key:find("^ALT%-") or false
+end
+
+-- Mirror an override binding under SHIFT-/CTRL-/ALT- prefixes. Some global
+-- bindings (often written by other addons via SetBinding/SaveBindings) leave
+-- entries like "SHIFT-- NONE" which swallow modified keypresses before WoW
+-- falls back to the unmodified key. Registering our own overrides for the
+-- modified variants guarantees that pressing e.g. Shift+- still routes the
+-- click to our slot button so the macro's [mod:shift] clause can fire.
+local function ApplyModifierMirrors(frame, key, target, mouseBtn)
+    if HasModifierPrefix(key) then return end
+    local mods = { "SHIFT-", "CTRL-", "ALT-" }
+    for _, m in ipairs(mods) do
+        if mouseBtn then
+            SetOverrideBindingClick(frame, true, m .. key, target, mouseBtn)
+        else
+            SetOverrideBindingClick(frame, true, m .. key, target)
+        end
+    end
+end
+
 -- Helper: Get the first active spell button from ZoneAbilityFrame.
 -- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
 -- instead of a direct .SpellButton child.
@@ -5560,6 +5586,7 @@ function Wise:UpdateBindings()
             else
                 SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName)
             end
+            ApplyModifierMirrors(Wise.BindingFrame, group.binding, toggleName, mouseBtn)
         end
 
         -- 2. Slot Bindings (Direct Mode only)
@@ -5590,6 +5617,7 @@ function Wise:UpdateBindings()
                                 else
                                     SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName())
                                 end
+                                ApplyModifierMirrors(Wise.BindingFrame, actionList.keybind, foundBtn:GetName(), slotMouseBtn)
                             end
                         end
                     end
