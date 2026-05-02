@@ -1171,7 +1171,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                 end
                 if #_matches > 0 then
                     local _chosen = nil
-                    if _conflict == "priority" or _conflict == "sequence" then
+                    if _conflict == "priority" or _conflict == "sequence" or _conflict == "waterfall" then
                         local _startIdx = 1
                         if _conflict == "sequence" then
                             local _seq = _rv_ref:GetAttribute("isa_seq") or 1
@@ -1222,7 +1222,9 @@ function Wise:CreateGroupFrame(name, instanceId)
                                 end
                             end
                             _nextIdx = _si + 1
-                            if _mo ~= 1 then
+                            -- Waterfall always stacks every match so the engine can skip cooldowns down the list.
+                            -- Priority/sequence keep the original off-GCD-only stacking behavior.
+                            if _conflict ~= "waterfall" and _mo ~= 1 then
                                 break
                             end
                         end
@@ -2633,6 +2635,16 @@ function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
         return matches[startIdx]
     elseif conflictStrategy == "random" then
         return matches[math.random(#matches)]
+    elseif conflictStrategy == "waterfall" then
+        -- Walk matches in priority order; return the first off-cooldown action so the
+        -- icon mirrors what the engine's stacked-/cast macro will actually fire.
+        for i = 1, #matches do
+            local state = states[matches[i]]
+            if state and not Wise:IsActionOnCooldown(state.type, state.value, state) then
+                return matches[i]
+            end
+        end
+        return matches[1]
     else
         -- priority (default)
         return matches[1]
@@ -4787,9 +4799,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 end
 
                                 -- Update secure attributes when not in combat
-                                -- BUT NOT for sequence strategy: the PreClick secure snippet
-                                -- manages type/macrotext exclusively for sequences.
-                                if canSetAttrs and meta.conflictStrategy ~= "sequence" then
+                                -- BUT NOT for sequence/waterfall with >1 state: the PreClick
+                                -- secure snippet builds the firing macrotext at press time, so
+                                -- writing a single-state macro here would clobber the stacked
+                                -- waterfall macro (or the sequence pointer) on the next press.
+                                -- Single-state slots fall through and get normal attributes.
+                                local snippetManagesAttrs = (meta.conflictStrategy == "sequence" or meta.conflictStrategy == "waterfall")
+                                    and meta.states and #meta.states > 1
+                                if canSetAttrs and not snippetManagesAttrs then
                                     local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
                                     btn:SetAttribute("type", nil)
                                     btn:SetAttribute("spell", nil)

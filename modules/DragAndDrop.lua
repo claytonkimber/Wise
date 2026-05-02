@@ -16,7 +16,11 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
         end
     end
 
-    -- Helper: route to append, replace-state, or replace-slot
+    -- Helper: route to append, replace-state, or replace-slot.
+    -- A drop on the slot body (no stateIndex, not isAppend) used to nuke every
+    -- existing state. That's destructive without confirmation, so when the
+    -- slot already has states we append instead — only an empty slot gets the
+    -- single-action replace path.
     local function applyAction(actionType, actionValue, category, extra)
         if isAppend then
             Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extra)
@@ -25,7 +29,15 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
         elseif stateIndex then
             Wise:ReplaceStateAction(groupName, slotIndex, stateIndex, actionType, actionValue, category, extra)
         else
-            Wise:ReplaceSlotAction(groupName, slotIndex, actionType, actionValue, category, extra)
+            local group = WiseDB.groups[groupName]
+            local existing = group and group.actions and group.actions[slotIndex]
+            if type(existing) == "table" and #existing > 0 then
+                Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extra)
+                Wise:UpdateGroupDisplay(groupName)
+                Wise:UpdateOptionsUI()
+            else
+                Wise:ReplaceSlotAction(groupName, slotIndex, actionType, actionValue, category, extra)
+            end
         end
     end
 

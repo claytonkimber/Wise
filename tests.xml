@@ -152,4 +152,30 @@
             <KeyValue key="clearAction" value="if Wise.frames['Test_EmptySlots'] then Wise.frames['Test_EmptySlots']:Hide() end; WiseDB.groups['Test_EmptySlots'] = nil" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_WaterfallStrategy" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Waterfall Conflict Strategy" type="string"/>
+            <KeyValue key="instructions" value="Verify the Waterfall conflict strategy stacks matching actions and the engine fires the first one off cooldown.\n1. The test creates a slot with 4 spells: Frostbolt (no mod), Counterspell (no mod), Frost Nova (mod:shift), Ice Block (mod:shift).\n2. Bind the slot to a key and enable hold-to-cast in WoW interface settings.\n3. Hold the key with NO modifier: Frostbolt fires; when it goes on cooldown the held key should fall through to Counterspell.\n4. Hold the key WITH SHIFT: Frost Nova fires; on cooldown it falls through to Ice Block.\n5. The icon should reflect the topmost off-cooldown action in the active condition group." type="string"/>
+            <KeyValue key="action" value="
+                WiseDB.groups['Test_Waterfall'] = {
+                    type = 'line',
+                    dynamic = false,
+                    actions = {
+                        [1] = {
+                            conflictStrategy = 'waterfall',
+                            {type = 'spell', value = 116, name = 'Frostbolt', conditions = ''},
+                            {type = 'spell', value = 2139, name = 'Counterspell', conditions = ''},
+                            {type = 'spell', value = 122, name = 'Frost Nova', conditions = '[mod:shift]'},
+                            {type = 'spell', value = 45438, name = 'Ice Block', conditions = '[mod:shift]'}
+                        }
+                    },
+                    anchor = {point = 'CENTER', x = 0, y = -100}
+                }
+                Wise:UpdateGroupDisplay('Test_Waterfall')
+                if Wise.frames['Test_Waterfall'] then Wise.frames['Test_Waterfall']:Show() end
+            " type="string"/>
+            <KeyValue key="clearAction" value="if Wise.frames['Test_Waterfall'] then Wise.frames['Test_Waterfall']:Hide() end; WiseDB.groups['Test_Waterfall'] = nil" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

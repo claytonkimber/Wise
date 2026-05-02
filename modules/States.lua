@@ -17,9 +17,10 @@ local GameTooltip = GameTooltip
 local CreateFrame = CreateFrame
 
 local CONFLICT_STRATEGIES = {
-    { value = "priority", label = "Priority", desc = "First matching condition wins (by order)" },
-    { value = "sequence", label = "Sequence", desc = "Cycle through matching states on each use" },
-    { value = "random",   label = "Random",   desc = "Randomly pick among matching states" },
+    { value = "priority",  label = "Priority",  desc = "First matching condition wins (by order)" },
+    { value = "waterfall", label = "Waterfall", desc = "Stack matching actions; engine fires the first off cooldown" },
+    { value = "sequence",  label = "Sequence",  desc = "Cycle through matching states on each use" },
+    { value = "random",    label = "Random",    desc = "Randomly pick among matching states" },
 }
 
 -- Helper to negate a conditional
@@ -195,6 +196,8 @@ function Wise:CreateStateConfigurationFrame(parent, group, slotIndex)
             GameTooltip:AddLine(" ")
             if strat.value == "priority" then
                 GameTooltip:AddLine("Checks actions in order (1, 2, 3...). The first one that matches its conditions is used.", 0.8, 0.8, 0.8, true)
+            elseif strat.value == "waterfall" then
+                 GameTooltip:AddLine("Stacks every matching action into the firing macro. The game engine skips any on cooldown and casts the first one available, so holding the key naturally falls through 1 -> 2 -> 3 as cooldowns gate them.", 0.8, 0.8, 0.8, true)
             elseif strat.value == "sequence" then
                  GameTooltip:AddLine("Cycles through matching actions one by one on each press (1 -> 2 -> 3 -> 1...).", 0.8, 0.8, 0.8, true)
             elseif strat.value == "random" then

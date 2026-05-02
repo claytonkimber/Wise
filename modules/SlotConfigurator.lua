@@ -347,10 +347,13 @@ local function ExportToSlotData()
         end
     end
 
-    -- Determine conflict strategy
+    -- Determine conflict strategy. Waterfall and random are preserved across both
+    -- single- and multi-column layouts: in waterfall, columns within a row stack
+    -- into a /cast waterfall, while different rows act as condition/modifier branches.
     local strategy
-    if maxCol <= 1 then
-        -- All in column 1: use priority, or preserve random if that was original
+    if state.originalStrategy == "waterfall" then
+        strategy = "waterfall"
+    elseif maxCol <= 1 then
         if state.originalStrategy == "random" then
             strategy = "random"
         else
