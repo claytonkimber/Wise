@@ -1149,7 +1149,7 @@ end
 
 -- Migrate a group to the new numbered slot structure
 function Wise:MigrateGroupToActions(group)
-    if group.migratedToActions then return end
+    if group.migratedToActions and group.actions then return end
 
     if not group.actions and group.buttons then
         group.actions = {}

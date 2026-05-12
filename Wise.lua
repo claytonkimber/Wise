@@ -513,6 +513,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if Wise.MigrateGroupToActions then
         Wise:MigrateGroupToActions(amGroup)
     end
+    amGroup.actions = amGroup.actions or {}
     -- Restore per-slot keybinds from canonical storage (WiseDB.addonMagicSlots)
     for i, slot in ipairs(WiseDB.addonMagicSlots) do
         if slot.keybind and slot.keybind ~= "" and amGroup.actions[i] then
@@ -545,6 +546,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
     if seNeedsRebuild then
         specEquipGroup.buttons = {}
         specEquipGroup.actions = nil
+        specEquipGroup.migratedToActions = nil
 
         for i, slot in ipairs(WiseDB.specEquipSlots) do
             local slotName = slot.name or ("Slot " .. i)
@@ -568,6 +570,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
         if Wise.MigrateGroupToActions then
             Wise:MigrateGroupToActions(specEquipGroup)
         end
+        specEquipGroup.actions = specEquipGroup.actions or {}
         -- Restore per-slot keybinds from canonical storage
         for i, slot in ipairs(WiseDB.specEquipSlots) do
             if slot.keybind and slot.keybind ~= "" and specEquipGroup.actions[i] then
