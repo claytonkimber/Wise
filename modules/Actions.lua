@@ -565,8 +565,20 @@ end
 function Wise:ShouldShowAction(action)
     local filter = Wise.ActionFilter
 
-    -- "All" filter -> Show everything
+    -- "All" filter -> Show everything (including actions disabled for this toon —
+    -- the user is asking to see the full configured set).
     if filter == "global" then return true end
+
+    -- For toon-scoped filters (class/role/spec/talent/character), an explicit
+    -- visibilityDisable hit on the current toon hides the action. Mirrors the
+    -- runtime IsActionAllowed semantics so the configurator UI matches what
+    -- the engine will actually fire.
+    local disables = action.visibilityDisable
+    if disables and #disables > 0 then
+        for _, tag in ipairs(disables) do
+            if Wise:MatchesRestrictionTag(tag) then return false end
+        end
+    end
 
     -- Filters now check applicability to the CURRENT toon, not the saved category tag.
     -- Non-spell actions (items, toys, mounts, macros, etc.) are always shown for class/spec/talent
@@ -590,47 +602,57 @@ function Wise:ShouldShowAction(action)
         return false
     end
 
+    -- Within a single visibility-enable list, multiple tags of the same kind are
+    -- ORed together (matches the runtime IsActionAllowed semantics). A filter
+    -- decision is positive if ANY relevant tag matches the current toon, and
+    -- negative only if every relevant tag rules the toon out.
     local function classTagDecision()
+        local matched, decision = false, false
         for _, tag in ipairs(enables) do
             if tag:match("^class:") then
-                return true, tag == "class:" .. (Wise.characterInfo.class or "")
-            end
-            if tag:match("^spec:") then
-                return true, specBelongsToPlayerClass(tonumber(tag:sub(6)))
-            end
-            if tag:match("^role:") then
-                return true, action.addedByClass == Wise.characterInfo.class
+                matched = true
+                if tag == "class:" .. (Wise.characterInfo.class or "") then decision = true end
+            elseif tag:match("^spec:") then
+                matched = true
+                if specBelongsToPlayerClass(tonumber(tag:sub(6))) then decision = true end
+            elseif tag:match("^role:") then
+                matched = true
+                if action.addedByClass == Wise.characterInfo.class then decision = true end
             end
         end
-        return false, false
+        return matched, decision
     end
 
     local function roleTagDecision()
+        local matched, decision = false, false
         for _, tag in ipairs(enables) do
             if tag:match("^role:") then
-                return true, tag == "role:" .. (Wise.characterInfo.role or "")
-            end
-            if tag:match("^spec:") then
+                matched = true
+                if tag == "role:" .. (Wise.characterInfo.role or "") then decision = true end
+            elseif tag:match("^spec:") then
                 local savedSpecID = tonumber(tag:sub(6))
                 if savedSpecID then
+                    matched = true
                     local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
-                    return true, specRole == (Wise.characterInfo.role or "")
+                    if specRole == (Wise.characterInfo.role or "") then decision = true end
                 end
             end
         end
-        return false, false
+        return matched, decision
     end
 
     local function specTagDecision()
+        local matched, decision = false, false
         for _, tag in ipairs(enables) do
             if tag:match("^spec:") then
-                return true, tonumber(tag:sub(6)) == (Wise.characterInfo.specID or 0)
-            end
-            if tag:match("^role:") then
-                return true, tag == "role:" .. (Wise.characterInfo.role or "")
+                matched = true
+                if tonumber(tag:sub(6)) == (Wise.characterInfo.specID or 0) then decision = true end
+            elseif tag:match("^role:") then
+                matched = true
+                if tag == "role:" .. (Wise.characterInfo.role or "") then decision = true end
             end
         end
-        return false, false
+        return matched, decision
     end
 
     if filter == "class" then
@@ -694,13 +716,17 @@ function Wise:ShouldShowAction(action)
     elseif filter == "character" then
         -- Show only actions added by/restricted to THIS character
         local charKey = UnitName("player") .. "-" .. GetRealmName()
-        -- Check visibility tags first
+        -- Check visibility tags first. Multiple char: tags OR together — visible
+        -- if any one names this character.
         local enables = action.visibilityEnable or {}
+        local sawCharTag = false
         for _, tag in ipairs(enables) do
             if tag:match("^char:") then
-                return tag == "char:" .. charKey
+                if tag == "char:" .. charKey then return true end
+                sawCharTag = true
             end
         end
+        if sawCharTag then return false end
         -- Legacy fallback
         if action.category == "character" then
             local checkChar = action.addedByCharacter or action.characterRestriction
@@ -1201,15 +1227,11 @@ function Wise:MigrateGroupToActions(group)
     group.migratedToActions = true
 end
 
--- Add an action to a specific slot (and state index)
--- If slot is nil, find next available
-function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData, insertIndex)
-    local group = WiseDB.groups[groupName]
-    if not group then return end
-    
-    Wise:MigrateGroupToActions(group)
-    
-    -- Capture Metadata
+-- Build a fully-populated action record (no slot insertion). Shared between
+-- AddAction (outer Options panel) and the Slot Configurator's pick/drop paths
+-- so configurator-added states get the same visibilityEnable/category/
+-- addedByClass/addedBySpec/talentRequirements metadata as panel-added ones.
+function Wise:BuildActionRecord(actionType, actionValue, category, extraData)
     local _, playerClass = UnitClass("player")
     local currentSpec = GetSpecialization()
     local specID = currentSpec and GetSpecializationInfo(currentSpec) or nil
@@ -1218,7 +1240,6 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
     if Wise.characterInfo and Wise.characterInfo.talentBuild then
         talentBuildName = Wise.characterInfo.talentBuild
     else
-        -- Fallback if characterInfo is somehow not ready
         if C_ClassTalents and C_ClassTalents.GetActiveConfigID then
             if C_ClassTalents.GetStarterBuildActive and C_ClassTalents.GetStarterBuildActive() then
                 talentBuildName = "Starter Build"
@@ -1226,37 +1247,29 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
                 local specID_val = GetSpecialization()
                 local specInfoID = specID_val and GetSpecializationInfo(specID_val)
                 local configID = C_ClassTalents.GetLastSelectedSavedConfigID and specInfoID and C_ClassTalents.GetLastSelectedSavedConfigID(specInfoID)
-                
+
                 if not configID then
                     configID = C_ClassTalents.GetLastSelectedConfigID and specInfoID and C_ClassTalents.GetLastSelectedConfigID(specInfoID)
                 end
-                
+
                 if not configID then
                     configID = C_ClassTalents.GetActiveConfigID()
                 end
-                
+
                 if configID and C_Traits and C_Traits.GetConfigInfo then
                     local configInfo = C_Traits.GetConfigInfo(configID)
-                    -- Ensure configInfo is a valid table before accessing .name
-                    if type(configInfo) == "table" and configInfo.name then 
-                        talentBuildName = configInfo.name 
+                    if type(configInfo) == "table" and configInfo.name then
+                        talentBuildName = configInfo.name
                     end
                 end
             end
         end
     end
 
-    if Wise.DebugPrint then
-        Wise:DebugPrint("Wise:AddAction - TalentBuild cached: " .. tostring(Wise.characterInfo and Wise.characterInfo.talentBuild) .. " | Used: " .. tostring(talentBuildName) .. " | ActionValue: " .. tostring(actionValue))
-    end
-    
-    -- Resolve Category and Spec Source
-    -- Default to "global" (All) if not provided
     local resolvedCategory = "global"
     if category and category ~= "global" then resolvedCategory = category end
     if extraData and extraData.category then resolvedCategory = extraData.category end
 
-    -- Auto-detect category for spells if still "global" (catches all entry points)
     if actionType == "spell" and resolvedCategory == "global" and Wise.ResolveSpellCategory then
         local detectedCat, detectedSpecID = Wise:ResolveSpellCategory(actionValue)
         if detectedCat ~= "global" then
@@ -1268,15 +1281,14 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         end
     end
 
-    -- Spec ID: Use sourceSpecID if provided (for Off-Spec spells), else current spec
     local resolvedSpecID = specID
     if extraData and extraData.sourceSpecID then resolvedSpecID = extraData.sourceSpecID end
-    if resolvedCategory == "class" then resolvedSpecID = nil end -- Class spells don't have a spec restriction
+    if resolvedCategory == "class" then resolvedSpecID = nil end
 
     local newAction = {
         type = actionType,
         value = actionValue,
-        category = resolvedCategory, -- keeping for legacy safety temporarily
+        category = resolvedCategory,
         visibilityEnable = {},
         visibilityDisable = {},
         addedByCharacter = UnitName("player") .. "-" .. GetRealmName(),
@@ -1285,7 +1297,6 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         talentRequirements = talentBuildName,
     }
 
-    -- Set up initial visibility arrays based on the resolved category
     if resolvedCategory == "class" and playerClass then
         table.insert(newAction.visibilityEnable, "class:" .. playerClass)
     elseif resolvedCategory == "spec" and resolvedSpecID then
@@ -1297,7 +1308,24 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
         if extraData.name then newAction.name = extraData.name end
         if extraData.conditions then newAction.conditions = extraData.conditions end
     end
-    
+
+    return newAction
+end
+
+-- Add an action to a specific slot (and state index)
+-- If slot is nil, find next available
+function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extraData, insertIndex)
+    local group = WiseDB.groups[groupName]
+    if not group then return end
+
+    Wise:MigrateGroupToActions(group)
+
+    local newAction = Wise:BuildActionRecord(actionType, actionValue, category, extraData)
+
+    if Wise.DebugPrint then
+        Wise:DebugPrint("Wise:AddAction - TalentBuild: " .. tostring(newAction.talentRequirements) .. " | ActionValue: " .. tostring(actionValue))
+    end
+
     if not slotIndex then
         -- Find next available slot
         slotIndex = 1

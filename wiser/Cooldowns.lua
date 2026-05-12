@@ -176,7 +176,12 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
     end
 
     group.actions = group.actions or {}
-    group.dynamic = true
+    -- CooldownWiser groups must stay static. Dynamic mode collapses on-cooldown
+    -- and unknown actions, which makes the bar resize as cooldowns tick — and
+    -- we can't resize during combat anyway because of secure-frame lockdown.
+    -- Slot count can still change when the auto-loaded spell list changes
+    -- (spec/talent swap re-runs this function and rewrites integer slots).
+    group.dynamic = false
     group.propertyType = "CooldownWiser"
 
     -- Replace all integer (auto-loaded) slots with the viewer's current spells 1:1.

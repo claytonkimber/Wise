@@ -26,6 +26,12 @@ local COL_HEADER_HEIGHT = 28
 local MOD_BREAK_HEIGHT = 26
 local DRAG_THRESHOLD = 8
 
+-- A stacked cell shows N actions vertically. The first action uses the full
+-- CELL_HEIGHT; each additional stacked action adds STACK_ROW_HEIGHT and gets a
+-- compact mini-row inside the cell.
+local STACK_ROW_HEIGHT = 28
+local STACK_ICON_SIZE = 22
+
 -- Nodes view constants (vertical flow, Image #3 style)
 local NODE_ICON_SIZE = 56
 local NODE_CARD_WIDTH = 260
@@ -51,8 +57,10 @@ local configuratorState = {
     grid = {},
     -- rowConditions[row] = condition string (e.g. "[combat]") or ""
     rowConditions = {},
-    -- modBreaks[afterRow] = "shift" | "alt" | "ctrl" | nil
+    -- modBreaks[afterRow] = "shift" | "alt" | "ctrl" | nil — visual hint between rows
     modBreaks = {},
+    -- rowMods[row] = { shift = true, alt = true, ... } — actual per-row modifiers
+    rowMods = {},
     -- rowExclusive[row] = true/false (auto-negate other rows)
     rowExclusive = {},
     numCols = 1,
@@ -62,8 +70,6 @@ local configuratorState = {
     dragSourceRow = nil,
     dragSourceCol = nil,
     dragAction = nil,
-    -- Original strategy for preserving random
-    originalStrategy = nil,
     -- Active tab: "grid" (existing table view) or "nodes" (vertical flow, Image #3)
     activeTab = "grid",
 }
@@ -106,6 +112,87 @@ local function ShallowCopyAction(action)
         end
     end
     return copy
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Cell helpers
+-- ═══════════════════════════════════════════════════════════════
+-- A grid cell is a list of action records (the "stack" of actions that fire
+-- together as a waterfall under the row's condition at this step). nil and
+-- {} both mean "empty cell". CellList returns the underlying list creating it
+-- on demand; CellHead returns the first action for icon/preview purposes.
+local function CellList(r, c, create)
+    local state = configuratorState
+    if not state.grid[r] then
+        if not create then return nil end
+        state.grid[r] = {}
+    end
+    local cell = state.grid[r][c]
+    if not cell then
+        if not create then return nil end
+        cell = {}
+        state.grid[r][c] = cell
+    end
+    return cell
+end
+
+local function CellSetSingle(r, c, action)
+    local state = configuratorState
+    if not state.grid[r] then state.grid[r] = {} end
+    if action then
+        state.grid[r][c] = { action }
+    else
+        state.grid[r][c] = nil
+    end
+end
+
+local function CellRemoveAt(r, c, index)
+    local cell = CellList(r, c, false)
+    if not cell then return end
+    table.remove(cell, index)
+    if #cell == 0 then
+        configuratorState.grid[r][c] = nil
+    end
+end
+
+-- Swap entire cells (full stacks) between (r1,c1) and (r2,c2).
+local function CellSwap(r1, c1, r2, c2)
+    local state = configuratorState
+    if not state.grid[r1] then state.grid[r1] = {} end
+    if not state.grid[r2] then state.grid[r2] = {} end
+    local a = state.grid[r1][c1]
+    state.grid[r1][c1] = state.grid[r2][c2]
+    state.grid[r2][c2] = a
+end
+
+-- Returns true if any action in the given cell stack is hidden by the current
+-- filter (i.e. belongs to a different toon/spec/class than the user is
+-- currently viewing). Destructive operations on a region containing hidden
+-- actions are blocked so that one spec/class can't silently delete data
+-- belonging to another.
+local function CellHasHidden(r, c)
+    local cell = configuratorState.grid[r] and configuratorState.grid[r][c]
+    if not cell or #cell == 0 then return false end
+    for i = 1, #cell do
+        if IsFilterHiding(cell[i]) then return true end
+    end
+    return false
+end
+
+local function ColumnHasHidden(c)
+    local state = configuratorState
+    for r = 1, state.numRows do
+        if CellHasHidden(r, c) then return true end
+    end
+    return false
+end
+
+local function RowHasHidden(r)
+    local state = configuratorState
+    for c = 1, state.numCols do
+        if CellHasHidden(r, c) then return true end
+    end
+    return false
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -202,6 +289,48 @@ local function ParseModifiers(condStr)
     return mods, remaining
 end
 
+-- Apply a mod-break drop: rows below afterRow (until the next break or the end of
+-- the grid) gain the dropped modifier. rowMods is the source of truth; modBreaks is
+-- the cosmetic marker between rows whose mods differ.
+local function ApplyBreakDrop(afterRow, mod)
+    local state = configuratorState
+    if not mod or not afterRow then return end
+    state.modBreaks[afterRow] = mod
+    -- Find the next break below afterRow to bound the zone.
+    local nextBreak = state.numRows
+    for ar in pairs(state.modBreaks) do
+        if ar > afterRow and ar < nextBreak then nextBreak = ar end
+    end
+    for r = afterRow + 1, nextBreak do
+        state.rowMods[r] = state.rowMods[r] or {}
+        state.rowMods[r][mod] = true
+    end
+end
+
+-- Remove a mod-break marker and clear the mod it introduced from rows in its zone.
+local function RemoveBreak(afterRow)
+    local state = configuratorState
+    local mod = state.modBreaks[afterRow]
+    state.modBreaks[afterRow] = nil
+    if not mod then return end
+    local nextBreak = state.numRows
+    for ar in pairs(state.modBreaks) do
+        if ar > afterRow and ar < nextBreak then nextBreak = ar end
+    end
+    for r = afterRow + 1, nextBreak do
+        if state.rowMods[r] then state.rowMods[r][mod] = nil end
+    end
+end
+
+-- Build a stable key for a mod set so two actions with the same modifiers group together.
+local function ModSetKey(mods)
+    if not mods then return "" end
+    local keys = {}
+    for m in pairs(mods) do tinsert(keys, m) end
+    table.sort(keys)
+    return table.concat(keys, ",")
+end
+
 local function ImportSlotData(groupName, slotIdx)
     local state = configuratorState
     state.groupName = groupName
@@ -209,6 +338,7 @@ local function ImportSlotData(groupName, slotIdx)
     state.grid = {}
     state.rowConditions = {}
     state.modBreaks = {}
+    state.rowMods = {}
     state.rowExclusive = {}
 
     local group = WiseDB and WiseDB.groups and WiseDB.groups[groupName]
@@ -217,9 +347,6 @@ local function ImportSlotData(groupName, slotIdx)
 
     local actions = group.actions[slotIdx]
     if not actions then return end
-
-    state.originalStrategy = actions.conflictStrategy or "priority"
-    local strategy = state.originalStrategy
 
     -- Collect allowed actions
     local items = {}
@@ -235,88 +362,84 @@ local function ImportSlotData(groupName, slotIdx)
         state.numCols = 1
         state.grid[1] = {}
         state.rowConditions[1] = ""
+        state.rowMods[1] = {}
         state.rowExclusive[1] = false
         return
     end
 
-    -- Parse modifiers out of conditions, group by base condition
-    local parsed = {} -- { action, mods, baseCond }
+    -- Parse modifiers out of conditions, group by (baseCond, modSet)
+    local parsed = {} -- { action, mods, baseCond, modKey }
     for _, a in ipairs(items) do
         local mods, base = ParseModifiers(a.conditions)
-        tinsert(parsed, { action = a, mods = mods, baseCond = base or "" })
+        tinsert(parsed, { action = a, mods = mods, baseCond = base or "", modKey = ModSetKey(mods) })
     end
 
-    -- Group by modifier set to determine break placement
-    -- Then within each modifier group, group by baseCond for rows
-    -- For priority: all in col 1, each row = each action
-    -- For sequence: spread across columns
+    -- Group actions sharing the same (baseCond, modKey). The saved
+    -- conflictStrategy decides how multi-action groups lay out:
+    --   waterfall → all actions stack into the same cell (column 1) and fire
+    --               together on press.
+    --   sequence  → actions spread across columns and cycle on repeat press.
+    -- Different baseConds OR different mod sets become separate rows so
+    -- per-row mods are preserved exactly through round-trip.
+    local strategy = actions.conflictStrategy
+    if strategy ~= "sequence" then strategy = "waterfall" end
 
-    if strategy == "priority" or strategy == "random" then
-        -- Each action gets its own row, all in column 1
-        for i, p in ipairs(parsed) do
-            state.grid[i] = { [1] = p.action }
-            -- Strip mod conditions since they become breaks
-            state.rowConditions[i] = p.baseCond
-            state.rowExclusive[i] = p.action.exclusive or false
+    local condGroups = {} -- "baseCond|modKey" -> { actions }
+    local condOrder = {}
+    for _, p in ipairs(parsed) do
+        local key = p.baseCond .. "|" .. p.modKey
+        if not condGroups[key] then
+            condGroups[key] = { items = {}, baseCond = p.baseCond, mods = p.mods }
+            tinsert(condOrder, key)
         end
-        state.numRows = #parsed
-        state.numCols = 1
+        tinsert(condGroups[key].items, p)
+    end
 
-        -- Insert mod breaks: if action has mod:shift, add break before it
-        for i, p in ipairs(parsed) do
-            if i > 1 then
-                for mod in pairs(p.mods) do
-                    if mod == "shift" or mod == "alt" or mod == "ctrl" then
-                        state.modBreaks[i - 1] = mod
-                        break -- one break per position
-                    end
-                end
-            end
-        end
-    else
-        -- Sequence: group by baseCond, spread within group across columns
-        local condGroups = {} -- baseCond -> { actions }
-        local condOrder = {}
-        for _, p in ipairs(parsed) do
-            if not condGroups[p.baseCond] then
-                condGroups[p.baseCond] = {}
-                tinsert(condOrder, p.baseCond)
-            end
-            tinsert(condGroups[p.baseCond], p)
-        end
-
-        local maxCols = 1
-        local row = 0
-        for _, cond in ipairs(condOrder) do
-            row = row + 1
-            state.grid[row] = {}
-            state.rowConditions[row] = cond
-            local group = condGroups[cond]
-            state.rowExclusive[row] = (group[1] and group[1].action.exclusive) or false
-            for col, p in ipairs(group) do
-                state.grid[row][col] = p.action
+    local maxCols = 1
+    local prevModKey = nil
+    local row = 0
+    for _, key in ipairs(condOrder) do
+        row = row + 1
+        state.grid[row] = {}
+        local g = condGroups[key]
+        state.rowConditions[row] = g.baseCond
+        state.rowMods[row] = {}
+        for m in pairs(g.mods) do state.rowMods[row][m] = true end
+        state.rowExclusive[row] = (g.items[1] and g.items[1].action.exclusive) or false
+        if strategy == "waterfall" then
+            -- All actions in this group stack into a single cell at column 1.
+            local stack = {}
+            for _, p in ipairs(g.items) do tinsert(stack, p.action) end
+            state.grid[row][1] = stack
+        else
+            -- Sequence: each action takes its own column as a single-action stack.
+            for col, p in ipairs(g.items) do
+                state.grid[row][col] = { p.action }
                 if col > maxCols then maxCols = col end
             end
+        end
 
-            -- Mod breaks from first action in group
-            if row > 1 and group[1] then
-                for mod in pairs(group[1].mods) do
-                    if mod == "shift" or mod == "alt" or mod == "ctrl" then
-                        state.modBreaks[row - 1] = mod
-                        break
-                    end
+        -- Visual break between rows whose mods differ. Pick any new mod for the break label.
+        local thisModKey = ModSetKey(g.mods)
+        if row > 1 and thisModKey ~= prevModKey then
+            for m in pairs(g.mods) do
+                if m == "shift" or m == "alt" or m == "ctrl" then
+                    state.modBreaks[row - 1] = m
+                    break
                 end
             end
         end
-        state.numRows = row
-        state.numCols = maxCols
+        prevModKey = thisModKey
     end
+    state.numRows = row
+    state.numCols = maxCols
 
     -- Ensure at least 1 row and 1 col
     if state.numRows < 1 then state.numRows = 1 end
     if state.numCols < 1 then state.numCols = 1 end
     if not state.grid[1] then state.grid[1] = {} end
     if not state.rowConditions[1] then state.rowConditions[1] = "" end
+    if not state.rowMods[1] then state.rowMods[1] = {} end
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -335,52 +458,31 @@ local function ExportToSlotData()
     local actions = group.actions[slotIdx]
     if not actions then return end
 
-    -- Determine max columns actually used
+    -- Determine max columns actually used (a column counts if any row has a
+    -- non-empty stack at that column).
     local maxCol = 0
     for r = 1, state.numRows do
         if state.grid[r] then
             for c = 1, state.numCols do
-                if state.grid[r][c] then
+                local cell = state.grid[r][c]
+                if cell and #cell > 0 then
                     if c > maxCol then maxCol = c end
                 end
             end
         end
     end
 
-    -- Determine conflict strategy. Waterfall and random are preserved across both
-    -- single- and multi-column layouts: in waterfall, columns within a row stack
-    -- into a /cast waterfall, while different rows act as condition/modifier branches.
-    local strategy
-    if state.originalStrategy == "waterfall" then
-        strategy = "waterfall"
-    elseif maxCol <= 1 then
-        if state.originalStrategy == "random" then
-            strategy = "random"
-        else
-            strategy = "priority"
-        end
-    else
-        strategy = "sequence"
-    end
+    -- Strategy is derived from grid shape: a single column is waterfall (one /cast
+    -- macro stacks any matching rows), multiple columns within a row form a sequence
+    -- (cycle through columns on each press). Stacked actions within a single cell
+    -- always fire together — they don't change the strategy choice.
+    local strategy = (maxCol > 1) and "sequence" or "waterfall"
 
-    -- Build modifier accumulation: track which mods apply after each break
-    local modStack = {}
-    for afterRow, mod in pairs(state.modBreaks) do
-        modStack[afterRow] = mod
-    end
-
-    -- Compute accumulated modifiers per row
-    local rowMods = {} -- rowMods[row] = { "shift" = true, ... }
-    local activeMods = {}
-    for r = 1, state.numRows do
-        rowMods[r] = {}
-        for m in pairs(activeMods) do rowMods[r][m] = true end
-        -- Check if there's a break BEFORE this row (stored as modBreaks[r-1])
-        if r > 1 and modStack[r - 1] then
-            activeMods[modStack[r - 1]] = true
-            rowMods[r][modStack[r - 1]] = true
-        end
-    end
+    -- Each row carries its own mod set in state.rowMods (populated on import or by
+    -- mod-break drag-drop). Export emits those mods verbatim — no cumulative
+    -- accumulation across rows, so a row with no mod stays mod-free even if a
+    -- different row above it has one.
+    local rowMods = state.rowMods or {}
 
     -- Build actions array
     local newActions = {}
@@ -394,11 +496,11 @@ local function ExportToSlotData()
     for r = 1, state.numRows do
         if state.grid[r] then
             for c = 1, state.numCols do
-                local a = state.grid[r][c]
-                if a then
-                    local exported = ShallowCopyAction(a)
-
-                    -- Build conditions: baseCond + accumulated mods
+                local cell = state.grid[r][c]
+                if cell and #cell > 0 then
+                    -- Build conditions: baseCond + accumulated mods, computed
+                    -- once per cell so every stacked action in this cell shares
+                    -- the same condition string.
                     local baseCond = state.rowConditions[r] or ""
                     local modParts = {}
                     if rowMods[r] then
@@ -407,10 +509,10 @@ local function ExportToSlotData()
                         end
                     end
 
+                    local conditions
                     if #modParts > 0 then
                         local modStr = table.concat(modParts, ",")
                         if baseCond ~= "" then
-                            -- Merge into existing brackets
                             local merged = ""
                             local found = false
                             for bracket in string.gmatch(baseCond, "%[([^%]]*)%]") do
@@ -424,16 +526,20 @@ local function ExportToSlotData()
                             if not found then
                                 merged = "[" .. baseCond .. "," .. modStr .. "]"
                             end
-                            exported.conditions = merged
+                            conditions = merged
                         else
-                            exported.conditions = "[" .. modStr .. "]"
+                            conditions = "[" .. modStr .. "]"
                         end
                     else
-                        exported.conditions = baseCond
+                        conditions = baseCond
                     end
 
-                    exported.exclusive = state.rowExclusive[r] or false
-                    tinsert(newActions, exported)
+                    for i = 1, #cell do
+                        local exported = ShallowCopyAction(cell[i])
+                        exported.conditions = conditions
+                        exported.exclusive = state.rowExclusive[r] or false
+                        tinsert(newActions, exported)
+                    end
                 end
             end
         end
@@ -494,6 +600,58 @@ local function GetOrCreateCell(parent, index)
     cell.removeBtn:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
     cell.removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
     cell.removeBtn:Hide()
+
+    -- Pool of stack-row frames inside this cell (for actions 2..N).
+    cell.stackRows = {}
+    cell.GetStackRow = function(self, idx)
+        if self.stackRows[idx] then return self.stackRows[idx] end
+        local row = CreateFrame("Button", nil, self, "BackdropTemplate")
+        row:SetHeight(STACK_ROW_HEIGHT)
+        row:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 8,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        row:SetBackdropColor(0.16, 0.16, 0.18, 0.9)
+        row:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.8)
+
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(STACK_ICON_SIZE, STACK_ICON_SIZE)
+        row.icon:SetPoint("LEFT", 3, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        row.nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.nameLabel:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+        row.nameLabel:SetPoint("RIGHT", -18, 0)
+        row.nameLabel:SetJustifyH("LEFT")
+        row.nameLabel:SetMaxLines(1)
+
+        row.removeBtn = CreateFrame("Button", nil, row)
+        row.removeBtn:SetSize(12, 12)
+        row.removeBtn:SetPoint("RIGHT", -2, 0)
+        row.removeBtn:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
+        row.removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
+
+        row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        row.highlight:SetAllPoints()
+        row.highlight:SetColorTexture(1, 0.82, 0, 0.1)
+
+        self.stackRows[idx] = row
+        return row
+    end
+
+    -- "+" affordance to push another stacked action onto this cell.
+    cell.addStackBtn = CreateFrame("Button", nil, cell)
+    cell.addStackBtn:SetSize(STACK_ROW_HEIGHT, STACK_ROW_HEIGHT)
+    cell.addStackBtn.label = cell.addStackBtn:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    cell.addStackBtn.label:SetPoint("CENTER")
+    cell.addStackBtn.label:SetText("+")
+    cell.addStackBtn.label:SetFont(cell.addStackBtn.label:GetFont(), 16, "OUTLINE")
+    cell.addStackBtn.highlight = cell.addStackBtn:CreateTexture(nil, "HIGHLIGHT")
+    cell.addStackBtn.highlight:SetAllPoints()
+    cell.addStackBtn.highlight:SetColorTexture(0.2, 0.8, 0.2, 0.2)
+    cell.addStackBtn:Hide()
 
     -- Highlight on hover
     cell.highlight = cell:CreateTexture(nil, "HIGHLIGHT")
@@ -707,7 +865,13 @@ end
 -- Nodes View Pool Hiding
 -- ═══════════════════════════════════════════════════════════════
 local function HideAllNodePooled()
-    for _, c in pairs(nodeCardPool) do c:Hide() end
+    for _, c in pairs(nodeCardPool) do
+        c:Hide()
+        if c.stackRows then
+            for _, sr in pairs(c.stackRows) do sr:Hide() end
+        end
+        if c.addStackBtn then c.addStackBtn:Hide() end
+    end
     for _, a in pairs(nodeArrowPool) do a:Hide() end
     for _, b in pairs(nodeCondBubblePool) do b:Hide() end
 end
@@ -716,7 +880,13 @@ end
 -- Canvas Rendering
 -- ═══════════════════════════════════════════════════════════════
 local function HideAllPooled()
-    for _, c in pairs(cellPool) do c:Hide() end
+    for _, c in pairs(cellPool) do
+        c:Hide()
+        if c.stackRows then
+            for _, sr in pairs(c.stackRows) do sr:Hide() end
+        end
+        if c.addStackBtn then c.addStackBtn:Hide() end
+    end
     for _, c in pairs(emptyDropPool) do c:Hide() end
     for _, c in pairs(colHeaderPool) do c:Hide() end
     for _, c in pairs(rowHeaderPool) do c:Hide() end
@@ -752,21 +922,38 @@ local function RenderCanvas()
         hdr:SetPoint("TOPLEFT", canvas, "TOPLEFT", x0 + (c - 1) * (CELL_WIDTH + CELL_PADDING), 0)
         hdr.label:SetText("Step " .. c)
 
-        -- Remove column button (only if more than 1 column)
+        -- Remove column button (only if more than 1 column). Disabled when
+        -- the column contains actions that belong to other specs/classes than
+        -- the current filter — otherwise removing a column from one spec
+        -- would silently destroy data the user can't see.
         if state.numCols > 1 then
             hdr.removeBtn:Show()
             local removeCol = c
-            hdr.removeBtn:SetScript("OnClick", function()
-                -- Remove this column from every row
-                for r = 1, state.numRows do
-                    if state.grid[r] then
-                        table.remove(state.grid[r], removeCol)
+            local blocked = ColumnHasHidden(removeCol)
+            if blocked then
+                hdr.removeBtn:GetNormalTexture():SetDesaturated(true)
+                hdr.removeBtn:SetAlpha(0.4)
+                hdr.removeBtn:SetScript("OnClick", function()
+                    GameTooltip:SetOwner(hdr.removeBtn, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Cannot remove step", 1, 0.4, 0.4)
+                    GameTooltip:AddLine("This step contains actions for other specs or classes.", 0.9, 0.9, 0.9, true)
+                    GameTooltip:AddLine("Switch the filter to All to remove it.", 0.7, 0.7, 0.7, true)
+                    GameTooltip:Show()
+                end)
+            else
+                hdr.removeBtn:GetNormalTexture():SetDesaturated(false)
+                hdr.removeBtn:SetAlpha(1)
+                hdr.removeBtn:SetScript("OnClick", function()
+                    for r = 1, state.numRows do
+                        if state.grid[r] then
+                            table.remove(state.grid[r], removeCol)
+                        end
                     end
-                end
-                state.numCols = state.numCols - 1
-                if state.numCols < 1 then state.numCols = 1 end
-                RenderCanvas()
-            end)
+                    state.numCols = state.numCols - 1
+                    if state.numCols < 1 then state.numCols = 1 end
+                    RenderCanvas()
+                end)
+            end
         else
             hdr.removeBtn:Hide()
         end
@@ -808,20 +995,29 @@ local function RenderCanvas()
     -- Decide up-front which rows are wholly hidden by the current filter, so
     -- we can skip both the row content and the mod break that would sit
     -- above it. A row is hidden only when it has at least one populated
-    -- cell and *every* populated cell is filter-rejected; rows that are
-    -- entirely empty still render as drop targets.
+    -- cell and *every* action across every cell stack is filter-rejected;
+    -- rows that are entirely empty still render as drop targets.
     local rowHidden = {}
+    -- Per-row tallest stack so each row gets just enough vertical space.
+    local rowStackHeight = {}
     for r = 1, state.numRows do
         if state.grid[r] then
             local anyAction, anyVisible = false, false
+            local maxStack = 1
             for c = 1, state.numCols do
-                local a = state.grid[r][c]
-                if a then
+                local cell = state.grid[r][c]
+                if cell and #cell > 0 then
                     anyAction = true
-                    if not IsFilterHiding(a) then anyVisible = true break end
+                    if #cell > maxStack then maxStack = #cell end
+                    for i = 1, #cell do
+                        if not IsFilterHiding(cell[i]) then anyVisible = true end
+                    end
                 end
             end
             rowHidden[r] = anyAction and not anyVisible
+            rowStackHeight[r] = maxStack
+        else
+            rowStackHeight[r] = 1
         end
     end
 
@@ -852,7 +1048,7 @@ local function RenderCanvas()
 
             local breakRow = r - 1
             brk.removeBtn:SetScript("OnClick", function()
-                state.modBreaks[breakRow] = nil
+                RemoveBreak(breakRow)
                 RenderCanvas()
             end)
 
@@ -898,33 +1094,51 @@ local function RenderCanvas()
             Wise:RefreshPropertiesPanel()
         end)
 
-        -- Row remove button (only if more than 1 row)
+        -- Row remove button (only if more than 1 row). Disabled when the row
+        -- contains actions hidden by the current filter — see column-remove
+        -- for the rationale.
         if state.numRows > 1 then
             rowHdr.rowRemoveBtn:Show()
             local removeRow = r
-            rowHdr.rowRemoveBtn:SetScript("OnClick", function()
-                table.remove(state.grid, removeRow)
-                table.remove(state.rowConditions, removeRow)
-                table.remove(state.rowExclusive, removeRow)
-                -- Shift mod breaks down
-                local newBreaks = {}
-                for afterRow, mod in pairs(state.modBreaks) do
-                    if afterRow < removeRow then
-                        newBreaks[afterRow] = mod
-                    elseif afterRow >= removeRow and afterRow < state.numRows then
-                        newBreaks[afterRow - 1] = mod
+            local rowBlocked = RowHasHidden(removeRow)
+            if rowBlocked then
+                rowHdr.rowRemoveBtn:GetNormalTexture():SetDesaturated(true)
+                rowHdr.rowRemoveBtn:SetAlpha(0.4)
+                rowHdr.rowRemoveBtn:SetScript("OnClick", function()
+                    GameTooltip:SetOwner(rowHdr.rowRemoveBtn, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Cannot remove row", 1, 0.4, 0.4)
+                    GameTooltip:AddLine("This row contains actions for other specs or classes.", 0.9, 0.9, 0.9, true)
+                    GameTooltip:AddLine("Switch the filter to All to remove it.", 0.7, 0.7, 0.7, true)
+                    GameTooltip:Show()
+                end)
+            else
+                rowHdr.rowRemoveBtn:GetNormalTexture():SetDesaturated(false)
+                rowHdr.rowRemoveBtn:SetAlpha(1)
+                rowHdr.rowRemoveBtn:SetScript("OnClick", function()
+                    table.remove(state.grid, removeRow)
+                    table.remove(state.rowConditions, removeRow)
+                    table.remove(state.rowExclusive, removeRow)
+                    table.remove(state.rowMods, removeRow)
+                    local newBreaks = {}
+                    for afterRow, mod in pairs(state.modBreaks) do
+                        if afterRow < removeRow then
+                            newBreaks[afterRow] = mod
+                        elseif afterRow >= removeRow and afterRow < state.numRows then
+                            newBreaks[afterRow - 1] = mod
+                        end
                     end
-                end
-                state.modBreaks = newBreaks
-                state.numRows = state.numRows - 1
-                if state.numRows < 1 then
-                    state.numRows = 1
-                    state.grid[1] = {}
-                    state.rowConditions[1] = ""
-                    state.rowExclusive[1] = false
-                end
-                RenderCanvas()
-            end)
+                    state.modBreaks = newBreaks
+                    state.numRows = state.numRows - 1
+                    if state.numRows < 1 then
+                        state.numRows = 1
+                        state.grid[1] = {}
+                        state.rowConditions[1] = ""
+                        state.rowExclusive[1] = false
+                        state.rowMods[1] = {}
+                    end
+                    RenderCanvas()
+                end)
+            end
         else
             rowHdr.rowRemoveBtn:Hide()
         end
@@ -945,42 +1159,45 @@ local function RenderCanvas()
         rowHdr:SetScript("OnLeave", function() GameTooltip:Hide() end)
         rowHdr:Show()
 
+        -- Row's vertical extent: tallest stack in the row dictates row height.
+        local rowMaxStack = rowStackHeight[r] or 1
+        local rowHeight = CELL_HEIGHT + math.max(0, rowMaxStack - 1) * STACK_ROW_HEIGHT
+
         -- Cells for this row
         for c = 1, state.numCols do
-            local action = state.grid[r][c]
+            local cellList = state.grid[r] and state.grid[r][c]
+            local stackSize = (cellList and #cellList) or 0
             local cellX = x0 + (c - 1) * (CELL_WIDTH + CELL_PADDING)
 
-            -- Individual cells filtered out within a visible row are left
-            -- blank so the underlying action data is preserved and cannot be
-            -- accidentally overwritten by a drop onto what looks like an
-            -- empty slot.
-            if action and IsFilterHiding(action) then
-                -- Skip rendering this cell entirely; the gap signals "hidden
-                -- by filter" without destroying saved data.
-            elseif action then
-                -- Filled cell
+            -- A populated cell is filter-hidden only if every action in its
+            -- stack is filter-rejected. Mixed cells render only the visible
+            -- entries.
+            local anyVisible = false
+            if stackSize > 0 then
+                for i = 1, stackSize do
+                    if not IsFilterHiding(cellList[i]) then anyVisible = true break end
+                end
+            end
+
+            if stackSize > 0 and not anyVisible then
+                -- Whole stack filter-hidden; render nothing here.
+            elseif stackSize > 0 then
+                local head = cellList[1]
+                local cellHeight = CELL_HEIGHT + (stackSize - 1) * STACK_ROW_HEIGHT
                 local cell = GetOrCreateCell(canvas, cellIdx)
                 cellIdx = cellIdx + 1
+                cell:SetSize(CELL_WIDTH, cellHeight)
                 cell:ClearAllPoints()
                 cell:SetPoint("TOPLEFT", canvas, "TOPLEFT", cellX, yOffset)
 
-                -- Set icon
-                local iconTex = Wise:GetActionIcon(action.type, action.value, action)
-                if iconTex then
-                    cell.icon:SetTexture(iconTex)
-                    cell.icon:Show()
-                else
-                    cell.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-                    cell.icon:Show()
-                end
+                local iconTex = Wise:GetActionIcon(head.type, head.value, head)
+                cell.icon:SetTexture(iconTex or "Interface\\Icons\\INV_Misc_QuestionMark")
+                cell.icon:Show()
 
-                -- Set name
-                local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
+                local name = Wise:GetActionName(head.type, head.value, head) or "Unknown"
                 cell.nameLabel:SetText(name)
 
-                -- Dim actions that are in-filter but not currently usable (e.g.
-                -- spell not learned on this character right now).
-                if IsActionLive(action) then
+                if IsActionLive(head) then
                     cell:SetAlpha(1)
                     cell:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
                 else
@@ -988,15 +1205,77 @@ local function RenderCanvas()
                     cell:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
                 end
 
-                -- Remove button
+                -- Head remove button: removes the head; if the cell still has
+                -- a stack the next item promotes; if empty the cell clears.
                 cell.removeBtn:Show()
-                local removeRow, removeCol = r, c
+                local headRow, headCol = r, c
                 cell.removeBtn:SetScript("OnClick", function()
-                    state.grid[removeRow][removeCol] = nil
+                    CellRemoveAt(headRow, headCol, 1)
                     RenderCanvas()
                 end)
 
-                -- Drag handling
+                -- Hide stack rows that aren't in use this render. We have to
+                -- explicitly hide any pooled stack-row beyond the current
+                -- stack size in case the cell shrank since last render.
+                if cell.stackRows then
+                    for _, sr in pairs(cell.stackRows) do sr:Hide() end
+                end
+
+                -- Render stack rows for entries 2..N below the head.
+                for i = 2, stackSize do
+                    local stacked = cellList[i]
+                    local sr = cell:GetStackRow(i)
+                    sr:SetWidth(CELL_WIDTH - 4)
+                    sr:ClearAllPoints()
+                    sr:SetPoint("TOPLEFT", cell, "TOPLEFT", 2, -(CELL_HEIGHT + (i - 2) * STACK_ROW_HEIGHT))
+
+                    local sIcon = Wise:GetActionIcon(stacked.type, stacked.value, stacked)
+                    sr.icon:SetTexture(sIcon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    local sName = Wise:GetActionName(stacked.type, stacked.value, stacked) or "Unknown"
+                    sr.nameLabel:SetText(sName)
+                    if IsActionLive(stacked) then
+                        sr:SetAlpha(1)
+                    else
+                        sr:SetAlpha(0.5)
+                    end
+
+                    local rmRow, rmCol, rmIdx = r, c, i
+                    sr.removeBtn:SetScript("OnClick", function()
+                        CellRemoveAt(rmRow, rmCol, rmIdx)
+                        RenderCanvas()
+                    end)
+
+                    local stackedType = stacked.type
+                    sr:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(sName, 1, 1, 1)
+                        if stackedType then
+                            GameTooltip:AddLine("Type: " .. stackedType, 0.8, 0.8, 0.8)
+                        end
+                        GameTooltip:AddLine("Stacked — fires together with this step.", 0.7, 0.7, 0.9, true)
+                        GameTooltip:Show()
+                    end)
+                    sr:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    sr:Show()
+                end
+
+                -- "+" inside the cell appends another stacked action.
+                cell.addStackBtn:ClearAllPoints()
+                cell.addStackBtn:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -2, 2)
+                local pushRow, pushCol = r, c
+                cell.addStackBtn:SetScript("OnClick", function()
+                    Wise:OpenConfiguratorPicker(pushRow, pushCol, "stack")
+                end)
+                cell.addStackBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("Stack action", 1, 1, 1)
+                    GameTooltip:AddLine("Add another action that fires together with this one.", 0.8, 0.8, 0.8, true)
+                    GameTooltip:Show()
+                end)
+                cell.addStackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                cell.addStackBtn:Show()
+
+                -- Drag handling moves the entire stack.
                 local dragRow, dragCol = r, c
                 cell:RegisterForDrag("LeftButton")
                 cell:SetScript("OnDragStart", function(self)
@@ -1011,10 +1290,8 @@ local function RenderCanvas()
                     ghost.nameLabel:SetText(name)
                     ghost:Show()
 
-                    -- Dim source cell
                     self:SetAlpha(0.4)
 
-                    -- Start OnUpdate for ghost tracking
                     ghost:SetScript("OnUpdate", function(g)
                         local cx, cy = GetCursorPosition()
                         local scale = UIParent:GetEffectiveScale()
@@ -1032,23 +1309,18 @@ local function RenderCanvas()
                     if not configuratorState.dragActive then return end
                     configuratorState.dragActive = false
 
-                    -- Find drop target based on cursor position
                     local cx, cy = GetCursorPosition()
                     local scale = UIParent:GetEffectiveScale()
                     cx, cy = cx / scale, cy / scale
 
                     local dropped = false
-                    -- Check all cells and empty drops for hit
-                    for ci, cf in pairs(cellPool) do
+                    for _, cf in pairs(cellPool) do
                         if cf:IsShown() and cf ~= self then
                             local l, b, w, h = cf:GetRect()
                             if l and cx >= l and cx <= l + w and cy >= b and cy <= b + h then
-                                -- Swap
                                 local tr, tc = cf.gridRow, cf.gridCol
                                 if tr and tc then
-                                    local srcAction = configuratorState.dragAction
-                                    state.grid[configuratorState.dragSourceRow][configuratorState.dragSourceCol] = state.grid[tr][tc]
-                                    state.grid[tr][tc] = srcAction
+                                    CellSwap(configuratorState.dragSourceRow, configuratorState.dragSourceCol, tr, tc)
                                     dropped = true
                                 end
                                 break
@@ -1057,13 +1329,14 @@ local function RenderCanvas()
                     end
 
                     if not dropped then
-                        for ei, ef in pairs(emptyDropPool) do
+                        for _, ef in pairs(emptyDropPool) do
                             if ef:IsShown() then
                                 local l, b, w, h = ef:GetRect()
                                 if l and cx >= l and cx <= l + w and cy >= b and cy <= b + h then
                                     local tr, tc = ef.gridRow, ef.gridCol
                                     if tr and tc then
                                         state.grid[configuratorState.dragSourceRow][configuratorState.dragSourceCol] = nil
+                                        if not state.grid[tr] then state.grid[tr] = {} end
                                         state.grid[tr][tc] = configuratorState.dragAction
                                         dropped = true
                                     end
@@ -1073,69 +1346,65 @@ local function RenderCanvas()
                         end
                     end
 
-                    if not dropped then
-                        -- Drop cancelled, do nothing
-                    end
-
                     configuratorState.dragAction = nil
                     configuratorState.dragSourceRow = nil
                     configuratorState.dragSourceCol = nil
                     RenderCanvas()
                 end)
 
-                -- Tooltip
+                local headType = head.type
+                local stackForTip = stackSize
                 cell:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(name, 1, 1, 1)
-                    if action.type then
-                        GameTooltip:AddLine("Type: " .. action.type, 0.8, 0.8, 0.8)
+                    if headType then
+                        GameTooltip:AddLine("Type: " .. headType, 0.8, 0.8, 0.8)
+                    end
+                    if stackForTip > 1 then
+                        GameTooltip:AddLine("Stack of " .. stackForTip .. " actions — all fire together.", 0.7, 0.7, 0.9, true)
                     end
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Drag to reorder. Click X to remove.", 0.6, 0.6, 0.6, true)
+                    GameTooltip:AddLine("Drag to move. + to stack. X to remove.", 0.6, 0.6, 0.6, true)
                     GameTooltip:Show()
                 end)
                 cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-                -- Store grid position on the cell for drag target detection
                 cell.gridRow = r
                 cell.gridCol = c
-
                 cell:Show()
             else
-                -- Empty drop target
+                -- Empty drop target. Sized to match the row's tallest stack so
+                -- the empty slot still aligns with neighbour cells.
                 local drop = GetOrCreateEmptyDrop(canvas, emptyIdx)
                 emptyIdx = emptyIdx + 1
+                drop:SetSize(CELL_WIDTH, rowHeight)
                 drop:ClearAllPoints()
                 drop:SetPoint("TOPLEFT", canvas, "TOPLEFT", cellX, yOffset)
                 drop.gridRow = r
                 drop.gridCol = c
 
-                -- Accept cursor drops or open picker
                 drop:RegisterForClicks("LeftButtonUp")
                 local dropRow, dropCol = r, c
                 drop:SetScript("OnClick", function(self)
-                    -- Check for cursor item first
-                    local cursorType, id, subType = GetCursorInfo()
+                    local cursorType, id = GetCursorInfo()
                     if cursorType then
                         local actionData = Wise:CursorToActionData(cursorType, id)
                         if actionData then
-                            state.grid[dropRow][dropCol] = actionData
+                            CellSetSingle(dropRow, dropCol, actionData)
                             ClearCursor()
                             RenderCanvas()
                         end
                     else
-                        -- No cursor item — open the spell picker
                         Wise:OpenConfiguratorPicker(dropRow, dropCol)
                     end
                 end)
 
-                -- Also handle internal drag drops via OnReceiveDrag
                 drop:SetScript("OnReceiveDrag", function(self)
                     local cursorType, id = GetCursorInfo()
                     if cursorType then
                         local actionData = Wise:CursorToActionData(cursorType, id)
                         if actionData then
-                            state.grid[dropRow][dropCol] = actionData
+                            CellSetSingle(dropRow, dropCol, actionData)
                             ClearCursor()
                             RenderCanvas()
                         end
@@ -1155,7 +1424,7 @@ local function RenderCanvas()
             end
         end
 
-        yOffset = yOffset - CELL_HEIGHT - CELL_PADDING
+        yOffset = yOffset - rowHeight - CELL_PADDING
         end -- end of: if not rowHidden[r]
     end
 
@@ -1170,6 +1439,12 @@ local function RenderCanvas()
             state.grid[state.numRows] = {}
             state.rowConditions[state.numRows] = ""
             state.rowExclusive[state.numRows] = false
+            -- Inherit the previous row's mods so a new row at the bottom of an
+            -- existing mod zone stays inside that zone rather than dropping out.
+            local inherit = state.rowMods[state.numRows - 1] or {}
+            local copy = {}
+            for m in pairs(inherit) do copy[m] = true end
+            state.rowMods[state.numRows] = copy
             RenderCanvas()
         end)
         Wise:AddTooltip(sc.addRowBtn, "Add a new condition row.")
@@ -1236,6 +1511,58 @@ local function GetOrCreateNodeCard(parent, index)
     card.highlight = card:CreateTexture(nil, "HIGHLIGHT")
     card.highlight:SetAllPoints()
     card.highlight:SetColorTexture(1, 0.82, 0, 0.1)
+
+    -- Stack rows for actions 2..N inside this card.
+    card.stackRows = {}
+    card.GetStackRow = function(self, idx)
+        if self.stackRows[idx] then return self.stackRows[idx] end
+        local row = CreateFrame("Button", nil, self, "BackdropTemplate")
+        row:SetHeight(STACK_ROW_HEIGHT)
+        row:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 8,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        row:SetBackdropColor(0.14, 0.14, 0.18, 0.85)
+        row:SetBackdropBorderColor(0.35, 0.35, 0.4, 0.7)
+
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(STACK_ICON_SIZE, STACK_ICON_SIZE)
+        row.icon:SetPoint("LEFT", 4, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+        row.nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.nameLabel:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+        row.nameLabel:SetPoint("RIGHT", -20, 0)
+        row.nameLabel:SetJustifyH("LEFT")
+        row.nameLabel:SetMaxLines(1)
+
+        row.removeBtn = CreateFrame("Button", nil, row)
+        row.removeBtn:SetSize(12, 12)
+        row.removeBtn:SetPoint("RIGHT", -4, 0)
+        row.removeBtn:SetNormalTexture("Interface\\Buttons\\UI-StopButton")
+        row.removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-StopButton", "ADD")
+
+        row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        row.highlight:SetAllPoints()
+        row.highlight:SetColorTexture(1, 0.82, 0, 0.1)
+
+        self.stackRows[idx] = row
+        return row
+    end
+
+    -- "+" affordance to push another stacked action onto this card's cell.
+    card.addStackBtn = CreateFrame("Button", nil, card)
+    card.addStackBtn:SetSize(STACK_ROW_HEIGHT, STACK_ROW_HEIGHT)
+    card.addStackBtn.label = card.addStackBtn:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    card.addStackBtn.label:SetPoint("CENTER")
+    card.addStackBtn.label:SetText("+")
+    card.addStackBtn.label:SetFont(card.addStackBtn.label:GetFont(), 16, "OUTLINE")
+    card.addStackBtn.highlight = card.addStackBtn:CreateTexture(nil, "HIGHLIGHT")
+    card.addStackBtn.highlight:SetAllPoints()
+    card.addStackBtn.highlight:SetColorTexture(0.2, 0.8, 0.2, 0.2)
+    card.addStackBtn:Hide()
 
     nodeCardPool[index] = card
     return card
@@ -1335,17 +1662,20 @@ RenderNodesCanvas = function()
     local centerX = NODE_CARD_WIDTH / 2 + 20
     local anyRendered = false
 
-    -- Precompute which rows are fully filter-hidden (every populated cell is
-    -- excluded). Rows with no actions at all still render one placeholder.
+    -- Precompute which rows are fully filter-hidden (every action across every
+    -- populated cell stack is excluded). Rows with no actions at all still
+    -- render one placeholder.
     local rowHidden = {}
     for r = 1, state.numRows do
         if not state.grid[r] then state.grid[r] = {} end
         local anyAction, anyVisible = false, false
         for c = 1, state.numCols do
-            local a = state.grid[r][c]
-            if a then
+            local cell = state.grid[r][c]
+            if cell and #cell > 0 then
                 anyAction = true
-                if not IsFilterHiding(a) then anyVisible = true break end
+                for i = 1, #cell do
+                    if not IsFilterHiding(cell[i]) then anyVisible = true end
+                end
             end
         end
         rowHidden[r] = anyAction and not anyVisible
@@ -1359,13 +1689,18 @@ RenderNodesCanvas = function()
             local positions = {}
             local hasAny = false
             for c = 1, state.numCols do
-                if state.grid[r][c] then hasAny = true break end
+                local cell = state.grid[r][c]
+                if cell and #cell > 0 then hasAny = true break end
             end
             if hasAny then
                 for c = 1, state.numCols do
-                    local a = state.grid[r][c]
-                    if a and not IsFilterHiding(a) then
-                        table.insert(positions, c)
+                    local cell = state.grid[r][c]
+                    if cell and #cell > 0 then
+                        local anyVisibleHere = false
+                        for i = 1, #cell do
+                            if not IsFilterHiding(cell[i]) then anyVisibleHere = true break end
+                        end
+                        if anyVisibleHere then table.insert(positions, c) end
                     end
                 end
             else
@@ -1374,7 +1709,9 @@ RenderNodesCanvas = function()
 
             local firstCardInRow = nil
             for i, col in ipairs(positions) do
-                local action = state.grid[r][col]
+                local cellList = state.grid[r][col]
+                local stackSize = (cellList and #cellList) or 0
+                local head = cellList and cellList[1] or nil
 
                 -- Arrow leading into this card. "fallthrough" between rows,
                 -- "step" between sequential steps in the same row.
@@ -1395,16 +1732,19 @@ RenderNodesCanvas = function()
 
                 local card = GetOrCreateNodeCard(canvas, cardIdx)
                 cardIdx = cardIdx + 1
+                local cardHeight = NODE_CARD_HEIGHT + math.max(0, stackSize - 1) * STACK_ROW_HEIGHT
+                if stackSize <= 1 then cardHeight = NODE_CARD_HEIGHT end
+                card:SetSize(NODE_CARD_WIDTH, cardHeight)
                 card:ClearAllPoints()
                 card:SetPoint("TOP", canvas, "TOPLEFT", centerX, yCursor)
 
-                if action then
-                    local iconTex = Wise:GetActionIcon(action.type, action.value, action)
+                if head then
+                    local iconTex = Wise:GetActionIcon(head.type, head.value, head)
                     card.icon:SetTexture(iconTex or "Interface\\Icons\\INV_Misc_QuestionMark")
-                    local name = Wise:GetActionName(action.type, action.value, action) or "Unknown"
+                    local name = Wise:GetActionName(head.type, head.value, head) or "Unknown"
                     card.nameLabel:SetText(name)
 
-                    if IsActionLive(action) then
+                    if IsActionLive(head) then
                         card:SetAlpha(1)
                         card:SetBackdropBorderColor(0.45, 0.45, 0.55, 1)
                     else
@@ -1412,21 +1752,80 @@ RenderNodesCanvas = function()
                         card:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.6)
                     end
 
+                    -- Hide any pre-existing stack rows in case the stack shrank.
+                    if card.stackRows then
+                        for _, sr in pairs(card.stackRows) do sr:Hide() end
+                    end
+
+                    -- Render stack rows for entries 2..N below the head row.
+                    for si = 2, stackSize do
+                        local stacked = cellList[si]
+                        local sr = card:GetStackRow(si)
+                        sr:SetWidth(NODE_CARD_WIDTH - 8)
+                        sr:ClearAllPoints()
+                        sr:SetPoint("TOPLEFT", card, "TOPLEFT", 4, -(NODE_CARD_HEIGHT + (si - 2) * STACK_ROW_HEIGHT))
+                        local sIcon = Wise:GetActionIcon(stacked.type, stacked.value, stacked)
+                        sr.icon:SetTexture(sIcon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        local sName = Wise:GetActionName(stacked.type, stacked.value, stacked) or "Unknown"
+                        sr.nameLabel:SetText(sName)
+                        if IsActionLive(stacked) then sr:SetAlpha(1) else sr:SetAlpha(0.5) end
+                        local rmRow, rmCol, rmIdx = r, col, si
+                        sr.removeBtn:SetScript("OnClick", function()
+                            CellRemoveAt(rmRow, rmCol, rmIdx)
+                            RenderNodesCanvas()
+                        end)
+                        local stackedType = stacked.type
+                        sr:SetScript("OnEnter", function(self)
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(sName, 1, 1, 1)
+                            if stackedType then
+                                GameTooltip:AddLine("Type: " .. stackedType, 0.8, 0.8, 0.8)
+                            end
+                            GameTooltip:AddLine("Stacked — fires together with this step.", 0.7, 0.7, 0.9, true)
+                            GameTooltip:Show()
+                        end)
+                        sr:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                        sr:Show()
+                    end
+
+                    -- "+" inside the card pushes another stacked action.
+                    card.addStackBtn:ClearAllPoints()
+                    card.addStackBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -2, 2)
+                    local pushRow, pushCol = r, col
+                    card.addStackBtn:SetScript("OnClick", function()
+                        Wise:OpenConfiguratorPicker(pushRow, pushCol, "stack")
+                    end)
+                    card.addStackBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText("Stack action", 1, 1, 1)
+                        GameTooltip:AddLine("Add another action that fires together with this one.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:Show()
+                    end)
+                    card.addStackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    card.addStackBtn:Show()
+
                     card.removeBtn:Show()
                     local removeRow, removeCol = r, col
                     card.removeBtn:SetScript("OnClick", function()
-                        state.grid[removeRow][removeCol] = nil
-                        if state.numRows > 1 then
+                        -- Removing the head pops the head from the stack; if
+                        -- the cell becomes empty, the row may auto-collapse
+                        -- — but only when the row has no hidden actions in
+                        -- other columns. Otherwise we'd silently nuke data
+                        -- belonging to another spec/class.
+                        CellRemoveAt(removeRow, removeCol, 1)
+                        local cell = state.grid[removeRow] and state.grid[removeRow][removeCol]
+                        if (not cell or #cell == 0) and state.numRows > 1 and not RowHasHidden(removeRow) then
                             local allEmpty = true
                             if state.grid[removeRow] then
                                 for _, v in pairs(state.grid[removeRow]) do
-                                    if v then allEmpty = false break end
+                                    if v and (type(v) ~= "table" or #v > 0) then allEmpty = false break end
                                 end
                             end
                             if allEmpty then
                                 table.remove(state.grid, removeRow)
                                 table.remove(state.rowConditions, removeRow)
                                 table.remove(state.rowExclusive, removeRow)
+                                table.remove(state.rowMods, removeRow)
                                 local newBreaks = {}
                                 for afterRow, mod in pairs(state.modBreaks) do
                                     if afterRow < removeRow then
@@ -1442,6 +1841,7 @@ RenderNodesCanvas = function()
                                     state.grid[1] = {}
                                     state.rowConditions[1] = ""
                                     state.rowExclusive[1] = false
+                                    state.rowMods[1] = {}
                                 end
                             end
                         end
@@ -1456,16 +1856,20 @@ RenderNodesCanvas = function()
                         end
                     end)
 
-                    local actionType = action.type
+                    local headType = head.type
+                    local stackForTip = stackSize
                     card:SetScript("OnEnter", function(self)
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:SetText(name, 1, 1, 1)
-                        if actionType then
-                            GameTooltip:AddLine("Type: " .. actionType, 0.8, 0.8, 0.8)
+                        if headType then
+                            GameTooltip:AddLine("Type: " .. headType, 0.8, 0.8, 0.8)
                         end
                         GameTooltip:AddLine("Step " .. col, 0.7, 0.7, 0.9)
+                        if stackForTip > 1 then
+                            GameTooltip:AddLine("Stack of " .. stackForTip .. " — all fire together.", 0.7, 0.9, 0.7, true)
+                        end
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("Right-click to replace. Click X to remove.", 0.6, 0.6, 0.6, true)
+                        GameTooltip:AddLine("Right-click to replace. + to stack. X to pop.", 0.6, 0.6, 0.6, true)
                         GameTooltip:Show()
                     end)
                     card:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1483,7 +1887,7 @@ RenderNodesCanvas = function()
                         if cursorType then
                             local actionData = Wise:CursorToActionData(cursorType, id)
                             if actionData then
-                                state.grid[clickRow][clickCol] = actionData
+                                CellSetSingle(clickRow, clickCol, actionData)
                                 ClearCursor()
                                 RenderNodesCanvas()
                                 return
@@ -1496,7 +1900,7 @@ RenderNodesCanvas = function()
                         if cursorType then
                             local actionData = Wise:CursorToActionData(cursorType, id)
                             if actionData then
-                                state.grid[clickRow][clickCol] = actionData
+                                CellSetSingle(clickRow, clickCol, actionData)
                                 ClearCursor()
                                 RenderNodesCanvas()
                             end
@@ -1516,7 +1920,7 @@ RenderNodesCanvas = function()
 
                 if not firstCardInRow then firstCardInRow = card end
                 anyRendered = true
-                yCursor = yCursor - NODE_CARD_HEIGHT
+                yCursor = yCursor - cardHeight
             end
 
             -- One condition bubble per row, anchored to the first card
@@ -1578,6 +1982,10 @@ RenderNodesCanvas = function()
             configuratorState.grid[configuratorState.numRows] = {}
             configuratorState.rowConditions[configuratorState.numRows] = ""
             configuratorState.rowExclusive[configuratorState.numRows] = false
+            local inherit = configuratorState.rowMods[configuratorState.numRows - 1] or {}
+            local copy = {}
+            for m in pairs(inherit) do copy[m] = true end
+            configuratorState.rowMods[configuratorState.numRows] = copy
             RenderNodesCanvas()
         end)
         Wise:AddTooltip(sc.nodesAddBtn, "Add another action node to the flow.")
@@ -1757,7 +2165,7 @@ local function CreateModifierPalette(parent)
                 if zone:IsShown() and zone.afterRow then
                     local l, b, w, h = zone:GetRect()
                     if l and cx >= l and cx <= l + w and cy >= b and cy <= b + h then
-                        configuratorState.modBreaks[zone.afterRow] = modDrag.modifier
+                        ApplyBreakDrop(zone.afterRow, modDrag.modifier)
                         RenderCanvas()
                         return
                     end
@@ -1787,20 +2195,23 @@ end
 -- ═══════════════════════════════════════════════════════════════
 function Wise:CursorToActionData(cursorType, id)
     local C_Spell = C_Spell
+    -- Route every cursor type through BuildActionRecord so configurator drops
+    -- get the same metadata as outer-panel drops (visibilityEnable, category,
+    -- addedByClass, addedBySpec, talentRequirements). Without this, configurator
+    -- drag/drop produces bare records that ignore the spec/class filter.
     if cursorType == "spell" then
         local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
-        return {
-            type = "spell",
-            value = id,
+        local extra = {
             name = spellInfo and spellInfo.name or "",
             icon = spellInfo and spellInfo.iconID or nil,
         }
+        return Wise:BuildActionRecord("spell", id, nil, extra)
     elseif cursorType == "item" then
-        return { type = "item", value = id }
+        return Wise:BuildActionRecord("item", id, nil, nil)
     elseif cursorType == "macro" then
-        return { type = "macro", value = id }
+        return Wise:BuildActionRecord("macro", id, nil, nil)
     elseif cursorType == "mount" then
-        return { type = "mount", value = id }
+        return Wise:BuildActionRecord("mount", id, nil, nil)
     end
     return nil
 end
@@ -1808,7 +2219,7 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- Picker Integration (opens spell picker from within configurator)
 -- ═══════════════════════════════════════════════════════════════
-function Wise:OpenConfiguratorPicker(targetRow, targetCol)
+function Wise:OpenConfiguratorPicker(targetRow, targetCol, mode)
     -- Save and close condition picker if open (without full refresh)
     if Wise.pickingCondition and Wise._conditionPickerState then
         local prevRow = Wise._configuratorConditionRow
@@ -1820,8 +2231,8 @@ function Wise:OpenConfiguratorPicker(targetRow, targetCol)
         Wise._configuratorConditionRow = nil
     end
 
-    -- Store which cell we're picking for
-    Wise._configuratorPickTarget = { row = targetRow, col = targetCol }
+    -- mode: "stack" → push onto existing cell stack; default → replace cell.
+    Wise._configuratorPickTarget = { row = targetRow, col = targetCol, mode = mode or "replace" }
 
     -- Use the existing picker system with a custom callback
     Wise.pickingAction = true
@@ -1831,13 +2242,20 @@ function Wise:OpenConfiguratorPicker(targetRow, targetCol)
             if not configuratorState.grid[target.row] then
                 configuratorState.grid[target.row] = {}
             end
-            configuratorState.grid[target.row][target.col] = {
-                type = actionType,
-                value = value,
-                name = extra and extra.name or nil,
-                icon = extra and extra.icon or nil,
-                category = extra and extra.category or "global",
-            }
+            -- Route through BuildActionRecord so the new state gets the same
+            -- visibilityEnable/addedByClass/addedBySpec/talentRequirements
+            -- metadata as actions added via the outer Options panel.
+            local record = Wise:BuildActionRecord(actionType, value, extra and extra.category, extra)
+            if target.mode == "stack" then
+                local cell = configuratorState.grid[target.row][target.col]
+                if not cell then
+                    configuratorState.grid[target.row][target.col] = { record }
+                else
+                    tinsert(cell, record)
+                end
+            else
+                configuratorState.grid[target.row][target.col] = { record }
+            end
         end
         Wise._configuratorPickTarget = nil
     end
@@ -2508,6 +2926,31 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- Main UI Creation
 -- ═══════════════════════════════════════════════════════════════
+local function GetCurrentSlotActions()
+    local groupName = configuratorState.groupName
+    local slotIdx = configuratorState.slotIdx
+    if not groupName or not slotIdx then return nil end
+    local group = WiseDB and WiseDB.groups and WiseDB.groups[groupName]
+    if not group or not group.actions then return nil end
+    return group.actions[slotIdx]
+end
+
+local function SyncSlotToggleControls()
+    local sc = Wise.SlotConfigurator
+    if not sc or not sc.suppressCheck then return end
+    local slot = GetCurrentSlotActions()
+    sc.suppressCheck:SetChecked(slot and slot.suppressErrors or false)
+    sc.resetCheck:SetChecked(slot and slot.resetOnCombat or false)
+    -- Reset-on-combat only applies when the grid is multi-column (sequence on export).
+    if (configuratorState.numCols or 1) > 1 then
+        sc.resetCheck:Show()
+        sc.resetCheck.Text:Show()
+    else
+        sc.resetCheck:Hide()
+        sc.resetCheck.Text:Hide()
+    end
+end
+
 -- Show/hide the correct tab content and toolbar items, then render.
 local function ApplyTabVisibility()
     local sc = Wise.SlotConfigurator
@@ -2539,6 +2982,7 @@ local function ApplyTabVisibility()
         end
     end
 
+    SyncSlotToggleControls()
     RenderActiveTab()
 end
 
@@ -2551,6 +2995,7 @@ function Wise:CreateSlotConfiguratorUI(host)
         sc.divider:Show()
         if sc.tabGrid then sc.tabGrid:Show() end
         if sc.tabNodes then sc.tabNodes:Show() end
+        if sc.suppressCheck then sc.suppressCheck:Show() end
         -- Hide toolbar items when condition picker is open (they'd overlap)
         if Wise.pickingCondition then
             sc.applyBtn:Hide()
@@ -2643,6 +3088,31 @@ function Wise:CreateSlotConfiguratorUI(host)
         configuratorState.activeTab = "nodes"
         ApplyTabVisibility()
     end)
+
+    -- Per-slot toggles: suppress errors (always available), reset sequence on combat end
+    -- (only meaningful for multi-column grids that export as sequence). These persist
+    -- on the slot's actions hash and are written through directly — no Apply needed.
+    sc.suppressCheck = CreateFrame("CheckButton", nil, host, "InterfaceOptionsCheckButtonTemplate")
+    sc.suppressCheck:SetPoint("LEFT", sc.tabNodes, "RIGHT", 16, 0)
+    sc.suppressCheck.Text:SetText("Suppress errors")
+    sc.suppressCheck.Text:SetFontObject("GameFontHighlightSmall")
+    sc.suppressCheck:SetScript("OnClick", function(self)
+        local slot = GetCurrentSlotActions()
+        if slot then slot.suppressErrors = self:GetChecked() end
+    end)
+    Wise:AddTooltip(sc.suppressCheck, "Silence cast errors (e.g., out of range, target lost) when this slot fires.")
+
+    sc.resetCheck = CreateFrame("CheckButton", nil, host, "InterfaceOptionsCheckButtonTemplate")
+    sc.resetCheck:SetPoint("LEFT", sc.suppressCheck.Text, "RIGHT", 4, 0)
+    sc.resetCheck.Text:SetText("Reset sequence on combat end")
+    sc.resetCheck.Text:SetFontObject("GameFontHighlightSmall")
+    sc.resetCheck:SetScript("OnClick", function(self)
+        local slot = GetCurrentSlotActions()
+        if slot then slot.resetOnCombat = self:GetChecked() end
+    end)
+    Wise:AddTooltip(sc.resetCheck, "Restart from the first column of the sequence when you leave combat.")
+
+    SyncSlotToggleControls()
 
     -- Grid canvas scroll
     sc.canvasScroll = CreateFrame("ScrollFrame", nil, host, "UIPanelScrollFrameTemplate")

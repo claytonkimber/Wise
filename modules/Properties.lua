@@ -1717,16 +1717,6 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
          tinsert(panel.controls, configDesc)
          y = y - 35
 
-         -- Conflicting Conditionals / State Configuration
-         if Wise:HasConflictingConditionals(slot) then
-             local stateFrame = Wise:CreateStateConfigurationFrame(panel, group, slotIdx)
-             if stateFrame then
-                 stateFrame:SetPoint("TOPLEFT", 10, y)
-                 tinsert(panel.controls, stateFrame)
-                 y = y - stateFrame:GetHeight() - 20
-             end
-         end
-
          -- Delete Slot Button
          local isAutoImportedSlot = false
          if group.isWiser then
