@@ -4,21 +4,21 @@ local assert, getWidgetData, newWidgetData, _setWidgetData, AddObjectMethods, Ca
 
 local DropDown, DropDownData, internal = {}, {}, {}
 local DropDownProps = {
-	api=DropDown,
-	scripts={"OnHide"},
-	pulseAnim=nil,
+	api = DropDown,
+	scripts = { "OnHide" },
+	pulseAnim = nil,
 }
-AddObjectMethods({"DropDown"}, DropDownProps)
+AddObjectMethods({ "DropDown" }, DropDownProps)
 
 function DropDown:HandlesGlobalMouseEvent(button)
 	return button == "LeftButton" and self:IsEnabled()
 end
 function DropDown:Pulse()
-	local d = assert(getWidgetData(self, DropDownData), 'invalid object type')
+	local d = assert(getWidgetData(self, DropDownData), "invalid object type")
 	if not d.pulseAnim then
 		local tex = d.bg
 		local atl, l, sl = tex:GetAtlas(), tex:GetDrawLayer()
-		local r = tex:GetParent():CreateTexture(nil, l, nil, sl+1)
+		local r = tex:GetParent():CreateTexture(nil, l, nil, sl + 1)
 		r:SetAllPoints(tex)
 		r[atl and "SetAtlas" or "SetTexture"](r, atl or tex:GetTexture())
 		r:SetTexCoord(tex:GetTexCoord())
@@ -30,7 +30,7 @@ function DropDown:Pulse()
 		ag:SetScript("OnLoop", internal.OnPulseLoop)
 		local aa = ag:CreateAnimation("Alpha")
 		aa:SetTarget(r)
-		aa:SetDuration(1/3)
+		aa:SetDuration(1 / 3)
 		aa:SetFromAlpha(1)
 		aa:SetToAlpha(0)
 		aa:SetSmoothing("IN_OUT")
@@ -42,7 +42,9 @@ end
 
 function internal.OnPulseLoop(self, ls)
 	local d = ls == "FORWARD" and getWidgetData(self:GetParent(), DropDownData)
-	if not d then return end
+	if not d then
+		return
+	end
 	local cl = (d.pulseCyclesLeft or 1) - 1
 	d.pulseCyclesLeft = cl > 0 and cl or nil
 	if cl <= 0 then
@@ -73,16 +75,16 @@ local function prepArrowTexture(p, m, f)
 	return tex
 end
 local function nop() end
-local nopTex = {SetWidth=nop, Hide=nop}
+local nopTex = { SetWidth = nop, Hide = nop }
 local HAS_CLASSIC_DROPDOWN_ATLAS = (C_Texture.GetAtlasElementID("common-dropdown-classic-textholder") or 0) ~= 0
 local function CreateDropDown(name, parent, outerTemplate, id)
 	local f, d, t = CreateFrame("Button", name, parent, outerTemplate, id)
 	f:SetSize(120, 32)
-	f:SetHitRectInsets(20,18,4,8)
+	f:SetHitRectInsets(20, 18, 4, 8)
 	f:SetText(" ")
 	f:SetNormalFontObject(GameFontHighlightSmall)
 	f:SetDisabledFontObject(GameFontDisableSmall)
-	f:SetPushedTextOffset(0,0)
+	f:SetPushedTextOffset(0, 0)
 	f:SetScript("OnHide", internal.OnDropHide)
 	prepArrowTexture(f, "NormalTexture", [[Interface\ChatFrame\UI-ChatIcon-ScrollDown-Up]])
 	prepArrowTexture(f, "PushedTexture", [[Interface\ChatFrame\UI-ChatIcon-ScrollDown-Down]])

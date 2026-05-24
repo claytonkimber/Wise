@@ -2,217 +2,222 @@ local addonName, Wise = ...
 local tinsert = table.insert
 
 local function EnsureBindingErrorPopup()
-    if not StaticPopupDialogs["WISE_BINDING_ERROR"] then
-        StaticPopupDialogs["WISE_BINDING_ERROR"] = {
-            text = "|cffff0000%s|r",
-            button1 = "OK",
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-            preferredIndex = 3,
-        }
-    end
+	if not StaticPopupDialogs["WISE_BINDING_ERROR"] then
+		StaticPopupDialogs["WISE_BINDING_ERROR"] = {
+			text = "|cffff0000%s|r",
+			button1 = "OK",
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+			preferredIndex = 3,
+		}
+	end
 end
 
 function Wise:GetSlotDisplayName(group, slotIdx)
-    local customName = group.slotNames and group.slotNames[slotIdx]
-    if customName and customName ~= "" then
-        return customName
-    end
-    if slotIdx ~= math.floor(slotIdx) then
-        return "Slot " .. string.format("%.1f", slotIdx)
-    end
-    return "Slot " .. slotIdx
+	local customName = group.slotNames and group.slotNames[slotIdx]
+	if customName and customName ~= "" then
+		return customName
+	end
+	if slotIdx ~= math.floor(slotIdx) then
+		return "Slot " .. string.format("%.1f", slotIdx)
+	end
+	return "Slot " .. slotIdx
 end
 
 function Wise:ValidateMouseWheelBinding(group, isSlot)
-    if isSlot then
-         return false, "Direct slot bindings require a button release event, which Mouse Wheel does not support."
-    end
+	if isSlot then
+		return false, "Direct slot bindings require a button release event, which Mouse Wheel does not support."
+	end
 
-    -- Group Binding Logic
-    local trigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
-    local held = group.visibilitySettings and group.visibilitySettings.held
-    local toggle = group.visibilitySettings and group.visibilitySettings.toggleOnPress
+	-- Group Binding Logic
+	local trigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
+	local held = group.visibilitySettings and group.visibilitySettings.held
+	local toggle = group.visibilitySettings and group.visibilitySettings.toggleOnPress
 
-    if held then
-        return false, "Mouse Wheel inputs cannot be used with 'Hold to Show' (requires release)."
-    end
+	if held then
+		return false, "Mouse Wheel inputs cannot be used with 'Hold to Show' (requires release)."
+	end
 
-    if trigger == "press" then
-        return true
-    end
+	if trigger == "press" then
+		return true
+	end
 
-    if toggle then
-        -- Toggle mode usually forces trigger="none", but effectively works on press
-        return true
-    end
+	if toggle then
+		-- Toggle mode usually forces trigger="none", but effectively works on press
+		return true
+	end
 
-    -- Default triggers (release_mouseover, release_repeat) require release
-    return false, "Mouse Wheel inputs can only be used with 'Toggle on Press' (no trigger) or 'On Key Press' trigger methods."
+	-- Default triggers (release_mouseover, release_repeat) require release
+	return false,
+		"Mouse Wheel inputs can only be used with 'Toggle on Press' (no trigger) or 'On Key Press' trigger methods."
 end
 
 local function CreateConditionValidator(editBox, panel)
-    local status = CreateFrame("Button", nil, panel)
-    status:SetSize(20, 20)
-    status:SetPoint("LEFT", editBox, "RIGHT", 5, 0)
+	local status = CreateFrame("Button", nil, panel)
+	status:SetSize(20, 20)
+	status:SetPoint("LEFT", editBox, "RIGHT", 5, 0)
 
-    status.icon = status:CreateTexture(nil, "ARTWORK")
-    status.icon:SetAllPoints()
-    status:Hide()
+	status.icon = status:CreateTexture(nil, "ARTWORK")
+	status.icon:SetAllPoints()
+	status:Hide()
 
-    local function UpdateStatus()
-        local text = editBox:GetText()
-        if not Wise.ValidateVisibilityCondition then return end
+	local function UpdateStatus()
+		local text = editBox:GetText()
+		if not Wise.ValidateVisibilityCondition then
+			return
+		end
 
-        local isValid, err = Wise:ValidateVisibilityCondition(text)
+		local isValid, err = Wise:ValidateVisibilityCondition(text)
 
-        if isValid then
-            if text ~= "" then
-                status.icon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
-                status:Show()
-                status.isValid = true
-                status.tooltip = "Valid Condition"
-            else
-                status:Hide()
-                status.isValid = true
-                status.tooltip = nil
-            end
-        else
-            status.icon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-NotReady")
-            status:Show()
-            status.isValid = false
-            status.tooltip = err
-        end
-    end
+		if isValid then
+			if text ~= "" then
+				status.icon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+				status:Show()
+				status.isValid = true
+				status.tooltip = "Valid Condition"
+			else
+				status:Hide()
+				status.isValid = true
+				status.tooltip = nil
+			end
+		else
+			status.icon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-NotReady")
+			status:Show()
+			status.isValid = false
+			status.tooltip = err
+		end
+	end
 
-    editBox:HookScript("OnTextChanged", UpdateStatus)
-    editBox:HookScript("OnShow", UpdateStatus)
+	editBox:HookScript("OnTextChanged", UpdateStatus)
+	editBox:HookScript("OnShow", UpdateStatus)
 
-    status:SetScript("OnEnter", function(self)
-        if self.tooltip then
-             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-             if self.isValid then
-                 GameTooltip:SetText(self.tooltip, 0, 1, 0)
-             else
-                 GameTooltip:SetText("Invalid Condition", 1, 0, 0)
-                 GameTooltip:AddLine(self.tooltip, 1, 1, 1)
-             end
-             GameTooltip:Show()
-        end
-    end)
-    status:SetScript("OnLeave", GameTooltip_Hide)
+	status:SetScript("OnEnter", function(self)
+		if self.tooltip then
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			if self.isValid then
+				GameTooltip:SetText(self.tooltip, 0, 1, 0)
+			else
+				GameTooltip:SetText("Invalid Condition", 1, 0, 0)
+				GameTooltip:AddLine(self.tooltip, 1, 1, 1)
+			end
+			GameTooltip:Show()
+		end
+	end)
+	status:SetScript("OnLeave", GameTooltip_Hide)
 
-    UpdateStatus()
-    return status
+	UpdateStatus()
+	return status
 end
 
 local function EnsureBindingOverwritePopup()
-    if not StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] then
-        StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
-            text = "Key '%s' is currently bound to '%s'. Use anyway?",
-            button1 = "Yes",
-            button2 = "Cancel",
-            OnAccept = function(self, data)
-                if data.oldOwner then
-                    if data.oldSlot == "SYSTEM" then
-                        SetBinding(data.key, nil)
-                        local currentSet = GetCurrentBindingSet()
-                        if currentSet == 1 or currentSet == 2 then
-                            SaveBindings(currentSet)
-                        end
-                    else
-                        Wise:ClearKeybind(data.oldOwner, data.oldSlot)
-                    end
-                end
+	if not StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] then
+		StaticPopupDialogs["WISE_CONFIRM_BINDING_OVERWRITE"] = {
+			text = "Key '%s' is currently bound to '%s'. Use anyway?",
+			button1 = "Yes",
+			button2 = "Cancel",
+			OnAccept = function(self, data)
+				if data.oldOwner then
+					if data.oldSlot == "SYSTEM" then
+						SetBinding(data.key, nil)
+						local currentSet = GetCurrentBindingSet()
+						if currentSet == 1 or currentSet == 2 then
+							SaveBindings(currentSet)
+						end
+					else
+						Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+					end
+				end
 
-                if data.group then
-                    if data.isSlotBinding then
-                        data.group.actions[data.slotIdx].keybind = data.key
-                    else
-                        data.group.binding = data.key
-                    end
-                end
-                Wise:UpdateBindings()
-                if data.btn then
-                    data.btn:SetText(data.key)
-                end
-                Wise:UpdateOptionsUI()
-            end,
-            OnCancel = function(self, data)
-                if data.btn then
-                    if data.group then
-                        if data.isSlotBinding then
-                            data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
-                        else
-                            data.btn:SetText(data.group.binding or "None")
-                        end
-                    else
-                        data.btn:SetText("None")
-                    end
-                end
-            end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-        }
-    end
+				if data.group then
+					if data.isSlotBinding then
+						data.group.actions[data.slotIdx].keybind = data.key
+					else
+						data.group.binding = data.key
+					end
+				end
+				Wise:UpdateBindings()
+				if data.btn then
+					data.btn:SetText(data.key)
+				end
+				Wise:UpdateOptionsUI()
+			end,
+			OnCancel = function(self, data)
+				if data.btn then
+					if data.group then
+						if data.isSlotBinding then
+							data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
+						else
+							data.btn:SetText(data.group.binding or "None")
+						end
+					else
+						data.btn:SetText("None")
+					end
+				end
+			end,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+	end
 end
 
 function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
-    local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
-    if oldOwner then
-        local ownerText = oldOwner
-        if oldSlot == "SYSTEM" then
-            -- Let's resolve the binding name for a better string
-            local actionName = _G["BINDING_NAME_" .. oldOwner] or oldOwner
-            ownerText = "WoW Action: " .. actionName
-        elseif oldSlot then
-            ownerText = oldOwner .. " (Slot " .. oldSlot .. ")"
-        end
+	local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
+	if oldOwner then
+		local ownerText = oldOwner
+		if oldSlot == "SYSTEM" then
+			-- Let's resolve the binding name for a better string
+			local actionName = _G["BINDING_NAME_" .. oldOwner] or oldOwner
+			ownerText = "WoW Action: " .. actionName
+		elseif oldSlot then
+			ownerText = oldOwner .. " (Slot " .. oldSlot .. ")"
+		end
 
-        -- If it's the exact same binding, do nothing special
-        if oldOwner == Wise.selectedGroup and oldSlot == slotIdx then
-             return false -- No conflict with itself
-        end
+		-- If it's the exact same binding, do nothing special
+		if oldOwner == Wise.selectedGroup and oldSlot == slotIdx then
+			return false -- No conflict with itself
+		end
 
-        local data = {
-            key = key,
-            group = group,
-            slotIdx = slotIdx,
-            isSlotBinding = isSlotBinding,
-            oldOwner = oldOwner,
-            oldSlot = oldSlot,
-            btn = btn
-        }
-        EnsureBindingOverwritePopup()
-        StaticPopup_Show("WISE_CONFIRM_BINDING_OVERWRITE", key, ownerText, data)
-        return true
-    end
-    return false
+		local data = {
+			key = key,
+			group = group,
+			slotIdx = slotIdx,
+			isSlotBinding = isSlotBinding,
+			oldOwner = oldOwner,
+			oldSlot = oldSlot,
+			btn = btn,
+		}
+		EnsureBindingOverwritePopup()
+		StaticPopup_Show("WISE_CONFIRM_BINDING_OVERWRITE", key, ownerText, data)
+		return true
+	end
+	return false
 end
 
 local function UpdateConditionStr(str, token, enable)
-    str = str or ""
-    -- Simple check if token exists
-    local exists = str:find(token, 1, true)
+	str = str or ""
+	-- Simple check if token exists
+	local exists = str:find(token, 1, true)
 
-    if enable then
-        if not exists then
-            if str == "" then return token end
-            return str .. " " .. token
-        end
-    else
-        if exists then
-            -- Escape special characters in token for pattern matching
-            local escapedToken = token:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
-            -- Remove token and potential surrounding spaces
-            str = str:gsub("%s*" .. escapedToken .. "%s*", " ")
-            -- Trim result
-            str = str:gsub("^%s+", ""):gsub("%s+$", "")
-        end
-    end
-    return str
+	if enable then
+		if not exists then
+			if str == "" then
+				return token
+			end
+			return str .. " " .. token
+		end
+	else
+		if exists then
+			-- Escape special characters in token for pattern matching
+			local escapedToken = token:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+			-- Remove token and potential surrounding spaces
+			str = str:gsub("%s*" .. escapedToken .. "%s*", " ")
+			-- Trim result
+			str = str:gsub("^%s+", ""):gsub("%s+$", "")
+		end
+	end
+	return str
 end
 
 Wise.PropertyHooks = {}
@@ -223,5189 +228,5675 @@ Wise.PropertyHooks = {}
 --    inject = { ["PostName"] = function(panel, group, y) ... end, ... }
 -- }
 function Wise:RegisterPropertyHook(key, hookData)
-    Wise.PropertyHooks[key] = hookData
+	Wise.PropertyHooks[key] = hookData
 end
 
 function Wise:GetPropertyHook(group)
-    if group.isSmartItem then return Wise.PropertyHooks["SmartItem"] end
-    -- Check for custom type property before isWiser so we can override Wiser properties
-    if group.propertyType and Wise.PropertyHooks[group.propertyType] then
-        return Wise.PropertyHooks[group.propertyType]
-    end
-    if group.isWiser then return Wise.PropertyHooks["Wiser"] end
-    return nil
+	if group.isSmartItem then
+		return Wise.PropertyHooks["SmartItem"]
+	end
+	-- Check for custom type property before isWiser so we can override Wiser properties
+	if group.propertyType and Wise.PropertyHooks[group.propertyType] then
+		return Wise.PropertyHooks[group.propertyType]
+	end
+	if group.isWiser then
+		return Wise.PropertyHooks["Wiser"]
+	end
+	return nil
 end
 
 function Wise:RefreshPropertiesPanel()
-    if not Wise.OptionsFrame or not Wise.OptionsFrame.Right then return end
+	if not Wise.OptionsFrame or not Wise.OptionsFrame.Right then
+		return
+	end
 
-    local panel = Wise.OptionsFrame.Right.Content
-    -- Clear/Hide existing controls
-    if panel.controls then
-        for _, ctrl in ipairs(panel.controls) do ctrl:Hide() end
-    end
-    panel.controls = panel.controls or {}
+	local panel = Wise.OptionsFrame.Right.Content
+	-- Clear/Hide existing controls
+	if panel.controls then
+		for _, ctrl in ipairs(panel.controls) do
+			ctrl:Hide()
+		end
+	end
+	panel.controls = panel.controls or {}
 
-    -- Slot Configurator overlay
-    if Wise.configuringSlot then
-        -- Hide column contents (but keep filter buttons visible)
-        if Wise.OptionsFrame.Sidebar.AddBtn then Wise.OptionsFrame.Sidebar.AddBtn:Hide() end
-        if Wise.OptionsFrame.Sidebar.Scroll then Wise.OptionsFrame.Sidebar.Scroll:Hide() end
-        if Wise.OptionsFrame.Sidebar.Content then Wise.OptionsFrame.Sidebar.Content:Hide() end
-        if Wise.OptionsFrame.Middle.Content then Wise.OptionsFrame.Middle.Content:Hide() end
-        if Wise.OptionsFrame.Middle.ScrollFrame then Wise.OptionsFrame.Middle.ScrollFrame:Hide() end
-        if Wise.OptionsFrame.Middle.AddSlotBtn then Wise.OptionsFrame.Middle.AddSlotBtn:Hide() end
-        if Wise.OptionsFrame.Right.Scroll then Wise.OptionsFrame.Right.Scroll:Hide() end
-        Wise.OptionsFrame.Right.Title:SetText("")
+	-- Slot Configurator overlay
+	if Wise.configuringSlot then
+		-- Hide column contents (but keep filter buttons visible)
+		if Wise.OptionsFrame.Sidebar.AddBtn then
+			Wise.OptionsFrame.Sidebar.AddBtn:Hide()
+		end
+		if Wise.OptionsFrame.Sidebar.Scroll then
+			Wise.OptionsFrame.Sidebar.Scroll:Hide()
+		end
+		if Wise.OptionsFrame.Sidebar.Content then
+			Wise.OptionsFrame.Sidebar.Content:Hide()
+		end
+		if Wise.OptionsFrame.Middle.Content then
+			Wise.OptionsFrame.Middle.Content:Hide()
+		end
+		if Wise.OptionsFrame.Middle.ScrollFrame then
+			Wise.OptionsFrame.Middle.ScrollFrame:Hide()
+		end
+		if Wise.OptionsFrame.Middle.AddSlotBtn then
+			Wise.OptionsFrame.Middle.AddSlotBtn:Hide()
+		end
+		if Wise.OptionsFrame.Right.Scroll then
+			Wise.OptionsFrame.Right.Scroll:Hide()
+		end
+		Wise.OptionsFrame.Right.Title:SetText("")
 
-        -- Keep filter buttons visible and hook them for configurator filtering
-        Wise:UpdateFilterButtons()
-        -- Raise filter buttons above the configurator host
-        for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do
-            btn:Show()
-            btn:SetFrameLevel(Wise.OptionsFrame:GetFrameLevel() + 12)
-        end
+		-- Keep filter buttons visible and hook them for configurator filtering
+		Wise:UpdateFilterButtons()
+		-- Raise filter buttons above the configurator host
+		for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do
+			btn:Show()
+			btn:SetFrameLevel(Wise.OptionsFrame:GetFrameLevel() + 12)
+		end
 
-        -- Dedicated ConfiguratorHost
-        if not Wise.OptionsFrame.ConfiguratorHost then
-            local host = CreateFrame("Frame", nil, Wise.OptionsFrame)
-            host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
-            Wise.OptionsFrame.ConfiguratorHost = host
-        end
+		-- Dedicated ConfiguratorHost
+		if not Wise.OptionsFrame.ConfiguratorHost then
+			local host = CreateFrame("Frame", nil, Wise.OptionsFrame)
+			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+			Wise.OptionsFrame.ConfiguratorHost = host
+		end
 
-        local host = Wise.OptionsFrame.ConfiguratorHost
-        host:ClearAllPoints()
+		local host = Wise.OptionsFrame.ConfiguratorHost
+		host:ClearAllPoints()
 
-        if Wise.pickingCondition then
-            -- Condition picker open: configurator takes Sidebar only, picker takes Middle+Right
-            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Sidebar, "BOTTOMRIGHT", 0, 0)
-        elseif Wise.pickingAction then
-            -- Action picker open: configurator takes Sidebar+Middle, picker takes Right
-            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Middle, "BOTTOMRIGHT", 0, 0)
-        else
-            -- No picker: configurator spans all 3 columns
-            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
-        end
-        host:Show()
+		if Wise.pickingCondition then
+			-- Condition picker open: configurator takes Sidebar only, picker takes Middle+Right
+			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Sidebar, "BOTTOMRIGHT", 0, 0)
+		elseif Wise.pickingAction then
+			-- Action picker open: configurator takes Sidebar+Middle, picker takes Right
+			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Middle, "BOTTOMRIGHT", 0, 0)
+		else
+			-- No picker: configurator spans all 3 columns
+			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
+			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+		end
+		host:Show()
 
-        if not host.bg then
-            host.bg = host:CreateTexture(nil, "BACKGROUND")
-            host.bg:SetAllPoints()
-            host.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
-        end
-        host.bg:Show()
+		if not host.bg then
+			host.bg = host:CreateTexture(nil, "BACKGROUND")
+			host.bg:SetAllPoints()
+			host.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+		end
+		host.bg:Show()
 
-        Wise:CreateSlotConfiguratorUI(host)
+		Wise:CreateSlotConfiguratorUI(host)
 
-        -- If condition picker is open, render it in Middle+Right columns
-        if Wise.pickingCondition then
-            -- Hide the normal Right scroll/title
-            if Wise.OptionsFrame.Right.Scroll then
-                Wise.OptionsFrame.Right.Scroll:Hide()
-            end
-            Wise.OptionsFrame.Right.Title:SetText("")
+		-- If condition picker is open, render it in Middle+Right columns
+		if Wise.pickingCondition then
+			-- Hide the normal Right scroll/title
+			if Wise.OptionsFrame.Right.Scroll then
+				Wise.OptionsFrame.Right.Scroll:Hide()
+			end
+			Wise.OptionsFrame.Right.Title:SetText("")
 
-            if not Wise.OptionsFrame.ConditionPickerHost then
-                local cpHost = CreateFrame("Frame", nil, Wise.OptionsFrame)
-                cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
-                Wise.OptionsFrame.ConditionPickerHost = cpHost
-            end
-            local cpHost = Wise.OptionsFrame.ConditionPickerHost
-            cpHost:ClearAllPoints()
-            cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
-            cpHost:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
-            cpHost:Show()
+			if not Wise.OptionsFrame.ConditionPickerHost then
+				local cpHost = CreateFrame("Frame", nil, Wise.OptionsFrame)
+				cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+				Wise.OptionsFrame.ConditionPickerHost = cpHost
+			end
+			local cpHost = Wise.OptionsFrame.ConditionPickerHost
+			cpHost:ClearAllPoints()
+			cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
+			cpHost:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+			cpHost:Show()
 
-            if not cpHost.bg then
-                cpHost.bg = cpHost:CreateTexture(nil, "BACKGROUND")
-                cpHost.bg:SetAllPoints()
-                cpHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
-            end
-            cpHost.bg:Show()
+			if not cpHost.bg then
+				cpHost.bg = cpHost:CreateTexture(nil, "BACKGROUND")
+				cpHost.bg:SetAllPoints()
+				cpHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+			end
+			cpHost.bg:Show()
 
-            Wise:CreateConditionPickerUI(cpHost)
+			Wise:CreateConditionPickerUI(cpHost)
 
-            -- Hide action picker host if it exists
-            if Wise.OptionsFrame.Right.PickerHost then
-                Wise.OptionsFrame.Right.PickerHost:Hide()
-            end
-            return
-        end
+			-- Hide action picker host if it exists
+			if Wise.OptionsFrame.Right.PickerHost then
+				Wise.OptionsFrame.Right.PickerHost:Hide()
+			end
+			return
+		end
 
-        -- Hide condition picker host when not in condition picking mode
-        if Wise.OptionsFrame.ConditionPickerHost then
-            Wise.OptionsFrame.ConditionPickerHost:Hide()
-        end
+		-- Hide condition picker host when not in condition picking mode
+		if Wise.OptionsFrame.ConditionPickerHost then
+			Wise.OptionsFrame.ConditionPickerHost:Hide()
+		end
 
-        -- If also picking action, fall through to show picker in Right column
-        if not Wise.pickingAction then
-            -- Hide action picker host since configurator now spans all 3 columns
-            if Wise.OptionsFrame.Right.PickerHost then
-                Wise.OptionsFrame.Right.PickerHost:Hide()
-                if Wise.OptionsFrame.Right.PickerHost.bg then
-                    Wise.OptionsFrame.Right.PickerHost.bg:Hide()
-                end
-            end
-            return
-        end
-    else
-        -- Hide configurator host when not in configurator mode
-        if Wise.OptionsFrame.ConfiguratorHost then
-            Wise.OptionsFrame.ConfiguratorHost:Hide()
-        end
-        if Wise.OptionsFrame.ConditionPickerHost then
-            Wise.OptionsFrame.ConditionPickerHost:Hide()
-        end
-    end
+		-- If also picking action, fall through to show picker in Right column
+		if not Wise.pickingAction then
+			-- Hide action picker host since configurator now spans all 3 columns
+			if Wise.OptionsFrame.Right.PickerHost then
+				Wise.OptionsFrame.Right.PickerHost:Hide()
+				if Wise.OptionsFrame.Right.PickerHost.bg then
+					Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+				end
+			end
+			return
+		end
+	else
+		-- Hide configurator host when not in configurator mode
+		if Wise.OptionsFrame.ConfiguratorHost then
+			Wise.OptionsFrame.ConfiguratorHost:Hide()
+		end
+		if Wise.OptionsFrame.ConditionPickerHost then
+			Wise.OptionsFrame.ConditionPickerHost:Hide()
+		end
+	end
 
-    -- Embedded picker mode: show picker in the right panel
-    if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
-        if Wise.pickingRestrictions then
-             Wise.OptionsFrame.Right.Title:SetText("Availability Filtering")
-        elseif Wise.pickingAction then
-            Wise.OptionsFrame.Right.Title:SetText("Choose Action")
-        elseif Wise.pickingTalents then
-            Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
-        else
-            Wise.OptionsFrame.Right.Title:SetText("Choose Specs")
-        end
+	-- Embedded picker mode: show picker in the right panel
+	if Wise.pickingAction or Wise.pickingTalents or Wise.pickingSpecs or Wise.pickingRestrictions then
+		if Wise.pickingRestrictions then
+			Wise.OptionsFrame.Right.Title:SetText("Availability Filtering")
+		elseif Wise.pickingAction then
+			Wise.OptionsFrame.Right.Title:SetText("Choose Action")
+		elseif Wise.pickingTalents then
+			Wise.OptionsFrame.Right.Title:SetText("Choose Talents")
+		else
+			Wise.OptionsFrame.Right.Title:SetText("Choose Specs")
+		end
 
-        -- Hide the main scroll frame
-        if Wise.OptionsFrame.Right.Scroll then
-            Wise.OptionsFrame.Right.Scroll:Hide()
-        end
+		-- Hide the main scroll frame
+		if Wise.OptionsFrame.Right.Scroll then
+			Wise.OptionsFrame.Right.Scroll:Hide()
+		end
 
-        -- Create/Show dedicated host frame for action picker
-        if not Wise.OptionsFrame.Right.PickerHost then
-            local host = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
-            host:SetAllPoints(Wise.OptionsFrame.Right)
-            host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
-            host.controls = {}
-            Wise.OptionsFrame.Right.PickerHost = host
-        end
+		-- Create/Show dedicated host frame for action picker
+		if not Wise.OptionsFrame.Right.PickerHost then
+			local host = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
+			host:SetAllPoints(Wise.OptionsFrame.Right)
+			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+			host.controls = {}
+			Wise.OptionsFrame.Right.PickerHost = host
+		end
 
-        -- Clear/Hide existing host controls
-        if Wise.OptionsFrame.Right.PickerHost.controls then
-            for _, ctrl in ipairs(Wise.OptionsFrame.Right.PickerHost.controls) do ctrl:Hide() end
-        else
-            Wise.OptionsFrame.Right.PickerHost.controls = {}
-        end
-        Wise.OptionsFrame.Right.PickerHost:Show()
+		-- Clear/Hide existing host controls
+		if Wise.OptionsFrame.Right.PickerHost.controls then
+			for _, ctrl in ipairs(Wise.OptionsFrame.Right.PickerHost.controls) do
+				ctrl:Hide()
+			end
+		else
+			Wise.OptionsFrame.Right.PickerHost.controls = {}
+		end
+		Wise.OptionsFrame.Right.PickerHost:Show()
 
-        if Wise.pickingRestrictions then
-            -- We hijack both Middle and Right panels
-            Wise.OptionsFrame.Middle.Content:Hide()
-            if Wise.OptionsFrame.Middle.ScrollFrame then
-                Wise.OptionsFrame.Middle.ScrollFrame:Hide()
-            end
+		if Wise.pickingRestrictions then
+			-- We hijack both Middle and Right panels
+			Wise.OptionsFrame.Middle.Content:Hide()
+			if Wise.OptionsFrame.Middle.ScrollFrame then
+				Wise.OptionsFrame.Middle.ScrollFrame:Hide()
+			end
 
-            local host = Wise.OptionsFrame.Right.PickerHost
-            host:ClearAllPoints()
-            host:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
-            host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+			local host = Wise.OptionsFrame.Right.PickerHost
+			host:ClearAllPoints()
+			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
+			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
 
-            if not host.bg then
-                host.bg = host:CreateTexture(nil, "BACKGROUND")
-                host.bg:SetAllPoints()
-                host.bg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Opaque dark background
-            end
-            host.bg:Show()
+			if not host.bg then
+				host.bg = host:CreateTexture(nil, "BACKGROUND")
+				host.bg:SetAllPoints()
+				host.bg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Opaque dark background
+			end
+			host.bg:Show()
 
-            Wise:CreateEmbeddedRestrictionPicker(host, Wise.pickingRestrictionsAction)
-        elseif Wise.pickingAction then
-            -- Normal single-column host
-            local host = Wise.OptionsFrame.Right.PickerHost
-            host:ClearAllPoints()
-            host:SetAllPoints(Wise.OptionsFrame.Right)
-            Wise:CreateEmbeddedPicker(host)
-        elseif Wise.pickingTalents then
-            local host = Wise.OptionsFrame.Right.PickerHost
-            host:ClearAllPoints()
-            host:SetAllPoints(Wise.OptionsFrame.Right)
-            Wise:CreateEmbeddedTalentPicker(host, Wise.pickingTalentsAction)
-        elseif Wise.pickingSpecs then
-            local host = Wise.OptionsFrame.Right.PickerHost
-            host:ClearAllPoints()
-            host:SetAllPoints(Wise.OptionsFrame.Right)
-            Wise:CreateEmbeddedSpecPicker(host, Wise.pickingSpecsAction)
-        end
-        return
-    else
-        -- Normal mode: Show scroll frame (if not picking icon)
-        if not Wise.pickingIcon and Wise.OptionsFrame.Right.Scroll then
-            Wise.OptionsFrame.Right.Scroll:Show()
-        end
-        if Wise.OptionsFrame.Right.PickerHost then
-            Wise.OptionsFrame.Right.PickerHost:Hide()
-            if Wise.OptionsFrame.Right.PickerHost.bg then
-                Wise.OptionsFrame.Right.PickerHost.bg:Hide()
-            end
-        end
-        -- Only restore sidebar/middle if configurator is NOT active
-        -- (configurator hides them and manages its own restoration)
-        if not Wise.configuringSlot then
-            if Wise.OptionsFrame.Middle.Content then
-                Wise.OptionsFrame.Middle.Content:Show()
-            end
-            if Wise.OptionsFrame.Middle.ScrollFrame then
-                Wise.OptionsFrame.Middle.ScrollFrame:Show()
-            end
-            if Wise.OptionsFrame.Sidebar.AddBtn then Wise.OptionsFrame.Sidebar.AddBtn:Show() end
-            if Wise.OptionsFrame.Sidebar.Scroll then Wise.OptionsFrame.Sidebar.Scroll:Show() end
-            if Wise.OptionsFrame.Sidebar.Content then Wise.OptionsFrame.Sidebar.Content:Show() end
-            if Wise.OptionsFrame.Middle.AddSlotBtn then Wise.OptionsFrame.Middle.AddSlotBtn:Show() end
-            for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do btn:Show() end
-        end
-    end
+			Wise:CreateEmbeddedRestrictionPicker(host, Wise.pickingRestrictionsAction)
+		elseif Wise.pickingAction then
+			-- Normal single-column host
+			local host = Wise.OptionsFrame.Right.PickerHost
+			host:ClearAllPoints()
+			host:SetAllPoints(Wise.OptionsFrame.Right)
+			Wise:CreateEmbeddedPicker(host)
+		elseif Wise.pickingTalents then
+			local host = Wise.OptionsFrame.Right.PickerHost
+			host:ClearAllPoints()
+			host:SetAllPoints(Wise.OptionsFrame.Right)
+			Wise:CreateEmbeddedTalentPicker(host, Wise.pickingTalentsAction)
+		elseif Wise.pickingSpecs then
+			local host = Wise.OptionsFrame.Right.PickerHost
+			host:ClearAllPoints()
+			host:SetAllPoints(Wise.OptionsFrame.Right)
+			Wise:CreateEmbeddedSpecPicker(host, Wise.pickingSpecsAction)
+		end
+		return
+	else
+		-- Normal mode: Show scroll frame (if not picking icon)
+		if not Wise.pickingIcon and Wise.OptionsFrame.Right.Scroll then
+			Wise.OptionsFrame.Right.Scroll:Show()
+		end
+		if Wise.OptionsFrame.Right.PickerHost then
+			Wise.OptionsFrame.Right.PickerHost:Hide()
+			if Wise.OptionsFrame.Right.PickerHost.bg then
+				Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+			end
+		end
+		-- Only restore sidebar/middle if configurator is NOT active
+		-- (configurator hides them and manages its own restoration)
+		if not Wise.configuringSlot then
+			if Wise.OptionsFrame.Middle.Content then
+				Wise.OptionsFrame.Middle.Content:Show()
+			end
+			if Wise.OptionsFrame.Middle.ScrollFrame then
+				Wise.OptionsFrame.Middle.ScrollFrame:Show()
+			end
+			if Wise.OptionsFrame.Sidebar.AddBtn then
+				Wise.OptionsFrame.Sidebar.AddBtn:Show()
+			end
+			if Wise.OptionsFrame.Sidebar.Scroll then
+				Wise.OptionsFrame.Sidebar.Scroll:Show()
+			end
+			if Wise.OptionsFrame.Sidebar.Content then
+				Wise.OptionsFrame.Sidebar.Content:Show()
+			end
+			if Wise.OptionsFrame.Middle.AddSlotBtn then
+				Wise.OptionsFrame.Middle.AddSlotBtn:Show()
+			end
+			for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do
+				btn:Show()
+			end
+		end
+	end
 
-    -- Icon Picker mode
-    if Wise.pickingIcon then
-        Wise.OptionsFrame.Right.Title:SetText("Choose Icon")
+	-- Icon Picker mode
+	if Wise.pickingIcon then
+		Wise.OptionsFrame.Right.Title:SetText("Choose Icon")
 
-        -- Hide the main scroll frame
-        if Wise.OptionsFrame.Right.Scroll then
-            Wise.OptionsFrame.Right.Scroll:Hide()
-        end
+		-- Hide the main scroll frame
+		if Wise.OptionsFrame.Right.Scroll then
+			Wise.OptionsFrame.Right.Scroll:Hide()
+		end
 
-        -- Create/Show dedicated overlay frame
-        if not Wise.OptionsFrame.Right.IconPickerHost then
-            local host = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
-            host:SetAllPoints(Wise.OptionsFrame.Right)
-            host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5) -- Ensure on top
-            Wise.OptionsFrame.Right.IconPickerHost = host
-        end
-        Wise.OptionsFrame.Right.IconPickerHost:Show()
+		-- Create/Show dedicated overlay frame
+		if not Wise.OptionsFrame.Right.IconPickerHost then
+			local host = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
+			host:SetAllPoints(Wise.OptionsFrame.Right)
+			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5) -- Ensure on top
+			Wise.OptionsFrame.Right.IconPickerHost = host
+		end
+		Wise.OptionsFrame.Right.IconPickerHost:Show()
 
-        Wise:CreateIconPicker(Wise.OptionsFrame.Right.IconPickerHost)
-        return
-    else
-        -- Normal mode: Restore scroll frame
-        if Wise.OptionsFrame.Right.Scroll then
-            Wise.OptionsFrame.Right.Scroll:Show()
-        end
-        if Wise.OptionsFrame.Right.IconPickerHost then
-            Wise.OptionsFrame.Right.IconPickerHost:Hide()
-        end
-    end
+		Wise:CreateIconPicker(Wise.OptionsFrame.Right.IconPickerHost)
+		return
+	else
+		-- Normal mode: Restore scroll frame
+		if Wise.OptionsFrame.Right.Scroll then
+			Wise.OptionsFrame.Right.Scroll:Show()
+		end
+		if Wise.OptionsFrame.Right.IconPickerHost then
+			Wise.OptionsFrame.Right.IconPickerHost:Hide()
+		end
+	end
 
-    -- Reset embedded picker reference when not picking
-    Wise.EmbeddedPicker = nil
+	-- Reset embedded picker reference when not picking
+	Wise.EmbeddedPicker = nil
 
-    -- Special case: Smart Item template is selected (Template Creator)
-    if Wise.selectedGroup == Wise.SMART_ITEM_TEMPLATE then
-        Wise.OptionsFrame.Right.Title:SetText("Smart Item")
+	-- Special case: Smart Item template is selected (Template Creator)
+	if Wise.selectedGroup == Wise.SMART_ITEM_TEMPLATE then
+		Wise.OptionsFrame.Right.Title:SetText("Smart Item")
 
-        local y = -30
+		local y = -30
 
-        -- Call the Smart Item settings panel function
-        if Wise.CreateSmartItemSettingsPanel then
-            y = Wise:CreateSmartItemSettingsPanel(panel, nil, y)
-        else
-            local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            msgLabel:SetPoint("TOPLEFT", 10, y)
-            msgLabel:SetWidth(200)
-            msgLabel:SetJustifyH("LEFT")
-            msgLabel:SetText("|cffff6600Smart Item module not loaded.|r")
-            tinsert(panel.controls, msgLabel)
-        end
+		-- Call the Smart Item settings panel function
+		if Wise.CreateSmartItemSettingsPanel then
+			y = Wise:CreateSmartItemSettingsPanel(panel, nil, y)
+		else
+			local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			msgLabel:SetPoint("TOPLEFT", 10, y)
+			msgLabel:SetWidth(200)
+			msgLabel:SetJustifyH("LEFT")
+			msgLabel:SetText("|cffff6600Smart Item module not loaded.|r")
+			tinsert(panel.controls, msgLabel)
+		end
 
-        panel:SetHeight(math.abs(y) + 50)
-        return
-    end
+		panel:SetHeight(math.abs(y) + 50)
+		return
+	end
 
-    -- Special case: Bar Copy Tool
-    if Wise.BAR_COPY_TEMPLATE and Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
-        Wise.OptionsFrame.Right.Title:SetText("Bar Copy Tool")
+	-- Special case: Bar Copy Tool
+	if Wise.BAR_COPY_TEMPLATE and Wise.selectedGroup == Wise.BAR_COPY_TEMPLATE then
+		Wise.OptionsFrame.Right.Title:SetText("Bar Copy Tool")
 
-        local y = -30
+		local y = -30
 
-        if Wise.CreateBarCopyPropertiesPanel then
-             Wise:CreateBarCopyPropertiesPanel(panel, y)
-        else
-             local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-             msgLabel:SetPoint("TOPLEFT", 10, y)
-             msgLabel:SetText("Bar Copy module not loaded.")
-             tinsert(panel.controls, msgLabel)
-        end
-        return
-    end
+		if Wise.CreateBarCopyPropertiesPanel then
+			Wise:CreateBarCopyPropertiesPanel(panel, y)
+		else
+			local msgLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			msgLabel:SetPoint("TOPLEFT", 10, y)
+			msgLabel:SetText("Bar Copy module not loaded.")
+			tinsert(panel.controls, msgLabel)
+		end
+		return
+	end
 
-    local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+	local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
 
-    -- Allow addon action properties through even when locked (for slash command selection)
-    local hasSlotSelected = Wise.selectedSlot
-    local isAddonGroup = Wise.selectedGroup == "Addons"
+	-- Allow addon action properties through even when locked (for slash command selection)
+	local hasSlotSelected = Wise.selectedSlot
+	local isAddonGroup = Wise.selectedGroup == "Addons"
 
-    if group and group.isLocked and not (isAddonGroup and hasSlotSelected) then
-        Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
-        local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockedLabel:SetPoint("TOPLEFT", 10, -30)
-        lockedLabel:SetWidth(200)
-        lockedLabel:SetJustifyH("LEFT")
-        lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
-        tinsert(panel.controls, lockedLabel)
-        return
-    end
+	if group and group.isLocked and not (isAddonGroup and hasSlotSelected) then
+		Wise.OptionsFrame.Right.Title:SetText("Interface Locked")
+		local lockedLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		lockedLabel:SetPoint("TOPLEFT", 10, -30)
+		lockedLabel:SetWidth(200)
+		lockedLabel:SetJustifyH("LEFT")
+		lockedLabel:SetText("This interface is locked. Click the lock icon in the sidebar to unlock it.")
+		tinsert(panel.controls, lockedLabel)
+		return
+	end
 
-    -- Check Validation
-    if group then
-        local isValid, err = Wise:ValidateGroup(Wise.selectedGroup)
-        if not isValid then
-             Wise.OptionsFrame.Right.Title:SetText("Corrupted Interface")
+	-- Check Validation
+	if group then
+		local isValid, err = Wise:ValidateGroup(Wise.selectedGroup)
+		if not isValid then
+			Wise.OptionsFrame.Right.Title:SetText("Corrupted Interface")
 
-             local y = -30
-             local warnLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontRed")
-             warnLabel:SetPoint("TOPLEFT", 10, y)
-             warnLabel:SetWidth(200)
-             warnLabel:SetJustifyH("LEFT")
-             warnLabel:SetText("This interface has corrupted or outdated data:\n" .. (err or "Unknown Error"))
-             tinsert(panel.controls, warnLabel)
+			local y = -30
+			local warnLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontRed")
+			warnLabel:SetPoint("TOPLEFT", 10, y)
+			warnLabel:SetWidth(200)
+			warnLabel:SetJustifyH("LEFT")
+			warnLabel:SetText("This interface has corrupted or outdated data:\n" .. (err or "Unknown Error"))
+			tinsert(panel.controls, warnLabel)
 
-             y = y - 60
+			y = y - 60
 
-             local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-             resetBtn:SetSize(140, 24)
-             resetBtn:SetPoint("TOPLEFT", 10, y)
-             resetBtn:SetText("Reset Interface")
-             resetBtn:SetScript("OnClick", function()
-                 StaticPopupDialogs["WISE_CONFIRM_RESET"] = {
-                    text = "Are you sure you want to reset '" .. Wise.selectedGroup .. "'? All actions in this interface will be lost.",
-                    button1 = "Reset",
-                    button2 = "Cancel",
-                    OnAccept = function()
-                        -- Reset to default clean state
-                        WiseDB.groups[Wise.selectedGroup] = {
-                            type = "circle",
-                            dynamic = false,
-                            actions = {},
-                            anchor = {point = "CENTER", x = 0, y = 0},
-                            visibilitySettings = {},
-                            keybindSettings = {},
-                            interaction = "toggle"
-                        }
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        Wise:UpdateOptionsUI()
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                }
-                StaticPopup_Show("WISE_CONFIRM_RESET")
-             end)
-             tinsert(panel.controls, resetBtn)
+			local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			resetBtn:SetSize(140, 24)
+			resetBtn:SetPoint("TOPLEFT", 10, y)
+			resetBtn:SetText("Reset Interface")
+			resetBtn:SetScript("OnClick", function()
+				StaticPopupDialogs["WISE_CONFIRM_RESET"] = {
+					text = "Are you sure you want to reset '"
+						.. Wise.selectedGroup
+						.. "'? All actions in this interface will be lost.",
+					button1 = "Reset",
+					button2 = "Cancel",
+					OnAccept = function()
+						-- Reset to default clean state
+						WiseDB.groups[Wise.selectedGroup] = {
+							type = "circle",
+							dynamic = false,
+							actions = {},
+							anchor = { point = "CENTER", x = 0, y = 0 },
+							visibilitySettings = {},
+							keybindSettings = {},
+							interaction = "toggle",
+						}
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						Wise:UpdateOptionsUI()
+					end,
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+				}
+				StaticPopup_Show("WISE_CONFIRM_RESET")
+			end)
+			tinsert(panel.controls, resetBtn)
 
-             panel:SetHeight(math.abs(y) + 50)
-             return
-        end
-    end
+			panel:SetHeight(math.abs(y) + 50)
+			return
+		end
+	end
 
-    if not group then
-        Wise.OptionsFrame.Right.Title:SetText("Properties")
-        panel:SetHeight(80)
-        return
-    end
+	if not group then
+		Wise.OptionsFrame.Right.Title:SetText("Properties")
+		panel:SetHeight(80)
+		return
+	end
 
-    Wise.OptionsFrame.Right.Title:SetText("Properties")
+	Wise.OptionsFrame.Right.Title:SetText("Properties")
 
-    local y = -30
+	local y = -30
 
-    if Wise.selectedSlot and Wise.selectedState then
-        y = Wise:RenderActionProperties(panel, group, Wise.selectedSlot, Wise.selectedState, y)
-    elseif Wise.selectedSlot then
-        y = Wise:RenderSlotProperties(panel, group, Wise.selectedSlot, y)
-    else
-        y = Wise:RenderGroupProperties(panel, group, y)
-    end
+	if Wise.selectedSlot and Wise.selectedState then
+		y = Wise:RenderActionProperties(panel, group, Wise.selectedSlot, Wise.selectedState, y)
+	elseif Wise.selectedSlot then
+		y = Wise:RenderSlotProperties(panel, group, Wise.selectedSlot, y)
+	else
+		y = Wise:RenderGroupProperties(panel, group, y)
+	end
 
-    panel:SetHeight(math.abs(y) + 50)
+	panel:SetHeight(math.abs(y) + 50)
 end
 
 function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
-    Wise:MigrateGroupToActions(group)
-    if not group.actions[slotIdx] then return y end
-    local action = group.actions[slotIdx][stateIdx]
-    if not action then return y end
-
-    -- Special case: Addon Loading Magic actions — show the addon picker
-    if action.type == "misc" and action.value and tostring(action.value):match("^addon_magic_(%d+)$") then
-        local amSlotIdx = tonumber(tostring(action.value):match("^addon_magic_(%d+)$"))
-        if amSlotIdx and Wise.CreateAddonMagicPropertiesPanel then
-            local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            headerLabel:SetPoint("TOPLEFT", 10, y)
-            headerLabel:SetText("Addon Loading Magic Slot:")
-            tinsert(panel.controls, headerLabel)
-            y = y - 20
-            y = Wise:CreateAddonMagicPropertiesPanel(panel, amSlotIdx, y)
-            return y
-        end
-    end
-
-    -- Special case: Spec and Equipment Changer actions — show the chooser
-    if action.type == "misc" and action.value and tostring(action.value):match("^spec_equip_(%d+)$") then
-        local seSlotIdx = tonumber(tostring(action.value):match("^spec_equip_(%d+)$"))
-        if seSlotIdx and Wise.CreateSpecEquipPropertiesPanel then
-            local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            headerLabel:SetPoint("TOPLEFT", 10, y)
-            headerLabel:SetText("Spec & Equipment Slot:")
-            tinsert(panel.controls, headerLabel)
-            y = y - 20
-            y = Wise:CreateSpecEquipPropertiesPanel(panel, seSlotIdx, y)
-            return y
-        end
-    end
-
-    local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    label:SetPoint("TOPLEFT", 10, y)
-    local slotDisplayName = Wise:GetSlotDisplayName(group, slotIdx)
-    label:SetText("Action (" .. slotDisplayName .. " State " .. stateIdx .. "):")
-    tinsert(panel.controls, label)
-
-    y = y - 20
-
-    local valueLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    valueLabel:SetPoint("TOPLEFT", 10, y)
-    valueLabel:SetWidth(180)
-    valueLabel:SetJustifyH("LEFT")
-    local actionName = Wise:GetActionName(action.type, action.value, action)
-    valueLabel:SetText(actionName)
-    tinsert(panel.controls, valueLabel)
-
-    y = y - 25
-    local pickBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    pickBtn:SetSize(140, 22)
-    pickBtn:SetPoint("TOPLEFT", 10, y)
-    pickBtn:SetText("Change Action")
-    pickBtn:SetScript("OnClick", function()
-        Wise.pickingAction = true
-        Wise.PickerCallback = function(type, value, extra)
-            action.type = type
-            action.value = value
-
-            -- Update Category/Metadata if changing action
-            local newCategory = "global"
-            if extra and extra.category then newCategory = extra.category end
-            action.category = newCategory
-
-            -- Update Source Spec
-            if extra and extra.sourceSpecID then
-                action.addedBySpec = extra.sourceSpecID
-            elseif newCategory == "class" then
-                action.addedBySpec = nil
-            else
-                -- Default to current spec if spec-specific but not provided?
-                -- Or keep existing? Safer to reset to current spec if it's a spec spell
-                if newCategory == "spec" then
-                    local currentSpec = GetSpecialization()
-                    action.addedBySpec = currentSpec and GetSpecializationInfo(currentSpec) or nil
-                else
-                    action.addedBySpec = nil
-                end
-            end
-
-            -- Reset/Update Class/Char info
-            local _, pClass = UnitClass("player")
-            action.addedByClass = pClass
-            action.addedByCharacter = UnitName("player") .. "-" .. GetRealmName()
-
-            if extra then
-                 if extra.icon then action.icon = extra.icon end
-                 if extra.name then action.name = extra.name end
-                 if extra.addonName then action.addonName = extra.addonName else action.addonName = nil end
-                 if extra.availableCommands then action.availableCommands = extra.availableCommands else action.availableCommands = nil end
-                 -- Clear args when changing action (user sets new args in properties)
-                 action.slashArgs = nil
-            end
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end
-        Wise.PickerCurrentCategory = "Spell"
-        Wise:RefreshPropertiesPanel()
-    end)
-    tinsert(panel.controls, pickBtn)
-
-    y = y - 35
-
-    -- Slash Command Selector for Addon actions
-    if action.category == "Addons" and action.addonName then
-        -- Helper to refresh after a change
-        local function CommitAddonCmd()
-            local title = action.name or "Addon"
-            local fullCmd = action.value or ""
-            if action.slashArgs and action.slashArgs ~= "" then
-                fullCmd = fullCmd .. " " .. action.slashArgs
-            end
-            action.tooltipFunc = function() GameTooltip:SetText(title .. "\nCommand: " .. fullCmd) end
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end
-
-        local cmdLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        cmdLabel:SetPoint("TOPLEFT", 10, y)
-        cmdLabel:SetText("Slash Command:")
-        tinsert(panel.controls, cmdLabel)
-        y = y - 20
-
-        -- Base command picker (dropdown button)
-        local cmds = action.availableCommands
-        if cmds and #cmds > 1 then
-            local cmdBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-            cmdBtn:SetSize(200, 22)
-            cmdBtn:SetPoint("TOPLEFT", 10, y)
-            cmdBtn:SetText(action.value or "")
-            cmdBtn:SetScript("OnClick", function(self)
-                if self.dropdown and self.dropdown:IsShown() then
-                    self.dropdown:Hide()
-                    return
-                end
-
-                if not self.dropdown then
-                    local itemHeight = 22
-                    local maxVisible = 8
-                    local visibleCount = math.min(#cmds, maxVisible)
-                    local dropdownHeight = (visibleCount * itemHeight) + 16
-
-                    local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
-                    self.dropdown = d
-                    d:SetSize(220, dropdownHeight)
-                    d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
-                    d:SetFrameStrata("DIALOG")
-                    d:SetBackdrop({
-                        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-                        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                        tile = true, tileSize = 32, edgeSize = 16,
-                        insets = { left = 5, right = 5, top = 5, bottom = 5 }
-                    })
-
-                    local scrollContent
-                    if #cmds > maxVisible then
-                        local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
-                        scrollFrame:SetPoint("TOPLEFT", 8, -8)
-                        scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
-                        scrollContent = CreateFrame("Frame", nil, scrollFrame)
-                        scrollContent:SetSize(175, itemHeight * #cmds)
-                        scrollFrame:SetScrollChild(scrollContent)
-                    else
-                        scrollContent = CreateFrame("Frame", nil, d)
-                        scrollContent:SetPoint("TOPLEFT", 8, -8)
-                        scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
-                    end
-
-                    for i, cmd in ipairs(cmds) do
-                        local row = CreateFrame("Button", nil, scrollContent)
-                        row:SetSize(175, itemHeight - 2)
-                        row:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
-                        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-
-                        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        row.text:SetPoint("LEFT", 5, 0)
-                        row.text:SetPoint("RIGHT", -5, 0)
-                        row.text:SetJustifyH("LEFT")
-                        row.text:SetText((cmd == action.value and "|cff00ff00" or "") .. cmd .. (cmd == action.value and " *|r" or ""))
-
-                        row:SetScript("OnClick", function()
-                            action.value = cmd
-                            if action.addonName and Wise.selectedGroup == "Addons" then
-                                WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
-                                WiseDB.addonSlashOverrides[action.addonName] = cmd
-                            end
-                            d:Hide()
-                            CommitAddonCmd()
-                        end)
-                    end
-                end
-                self.dropdown:Show()
-            end)
-            tinsert(panel.controls, cmdBtn)
-            y = y - 28
-        else
-            -- Single command — show as read-only
-            local cmdValue = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            cmdValue:SetPoint("TOPLEFT", 10, y)
-            cmdValue:SetText(action.value or "")
-            tinsert(panel.controls, cmdValue)
-            y = y - 22
-        end
-
-        -- Parameters text box
-        local argsLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        argsLabel:SetPoint("TOPLEFT", 10, y)
-        argsLabel:SetText("Parameters:")
-        tinsert(panel.controls, argsLabel)
-        y = y - 20
-
-        local argsEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        argsEdit:SetSize(180, 20)
-        argsEdit:SetPoint("TOPLEFT", 14, y)
-        argsEdit:SetAutoFocus(false)
-        argsEdit:SetText(action.slashArgs or "")
-        argsEdit:SetCursorPosition(0)
-
-        local function SaveSlashArgs(text)
-            action.slashArgs = (text ~= "") and text or nil
-            -- Persist for Addons wiser group (survives rebuilds)
-            if action.addonName and Wise.selectedGroup == "Addons" then
-                WiseDB.addonSlashArgs = WiseDB.addonSlashArgs or {}
-                WiseDB.addonSlashArgs[action.addonName] = action.slashArgs
-            end
-        end
-
-        argsEdit:SetScript("OnEnterPressed", function(self)
-            SaveSlashArgs(strtrim(self:GetText()))
-            self:ClearFocus()
-            CommitAddonCmd()
-        end)
-        argsEdit:SetScript("OnEscapePressed", function(self)
-            self:SetText(action.slashArgs or "")
-            self:ClearFocus()
-        end)
-        argsEdit:SetScript("OnEditFocusLost", function(self)
-            SaveSlashArgs(strtrim(self:GetText()))
-            CommitAddonCmd()
-        end)
-        tinsert(panel.controls, argsEdit)
-        y = y - 25
-
-        local argsNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        argsNote:SetPoint("TOPLEFT", 10, y)
-        argsNote:SetWidth(200)
-        argsNote:SetJustifyH("LEFT")
-        argsNote:SetText("e.g. \"window\" to send /ti window")
-        tinsert(panel.controls, argsNote)
-        y = y - 25
-    end
-
-    -- Custom Name Input
-    local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    nameLabel:SetPoint("TOPLEFT", 10, y)
-    nameLabel:SetText("Custom Name:")
-    tinsert(panel.controls, nameLabel)
-
-    y = y - 20
-    local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    nameEdit:SetSize(180, 20)
-    nameEdit:SetPoint("TOPLEFT", 14, y)
-    nameEdit:SetAutoFocus(false)
-    nameEdit:SetText(action.customName or "")
-    nameEdit:SetCursorPosition(0)
-
-    local function UpdateNameData(self)
-        local text = self:GetText()
-        action.customName = (text ~= "") and text or nil
-        if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
-             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-        end
-    end
-
-    local function CommitName(self)
-        UpdateNameData(self)
-        C_Timer.After(0, function()
-            if not InCombatLockdown() then
-                Wise:UpdateGroupDisplay(Wise.selectedGroup)
-            end
-        end)
-    end
-
-    nameEdit:SetScript("OnTextChanged", function(self)
-        UpdateNameData(self)
-    end)
-
-    nameEdit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    nameEdit:SetScript("OnEditFocusLost", function(self)
-        CommitName(self)
-    end)
-    nameEdit:SetScript("OnEscapePressed", function(self)
-        self:SetText(action.customName or "")
-        self:ClearFocus()
-        UpdateNameData(self)
-    end)
-    tinsert(panel.controls, nameEdit)
-
-    y = y - 35
-
-    -- Conditions Input (e.g. [combat], [mod:shift])
-    local condLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    condLabel:SetPoint("TOPLEFT", 10, y)
-    condLabel:SetText("Conditions (e.g. [combat]):")
-    tinsert(panel.controls, condLabel)
-
-    y = y - 20
-    local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    condEdit:SetSize(180, 20)
-    condEdit:SetPoint("TOPLEFT", 14, y)
-    condEdit:SetAutoFocus(false)
-    condEdit:SetText(action.conditions or "")
-    condEdit:SetCursorPosition(0)
-
-    local function UpdateCondData(self)
-        local text = self:GetText()
-        action.conditions = (text ~= "") and text or nil
-        if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
-             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-        end
-    end
-
-    local function CommitCond(self)
-        UpdateCondData(self)
-        C_Timer.After(0, function()
-            if not InCombatLockdown() then
-                Wise:UpdateGroupDisplay(Wise.selectedGroup)
-            end
-        end)
-    end
-
-    condEdit:SetScript("OnTextChanged", function(self)
-        UpdateCondData(self)
-    end)
-
-    condEdit:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    condEdit:SetScript("OnEditFocusLost", function(self)
-        CommitCond(self)
-    end)
-    condEdit:SetScript("OnEscapePressed", function(self)
-        self:SetText(action.conditions or "")
-        self:ClearFocus()
-        UpdateCondData(self) -- Revert visual state
-    end)
-    tinsert(panel.controls, condEdit)
-    tinsert(panel.controls, CreateConditionValidator(condEdit, panel))
-
-    y = y - 25
-    local condNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    condNote:SetPoint("TOPLEFT", 10, y)
-    condNote:SetWidth(200)
-    condNote:SetJustifyH("LEFT")
-    condNote:SetText("Leave empty for 'always active'. Uses WoW macro conditionals.")
-    tinsert(panel.controls, condNote)
-
-    -- Exclusive Condition Checkbox
-    if group.actions[slotIdx] and #group.actions[slotIdx] > 1 then
-        y = y - 25
-        local excCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        excCheck:SetPoint("TOPLEFT", 10, y)
-        excCheck:SetChecked(action.exclusive or false)
-        excCheck.text = excCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        excCheck.text:SetPoint("LEFT", excCheck, "RIGHT", 5, 0)
-        excCheck.text:SetText("Exclusive condition")
-        
-        excCheck:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Exclusive Condition", 1, 1, 1)
-            GameTooltip:AddLine("Checking this prevents other states in this slot from activating when this condition is met by silently appending its inverse.", nil, nil, nil, true)
-            GameTooltip:Show()
-        end)
-        excCheck:SetScript("OnLeave", GameTooltip_Hide)
-        
-        excCheck:SetScript("OnClick", function(self)
-            action.exclusive = self:GetChecked() and true or false
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, excCheck)
-        tinsert(panel.controls, excCheck.text)
-        y = y - 26
-        
-        -- Compute inherited exclusions to show greyed out
-        local states = group.actions[slotIdx]
-        local exclusions = {}
-        if Wise.NegateConditional then
-            for i, s in ipairs(states) do
-                if i ~= stateIdx and s.exclusive and s.conditions and s.conditions ~= "" then
-                    local negated = Wise:NegateConditional(s.conditions)
-                    if negated then
-                        local inner = string.match(negated, "^%[(.+)%]$") or negated
-                        table.insert(exclusions, inner)
-                    end
-                end
-            end
-        end
-        if #exclusions > 0 then
-            y = y - 5
-            local inhLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            inhLabel:SetPoint("TOPLEFT", 14, y)
-            inhLabel:SetWidth(180)
-            inhLabel:SetJustifyH("LEFT")
-            inhLabel:SetText("Inherits Exclusions: [" .. table.concat(exclusions, ",") .. "]")
-            tinsert(panel.controls, inhLabel)
-            y = y - 20
-        end
-    else
-        y = y - 30
-    end
-
-    y = y - 5
-
-    local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    restrictBtn:SetSize(180, 22)
-    restrictBtn:SetPoint("TOPLEFT", 10, y)
-    restrictBtn:SetText("Availability Filtering")
-    restrictBtn:SetScript("OnClick", function()
-        Wise.pickingRestrictions = true
-        Wise.pickingRestrictionsAction = action
-        Wise:RefreshPropertiesPanel()
-    end)
-    tinsert(panel.controls, restrictBtn)
-    y = y - 28
-
-    local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    restrictDesc:SetPoint("TOPLEFT", 10, y)
-    restrictDesc:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
-    restrictDesc:SetJustifyH("LEFT")
-    restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Shows act as an Allowlist; Hides act as a Blocklist.")
-    tinsert(panel.controls, restrictDesc)
-    y = y - 35
-
-    y = y - 10
-
-    -- addon_magic misc actions are handled via the Wiser interface system.
-    -- When selected, RenderActionProperties redirects to CreateAddonMagicPropertiesPanel.
-
-    -- Show Tooltip checkbox (for Extra Action Button)
-    if action.type == "misc" and (action.value == "extrabutton" or action.value == "zoneability" or action.value == "overridebar" or action.value == "possessbar") then
-        local tipCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        tipCheck:SetPoint("TOPLEFT", 10, y)
-        tipCheck:SetChecked(action.showTooltip or false)
-        tipCheck.text = tipCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        tipCheck.text:SetPoint("LEFT", tipCheck, "RIGHT", 5, 0)
-        tipCheck.text:SetText("Show tooltip on hover")
-
-        tipCheck:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Show Tooltip", 1, 1, 1)
-            GameTooltip:AddLine("Displays the action's spell tooltip when hovering this button on the interface.", nil, nil, nil, true)
-            GameTooltip:Show()
-        end)
-        tipCheck:SetScript("OnLeave", GameTooltip_Hide)
-
-        tipCheck:SetScript("OnClick", function(self)
-            action.showTooltip = self:GetChecked() and true or false
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, tipCheck)
-        tinsert(panel.controls, tipCheck.text)
-        y = y - 30
-    end
-
-    -- Remove Action button
-    local isAutoImportedAction = false
-    if group.isWiser then
-        if group.propertyType == "CooldownWiser" then
-            isAutoImportedAction = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and action.autoLoaded
-        else
-            isAutoImportedAction = true
-        end
-    end
-    local removeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    removeBtn:SetSize(140, 22)
-    removeBtn:SetPoint("TOPLEFT", 10, y)
-    removeBtn:SetText("Remove Action")
-    if removeBtn.GetFontString then
-        local rs = removeBtn:GetFontString()
-        if rs then rs:SetTextColor(1, 0.2, 0.2) end
-    end
-
-    if isAutoImportedAction then
-        removeBtn:Disable()
-        removeBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Auto-imported action", 1, 0.82, 0, true)
-            GameTooltip:AddLine("This action is managed by Wise and cannot be removed.", 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        removeBtn:SetScript("OnLeave", GameTooltip_Hide)
-    else
-        removeBtn:SetScript("OnClick", function()
-            Wise:RemoveActionFromSlot(Wise.selectedGroup, Wise.selectedSlot, Wise.selectedState)
-            -- Selection might be invalid now, so verify
-            local g = WiseDB.groups[Wise.selectedGroup]
-             if not g.actions[Wise.selectedSlot] or not g.actions[Wise.selectedSlot][Wise.selectedState] then
-                  Wise.selectedSlot = nil
-                  Wise.selectedState = nil
-             end
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-    end
-    tinsert(panel.controls, removeBtn)
-
-    y = y - 35
-
-    -- Nesting Options (for interface actions)
-    if action.type == "interface" then
-        local nestLine = panel:CreateTexture(nil, "OVERLAY")
-        nestLine:SetColorTexture(0.3, 0.3, 0.3, 0.5)
-        nestLine:SetHeight(1)
-        nestLine:SetPoint("TOPLEFT", 10, y)
-        nestLine:SetPoint("RIGHT", -10, y)
-        tinsert(panel.controls, nestLine)
-
-        y = y - 15
-        local nestOpts = Wise:GetNestingOptions(action) or {}
-
-        -- Interface Style (dynamic/static) — above nesting options
-        local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        styleLabel:SetPoint("TOPLEFT", 10, y)
-        styleLabel:SetText("Interface Style:")
-        tinsert(panel.controls, styleLabel)
-        y = y - 20
-
-        local styleOptions = {
-            { value = "default",  label = "Default (inherit from child)" },
-            { value = "dynamic",  label = "Dynamic (hide unavailable)" },
-            { value = "static",   label = "Static (grey out unavailable)" },
-        }
-        for _, entry in ipairs(styleOptions) do
-            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-            radio:SetPoint("TOPLEFT", 10, y)
-            radio:SetChecked(nestOpts.nestedInterfaceStyle == entry.value)
-            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-            radio.text:SetText(entry.label)
-            radio:SetScript("OnClick", function()
-                Wise:SetNestingOption(action, "nestedInterfaceStyle", entry.value)
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, radio)
-            tinsert(panel.controls, radio.text)
-            y = y - 22
-        end
-
-        y = y - 8
-        local nestHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nestHeader:SetPoint("TOPLEFT", 10, y)
-        nestHeader:SetText("Nesting Options")
-        tinsert(panel.controls, nestHeader)
-        y = y - 22
-
-        -- Nesting Mode radios: Jump (Open) or Button
-        -- Box parents only support Button nesting mode
-        local parentIsBox = group and group.type == "box"
-        if parentIsBox then
-            -- Force button mode for box parents
-            if nestOpts.rotationMode ~= "button" then
-                Wise:SetNestingOption(action, "rotationMode", "button")
-                nestOpts = Wise:GetNestingOptions(action)
-            end
-            local rmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            rmLabel:SetPoint("TOPLEFT", 10, y)
-            rmLabel:SetText("Nesting Mode:")
-            tinsert(panel.controls, rmLabel)
-            y = y - 20
-            local noteLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            noteLabel:SetPoint("TOPLEFT", 14, y)
-            noteLabel:SetWidth(200)
-            noteLabel:SetJustifyH("LEFT")
-            noteLabel:SetText("Button (only mode available for Box interfaces)")
-            tinsert(panel.controls, noteLabel)
-            y = y - 22
-        else
-            local rmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            rmLabel:SetPoint("TOPLEFT", 10, y)
-            rmLabel:SetText("Nesting Mode:")
-            tinsert(panel.controls, rmLabel)
-            y = y - 20
-            for _, entry in ipairs(Wise.NESTING_MODES) do
-                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                radio:SetPoint("TOPLEFT", 10, y)
-                radio:SetChecked(nestOpts.rotationMode == entry.value)
-                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                radio.text:SetText(entry.label)
-                radio:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(entry.label, 1, 1, 1)
-                    GameTooltip:AddLine(entry.tooltip, nil, nil, nil, true)
-                    GameTooltip:Show()
-                end)
-                radio:SetScript("OnLeave", GameTooltip_Hide)
-                radio:SetScript("OnClick", function()
-                    Wise:SetNestingOption(action, "rotationMode", entry.value)
-                    Wise:RefreshPropertiesPanel()
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then
-                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        end
-                    end)
-                end)
-                tinsert(panel.controls, radio)
-                tinsert(panel.controls, radio.text)
-                y = y - 22
-            end
-        end
-
-        -- Button mode sub-options: Cycle, Random, Priority
-        if nestOpts.rotationMode == "button" then
-            y = y - 4
-            local bmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            bmLabel:SetPoint("TOPLEFT", 20, y)
-            bmLabel:SetText("Button Mode:")
-            tinsert(panel.controls, bmLabel)
-            y = y - 20
-            for _, entry in ipairs(Wise.NESTING_BUTTON_MODES) do
-                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                radio:SetPoint("TOPLEFT", 20, y)
-                radio:SetChecked(nestOpts.buttonMode == entry.value)
-                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                radio.text:SetText(entry.label)
-                radio:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(entry.label, 1, 1, 1)
-                    GameTooltip:AddLine(entry.tooltip, nil, nil, nil, true)
-                    GameTooltip:Show()
-                end)
-                radio:SetScript("OnLeave", GameTooltip_Hide)
-                radio:SetScript("OnClick", function()
-                    Wise:SetNestingOption(action, "buttonMode", entry.value)
-                    Wise:RefreshPropertiesPanel()
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then
-                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        end
-                    end)
-                end)
-                tinsert(panel.controls, radio)
-                tinsert(panel.controls, radio.text)
-                y = y - 22
-            end
-        end
-
-        -- Jump-only options: Nested Interface Mode, Open Direction, Keep open after use
-        if nestOpts.rotationMode == "jump" then
-            y = y - 8
-            -- Nested Interface Mode radios
-            local typeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            typeLabel:SetPoint("TOPLEFT", 10, y)
-            typeLabel:SetText("Nested Interface Mode:")
-            tinsert(panel.controls, typeLabel)
-            y = y - 20
-
-            -- Build default label from parent group's type
-            local parentType = group and group.type or "circle"
-            local parentTypeLabel = parentType:sub(1,1):upper() .. parentType:sub(2)
-            local modeTypes = {
-                { value = "default", label = parentTypeLabel .. " (parent's mode)" },
-                { value = "circle", label = "Circle" },
-                { value = "box",    label = "Box" },
-                { value = "line",   label = "Line" },
-                { value = "list",   label = "List" },
-            }
-            for _, modeInfo in ipairs(modeTypes) do
-                local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                radio:SetPoint("TOPLEFT", 10, y)
-                radio:SetChecked(nestOpts.nestedInterfaceType == modeInfo.value)
-                radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                radio.text:SetText(modeInfo.label)
-                radio:SetScript("OnClick", function()
-                    Wise:SetNestingOption(action, "nestedInterfaceType", modeInfo.value)
-                    Wise:RefreshPropertiesPanel()
-                    C_Timer.After(0, function()
-                        if not InCombatLockdown() then
-                            Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        end
-                    end)
-                end)
-                tinsert(panel.controls, radio)
-                tinsert(panel.controls, radio.text)
-                y = y - 22
-            end
-
-            -- Open Direction: only for line and list nested interface modes
-            local effectiveChildType = nestOpts.nestedInterfaceType or "default"
-            if effectiveChildType == "default" then
-                effectiveChildType = parentType
-            end
-            if effectiveChildType == "line" or effectiveChildType == "list" then
-                y = y - 8
-
-                -- Circle parent + line/list child: direction is always away from center (auto-computed)
-                if parentType == "circle" and effectiveChildType == "line" then
-                    local autoLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                    autoLabel:SetPoint("TOPLEFT", 10, y)
-                    autoLabel:SetText("Open Direction:")
-                    tinsert(panel.controls, autoLabel)
-                    y = y - 20
-                    local noteLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-                    noteLabel:SetPoint("TOPLEFT", 14, y)
-                    noteLabel:SetWidth(200)
-                    noteLabel:SetJustifyH("LEFT")
-                    noteLabel:SetText("Away from center (automatic)")
-                    tinsert(panel.controls, noteLabel)
-                    y = y - 22
-                else
-                    -- Determine parent orientation for perpendicular direction options
-                    local parentOrientation = group and group.lineOrientation or "horizontal"
-                    if parentType == "list" then parentOrientation = "vertical" end
-
-                    -- Open Direction
-                    local odLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                    odLabel:SetPoint("TOPLEFT", 10, y)
-                    odLabel:SetText("Open Direction:")
-                    tinsert(panel.controls, odLabel)
-                    y = y - 20
-
-                    local dirOptions
-                    if effectiveChildType == "line" then
-                        -- Line/Line or List/Line: perpendicular directions only
-                        if parentOrientation == "horizontal" then
-                            dirOptions = {
-                                { value = "auto",  label = "Auto (Down)" },
-                                { value = "up",    label = "Up" },
-                                { value = "down",  label = "Down" },
-                            }
-                        else
-                            dirOptions = {
-                                { value = "auto",  label = "Auto (Right)" },
-                                { value = "left",  label = "Left" },
-                                { value = "right", label = "Right" },
-                            }
-                        end
-                    elseif effectiveChildType == "list" and (parentType == "line" or parentType == "list") then
-                        -- Line/List or List/List: perpendicular to parent
-                        if parentOrientation == "horizontal" then
-                            dirOptions = {
-                                { value = "auto",  label = "Auto (Down)" },
-                                { value = "up",    label = "Up" },
-                                { value = "down",  label = "Down" },
-                            }
-                        else
-                            dirOptions = {
-                                { value = "auto",  label = "Auto (Right)" },
-                                { value = "left",  label = "Left" },
-                                { value = "right", label = "Right" },
-                            }
-                        end
-                    else
-                        -- Fallback: all directions
-                        dirOptions = {
-                            { value = "auto",  label = "Auto" },
-                            { value = "up",    label = "Up" },
-                            { value = "down",  label = "Down" },
-                            { value = "left",  label = "Left" },
-                            { value = "right", label = "Right" },
-                        }
-                    end
-
-                    for _, entry in ipairs(dirOptions) do
-                        local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                        radio:SetPoint("TOPLEFT", 10, y)
-                        radio:SetChecked(nestOpts.openDirection == entry.value)
-                        radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                        radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                        radio.text:SetText(entry.label)
-                        radio:SetScript("OnClick", function()
-                            Wise:SetNestingOption(action, "openDirection", entry.value)
-                            Wise:RefreshPropertiesPanel()
-                            C_Timer.After(0, function()
-                                if not InCombatLockdown() then
-                                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                                end
-                            end)
-                        end)
-                        tinsert(panel.controls, radio)
-                        tinsert(panel.controls, radio.text)
-                        y = y - 22
-                    end
-
-                    -- Text Side picker for nested list children
-                    if effectiveChildType == "list" then
-                        y = y - 8
-                        local taLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                        taLabel:SetPoint("TOPLEFT", 10, y)
-                        taLabel:SetText("Text Side:")
-                        tinsert(panel.controls, taLabel)
-                        y = y - 20
-
-                        local textAlignOptions = {
-                            { value = "auto",  label = "Auto" },
-                            { value = "right", label = "Right of Icon" },
-                            { value = "left",  label = "Left of Icon" },
-                        }
-                        for _, entry in ipairs(textAlignOptions) do
-                            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                            radio:SetPoint("TOPLEFT", 10, y)
-                            radio:SetChecked(nestOpts.nestedTextAlign == entry.value)
-                            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                            radio.text:SetText(entry.label)
-                            radio:SetScript("OnClick", function()
-                                Wise:SetNestingOption(action, "nestedTextAlign", entry.value)
-                                Wise:RefreshPropertiesPanel()
-                                C_Timer.After(0, function()
-                                    if not InCombatLockdown() then
-                                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                                    end
-                                end)
-                            end)
-                            tinsert(panel.controls, radio)
-                            tinsert(panel.controls, radio.text)
-                            y = y - 22
-                        end
-                    end
-                end
-            end
-        end
-
-        -- Checkboxes (not applicable for embedded mode — no child frame)
-        if nestOpts.rotationMode ~= "embedded" then
-        y = y - 8
-        local checkboxes = {
-            { key = "keepOpenAfterUse", label = "Keep open after use" },
-        }
-        for _, cb in ipairs(checkboxes) do
-            local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-            check:SetPoint("TOPLEFT", 10, y)
-            check:SetChecked(nestOpts[cb.key] or false)
-            check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            check.text:SetPoint("LEFT", check, "RIGHT", 5, 0)
-            check.text:SetText(cb.label)
-            check:SetScript("OnClick", function(self)
-                Wise:SetNestingOption(action, cb.key, self:GetChecked() and true or false)
-                C_Timer.After(0, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, check)
-            tinsert(panel.controls, check.text)
-            y = y - 26
-        end
-        end -- end embedded guard
-
-        y = y - 10
-    end
-
-    -- Custom Macro Editor
-    if action.value == "custom_macro" and Wise.CreateMacroEditor then
-         local line = panel:CreateTexture(nil, "OVERLAY")
-         line:SetColorTexture(0.3, 0.3, 0.3, 0.5)
-         line:SetHeight(1)
-         line:SetPoint("TOPLEFT", 10, y)
-         line:SetPoint("RIGHT", -10, y)
-         tinsert(panel.controls, line)
-
-         y = y - 15
-         y = Wise:CreateMacroEditor(panel, action, y)
-    end
-
-    return y
+	Wise:MigrateGroupToActions(group)
+	if not group.actions[slotIdx] then
+		return y
+	end
+	local action = group.actions[slotIdx][stateIdx]
+	if not action then
+		return y
+	end
+
+	-- Special case: Addon Loading Magic actions — show the addon picker
+	if action.type == "misc" and action.value and tostring(action.value):match("^addon_magic_(%d+)$") then
+		local amSlotIdx = tonumber(tostring(action.value):match("^addon_magic_(%d+)$"))
+		if amSlotIdx and Wise.CreateAddonMagicPropertiesPanel then
+			local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			headerLabel:SetPoint("TOPLEFT", 10, y)
+			headerLabel:SetText("Addon Loading Magic Slot:")
+			tinsert(panel.controls, headerLabel)
+			y = y - 20
+			y = Wise:CreateAddonMagicPropertiesPanel(panel, amSlotIdx, y)
+			return y
+		end
+	end
+
+	-- Special case: Spec and Equipment Changer actions — show the chooser
+	if action.type == "misc" and action.value and tostring(action.value):match("^spec_equip_(%d+)$") then
+		local seSlotIdx = tonumber(tostring(action.value):match("^spec_equip_(%d+)$"))
+		if seSlotIdx and Wise.CreateSpecEquipPropertiesPanel then
+			local headerLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			headerLabel:SetPoint("TOPLEFT", 10, y)
+			headerLabel:SetText("Spec & Equipment Slot:")
+			tinsert(panel.controls, headerLabel)
+			y = y - 20
+			y = Wise:CreateSpecEquipPropertiesPanel(panel, seSlotIdx, y)
+			return y
+		end
+	end
+
+	local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	label:SetPoint("TOPLEFT", 10, y)
+	local slotDisplayName = Wise:GetSlotDisplayName(group, slotIdx)
+	label:SetText("Action (" .. slotDisplayName .. " State " .. stateIdx .. "):")
+	tinsert(panel.controls, label)
+
+	y = y - 20
+
+	local valueLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	valueLabel:SetPoint("TOPLEFT", 10, y)
+	valueLabel:SetWidth(180)
+	valueLabel:SetJustifyH("LEFT")
+	local actionName = Wise:GetActionName(action.type, action.value, action)
+	valueLabel:SetText(actionName)
+	tinsert(panel.controls, valueLabel)
+
+	y = y - 25
+	local pickBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	pickBtn:SetSize(140, 22)
+	pickBtn:SetPoint("TOPLEFT", 10, y)
+	pickBtn:SetText("Change Action")
+	pickBtn:SetScript("OnClick", function()
+		Wise.pickingAction = true
+		Wise.PickerCallback = function(type, value, extra)
+			action.type = type
+			action.value = value
+
+			-- Update Category/Metadata if changing action
+			local newCategory = "global"
+			if extra and extra.category then
+				newCategory = extra.category
+			end
+			action.category = newCategory
+
+			-- Update Source Spec
+			if extra and extra.sourceSpecID then
+				action.addedBySpec = extra.sourceSpecID
+			elseif newCategory == "class" then
+				action.addedBySpec = nil
+			else
+				-- Default to current spec if spec-specific but not provided?
+				-- Or keep existing? Safer to reset to current spec if it's a spec spell
+				if newCategory == "spec" then
+					local currentSpec = GetSpecialization()
+					action.addedBySpec = currentSpec and GetSpecializationInfo(currentSpec) or nil
+				else
+					action.addedBySpec = nil
+				end
+			end
+
+			-- Reset/Update Class/Char info
+			local _, pClass = UnitClass("player")
+			action.addedByClass = pClass
+			action.addedByCharacter = UnitName("player") .. "-" .. GetRealmName()
+
+			if extra then
+				if extra.icon then
+					action.icon = extra.icon
+				end
+				if extra.name then
+					action.name = extra.name
+				end
+				if extra.addonName then
+					action.addonName = extra.addonName
+				else
+					action.addonName = nil
+				end
+				if extra.availableCommands then
+					action.availableCommands = extra.availableCommands
+				else
+					action.availableCommands = nil
+				end
+				-- Clear args when changing action (user sets new args in properties)
+				action.slashArgs = nil
+			end
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end
+		Wise.PickerCurrentCategory = "Spell"
+		Wise:RefreshPropertiesPanel()
+	end)
+	tinsert(panel.controls, pickBtn)
+
+	y = y - 35
+
+	-- Slash Command Selector for Addon actions
+	if action.category == "Addons" and action.addonName then
+		-- Helper to refresh after a change
+		local function CommitAddonCmd()
+			local title = action.name or "Addon"
+			local fullCmd = action.value or ""
+			if action.slashArgs and action.slashArgs ~= "" then
+				fullCmd = fullCmd .. " " .. action.slashArgs
+			end
+			action.tooltipFunc = function()
+				GameTooltip:SetText(title .. "\nCommand: " .. fullCmd)
+			end
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end
+
+		local cmdLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		cmdLabel:SetPoint("TOPLEFT", 10, y)
+		cmdLabel:SetText("Slash Command:")
+		tinsert(panel.controls, cmdLabel)
+		y = y - 20
+
+		-- Base command picker (dropdown button)
+		local cmds = action.availableCommands
+		if cmds and #cmds > 1 then
+			local cmdBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+			cmdBtn:SetSize(200, 22)
+			cmdBtn:SetPoint("TOPLEFT", 10, y)
+			cmdBtn:SetText(action.value or "")
+			cmdBtn:SetScript("OnClick", function(self)
+				if self.dropdown and self.dropdown:IsShown() then
+					self.dropdown:Hide()
+					return
+				end
+
+				if not self.dropdown then
+					local itemHeight = 22
+					local maxVisible = 8
+					local visibleCount = math.min(#cmds, maxVisible)
+					local dropdownHeight = (visibleCount * itemHeight) + 16
+
+					local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
+					self.dropdown = d
+					d:SetSize(220, dropdownHeight)
+					d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+					d:SetFrameStrata("DIALOG")
+					d:SetBackdrop({
+						bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+						edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+						tile = true,
+						tileSize = 32,
+						edgeSize = 16,
+						insets = { left = 5, right = 5, top = 5, bottom = 5 },
+					})
+
+					local scrollContent
+					if #cmds > maxVisible then
+						local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
+						scrollFrame:SetPoint("TOPLEFT", 8, -8)
+						scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
+						scrollContent = CreateFrame("Frame", nil, scrollFrame)
+						scrollContent:SetSize(175, itemHeight * #cmds)
+						scrollFrame:SetScrollChild(scrollContent)
+					else
+						scrollContent = CreateFrame("Frame", nil, d)
+						scrollContent:SetPoint("TOPLEFT", 8, -8)
+						scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
+					end
+
+					for i, cmd in ipairs(cmds) do
+						local row = CreateFrame("Button", nil, scrollContent)
+						row:SetSize(175, itemHeight - 2)
+						row:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
+						row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+						row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+						row.text:SetPoint("LEFT", 5, 0)
+						row.text:SetPoint("RIGHT", -5, 0)
+						row.text:SetJustifyH("LEFT")
+						row.text:SetText(
+							(cmd == action.value and "|cff00ff00" or "")
+								.. cmd
+								.. (cmd == action.value and " *|r" or "")
+						)
+
+						row:SetScript("OnClick", function()
+							action.value = cmd
+							if action.addonName and Wise.selectedGroup == "Addons" then
+								WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
+								WiseDB.addonSlashOverrides[action.addonName] = cmd
+							end
+							d:Hide()
+							CommitAddonCmd()
+						end)
+					end
+				end
+				self.dropdown:Show()
+			end)
+			tinsert(panel.controls, cmdBtn)
+			y = y - 28
+		else
+			-- Single command — show as read-only
+			local cmdValue = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			cmdValue:SetPoint("TOPLEFT", 10, y)
+			cmdValue:SetText(action.value or "")
+			tinsert(panel.controls, cmdValue)
+			y = y - 22
+		end
+
+		-- Parameters text box
+		local argsLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		argsLabel:SetPoint("TOPLEFT", 10, y)
+		argsLabel:SetText("Parameters:")
+		tinsert(panel.controls, argsLabel)
+		y = y - 20
+
+		local argsEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		argsEdit:SetSize(180, 20)
+		argsEdit:SetPoint("TOPLEFT", 14, y)
+		argsEdit:SetAutoFocus(false)
+		argsEdit:SetText(action.slashArgs or "")
+		argsEdit:SetCursorPosition(0)
+
+		local function SaveSlashArgs(text)
+			action.slashArgs = (text ~= "") and text or nil
+			-- Persist for Addons wiser group (survives rebuilds)
+			if action.addonName and Wise.selectedGroup == "Addons" then
+				WiseDB.addonSlashArgs = WiseDB.addonSlashArgs or {}
+				WiseDB.addonSlashArgs[action.addonName] = action.slashArgs
+			end
+		end
+
+		argsEdit:SetScript("OnEnterPressed", function(self)
+			SaveSlashArgs(strtrim(self:GetText()))
+			self:ClearFocus()
+			CommitAddonCmd()
+		end)
+		argsEdit:SetScript("OnEscapePressed", function(self)
+			self:SetText(action.slashArgs or "")
+			self:ClearFocus()
+		end)
+		argsEdit:SetScript("OnEditFocusLost", function(self)
+			SaveSlashArgs(strtrim(self:GetText()))
+			CommitAddonCmd()
+		end)
+		tinsert(panel.controls, argsEdit)
+		y = y - 25
+
+		local argsNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		argsNote:SetPoint("TOPLEFT", 10, y)
+		argsNote:SetWidth(200)
+		argsNote:SetJustifyH("LEFT")
+		argsNote:SetText('e.g. "window" to send /ti window')
+		tinsert(panel.controls, argsNote)
+		y = y - 25
+	end
+
+	-- Custom Name Input
+	local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	nameLabel:SetPoint("TOPLEFT", 10, y)
+	nameLabel:SetText("Custom Name:")
+	tinsert(panel.controls, nameLabel)
+
+	y = y - 20
+	local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	nameEdit:SetSize(180, 20)
+	nameEdit:SetPoint("TOPLEFT", 14, y)
+	nameEdit:SetAutoFocus(false)
+	nameEdit:SetText(action.customName or "")
+	nameEdit:SetCursorPosition(0)
+
+	local function UpdateNameData(self)
+		local text = self:GetText()
+		action.customName = (text ~= "") and text or nil
+		if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+		end
+	end
+
+	local function CommitName(self)
+		UpdateNameData(self)
+		C_Timer.After(0, function()
+			if not InCombatLockdown() then
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end
+		end)
+	end
+
+	nameEdit:SetScript("OnTextChanged", function(self)
+		UpdateNameData(self)
+	end)
+
+	nameEdit:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	nameEdit:SetScript("OnEditFocusLost", function(self)
+		CommitName(self)
+	end)
+	nameEdit:SetScript("OnEscapePressed", function(self)
+		self:SetText(action.customName or "")
+		self:ClearFocus()
+		UpdateNameData(self)
+	end)
+	tinsert(panel.controls, nameEdit)
+
+	y = y - 35
+
+	-- Conditions Input (e.g. [combat], [mod:shift])
+	local condLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	condLabel:SetPoint("TOPLEFT", 10, y)
+	condLabel:SetText("Conditions (e.g. [combat]):")
+	tinsert(panel.controls, condLabel)
+
+	y = y - 20
+	local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	condEdit:SetSize(180, 20)
+	condEdit:SetPoint("TOPLEFT", 14, y)
+	condEdit:SetAutoFocus(false)
+	condEdit:SetText(action.conditions or "")
+	condEdit:SetCursorPosition(0)
+
+	local function UpdateCondData(self)
+		local text = self:GetText()
+		action.conditions = (text ~= "") and text or nil
+		if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+		end
+	end
+
+	local function CommitCond(self)
+		UpdateCondData(self)
+		C_Timer.After(0, function()
+			if not InCombatLockdown() then
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end
+		end)
+	end
+
+	condEdit:SetScript("OnTextChanged", function(self)
+		UpdateCondData(self)
+	end)
+
+	condEdit:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	condEdit:SetScript("OnEditFocusLost", function(self)
+		CommitCond(self)
+	end)
+	condEdit:SetScript("OnEscapePressed", function(self)
+		self:SetText(action.conditions or "")
+		self:ClearFocus()
+		UpdateCondData(self) -- Revert visual state
+	end)
+	tinsert(panel.controls, condEdit)
+	tinsert(panel.controls, CreateConditionValidator(condEdit, panel))
+
+	y = y - 25
+	local condNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	condNote:SetPoint("TOPLEFT", 10, y)
+	condNote:SetWidth(200)
+	condNote:SetJustifyH("LEFT")
+	condNote:SetText("Leave empty for 'always active'. Uses WoW macro conditionals.")
+	tinsert(panel.controls, condNote)
+
+	-- Exclusive Condition Checkbox
+	if group.actions[slotIdx] and #group.actions[slotIdx] > 1 then
+		y = y - 25
+		local excCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		excCheck:SetPoint("TOPLEFT", 10, y)
+		excCheck:SetChecked(action.exclusive or false)
+		excCheck.text = excCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		excCheck.text:SetPoint("LEFT", excCheck, "RIGHT", 5, 0)
+		excCheck.text:SetText("Exclusive condition")
+
+		excCheck:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText("Exclusive Condition", 1, 1, 1)
+			GameTooltip:AddLine(
+				"Checking this prevents other states in this slot from activating when this condition is met by silently appending its inverse.",
+				nil,
+				nil,
+				nil,
+				true
+			)
+			GameTooltip:Show()
+		end)
+		excCheck:SetScript("OnLeave", GameTooltip_Hide)
+
+		excCheck:SetScript("OnClick", function(self)
+			action.exclusive = self:GetChecked() and true or false
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, excCheck)
+		tinsert(panel.controls, excCheck.text)
+		y = y - 26
+
+		-- Compute inherited exclusions to show greyed out
+		local states = group.actions[slotIdx]
+		local exclusions = {}
+		if Wise.NegateConditional then
+			for i, s in ipairs(states) do
+				if i ~= stateIdx and s.exclusive and s.conditions and s.conditions ~= "" then
+					local negated = Wise:NegateConditional(s.conditions)
+					if negated then
+						local inner = string.match(negated, "^%[(.+)%]$") or negated
+						table.insert(exclusions, inner)
+					end
+				end
+			end
+		end
+		if #exclusions > 0 then
+			y = y - 5
+			local inhLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			inhLabel:SetPoint("TOPLEFT", 14, y)
+			inhLabel:SetWidth(180)
+			inhLabel:SetJustifyH("LEFT")
+			inhLabel:SetText("Inherits Exclusions: [" .. table.concat(exclusions, ",") .. "]")
+			tinsert(panel.controls, inhLabel)
+			y = y - 20
+		end
+	else
+		y = y - 30
+	end
+
+	y = y - 5
+
+	local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	restrictBtn:SetSize(180, 22)
+	restrictBtn:SetPoint("TOPLEFT", 10, y)
+	restrictBtn:SetText("Availability Filtering")
+	restrictBtn:SetScript("OnClick", function()
+		Wise.pickingRestrictions = true
+		Wise.pickingRestrictionsAction = action
+		Wise:RefreshPropertiesPanel()
+	end)
+	tinsert(panel.controls, restrictBtn)
+	y = y - 28
+
+	local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	restrictDesc:SetPoint("TOPLEFT", 10, y)
+	restrictDesc:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+	restrictDesc:SetJustifyH("LEFT")
+	restrictDesc:SetText(
+		"Control exactly when this action appears based on Class, Spec, Talent, Role, or Character. Shows act as an Allowlist; Hides act as a Blocklist."
+	)
+	tinsert(panel.controls, restrictDesc)
+	y = y - 35
+
+	y = y - 10
+
+	-- addon_magic misc actions are handled via the Wiser interface system.
+	-- When selected, RenderActionProperties redirects to CreateAddonMagicPropertiesPanel.
+
+	-- Show Tooltip checkbox (for Extra Action Button)
+	if
+		action.type == "misc"
+		and (
+			action.value == "extrabutton"
+			or action.value == "zoneability"
+			or action.value == "overridebar"
+			or action.value == "possessbar"
+		)
+	then
+		local tipCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		tipCheck:SetPoint("TOPLEFT", 10, y)
+		tipCheck:SetChecked(action.showTooltip or false)
+		tipCheck.text = tipCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		tipCheck.text:SetPoint("LEFT", tipCheck, "RIGHT", 5, 0)
+		tipCheck.text:SetText("Show tooltip on hover")
+
+		tipCheck:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText("Show Tooltip", 1, 1, 1)
+			GameTooltip:AddLine(
+				"Displays the action's spell tooltip when hovering this button on the interface.",
+				nil,
+				nil,
+				nil,
+				true
+			)
+			GameTooltip:Show()
+		end)
+		tipCheck:SetScript("OnLeave", GameTooltip_Hide)
+
+		tipCheck:SetScript("OnClick", function(self)
+			action.showTooltip = self:GetChecked() and true or false
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, tipCheck)
+		tinsert(panel.controls, tipCheck.text)
+		y = y - 30
+	end
+
+	-- Remove Action button
+	local isAutoImportedAction = false
+	if group.isWiser then
+		if group.propertyType == "CooldownWiser" then
+			isAutoImportedAction = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and action.autoLoaded
+		else
+			isAutoImportedAction = true
+		end
+	end
+	local removeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	removeBtn:SetSize(140, 22)
+	removeBtn:SetPoint("TOPLEFT", 10, y)
+	removeBtn:SetText("Remove Action")
+	if removeBtn.GetFontString then
+		local rs = removeBtn:GetFontString()
+		if rs then
+			rs:SetTextColor(1, 0.2, 0.2)
+		end
+	end
+
+	if isAutoImportedAction then
+		removeBtn:Disable()
+		removeBtn:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText("Auto-imported action", 1, 0.82, 0, true)
+			GameTooltip:AddLine("This action is managed by Wise and cannot be removed.", 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		removeBtn:SetScript("OnLeave", GameTooltip_Hide)
+	else
+		removeBtn:SetScript("OnClick", function()
+			Wise:RemoveActionFromSlot(Wise.selectedGroup, Wise.selectedSlot, Wise.selectedState)
+			-- Selection might be invalid now, so verify
+			local g = WiseDB.groups[Wise.selectedGroup]
+			if not g.actions[Wise.selectedSlot] or not g.actions[Wise.selectedSlot][Wise.selectedState] then
+				Wise.selectedSlot = nil
+				Wise.selectedState = nil
+			end
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+	end
+	tinsert(panel.controls, removeBtn)
+
+	y = y - 35
+
+	-- Nesting Options (for interface actions)
+	if action.type == "interface" then
+		local nestLine = panel:CreateTexture(nil, "OVERLAY")
+		nestLine:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+		nestLine:SetHeight(1)
+		nestLine:SetPoint("TOPLEFT", 10, y)
+		nestLine:SetPoint("RIGHT", -10, y)
+		tinsert(panel.controls, nestLine)
+
+		y = y - 15
+		local nestOpts = Wise:GetNestingOptions(action) or {}
+
+		-- Interface Style (dynamic/static) — above nesting options
+		local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		styleLabel:SetPoint("TOPLEFT", 10, y)
+		styleLabel:SetText("Interface Style:")
+		tinsert(panel.controls, styleLabel)
+		y = y - 20
+
+		local styleOptions = {
+			{ value = "default", label = "Default (inherit from child)" },
+			{ value = "dynamic", label = "Dynamic (hide unavailable)" },
+			{ value = "static", label = "Static (grey out unavailable)" },
+		}
+		for _, entry in ipairs(styleOptions) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(nestOpts.nestedInterfaceStyle == entry.value)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+			radio.text:SetText(entry.label)
+			radio:SetScript("OnClick", function()
+				Wise:SetNestingOption(action, "nestedInterfaceStyle", entry.value)
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+
+		y = y - 8
+		local nestHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		nestHeader:SetPoint("TOPLEFT", 10, y)
+		nestHeader:SetText("Nesting Options")
+		tinsert(panel.controls, nestHeader)
+		y = y - 22
+
+		-- Nesting Mode radios: Jump (Open) or Button
+		-- Box parents only support Button nesting mode
+		local parentIsBox = group and group.type == "box"
+		if parentIsBox then
+			-- Force button mode for box parents
+			if nestOpts.rotationMode ~= "button" then
+				Wise:SetNestingOption(action, "rotationMode", "button")
+				nestOpts = Wise:GetNestingOptions(action)
+			end
+			local rmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			rmLabel:SetPoint("TOPLEFT", 10, y)
+			rmLabel:SetText("Nesting Mode:")
+			tinsert(panel.controls, rmLabel)
+			y = y - 20
+			local noteLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			noteLabel:SetPoint("TOPLEFT", 14, y)
+			noteLabel:SetWidth(200)
+			noteLabel:SetJustifyH("LEFT")
+			noteLabel:SetText("Button (only mode available for Box interfaces)")
+			tinsert(panel.controls, noteLabel)
+			y = y - 22
+		else
+			local rmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			rmLabel:SetPoint("TOPLEFT", 10, y)
+			rmLabel:SetText("Nesting Mode:")
+			tinsert(panel.controls, rmLabel)
+			y = y - 20
+			for _, entry in ipairs(Wise.NESTING_MODES) do
+				local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				radio:SetPoint("TOPLEFT", 10, y)
+				radio:SetChecked(nestOpts.rotationMode == entry.value)
+				radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+				radio.text:SetText(entry.label)
+				radio:SetScript("OnEnter", function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText(entry.label, 1, 1, 1)
+					GameTooltip:AddLine(entry.tooltip, nil, nil, nil, true)
+					GameTooltip:Show()
+				end)
+				radio:SetScript("OnLeave", GameTooltip_Hide)
+				radio:SetScript("OnClick", function()
+					Wise:SetNestingOption(action, "rotationMode", entry.value)
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, radio)
+				tinsert(panel.controls, radio.text)
+				y = y - 22
+			end
+		end
+
+		-- Button mode sub-options: Cycle, Random, Priority
+		if nestOpts.rotationMode == "button" then
+			y = y - 4
+			local bmLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			bmLabel:SetPoint("TOPLEFT", 20, y)
+			bmLabel:SetText("Button Mode:")
+			tinsert(panel.controls, bmLabel)
+			y = y - 20
+			for _, entry in ipairs(Wise.NESTING_BUTTON_MODES) do
+				local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				radio:SetPoint("TOPLEFT", 20, y)
+				radio:SetChecked(nestOpts.buttonMode == entry.value)
+				radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+				radio.text:SetText(entry.label)
+				radio:SetScript("OnEnter", function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText(entry.label, 1, 1, 1)
+					GameTooltip:AddLine(entry.tooltip, nil, nil, nil, true)
+					GameTooltip:Show()
+				end)
+				radio:SetScript("OnLeave", GameTooltip_Hide)
+				radio:SetScript("OnClick", function()
+					Wise:SetNestingOption(action, "buttonMode", entry.value)
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, radio)
+				tinsert(panel.controls, radio.text)
+				y = y - 22
+			end
+		end
+
+		-- Jump-only options: Nested Interface Mode, Open Direction, Keep open after use
+		if nestOpts.rotationMode == "jump" then
+			y = y - 8
+			-- Nested Interface Mode radios
+			local typeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			typeLabel:SetPoint("TOPLEFT", 10, y)
+			typeLabel:SetText("Nested Interface Mode:")
+			tinsert(panel.controls, typeLabel)
+			y = y - 20
+
+			-- Build default label from parent group's type
+			local parentType = group and group.type or "circle"
+			local parentTypeLabel = parentType:sub(1, 1):upper() .. parentType:sub(2)
+			local modeTypes = {
+				{ value = "default", label = parentTypeLabel .. " (parent's mode)" },
+				{ value = "circle", label = "Circle" },
+				{ value = "box", label = "Box" },
+				{ value = "line", label = "Line" },
+				{ value = "list", label = "List" },
+			}
+			for _, modeInfo in ipairs(modeTypes) do
+				local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				radio:SetPoint("TOPLEFT", 10, y)
+				radio:SetChecked(nestOpts.nestedInterfaceType == modeInfo.value)
+				radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+				radio.text:SetText(modeInfo.label)
+				radio:SetScript("OnClick", function()
+					Wise:SetNestingOption(action, "nestedInterfaceType", modeInfo.value)
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, radio)
+				tinsert(panel.controls, radio.text)
+				y = y - 22
+			end
+
+			-- Open Direction: only for line and list nested interface modes
+			local effectiveChildType = nestOpts.nestedInterfaceType or "default"
+			if effectiveChildType == "default" then
+				effectiveChildType = parentType
+			end
+			if effectiveChildType == "line" or effectiveChildType == "list" then
+				y = y - 8
+
+				-- Circle parent + line/list child: direction is always away from center (auto-computed)
+				if parentType == "circle" and effectiveChildType == "line" then
+					local autoLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+					autoLabel:SetPoint("TOPLEFT", 10, y)
+					autoLabel:SetText("Open Direction:")
+					tinsert(panel.controls, autoLabel)
+					y = y - 20
+					local noteLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+					noteLabel:SetPoint("TOPLEFT", 14, y)
+					noteLabel:SetWidth(200)
+					noteLabel:SetJustifyH("LEFT")
+					noteLabel:SetText("Away from center (automatic)")
+					tinsert(panel.controls, noteLabel)
+					y = y - 22
+				else
+					-- Determine parent orientation for perpendicular direction options
+					local parentOrientation = group and group.lineOrientation or "horizontal"
+					if parentType == "list" then
+						parentOrientation = "vertical"
+					end
+
+					-- Open Direction
+					local odLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+					odLabel:SetPoint("TOPLEFT", 10, y)
+					odLabel:SetText("Open Direction:")
+					tinsert(panel.controls, odLabel)
+					y = y - 20
+
+					local dirOptions
+					if effectiveChildType == "line" then
+						-- Line/Line or List/Line: perpendicular directions only
+						if parentOrientation == "horizontal" then
+							dirOptions = {
+								{ value = "auto", label = "Auto (Down)" },
+								{ value = "up", label = "Up" },
+								{ value = "down", label = "Down" },
+							}
+						else
+							dirOptions = {
+								{ value = "auto", label = "Auto (Right)" },
+								{ value = "left", label = "Left" },
+								{ value = "right", label = "Right" },
+							}
+						end
+					elseif effectiveChildType == "list" and (parentType == "line" or parentType == "list") then
+						-- Line/List or List/List: perpendicular to parent
+						if parentOrientation == "horizontal" then
+							dirOptions = {
+								{ value = "auto", label = "Auto (Down)" },
+								{ value = "up", label = "Up" },
+								{ value = "down", label = "Down" },
+							}
+						else
+							dirOptions = {
+								{ value = "auto", label = "Auto (Right)" },
+								{ value = "left", label = "Left" },
+								{ value = "right", label = "Right" },
+							}
+						end
+					else
+						-- Fallback: all directions
+						dirOptions = {
+							{ value = "auto", label = "Auto" },
+							{ value = "up", label = "Up" },
+							{ value = "down", label = "Down" },
+							{ value = "left", label = "Left" },
+							{ value = "right", label = "Right" },
+						}
+					end
+
+					for _, entry in ipairs(dirOptions) do
+						local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+						radio:SetPoint("TOPLEFT", 10, y)
+						radio:SetChecked(nestOpts.openDirection == entry.value)
+						radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+						radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+						radio.text:SetText(entry.label)
+						radio:SetScript("OnClick", function()
+							Wise:SetNestingOption(action, "openDirection", entry.value)
+							Wise:RefreshPropertiesPanel()
+							C_Timer.After(0, function()
+								if not InCombatLockdown() then
+									Wise:UpdateGroupDisplay(Wise.selectedGroup)
+								end
+							end)
+						end)
+						tinsert(panel.controls, radio)
+						tinsert(panel.controls, radio.text)
+						y = y - 22
+					end
+
+					-- Text Side picker for nested list children
+					if effectiveChildType == "list" then
+						y = y - 8
+						local taLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+						taLabel:SetPoint("TOPLEFT", 10, y)
+						taLabel:SetText("Text Side:")
+						tinsert(panel.controls, taLabel)
+						y = y - 20
+
+						local textAlignOptions = {
+							{ value = "auto", label = "Auto" },
+							{ value = "right", label = "Right of Icon" },
+							{ value = "left", label = "Left of Icon" },
+						}
+						for _, entry in ipairs(textAlignOptions) do
+							local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+							radio:SetPoint("TOPLEFT", 10, y)
+							radio:SetChecked(nestOpts.nestedTextAlign == entry.value)
+							radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+							radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+							radio.text:SetText(entry.label)
+							radio:SetScript("OnClick", function()
+								Wise:SetNestingOption(action, "nestedTextAlign", entry.value)
+								Wise:RefreshPropertiesPanel()
+								C_Timer.After(0, function()
+									if not InCombatLockdown() then
+										Wise:UpdateGroupDisplay(Wise.selectedGroup)
+									end
+								end)
+							end)
+							tinsert(panel.controls, radio)
+							tinsert(panel.controls, radio.text)
+							y = y - 22
+						end
+					end
+				end
+			end
+		end
+
+		-- Checkboxes (not applicable for embedded mode — no child frame)
+		if nestOpts.rotationMode ~= "embedded" then
+			y = y - 8
+			local checkboxes = {
+				{ key = "keepOpenAfterUse", label = "Keep open after use" },
+			}
+			for _, cb in ipairs(checkboxes) do
+				local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+				check:SetPoint("TOPLEFT", 10, y)
+				check:SetChecked(nestOpts[cb.key] or false)
+				check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				check.text:SetPoint("LEFT", check, "RIGHT", 5, 0)
+				check.text:SetText(cb.label)
+				check:SetScript("OnClick", function(self)
+					Wise:SetNestingOption(action, cb.key, self:GetChecked() and true or false)
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, check)
+				tinsert(panel.controls, check.text)
+				y = y - 26
+			end
+		end -- end embedded guard
+
+		y = y - 10
+	end
+
+	-- Custom Macro Editor
+	if action.value == "custom_macro" and Wise.CreateMacroEditor then
+		local line = panel:CreateTexture(nil, "OVERLAY")
+		line:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+		line:SetHeight(1)
+		line:SetPoint("TOPLEFT", 10, y)
+		line:SetPoint("RIGHT", -10, y)
+		tinsert(panel.controls, line)
+
+		y = y - 15
+		y = Wise:CreateMacroEditor(panel, action, y)
+	end
+
+	return y
 end
 
 function Wise:RenderSlotProperties(panel, group, slotIdx, y)
-    Wise:MigrateGroupToActions(group)
-    local slot = group.actions[slotIdx]
+	Wise:MigrateGroupToActions(group)
+	local slot = group.actions[slotIdx]
 
-    if slot then
-         local displayName = Wise:GetSlotDisplayName(group, slotIdx)
-         local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-         label:SetPoint("TOPLEFT", 10, y)
-         label:SetText(displayName .. " Properties:")
-         tinsert(panel.controls, label)
-         y = y - 30
+	if slot then
+		local displayName = Wise:GetSlotDisplayName(group, slotIdx)
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		label:SetPoint("TOPLEFT", 10, y)
+		label:SetText(displayName .. " Properties:")
+		tinsert(panel.controls, label)
+		y = y - 30
 
-         -- Slot Name Editor
-         local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-         nameLabel:SetPoint("TOPLEFT", 10, y)
-         nameLabel:SetText("Slot Name:")
-         tinsert(panel.controls, nameLabel)
-         y = y - 20
+		-- Slot Name Editor
+		local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		nameLabel:SetPoint("TOPLEFT", 10, y)
+		nameLabel:SetText("Slot Name:")
+		tinsert(panel.controls, nameLabel)
+		y = y - 20
 
-         local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-         nameEdit:SetSize(200, 24)
-         nameEdit:SetPoint("TOPLEFT", 15, y)
-         nameEdit:SetAutoFocus(false)
-         nameEdit:SetText((group.slotNames and group.slotNames[slotIdx]) or "")
-         nameEdit:SetScript("OnEnterPressed", function(self)
-             local text = strtrim(self:GetText())
-             group.slotNames = group.slotNames or {}
-             if text == "" then
-                 group.slotNames[slotIdx] = nil
-             else
-                 group.slotNames[slotIdx] = text
-             end
-             self:ClearFocus()
-             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-             Wise:RefreshPropertiesPanel()
-         end)
-         nameEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-         tinsert(panel.controls, nameEdit)
-         y = y - 30
+		local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		nameEdit:SetSize(200, 24)
+		nameEdit:SetPoint("TOPLEFT", 15, y)
+		nameEdit:SetAutoFocus(false)
+		nameEdit:SetText((group.slotNames and group.slotNames[slotIdx]) or "")
+		nameEdit:SetScript("OnEnterPressed", function(self)
+			local text = strtrim(self:GetText())
+			group.slotNames = group.slotNames or {}
+			if text == "" then
+				group.slotNames[slotIdx] = nil
+			else
+				group.slotNames[slotIdx] = text
+			end
+			self:ClearFocus()
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			Wise:RefreshPropertiesPanel()
+		end)
+		nameEdit:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+		end)
+		tinsert(panel.controls, nameEdit)
+		y = y - 30
 
-         -- Keybind UI
-         local kbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-         kbLabel:SetPoint("TOPLEFT", 10, y)
-         kbLabel:SetText("Direct Keybind (Right Click to Clear):")
-         tinsert(panel.controls, kbLabel)
-         y = y - 20
+		-- Keybind UI
+		local kbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		kbLabel:SetPoint("TOPLEFT", 10, y)
+		kbLabel:SetText("Direct Keybind (Right Click to Clear):")
+		tinsert(panel.controls, kbLabel)
+		y = y - 20
 
-         local bindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-         bindBtn:SetSize(140, 22)
-         bindBtn:SetPoint("TOPLEFT", 10, y)
-         bindBtn:SetText(slot.keybind or "None")
+		local bindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		bindBtn:SetSize(140, 22)
+		bindBtn:SetPoint("TOPLEFT", 10, y)
+		bindBtn:SetText(slot.keybind or "None")
 
-         bindBtn:RegisterForClicks("AnyUp")
-         bindBtn:SetScript("OnClick", function(self, button)
-            if button == "RightButton" then
-                slot.keybind = nil
-                Wise:UpdateBindings()
-                Wise:UpdateOptionsUI()
-            elseif button == "LeftButton" then
-                self:SetText("Press Key...")
-                self:EnableKeyboard(true)
-                self:EnableMouseWheel(true)
+		bindBtn:RegisterForClicks("AnyUp")
+		bindBtn:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				slot.keybind = nil
+				Wise:UpdateBindings()
+				Wise:UpdateOptionsUI()
+			elseif button == "LeftButton" then
+				self:SetText("Press Key...")
+				self:EnableKeyboard(true)
+				self:EnableMouseWheel(true)
 
-                local function FinishSlotBinding(key)
-                    if not key then return end
+				local function FinishSlotBinding(key)
+					if not key then
+						return
+					end
 
-                    if key == "ESCAPE" then
-                        self:EnableKeyboard(false)
-                        self:EnableMouseWheel(false)
-                        self:SetScript("OnKeyDown", nil)
-                        self:SetScript("OnMouseWheel", nil)
-                        self:SetScript("OnMouseDown", nil)
-                        self:SetText(slot.keybind or "None")
-                        return
-                    end
+					if key == "ESCAPE" then
+						self:EnableKeyboard(false)
+						self:EnableMouseWheel(false)
+						self:SetScript("OnKeyDown", nil)
+						self:SetScript("OnMouseWheel", nil)
+						self:SetScript("OnMouseDown", nil)
+						self:SetText(slot.keybind or "None")
+						return
+					end
 
-                    if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then return end
+					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
+						return
+					end
 
-                    local mods = ""
-                    if IsAltKeyDown() then mods = mods .. "ALT-" end
-                    if IsControlKeyDown() then mods = mods .. "CTRL-" end
-                    if IsShiftKeyDown() then mods = mods .. "SHIFT-" end
+					local mods = ""
+					if IsAltKeyDown() then
+						mods = mods .. "ALT-"
+					end
+					if IsControlKeyDown() then
+						mods = mods .. "CTRL-"
+					end
+					if IsShiftKeyDown() then
+						mods = mods .. "SHIFT-"
+					end
 
-                    -- Check MouseWheel Validation
-                    if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
-                        local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
-                        if not isValid then
-                            EnsureBindingErrorPopup()
-                            StaticPopup_Show("WISE_BINDING_ERROR", err)
-                            self:EnableKeyboard(false)
-                            self:EnableMouseWheel(false)
-                            self:SetScript("OnKeyDown", nil)
-                            self:SetScript("OnMouseWheel", nil)
-                            self:SetScript("OnMouseDown", nil)
-                            self:SetText(slot.keybind or "None")
-                            return
-                        end
-                    end
+					-- Check MouseWheel Validation
+					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
+						local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
+						if not isValid then
+							EnsureBindingErrorPopup()
+							StaticPopup_Show("WISE_BINDING_ERROR", err)
+							self:EnableKeyboard(false)
+							self:EnableMouseWheel(false)
+							self:SetScript("OnKeyDown", nil)
+							self:SetScript("OnMouseWheel", nil)
+							self:SetScript("OnMouseDown", nil)
+							self:SetText(slot.keybind or "None")
+							return
+						end
+					end
 
-                    local fullKey = mods .. key
-                    self:EnableKeyboard(false)
-                    self:EnableMouseWheel(false)
-                    self:SetScript("OnKeyDown", nil)
-                    self:SetScript("OnMouseWheel", nil)
-                    self:SetScript("OnMouseDown", nil)
+					local fullKey = mods .. key
+					self:EnableKeyboard(false)
+					self:EnableMouseWheel(false)
+					self:SetScript("OnKeyDown", nil)
+					self:SetScript("OnMouseWheel", nil)
+					self:SetScript("OnMouseDown", nil)
 
-                    if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
-                        return
-                    end
+					if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
+						return
+					end
 
-                    slot.keybind = fullKey
-                    self:SetText(fullKey)
+					slot.keybind = fullKey
+					self:SetText(fullKey)
 
-                    Wise:UpdateBindings()
-                    Wise:UpdateOptionsUI()
-                end
+					Wise:UpdateBindings()
+					Wise:UpdateOptionsUI()
+				end
 
-                self:SetScript("OnKeyDown", function(self, key)
-                    FinishSlotBinding(key)
-                end)
+				self:SetScript("OnKeyDown", function(self, key)
+					FinishSlotBinding(key)
+				end)
 
-                self:SetScript("OnMouseWheel", function(self, delta)
-                    local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
-                    FinishSlotBinding(key)
-                end)
+				self:SetScript("OnMouseWheel", function(self, delta)
+					local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
+					FinishSlotBinding(key)
+				end)
 
-                self:SetScript("OnMouseDown", function(self, button)
-                    if button == "LeftButton" or button == "RightButton" then return end
-                    local key = button
-                    if button == "MiddleButton" then key = "BUTTON3" end
-                    if button == "Button4" then key = "BUTTON4" end
-                    if button == "Button5" then key = "BUTTON5" end
-                    FinishSlotBinding(key)
-                end)
-            end
-         end)
-         tinsert(panel.controls, bindBtn)
-         y = y - 30
+				self:SetScript("OnMouseDown", function(self, button)
+					if button == "LeftButton" or button == "RightButton" then
+						return
+					end
+					local key = button
+					if button == "MiddleButton" then
+						key = "BUTTON3"
+					end
+					if button == "Button4" then
+						key = "BUTTON4"
+					end
+					if button == "Button5" then
+						key = "BUTTON5"
+					end
+					FinishSlotBinding(key)
+				end)
+			end
+		end)
+		tinsert(panel.controls, bindBtn)
+		y = y - 30
 
-         local note = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-         note:SetPoint("TOPLEFT", 10, y)
-         note:SetWidth(200)
-         note:SetJustifyH("LEFT")
-         note:SetText("This keybind directly triggers this slot.")
-         tinsert(panel.controls, note)
-         y = y - 30
+		local note = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		note:SetPoint("TOPLEFT", 10, y)
+		note:SetWidth(200)
+		note:SetJustifyH("LEFT")
+		note:SetText("This keybind directly triggers this slot.")
+		tinsert(panel.controls, note)
+		y = y - 30
 
-         -- Press and Hold option
-         local pahCheck = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
-         pahCheck:SetPoint("TOPLEFT", 10, y)
-         pahCheck:SetChecked(slot.pressAndHold == true) -- Default off
-         pahCheck.Text:SetText("Press and Hold to repeat")
-         pahCheck.Text:SetFontObject("GameFontHighlightSmall")
-         pahCheck:SetScript("OnClick", function(self)
-             if self:GetChecked() then
-                 slot.pressAndHold = true
-             else
-                 slot.pressAndHold = nil -- nil = default = disabled
-             end
-             C_Timer.After(0, function()
-                 if not InCombatLockdown() then
-                     Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                 end
-             end)
-         end)
-         Wise:AddTooltip(pahCheck, "When enabled, holding the keybind will repeat-fire the action. Disable for one-shot actions like mounts or interface toggles.")
-         tinsert(panel.controls, pahCheck)
-         y = y - 30
+		-- Press and Hold option
+		local pahCheck = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+		pahCheck:SetPoint("TOPLEFT", 10, y)
+		pahCheck:SetChecked(slot.pressAndHold == true) -- Default off
+		pahCheck.Text:SetText("Press and Hold to repeat")
+		pahCheck.Text:SetFontObject("GameFontHighlightSmall")
+		pahCheck:SetScript("OnClick", function(self)
+			if self:GetChecked() then
+				slot.pressAndHold = true
+			else
+				slot.pressAndHold = nil -- nil = default = disabled
+			end
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		Wise:AddTooltip(
+			pahCheck,
+			"When enabled, holding the keybind will repeat-fire the action. Disable for one-shot actions like mounts or interface toggles."
+		)
+		tinsert(panel.controls, pahCheck)
+		y = y - 30
 
-         -- Slot Configurator Button
-         local configBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-         configBtn:SetSize(200, 24)
-         configBtn:SetPoint("TOPLEFT", 10, y)
-         configBtn:SetText("Open Slot Configurator")
-         configBtn:SetScript("OnClick", function()
-             Wise:OpenSlotConfigurator(Wise.selectedGroup, slotIdx)
-         end)
-         Wise:AddTooltip(configBtn, "Visual editor for conditions, sequences, and modifier breaks.")
-         tinsert(panel.controls, configBtn)
-         y = y - 28
+		-- Slot Configurator Button
+		local configBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		configBtn:SetSize(200, 24)
+		configBtn:SetPoint("TOPLEFT", 10, y)
+		configBtn:SetText("Open Slot Configurator")
+		configBtn:SetScript("OnClick", function()
+			Wise:OpenSlotConfigurator(Wise.selectedGroup, slotIdx)
+		end)
+		Wise:AddTooltip(configBtn, "Visual editor for conditions, sequences, and modifier breaks.")
+		tinsert(panel.controls, configBtn)
+		y = y - 28
 
-         local configDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-         configDesc:SetPoint("TOPLEFT", 10, y)
-         configDesc:SetWidth(200)
-         configDesc:SetJustifyH("LEFT")
-         configDesc:SetText("Graphically configure spell priority, sequences, and modifier conditions.")
-         tinsert(panel.controls, configDesc)
-         y = y - 35
+		local configDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		configDesc:SetPoint("TOPLEFT", 10, y)
+		configDesc:SetWidth(200)
+		configDesc:SetJustifyH("LEFT")
+		configDesc:SetText("Graphically configure spell priority, sequences, and modifier conditions.")
+		tinsert(panel.controls, configDesc)
+		y = y - 35
 
-         -- Delete Slot Button
-         local isAutoImportedSlot = false
-         if group.isWiser then
-             if group.propertyType == "CooldownWiser" then
-                 isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
-             else
-                 isAutoImportedSlot = true
-             end
-         end
-         local delBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-         delBtn:SetSize(140, 24)
-         delBtn:SetPoint("TOPLEFT", 10, y)
-         delBtn:SetText("Delete Slot")
-         local btnText = delBtn:GetFontString()
-         if btnText then btnText:SetTextColor(1, 0.2, 0.2) end
+		-- Delete Slot Button
+		local isAutoImportedSlot = false
+		if group.isWiser then
+			if group.propertyType == "CooldownWiser" then
+				isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
+			else
+				isAutoImportedSlot = true
+			end
+		end
+		local delBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		delBtn:SetSize(140, 24)
+		delBtn:SetPoint("TOPLEFT", 10, y)
+		delBtn:SetText("Delete Slot")
+		local btnText = delBtn:GetFontString()
+		if btnText then
+			btnText:SetTextColor(1, 0.2, 0.2)
+		end
 
-         if isAutoImportedSlot then
-             delBtn:Disable()
-             delBtn:SetScript("OnEnter", function(self)
-                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                 GameTooltip:SetText("Auto-imported slot", 1, 0.82, 0, true)
-                 GameTooltip:AddLine("This slot is managed by Wise and cannot be deleted.", 1, 1, 1, true)
-                 GameTooltip:Show()
-             end)
-             delBtn:SetScript("OnLeave", GameTooltip_Hide)
-         else
-             delBtn:SetScript("OnClick", function()
-                 StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
-                    text = "Delete '" .. Wise:GetSlotDisplayName(group, slotIdx) .. "' and all its actions?",
-                    button1 = "Delete",
-                    button2 = "Cancel",
-                    OnAccept = function()
-                        Wise:RemoveSlot(Wise.selectedGroup, slotIdx)
-                        Wise.selectedSlot = nil
-                        Wise:UpdateBindings()
-                        Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-                        Wise:RefreshPropertiesPanel()
-                        C_Timer.After(0, function()
-                             if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                        end)
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                }
-                StaticPopup_Show("WISE_CONFIRM_DELETE_SLOT")
-             end)
-         end
-         tinsert(panel.controls, delBtn)
-    else
-         local label = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-         label:SetPoint("TOPLEFT", 10, y)
-         label:SetText("Slot not found.")
-         tinsert(panel.controls, label)
-    end
+		if isAutoImportedSlot then
+			delBtn:Disable()
+			delBtn:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				GameTooltip:SetText("Auto-imported slot", 1, 0.82, 0, true)
+				GameTooltip:AddLine("This slot is managed by Wise and cannot be deleted.", 1, 1, 1, true)
+				GameTooltip:Show()
+			end)
+			delBtn:SetScript("OnLeave", GameTooltip_Hide)
+		else
+			delBtn:SetScript("OnClick", function()
+				StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
+					text = "Delete '" .. Wise:GetSlotDisplayName(group, slotIdx) .. "' and all its actions?",
+					button1 = "Delete",
+					button2 = "Cancel",
+					OnAccept = function()
+						Wise:RemoveSlot(Wise.selectedGroup, slotIdx)
+						Wise.selectedSlot = nil
+						Wise:UpdateBindings()
+						Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+						Wise:RefreshPropertiesPanel()
+						C_Timer.After(0, function()
+							if not InCombatLockdown() then
+								Wise:UpdateGroupDisplay(Wise.selectedGroup)
+							end
+						end)
+					end,
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+				}
+				StaticPopup_Show("WISE_CONFIRM_DELETE_SLOT")
+			end)
+		end
+		tinsert(panel.controls, delBtn)
+	else
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+		label:SetPoint("TOPLEFT", 10, y)
+		label:SetText("Slot not found.")
+		tinsert(panel.controls, label)
+	end
 
-    return y
+	return y
 end
 
 function Wise:RenderGroupProperties(panel, group, y)
-    local hook = Wise:GetPropertyHook(group)
-    local suppress = hook and hook.suppress or {}
-    local inject = hook and hook.inject or {}
-
-    -- Rename Interface (Custom Only or Wiser if not suppressed)
-    if (not group.isWiser and not suppress.Rename) or (group.isWiser and not suppress.Rename) then
-         -- For standard Wiser, we usually suppress renaming, but let's check flag
-         if not group.isWiser then
-             local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             nameLabel:SetPoint("TOPLEFT", 10, y)
-             nameLabel:SetText("Interface Name:")
-             tinsert(panel.controls, nameLabel)
-
-             y = y - 20
-             local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-             nameEdit:SetSize(180, 20)
-             nameEdit:SetPoint("TOPLEFT", 14, y)
-             nameEdit:SetAutoFocus(false)
-             nameEdit:SetText(Wise.selectedGroup or "")
-             nameEdit:SetCursorPosition(0)
-
-             local statusBtn = CreateFrame("Button", nil, panel)
-             statusBtn:SetSize(20, 20)
-             statusBtn:SetPoint("LEFT", nameEdit, "RIGHT", 5, 0)
-             statusBtn.icon = statusBtn:CreateTexture(nil, "ARTWORK")
-             statusBtn.icon:SetAllPoints()
-             statusBtn:Hide()
-
-             local function ValidateName(newName)
-                  local oldName = Wise.selectedGroup
-
-                  if not newName then return false end
-
-                  if newName == oldName then
-                      return false, nil, false, "No change"
-                  end
-
-                  if newName:match("^%s*$") then
-                      return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Name cannot be empty."
-                  end
-
-                  if WiseDB.groups[newName] then
-                      return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Name '"..newName.."' is already taken."
-                  end
-
-                  if InCombatLockdown() then
-                      return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Cannot rename in combat."
-                  end
-
-                  return true, "Interface\\RAIDFRAME\\ReadyCheck-Ready", true, nil
-             end
-
-             local function UpdateStatus()
-                 local text = nameEdit:GetText()
-                 local show, texture, isValid, msg = ValidateName(text)
-
-                 if show then
-                     statusBtn:Show()
-                     statusBtn.icon:SetTexture(texture)
-                     statusBtn.isValid = isValid
-                     statusBtn.errorMsg = msg
-                 else
-                     statusBtn:Hide()
-                     statusBtn.isValid = false
-                     statusBtn.errorMsg = nil
-                 end
-             end
-
-             nameEdit:SetScript("OnTextChanged", function(self)
-                 UpdateStatus()
-             end)
-
-             local function AttemptRename()
-                 local text = nameEdit:GetText()
-                 local _, _, isValid, msg = ValidateName(text)
-
-                 if isValid then
-                     local newName = text
-                     local oldName = Wise.selectedGroup
-
-                     -- Rename Group
-                     WiseDB.groups[newName] = WiseDB.groups[oldName]
-                     WiseDB.groups[oldName] = nil
-                     Wise.selectedGroup = newName
-
-                     -- Cleanup Old Frame
-                     local oldF = Wise.frames[oldName]
-                     if oldF then
-                         oldF:Hide()
-                         if oldF.visualDisplay then oldF.visualDisplay:Hide() end
-                         oldF:SetScript("OnUpdate", nil)
-                         if oldF.Anchor then oldF.Anchor:SetScript("OnUpdate", nil) end
-                         UnregisterStateDriver(oldF, "visibility")
-                         Wise.frames[oldName] = nil
-                     end
-
-                     -- Create New Frame
-                     Wise:UpdateGroupDisplay(newName)
-
-                     -- Update Bindings (since button name changed)
-                     Wise:UpdateBindings()
-
-                     -- Refresh UI
-                     Wise:UpdateOptionsUI()
-                 elseif msg then
-                     -- Show Tooltip on failure
-                     GameTooltip:SetOwner(statusBtn, "ANCHOR_RIGHT")
-                     GameTooltip:SetText("Cannot Rename", 1, 0, 0)
-                     GameTooltip:AddLine(msg, 1, 1, 1)
-                     GameTooltip:Show()
-                 elseif text == Wise.selectedGroup then
-                     nameEdit:ClearFocus()
-                 end
-             end
-
-             nameEdit:SetScript("OnEnterPressed", AttemptRename)
-             nameEdit:SetScript("OnEditFocusLost", AttemptRename)
-             nameEdit:SetScript("OnEscapePressed", function(self)
-                 self:SetText(Wise.selectedGroup or "")
-                 self:ClearFocus()
-                 UpdateStatus()
-             end)
-
-             statusBtn:SetScript("OnClick", AttemptRename)
-
-             statusBtn:SetScript("OnEnter", function(self)
-                 if self.errorMsg then
-                      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                      GameTooltip:SetText("Cannot Rename", 1, 0, 0)
-                      GameTooltip:AddLine(self.errorMsg, 1, 1, 1)
-                      GameTooltip:Show()
-                 elseif self.isValid then
-                      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                      GameTooltip:SetText("Click to Rename", 0, 1, 0)
-                      GameTooltip:Show()
-                 end
-             end)
-
-             statusBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-             tinsert(panel.controls, nameEdit)
-             tinsert(panel.controls, statusBtn)
-
-             -- Initial update
-             UpdateStatus()
-             y = y - 30
-         end
-    end
-
-    if inject.PostRename then
-        y = inject.PostRename(panel, group, y)
-    end
-
-    -- Smart Item generated interface specific properties
-    if group.isSmartItem and Wise.CreateSmartItemRefreshButton then
-        y = Wise:CreateSmartItemRefreshButton(panel, group, Wise.selectedGroup, y)
-    end
-
-    -- Wiser Interface specific headers
-    if group.isWiser then
-         -- Ensure availability struct exists (migration/safety)
-         if not group.availability then
-             group.availability = { mode = "NONE", characters = {} }
-             if group.enabled ~= nil then
-                 if group.enabled then group.availability.mode = "ALL" end
-                 group.enabled = nil
-             end
-         end
-         y = y - 5 -- Small spacer
-    end
-
-    -- Logic enforcement:
-    if group.binding then
-         group.visibility = nil
-         if not group.interaction then group.interaction = "toggle" end
-    else
-         group.interaction = nil
-         if not group.visibility then group.visibility = "always" end
-    end
-
-    if not suppress.InterfaceMode then
-        local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        label:SetPoint("TOPLEFT", 10, y)
-        label:SetText("Interface Mode:")
-        tinsert(panel.controls, label)
-
-        y = y - 20
-
-        -- Radial Picker for Interface Mode (Radio Buttons)
-        local currentType = group.type or "circle"
-        local modeTypes = {
-            { value = "circle", label = "Circle" },
-            { value = "button", label = "Button" },
-            { value = "box",    label = "Box" },
-            { value = "line",   label = "Line" },
-            { value = "list",   label = "List" },
-        }
-
-        for _, modeInfo in ipairs(modeTypes) do
-            local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-            radio:SetPoint("TOPLEFT", 10, y)
-            radio:SetChecked(currentType == modeInfo.value)
-            radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-
-            local label = modeInfo.label
-            local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
-            if modeInfo.value == "circle" and masqueActive then
-                label = label .. " |cffff8800(Masque)|r"
-            end
-            radio.text:SetText(label)
-
-            radio:SetScript("OnClick", function(self)
-                group.type = modeInfo.value
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, radio)
-            tinsert(panel.controls, radio.text)
-            y = y - 22
-        end
-    end
-
-    if not suppress.InterfaceStyle then
-        -- Interface Style Header
-        local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        styleLabel:SetPoint("TOPLEFT", 10, y)
-        styleLabel:SetText("Interface Style:")
-        tinsert(panel.controls, styleLabel)
-
-        y = y - 25
-
-        -- Dynamic Checkbox
-        local dynamicCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        dynamicCheck:SetPoint("TOPLEFT", 10, y)
-        dynamicCheck:SetChecked(group.dynamic or false)
-        tinsert(panel.controls, dynamicCheck)
-
-        local dynamicLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        dynamicLabel:SetPoint("LEFT", dynamicCheck, "RIGHT", 5, 0)
-        dynamicLabel:SetText("Dynamic")
-        tinsert(panel.controls, dynamicLabel)
-
-        y = y - 25
-
-        -- Static Checkbox
-        local staticCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        staticCheck:SetPoint("TOPLEFT", 10, y)
-        staticCheck:SetChecked(not group.dynamic)
-        tinsert(panel.controls, staticCheck)
-
-        local staticLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        staticLabel:SetPoint("LEFT", staticCheck, "RIGHT", 5, 0)
-        staticLabel:SetText("Static")
-        tinsert(panel.controls, staticLabel)
-
-        -- CooldownWiser interfaces must remain dynamic (imported slots are spec-dependent)
-        local isCooldownWiser = group.propertyType == "CooldownWiser"
-        if isCooldownWiser then
-            group.dynamic = true
-            dynamicCheck:SetChecked(true)
-            dynamicCheck:Disable()
-            staticCheck:SetChecked(false)
-            staticCheck:Disable()
-            staticLabel:SetTextColor(0.5, 0.5, 0.5)
-            dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
-
-            y = y - 25
-
-            local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            lockNote:SetPoint("TOPLEFT", 10, y)
-            lockNote:SetText("Cooldown interfaces must be dynamic.")
-            tinsert(panel.controls, lockNote)
-        end
-
-        -- Logic for mutually exclusive checkboxes
-        dynamicCheck:SetScript("OnClick", function(self)
-            if isCooldownWiser then self:SetChecked(true); return end
-            if self:GetChecked() then
-                group.dynamic = true
-                staticCheck:SetChecked(false)
-            else
-                -- Force one to be checked
-                self:SetChecked(true)
-                group.dynamic = true
-            end
-
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-             -- Defer secure frame update
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-
-        staticCheck:SetScript("OnClick", function(self)
-            if isCooldownWiser then self:SetChecked(false); return end
-            if self:GetChecked() then
-                group.dynamic = false
-                dynamicCheck:SetChecked(false)
-            else
-                -- Force one to be checked
-                self:SetChecked(true)
-                group.dynamic = false
-            end
-
-            Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-             -- Defer secure frame update
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-
-        y = y - 30
-
-        -- Animation checkbox
-        local animCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        animCheck:SetPoint("TOPLEFT", 10, y)
-        animCheck:SetChecked(group.animation or false)
-        animCheck:SetScript("OnClick", function(self)
-            group.animation = self:GetChecked()
-        end)
-        tinsert(panel.controls, animCheck)
-
-        local animLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        animLabel:SetPoint("LEFT", animCheck, "RIGHT", 5, 0)
-        animLabel:SetText("Animate")
-        tinsert(panel.controls, animLabel)
-
-        y = y - 25
-
-        -- Invert Order checkbox
-        local invertCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        invertCheck:SetPoint("TOPLEFT", 10, y)
-        invertCheck:SetChecked(group.invertOrder or false)
-        invertCheck:SetScript("OnClick", function(self)
-            group.invertOrder = self:GetChecked()
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, invertCheck)
-
-        local invertLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        invertLabel:SetPoint("LEFT", invertCheck, "RIGHT", 5, 0)
-        invertLabel:SetText("Invert Order")
-        tinsert(panel.controls, invertLabel)
-
-        y = y - 30
-
-        if group.type == "line" then
-             local dirLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             dirLabel:SetPoint("TOPLEFT", 10, y)
-             dirLabel:SetText("Line Orientation:")
-             tinsert(panel.controls, dirLabel)
-
-             y = y - 22
-
-             -- Radial Picker for Growth Direction (Radio Buttons)
-             local currentDir = group.lineOrientation or "horizontal"
-             local dirTypes = {
-                 { value = "horizontal", label = "Horizontal" },
-                 { value = "vertical",  label = "Vertical" },
-             }
-
-             for _, dirInfo in ipairs(dirTypes) do
-                 local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                 radio:SetPoint("TOPLEFT", 10, y)
-                 radio:SetChecked(currentDir == dirInfo.value)
-                 radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                 radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                 radio.text:SetText(dirInfo.label)
-
-                 radio:SetScript("OnClick", function(self)
-                     group.lineOrientation = dirInfo.value
-                     Wise:RefreshPropertiesPanel()
-                     C_Timer.After(0, function()
-                         if not InCombatLockdown() then
-                             Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                         end
-                     end)
-                 end)
-                 tinsert(panel.controls, radio)
-                 tinsert(panel.controls, radio.text)
-                 y = y - 22
-             end
-        elseif group.type == "list" then
-             local alignLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             alignLabel:SetPoint("TOPLEFT", 10, y)
-             alignLabel:SetText("Text Position:")
-             tinsert(panel.controls, alignLabel)
-
-             y = y - 22
-
-             -- Radial Picker for Text Alignment (Radio Buttons)
-             local currentAlign = group.textAlign or "right"
-
-             local alignTypes = {
-                 { value = "right", label = "Right of Icon" },
-                 { value = "left",  label = "Left of Icon" },
-             }
-
-             for _, alignInfo in ipairs(alignTypes) do
-                 local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                 radio:SetPoint("TOPLEFT", 10, y)
-                 radio:SetChecked(currentAlign == alignInfo.value)
-                 radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                 radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-                 radio.text:SetText(alignInfo.label)
-
-                 radio:SetScript("OnClick", function(self)
-                     group.textAlign = alignInfo.value
-                     Wise:RefreshPropertiesPanel()
-                     C_Timer.After(0, function()
-                         if not InCombatLockdown() then
-                             Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                         end
-                     end)
-                 end)
-                 tinsert(panel.controls, radio)
-                 tinsert(panel.controls, radio.text)
-                 y = y - 22
-             end
-        elseif group.type == "box" then
-
-             -- Box Configuration Header
-             local boxLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             boxLabel:SetPoint("TOPLEFT", 10, y)
-             boxLabel:SetText("Box Layout:")
-             tinsert(panel.controls, boxLabel)
-             y = y - 40
-
-             -- Defaults
-             if not group.boxWidth then group.boxWidth = 3 end
-             if not group.boxHeight then group.boxHeight = 3 end
-             if group.fixedAxis == nil then group.fixedAxis = "x" end -- 'x' or 'y'
-
-             -- X Dimension Slider
-             local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-             xSlider:SetPoint("TOPLEFT", 37, y)
-             xSlider:SetSize(126, 16)
-             xSlider:SetMinMaxValues(2, 10)
-             xSlider:SetValue(group.boxWidth)
-             xSlider:SetValueStep(1)
-             xSlider:SetObeyStepOnDrag(true)
-             xSlider.Low:SetText("2")
-             xSlider.High:SetText("10")
-             xSlider.Text:SetText("Width: " .. group.boxWidth)
-             xSlider:SetScript("OnValueChanged", function(self, value)
-                 group.boxWidth = math.floor(value)
-                 self.Text:SetText("Width: " .. group.boxWidth)
-                 C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, xSlider)
-
-             -- Minus Button for xSlider
-             local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-             xSliderMinusBtn:SetSize(27, 27)
-             xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
-             xSliderMinusBtn:SetText("-")
-             xSliderMinusBtn:SetScript("OnClick", function()
-                 local v = xSlider:GetValue() - 1
-                 local min, max = xSlider:GetMinMaxValues()
-                 if v >= min then xSlider:SetValue(v) end
-             end)
-             tinsert(panel.controls, xSliderMinusBtn)
-
-             -- Plus Button for xSlider
-             local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-             xSliderPlusBtn:SetSize(27, 27)
-             xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
-             xSliderPlusBtn:SetText("+")
-             xSliderPlusBtn:SetScript("OnClick", function()
-                 local v = xSlider:GetValue() + 1
-                 local min, max = xSlider:GetMinMaxValues()
-                 if v <= max then xSlider:SetValue(v) end
-             end)
-             tinsert(panel.controls, xSliderPlusBtn)
-
-             -- Fixed X Checkbox
-             local fixedX = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedX:SetPoint("LEFT", xSliderPlusBtn, "RIGHT", 10, 0)
-             fixedX:SetChecked(group.fixedAxis == "x")
-             fixedX.text = fixedX:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             fixedX.text:SetPoint("LEFT", fixedX, "RIGHT", 5, 0)
-             fixedX.text:SetText("Fixed")
-             fixedX:SetScript("OnClick", function(self)
-                 if self:GetChecked() then
-                     group.fixedAxis = "x"
-                     Wise:RefreshPropertiesPanel()
-                 else
-                     -- Can't uncheck directly, must check other. But for UX, re-checking ensures state.
-                     self:SetChecked(true)
-                 end
-                 C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, fixedX)
-             tinsert(panel.controls, fixedX.text)
-
-             y = y - 45
-
-             -- Y Dimension Slider
-             local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-             ySlider:SetPoint("TOPLEFT", 37, y)
-             ySlider:SetSize(126, 16)
-             ySlider:SetMinMaxValues(2, 10)
-             ySlider:SetValue(group.boxHeight)
-             ySlider:SetValueStep(1)
-             ySlider:SetObeyStepOnDrag(true)
-             ySlider.Low:SetText("2")
-             ySlider.High:SetText("10")
-             ySlider.Text:SetText("Height: " .. group.boxHeight)
-             ySlider:SetScript("OnValueChanged", function(self, value)
-                 group.boxHeight = math.floor(value)
-                 self.Text:SetText("Height: " .. group.boxHeight)
-                 C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, ySlider)
-
-             -- Minus Button for ySlider
-             local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-             ySliderMinusBtn:SetSize(27, 27)
-             ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
-             ySliderMinusBtn:SetText("-")
-             ySliderMinusBtn:SetScript("OnClick", function()
-                 local v = ySlider:GetValue() - 1
-                 local min, max = ySlider:GetMinMaxValues()
-                 if v >= min then ySlider:SetValue(v) end
-             end)
-             tinsert(panel.controls, ySliderMinusBtn)
-
-             -- Plus Button for ySlider
-             local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-             ySliderPlusBtn:SetSize(27, 27)
-             ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
-             ySliderPlusBtn:SetText("+")
-             ySliderPlusBtn:SetScript("OnClick", function()
-                 local v = ySlider:GetValue() + 1
-                 local min, max = ySlider:GetMinMaxValues()
-                 if v <= max then ySlider:SetValue(v) end
-             end)
-             tinsert(panel.controls, ySliderPlusBtn)
-
-             -- Fixed Y Checkbox
-             local fixedY = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             fixedY:SetPoint("LEFT", ySliderPlusBtn, "RIGHT", 10, 0)
-             fixedY:SetChecked(group.fixedAxis == "y")
-             fixedY.text = fixedY:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             fixedY.text:SetPoint("LEFT", fixedY, "RIGHT", 5, 0)
-             fixedY.text:SetText("Fixed")
-             fixedY:SetScript("OnClick", function(self)
-                 if self:GetChecked() then
-                     group.fixedAxis = "y"
-                     Wise:RefreshPropertiesPanel()
-                 else
-                     self:SetChecked(true)
-                 end
-                 C_Timer.After(0, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, fixedY)
-             tinsert(panel.controls, fixedY.text)
-
-             y = y - 40
-        end
-
-        y = y - 35
-    end
-
-    if not suppress.DisplaySettings then
-        -- =============================================
-        -- PER-INTERFACE DISPLAY SETTINGS (Override Global)
-        -- =============================================
-        local displayHeader = panel:CreateTexture(nil, "ARTWORK")
-        displayHeader:SetColorTexture(1, 1, 1, 0.2)
-        displayHeader:SetSize(200, 1)
-        displayHeader:SetPoint("TOPLEFT", 10, y)
-        tinsert(panel.controls, displayHeader)
-        y = y - 15
-
-        local resetGlobalBtn -- Pre-declare for visibility in UpdateDisplayStatus
-
-        local displayLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        displayLabel:SetPoint("TOPLEFT", 10, y)
-        displayLabel:SetText("Display Settings:")
-        tinsert(panel.controls, displayLabel)
-
-        -- Show "(Custom)" or "(Global)" indicator
-        local displayHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        displayHint:SetPoint("LEFT", displayLabel, "RIGHT", 8, 0)
-        local hasOverride = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or (group.activeOpacity ~= nil) or (group.inactiveOpacity ~= nil) or (group.hideEmptySlots ~= nil)
-        displayHint:SetText(hasOverride and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
-        tinsert(panel.controls, displayHint)
-
-        y = y - 25
-
-        -- Per-Interface Icon Style
-        local piStyleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piStyleLabel:SetPoint("TOPLEFT", 10, y)
-
-        local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
-        local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
-        if masqueActive then
-            piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
-        else
-            piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"
-        end
-        piStyleLabel:SetText(piLabelText)
-        tinsert(panel.controls, piStyleLabel)
-
-        y = y - 22
-        local effectiveIconStyle = group.iconStyle or (WiseDB.settings and WiseDB.settings.iconStyle) or "rounded"
-
-        local styles = {
-            {val="rounded", text="Rounded"},
-            {val="square", text="Square"},
-            {val="round", text="Round"},
-            {val="hexagon", text="Hexagon", tooltip="bestagon"},
-            {val="octagon", text="Octagon", tooltip="secondbestagon"}
-        }
-
-        for _, styleMode in ipairs(styles) do
-             local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-             radio:SetPoint("TOPLEFT", 10, y)
-             radio:SetChecked(effectiveIconStyle == styleMode.val)
-             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-             radio.text:SetText(styleMode.text)
-
-             if styleMode.tooltip then
-                 radio:SetScript("OnEnter", function(self)
-                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                     GameTooltip:SetText(styleMode.tooltip, nil, nil, nil, nil, true)
-                     GameTooltip:Show()
-                 end)
-                 radio:SetScript("OnLeave", function(self)
-                     GameTooltip:Hide()
-                 end)
-             end
-
-             radio:SetScript("OnClick", function(self)
-                 group.iconStyle = styleMode.val
-                 Wise:RefreshPropertiesPanel() -- To update label (Custom)
-                 C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, radio)
-             tinsert(panel.controls, radio.text)
-             y = y - 22
-        end
-
-        y = y - 5
-
-        -- Hide Empty Slots checkbox (per-group)
-        local hideEmptyCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        hideEmptyCheck:SetPoint("TOPLEFT", 10, y)
-        local effectiveHideEmpty = group.hideEmptySlots
-        if effectiveHideEmpty == nil then effectiveHideEmpty = (WiseDB.settings and WiseDB.settings.hideEmptySlots) or false end
-        hideEmptyCheck:SetChecked(effectiveHideEmpty)
-        hideEmptyCheck.text = hideEmptyCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        hideEmptyCheck.text:SetPoint("LEFT", hideEmptyCheck, "RIGHT", 5, 0)
-        local hideEmptyLabelText = "Hide Empty Slots"
-        if group.hideEmptySlots ~= nil then hideEmptyLabelText = hideEmptyLabelText .. " |cffff8800(Custom)|r" end
-        hideEmptyCheck.text:SetText(hideEmptyLabelText)
-        hideEmptyCheck:SetScript("OnClick", function(self)
-            group.hideEmptySlots = self:GetChecked() or false
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        tinsert(panel.controls, hideEmptyCheck)
-        tinsert(panel.controls, hideEmptyCheck.text)
-        y = y - 25
-
-        y = y - 5
-
-        -- Per-Interface Icon Size
-        local piIconLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piIconLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
-
-        local function UpdateDisplayStatus()
-            local over = group.iconStyle or group.iconSize or group.textSize or group.font or (group.showKeybinds ~= nil) or group.keybindPosition or group.keybindTextSize or group.chargeTextSize or group.chargeTextPosition or group.countdownTextSize or group.countdownTextPosition or (group.activeOpacity ~= nil) or (group.inactiveOpacity ~= nil) or (group.showGCD ~= nil) or (group.showChargeText ~= nil) or (group.showCountdownText ~= nil) or (group.hideEmptySlots ~= nil)
-            displayHint:SetText(over and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
-
-            local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
-            local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
-            if masqueActive then
-                piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
-            else
-                piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"
-            end
-            piStyleLabel:SetText(piLabelText)
-            piIconLabel:SetText("Icon Size:" .. (group.iconSize and " |cffff8800(Custom)|r" or ""))
-            -- Note: Other labels (Text/Font) will be updated via the full refresh on font change,
-            -- but for sliders we update their specific label here.
-
-            if over then
-                resetGlobalBtn:Enable()
-            else
-                resetGlobalBtn:Disable()
-            end
-        end
-
-        piIconLabel:SetText("Icon Size:" .. (group.iconSize and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piIconLabel)
-
-        y = y - 22
-        local piIconSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piIconSlider:SetPoint("TOPLEFT", 37, y)
-        piIconSlider:SetSize(126, 16)
-        piIconSlider:SetMinMaxValues(16, 64)
-        piIconSlider:SetValue(effectiveIconSize)
-        piIconSlider:SetValueStep(2)
-        piIconSlider:SetObeyStepOnDrag(true)
-        piIconSlider.Low:SetText("16")
-        piIconSlider.High:SetText("64")
-        piIconSlider.Text:SetText(tostring(effectiveIconSize))
-        piIconSlider:SetScript("OnValueChanged", function(self, value)
-            local size = math.floor(value)
-            group.iconSize = size
-            self.Text:SetText(tostring(size))
-            UpdateDisplayStatus()
-            C_Timer.After(0.1, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, piIconSlider)
-
-        -- Minus Button for piIconSlider
-        local piIconSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piIconSliderMinusBtn:SetSize(27, 27)
-        piIconSliderMinusBtn:SetPoint("RIGHT", piIconSlider, "LEFT", -2, 0)
-        piIconSliderMinusBtn:SetText("-")
-        piIconSliderMinusBtn:SetScript("OnClick", function()
-            local v = piIconSlider:GetValue() - 2
-            local min, max = piIconSlider:GetMinMaxValues()
-            if v >= min then piIconSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piIconSliderMinusBtn)
-
-        -- Plus Button for piIconSlider
-        local piIconSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piIconSliderPlusBtn:SetSize(27, 27)
-        piIconSliderPlusBtn:SetPoint("LEFT", piIconSlider, "RIGHT", 2, 0)
-        piIconSliderPlusBtn:SetText("+")
-        piIconSliderPlusBtn:SetScript("OnClick", function()
-            local v = piIconSlider:GetValue() + 2
-            local min, max = piIconSlider:GetMinMaxValues()
-            if v <= max then piIconSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piIconSliderPlusBtn)
-
-        y = y - 40
-
-
-        -- Per-Interface Circle Radius & Rotation (if circle)
-        if group.type == "circle" then
-            -- Radius Slider
-            local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
-            local actionCount = 0
-            if group.actions then
-                for _ in pairs(group.actions) do actionCount = actionCount + 1 end
-            end
-            if actionCount < 2 then actionCount = 2 end -- Prevent division by zero
-            local minRadius = math.ceil(effectiveIconSize / (2 * math.sin(math.pi / actionCount)))
-            if minRadius < effectiveIconSize then minRadius = effectiveIconSize end -- Absolute floor
-
-            local currentRadius = group.circleRadius or (effectiveIconSize * 2)
-            if currentRadius < minRadius then currentRadius = minRadius end
-
-            local radLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            radLabel:SetPoint("TOPLEFT", 10, y)
-            radLabel:SetText("Radius: " .. currentRadius)
-            tinsert(panel.controls, radLabel)
-
-            y = y - 22
-            local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            radSlider:SetPoint("TOPLEFT", 37, y)
-            radSlider:SetSize(126, 16)
-            local maxRadius = math.max(200, minRadius + 100)
-            radSlider:SetMinMaxValues(minRadius, maxRadius)
-            radSlider:SetValue(currentRadius)
-            radSlider:SetValueStep(1)
-            radSlider:SetObeyStepOnDrag(true)
-            radSlider.Low:SetText(tostring(minRadius))
-            radSlider.High:SetText(tostring(maxRadius))
-            radSlider.Text:SetText(tostring(currentRadius))
-
-
-
-                        local function UpdateRadius(v)
-                v = math.floor(v)
-                if v < minRadius then v = minRadius end
-                if v > maxRadius then v = maxRadius end
-                group.circleRadius = v
-                radSlider:SetValue(v)
-                radLabel:SetText("Radius: " .. v)
-                radSlider.Text:SetText(tostring(v))
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end
-
-            radSlider:SetScript("OnValueChanged", function(self, value)
-                UpdateRadius(value)
-            end)
-            tinsert(panel.controls, radSlider)
-
-            -- Minus Button for Radius
-            local radMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            radMinusBtn:SetSize(27, 27)
-            radMinusBtn:SetPoint("RIGHT", radSlider, "LEFT", -2, 0)
-            radMinusBtn:SetText("-")
-            radMinusBtn:SetScript("OnClick", function()
-                UpdateRadius(radSlider:GetValue() - 1)
-            end)
-            tinsert(panel.controls, radMinusBtn)
-
-            -- Plus Button for Radius
-            local radPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            radPlusBtn:SetSize(27, 27)
-            radPlusBtn:SetPoint("LEFT", radSlider, "RIGHT", 2, 0)
-            radPlusBtn:SetText("+")
-            radPlusBtn:SetScript("OnClick", function()
-                UpdateRadius(radSlider:GetValue() + 1)
-            end)
-            tinsert(panel.controls, radPlusBtn)
-
-            y = y - 40
-
-            -- Rotation Slider (0-359 degrees)
-            local currentRotation = group.circleRotation or 0
-            local rotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            rotLabel:SetPoint("TOPLEFT", 10, y)
-            rotLabel:SetText("Rotation: " .. currentRotation .. "\194\176")
-            tinsert(panel.controls, rotLabel)
-
-            y = y - 22
-            local rotSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            rotSlider:SetPoint("TOPLEFT", 37, y)
-            rotSlider:SetSize(126, 16)
-            rotSlider:SetMinMaxValues(0, 359)
-            rotSlider:SetValue(currentRotation)
-            rotSlider:SetValueStep(1)
-            rotSlider:SetObeyStepOnDrag(true)
-            rotSlider.Low:SetText("0\194\176")
-            rotSlider.High:SetText("359\194\176")
-            rotSlider.Text:SetText(tostring(currentRotation) .. "\194\176")
-
-
-
-                        local function UpdateRotation(v)
-                v = math.floor(v)
-                if v < 0 then v = 359 end
-                if v > 359 then v = 0 end
-                group.circleRotation = v
-                rotSlider:SetValue(v)
-                rotLabel:SetText("Rotation: " .. v .. "\194\176")
-                rotSlider.Text:SetText(tostring(v) .. "\194\176")
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end
-
-            rotSlider:SetScript("OnValueChanged", function(self, value)
-                -- We only use OnValueChanged when dragging the slider
-                -- The manual update function handles wrapping for the buttons
-                local v = math.floor(value)
-                group.circleRotation = v
-                rotLabel:SetText("Rotation: " .. v .. "\194\176")
-                self.Text:SetText(tostring(v) .. "\194\176")
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, rotSlider)
-
-            -- Minus Button for Rotation
-            local rotMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            rotMinusBtn:SetSize(27, 27)
-            rotMinusBtn:SetPoint("RIGHT", rotSlider, "LEFT", -2, 0)
-            rotMinusBtn:SetText("-")
-            rotMinusBtn:SetScript("OnClick", function()
-                UpdateRotation(rotSlider:GetValue() - 1)
-            end)
-            tinsert(panel.controls, rotMinusBtn)
-
-            -- Plus Button for Rotation
-            local rotPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            rotPlusBtn:SetSize(27, 27)
-            rotPlusBtn:SetPoint("LEFT", rotSlider, "RIGHT", 2, 0)
-            rotPlusBtn:SetText("+")
-            rotPlusBtn:SetScript("OnClick", function()
-                UpdateRotation(rotSlider:GetValue() + 1)
-            end)
-            tinsert(panel.controls, rotPlusBtn)
-
-            y = y - 40
-        end
-
-        -- Per-Interface Text Size
-        local piTextLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piTextLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveTextSize = group.textSize or (WiseDB.settings and WiseDB.settings.textSize) or 12
-        piTextLabel:SetText("Text Size:" .. (group.textSize and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piTextLabel)
-
-        y = y - 22
-        local piTextSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piTextSlider:SetPoint("TOPLEFT", 37, y)
-        piTextSlider:SetSize(126, 16)
-        piTextSlider:SetMinMaxValues(8, 24)
-        piTextSlider:SetValue(effectiveTextSize)
-        piTextSlider:SetValueStep(1)
-        piTextSlider:SetObeyStepOnDrag(true)
-        piTextSlider.Low:SetText("8")
-        piTextSlider.High:SetText("24")
-        piTextSlider.Text:SetText(tostring(effectiveTextSize))
-        piTextSlider:SetScript("OnValueChanged", function(self, value)
-            local size = math.floor(value)
-            group.textSize = size
-            self.Text:SetText(tostring(size))
-            -- Manual update for Text Label
-            piTextLabel:SetText("Text Size:" .. (group.textSize and " |cffff8800(Custom)|r" or ""))
-            UpdateDisplayStatus()
-
-            C_Timer.After(0.1, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, piTextSlider)
-
-
-
-        -- Minus Button for piTextSlider
-        local piTextSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piTextSliderMinusBtn:SetSize(27, 27)
-        piTextSliderMinusBtn:SetPoint("RIGHT", piTextSlider, "LEFT", -2, 0)
-        piTextSliderMinusBtn:SetText("-")
-        piTextSliderMinusBtn:SetScript("OnClick", function()
-            local v = piTextSlider:GetValue() - 1
-            local min, max = piTextSlider:GetMinMaxValues()
-            if v >= min then piTextSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piTextSliderMinusBtn)
-
-        -- Plus Button for piTextSlider
-        local piTextSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piTextSliderPlusBtn:SetSize(27, 27)
-        piTextSliderPlusBtn:SetPoint("LEFT", piTextSlider, "RIGHT", 2, 0)
-        piTextSliderPlusBtn:SetText("+")
-        piTextSliderPlusBtn:SetScript("OnClick", function()
-            local v = piTextSlider:GetValue() + 1
-            local min, max = piTextSlider:GetMinMaxValues()
-            if v <= max then piTextSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piTextSliderPlusBtn)
-        y = y - 40
-
-        -- Per-Interface Font Selection
-        local piFontLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piFontLabel:SetPoint("TOPLEFT", 10, y)
-        piFontLabel:SetText("Font:" .. (group.font and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piFontLabel)
-        y = y - 22
-
-        -- Build font list dynamically (same approach as global)
-        local piValidFonts = {}
-        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-
-        if LSM then
-            local lsmFonts = LSM:HashTable("font")
-            if lsmFonts then
-                for fname, fpath in pairs(lsmFonts) do
-                    table.insert(piValidFonts, { name = fname, path = fpath })
-                end
-            end
-            table.sort(piValidFonts, function(a, b) return a.name < b.name end)
-        end
-
-        if #piValidFonts == 0 then
-            local defaultFonts = {
-                { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
-                { name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
-                { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
-                { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
-                { name = "2002", path = "Fonts\\2002.TTF" },
-                { name = "2002 Bold", path = "Fonts\\2002B.TTF" },
-                { name = "Friz Quadrata (CYR)", path = "Fonts\\FRIZQT___CYR.TTF" },
-            }
-
-            local testFrame = CreateFrame("Frame")
-            local testFont = testFrame:CreateFontString(nil, "OVERLAY")
-
-            for _, f in ipairs(defaultFonts) do
-                local success = testFont:SetFont(f.path, 12, "")
-                if success then
-                    table.insert(piValidFonts, f)
-                end
-            end
-
-            if #piValidFonts == 0 then
-                piValidFonts = {{ name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" }}
-            end
-        end
-
-        -- Determine effective font
-        local effectiveFontPath = group.font or (WiseDB.settings and WiseDB.settings.font) or "Fonts\\FRIZQT__.TTF"
-        local currentPiFontName = "Friz Quadrata"
-        for _, f in ipairs(piValidFonts) do
-            if f.path == effectiveFontPath then
-                currentPiFontName = f.name
-                break
-            end
-        end
-        if currentPiFontName == "Friz Quadrata" and effectiveFontPath ~= "Fonts\\FRIZQT__.TTF" then
-            local filename = effectiveFontPath:match("([^\\]+)$") or effectiveFontPath
-            currentPiFontName = filename
-        end
-
-        local piFontBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-        piFontBtn:SetSize(180, 22)
-        piFontBtn:SetPoint("TOPLEFT", 10, y)
-        piFontBtn:SetText(currentPiFontName)
-        piFontBtn:SetScript("OnClick", function(self)
-            if self.dropdown and self.dropdown:IsShown() then
-                self.dropdown:Hide()
-                return
-            end
-
-            if not self.dropdown then
-                local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
-                self.dropdown = d
-
-                local itemHeight = 22
-                local maxVisible = 10
-                local visibleCount = math.min(#piValidFonts, maxVisible)
-                local dropdownHeight = (visibleCount * itemHeight) + 20
-                local needsScroll = #piValidFonts > maxVisible
-
-                d:SetSize(220, dropdownHeight)
-                d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
-                d:SetFrameStrata("DIALOG")
-                d:SetBackdrop({
-                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-                    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                    tile = true, tileSize = 32, edgeSize = 16,
-                    insets = { left = 5, right = 5, top = 5, bottom = 5 }
-                })
-
-                local scrollContent
-
-                if needsScroll then
-                    local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
-                    scrollFrame:SetPoint("TOPLEFT", 8, -8)
-                    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
-
-                    scrollContent = CreateFrame("Frame", nil, scrollFrame)
-                    scrollContent:SetSize(175, itemHeight * #piValidFonts)
-                    scrollFrame:SetScrollChild(scrollContent)
-                    scrollFrame:SetVerticalScroll(0)
-                else
-                    scrollContent = CreateFrame("Frame", nil, d)
-                    scrollContent:SetPoint("TOPLEFT", 8, -8)
-                    scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
-                end
-
-                for i, f in ipairs(piValidFonts) do
-                    local btn = CreateFrame("Button", nil, scrollContent)
-                    btn:SetSize(175, itemHeight - 2)
-                    btn:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
-                    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-
-                    btn.text = btn:CreateFontString(nil, "OVERLAY")
-                    btn.text:SetPoint("LEFT", 5, 0)
-                    btn.text:SetPoint("RIGHT", -5, 0)
-                    btn.text:SetJustifyH("LEFT")
-                    btn.text:SetFont(f.path, 12, "")
-                    btn.text:SetText(f.name)
-                    btn.text:SetTextColor(1, 0.82, 0)
-
-                    btn:SetScript("OnClick", function()
-                        group.font = f.path
-                        self:SetText(f.name)
-                        d:Hide()
-                        C_Timer.After(0.1, function()
-                            if not InCombatLockdown() then
-                                Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                            end
-                        end)
-                        -- Refresh to show "(Custom)" label
-                        Wise:RefreshPropertiesPanel()
-                    end)
-
-                    btn:SetScript("OnEnter", function(self)
-                        self.text:SetTextColor(1, 1, 1)
-                    end)
-                    btn:SetScript("OnLeave", function(self)
-                        self.text:SetTextColor(1, 0.82, 0)
-                    end)
-                end
-            end
-            self.dropdown:Show()
-        end)
-        tinsert(panel.controls, piFontBtn)
-
-        y = y - 35
-
-        -- Per-Interface Keybind Settings
-        local piKbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piKbLabel:SetPoint("TOPLEFT", 10, y)
-        piKbLabel:SetText("Keybinds:" .. ( (group.showKeybinds~=nil or group.showInterfaceKeybind~=nil or group.keybindPosition or group.keybindTextSize) and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piKbLabel)
-        y = y - 22
-
-        -- Show Slot Keybinds Checkbox
-        local piShowKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        piShowKb:SetPoint("TOPLEFT", 10, y)
-        local currentShow = group.showKeybinds
-        if currentShow == nil then currentShow = WiseDB.settings.showKeybinds end
-        piShowKb:SetChecked(currentShow)
-
-        piShowKb.text = piShowKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        piShowKb.text:SetPoint("LEFT", piShowKb, "RIGHT", 5, 0)
-        piShowKb.text:SetText("Show Slot Keybinds" .. (group.showKeybinds == nil and " |cff888888(global)|r" or ""))
-        piShowKb:SetScript("OnClick", function(self)
-            group.showKeybinds = self:GetChecked()
-            UpdateDisplayStatus()
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        piShowKb:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                group.showKeybinds = nil
-                UpdateDisplayStatus()
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-            end
-        end)
-        tinsert(panel.controls, piShowKb)
-        tinsert(panel.controls, piShowKb.text)
-        y = y - 22
-
-        -- Show Interface Keybind Checkbox
-        local piShowIntKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        piShowIntKb:SetPoint("TOPLEFT", 10, y)
-        local currentIntShow = group.showInterfaceKeybind
-        if currentIntShow == nil then currentIntShow = WiseDB.settings.showInterfaceKeybind end
-        piShowIntKb:SetChecked(currentIntShow)
-
-        piShowIntKb.text = piShowIntKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        piShowIntKb.text:SetPoint("LEFT", piShowIntKb, "RIGHT", 5, 0)
-        piShowIntKb.text:SetText("Show Interface Keybind" .. (group.showInterfaceKeybind == nil and " |cff888888(global)|r" or ""))
-        piShowIntKb:SetScript("OnClick", function(self)
-            group.showInterfaceKeybind = self:GetChecked()
-            UpdateDisplayStatus()
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        piShowIntKb:SetScript("OnMouseDown", function(self, button)
-            if button == "RightButton" then
-                group.showInterfaceKeybind = nil
-                UpdateDisplayStatus()
-                Wise:RefreshPropertiesPanel()
-                C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-            end
-        end)
-        tinsert(panel.controls, piShowIntKb)
-        tinsert(panel.controls, piShowIntKb.text)
-        y = y - 22
-
-        -- Hint text
-        local kbHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        kbHint:SetPoint("TOPLEFT", 14, y)
-        kbHint:SetText("Right-click checkbox to reset to global")
-        tinsert(panel.controls, kbHint)
-        y = y - 22
-
-        -- Position
-        local piKbPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piKbPosLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveKbPos = group.keybindPosition or WiseDB.settings.keybindPosition or "TOP"
-        piKbPosLabel:SetText("Position: " .. effectiveKbPos)
-        tinsert(panel.controls, piKbPosLabel)
-        y = y - 22
-
-        local kbPositions = {
-            {val="TOPLEFT", text="Top Left"}, {val="TOP", text="Top"}, {val="TOPRIGHT", text="Top Right"},
-            {val="LEFT", text="Left"}, {val="CENTER", text="Center"}, {val="RIGHT", text="Right"},
-            {val="BOTTOMLEFT", text="Bottom Left"}, {val="BOTTOM", text="Bottom"}, {val="BOTTOMRIGHT", text="Bottom Right"},
-        }
-        for _, posMode in ipairs(kbPositions) do
-             local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-             radio:SetPoint("TOPLEFT", 10, y)
-             radio:SetChecked(effectiveKbPos == posMode.val)
-             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-             radio.text:SetText(posMode.text)
-
-             radio:SetScript("OnClick", function(self)
-                 group.keybindPosition = posMode.val
-                 -- Refresh to update label/check and Reset button
-                 Wise:RefreshPropertiesPanel()
-                 C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-             end)
-             tinsert(panel.controls, radio)
-             tinsert(panel.controls, radio.text)
-             y = y - 22
-        end
-
-        y = y - 10
-
-        -- Size
-        local piKbSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piKbSizeLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveKbSize = group.keybindTextSize or WiseDB.settings.keybindTextSize or 10
-        piKbSizeLabel:SetText("Size: " .. effectiveKbSize)
-        tinsert(panel.controls, piKbSizeLabel)
-        y = y - 22
-
-        local piKbSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piKbSizeSlider:SetPoint("TOPLEFT", 37, y)
-        piKbSizeSlider:SetSize(126, 16)
-        piKbSizeSlider:SetMinMaxValues(8, 24)
-        piKbSizeSlider:SetValue(effectiveKbSize)
-        piKbSizeSlider:SetValueStep(1)
-        piKbSizeSlider:SetObeyStepOnDrag(true)
-        piKbSizeSlider.Low:SetText("8")
-        piKbSizeSlider.High:SetText("24")
-        piKbSizeSlider.Text:SetText(tostring(effectiveKbSize))
-        piKbSizeSlider:SetScript("OnValueChanged", function(self, value)
-            local size = math.floor(value)
-            group.keybindTextSize = size
-            self.Text:SetText(tostring(size))
-            piKbSizeLabel:SetText("Size: " .. size)
-            UpdateDisplayStatus()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        tinsert(panel.controls, piKbSizeSlider)
-
-        -- Minus Button for piKbSizeSlider
-        local piKbSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piKbSizeSliderMinusBtn:SetSize(27, 27)
-        piKbSizeSliderMinusBtn:SetPoint("RIGHT", piKbSizeSlider, "LEFT", -2, 0)
-        piKbSizeSliderMinusBtn:SetText("-")
-        piKbSizeSliderMinusBtn:SetScript("OnClick", function()
-            local v = piKbSizeSlider:GetValue() - 1
-            local min, max = piKbSizeSlider:GetMinMaxValues()
-            if v >= min then piKbSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piKbSizeSliderMinusBtn)
-
-        -- Plus Button for piKbSizeSlider
-        local piKbSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piKbSizeSliderPlusBtn:SetSize(27, 27)
-        piKbSizeSliderPlusBtn:SetPoint("LEFT", piKbSizeSlider, "RIGHT", 2, 0)
-        piKbSizeSliderPlusBtn:SetText("+")
-        piKbSizeSliderPlusBtn:SetScript("OnClick", function()
-            local v = piKbSizeSlider:GetValue() + 1
-            local min, max = piKbSizeSlider:GetMinMaxValues()
-            if v <= max then piKbSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piKbSizeSliderPlusBtn)
-
-        y = y - 35
-
-        -- Per-Interface Charge Text Settings
-        local piChargeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piChargeLabel:SetPoint("TOPLEFT", 10, y)
-        piChargeLabel:SetText("Charge Text:" .. ( (group.chargeTextSize or group.chargeTextPosition or group.showChargeText ~= nil) and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piChargeLabel)
-        y = y - 22
-
-        -- Show Checkbox
-        local piShowCharge = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        piShowCharge:SetPoint("TOPLEFT", 10, y)
-        local currentShowCharge = group.showChargeText
-        if currentShowCharge == nil then currentShowCharge = WiseDB.settings.showChargeText end
-        if currentShowCharge == nil then currentShowCharge = true end
-        piShowCharge:SetChecked(currentShowCharge)
-
-        piShowCharge.text = piShowCharge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        piShowCharge.text:SetPoint("LEFT", piShowCharge, "RIGHT", 5, 0)
-        piShowCharge.text:SetText("Show")
-        piShowCharge:SetScript("OnClick", function(self)
-            group.showChargeText = self:GetChecked()
-            UpdateDisplayStatus() -- Updates Reset Button
-            Wise:RefreshPropertiesPanel() -- To update label (Custom)
-            C_Timer.After(0.1, function() 
-                if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                if Wise.UpdateAllCharges then Wise:UpdateAllCharges() end
-            end)
-        end)
-        tinsert(panel.controls, piShowCharge)
-        tinsert(panel.controls, piShowCharge.text)
-
-        y = y - 30
-
-        -- Position
-        local piChargePosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piChargePosLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveChargePos = group.chargeTextPosition or WiseDB.settings.chargeTextPosition or "BOTTOMRIGHT"
-        piChargePosLabel:SetText("Position: " .. effectiveChargePos)
-        tinsert(panel.controls, piChargePosLabel)
-        y = y - 22
-
-        local piChargePositions = {
-            {val="TOPLEFT", text="Top Left"}, {val="TOP", text="Top"}, {val="TOPRIGHT", text="Top Right"},
-            {val="LEFT", text="Left"}, {val="CENTER", text="Center"}, {val="RIGHT", text="Right"},
-            {val="BOTTOMLEFT", text="Bottom Left"}, {val="BOTTOM", text="Bottom"}, {val="BOTTOMRIGHT", text="Bottom Right"},
-        }
-        for _, posMode in ipairs(piChargePositions) do
-             local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-             radio:SetPoint("TOPLEFT", 10, y)
-             radio:SetChecked(effectiveChargePos == posMode.val)
-             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-             radio.text:SetText(posMode.text)
-
-             radio:SetScript("OnClick", function(self)
-                 group.chargeTextPosition = posMode.val
-                 -- Refresh to update label/check and Reset button
-                 Wise:RefreshPropertiesPanel()
-                 if not InCombatLockdown() then
-                     Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                 end
-             end)
-             tinsert(panel.controls, radio)
-             tinsert(panel.controls, radio.text)
-             y = y - 22
-        end
-
-        y = y - 10
-
-        -- Size
-        local piChargeSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piChargeSizeLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveChargeSize = group.chargeTextSize or WiseDB.settings.chargeTextSize or 12
-        piChargeSizeLabel:SetText("Size: " .. effectiveChargeSize)
-        tinsert(panel.controls, piChargeSizeLabel)
-        y = y - 22
-
-        local piChargeSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piChargeSizeSlider:SetPoint("TOPLEFT", 37, y)
-        piChargeSizeSlider:SetSize(126, 16)
-        piChargeSizeSlider:SetMinMaxValues(8, 24)
-        piChargeSizeSlider:SetValue(effectiveChargeSize)
-        piChargeSizeSlider:SetValueStep(1)
-        piChargeSizeSlider:SetObeyStepOnDrag(true)
-        piChargeSizeSlider.Low:SetText("8")
-        piChargeSizeSlider.High:SetText("24")
-        piChargeSizeSlider.Text:SetText(tostring(effectiveChargeSize))
-        piChargeSizeSlider:SetScript("OnValueChanged", function(self, value)
-            local size = math.floor(value)
-            group.chargeTextSize = size
-            self.Text:SetText(tostring(size))
-            piChargeSizeLabel:SetText("Size: " .. size)
-            UpdateDisplayStatus()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        tinsert(panel.controls, piChargeSizeSlider)
-
-        -- Minus Button for piChargeSizeSlider
-        local piChargeSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piChargeSizeSliderMinusBtn:SetSize(27, 27)
-        piChargeSizeSliderMinusBtn:SetPoint("RIGHT", piChargeSizeSlider, "LEFT", -2, 0)
-        piChargeSizeSliderMinusBtn:SetText("-")
-        piChargeSizeSliderMinusBtn:SetScript("OnClick", function()
-            local v = piChargeSizeSlider:GetValue() - 1
-            local min, max = piChargeSizeSlider:GetMinMaxValues()
-            if v >= min then piChargeSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piChargeSizeSliderMinusBtn)
-
-        -- Plus Button for piChargeSizeSlider
-        local piChargeSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piChargeSizeSliderPlusBtn:SetSize(27, 27)
-        piChargeSizeSliderPlusBtn:SetPoint("LEFT", piChargeSizeSlider, "RIGHT", 2, 0)
-        piChargeSizeSliderPlusBtn:SetText("+")
-        piChargeSizeSliderPlusBtn:SetScript("OnClick", function()
-            local v = piChargeSizeSlider:GetValue() + 1
-            local min, max = piChargeSizeSlider:GetMinMaxValues()
-            if v <= max then piChargeSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piChargeSizeSliderPlusBtn)
-
-        y = y - 35
-
-        -- Per-Interface Countdown Text Settings
-        local piCountdownLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piCountdownLabel:SetPoint("TOPLEFT", 10, y)
-        piCountdownLabel:SetText("Countdown Text:" .. ( (group.countdownTextSize or group.countdownTextPosition or group.showCountdownText ~= nil) and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piCountdownLabel)
-        y = y - 22
-
-        -- Show Checkbox
-        local piShowCountdown = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        piShowCountdown:SetPoint("TOPLEFT", 10, y)
-        local currentShowCountdown = group.showCountdownText
-        if currentShowCountdown == nil then currentShowCountdown = WiseDB.settings.showCountdownText end
-        if currentShowCountdown == nil then currentShowCountdown = true end
-        piShowCountdown:SetChecked(currentShowCountdown)
-
-        piShowCountdown.text = piShowCountdown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        piShowCountdown.text:SetPoint("LEFT", piShowCountdown, "RIGHT", 5, 0)
-        piShowCountdown.text:SetText("Show")
-        piShowCountdown:SetScript("OnClick", function(self)
-            group.showCountdownText = self:GetChecked()
-            UpdateDisplayStatus() -- Updates Reset Button
-            Wise:RefreshPropertiesPanel() -- To update label (Custom)
-            C_Timer.After(0.1, function() 
-                if not InCombatLockdown() and Wise.UpdateAllCooldowns then Wise:UpdateAllCooldowns() end
-            end)
-        end)
-        tinsert(panel.controls, piShowCountdown)
-        tinsert(panel.controls, piShowCountdown.text)
-
-        y = y - 30
-
-        -- Position
-        local piCountdownPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piCountdownPosLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveCountdownPos = group.countdownTextPosition or WiseDB.settings.countdownTextPosition or "CENTER"
-        piCountdownPosLabel:SetText("Position: " .. effectiveCountdownPos)
-        tinsert(panel.controls, piCountdownPosLabel)
-        y = y - 22
-
-        -- Re-use charge text positions list as they are standard compass points
-        for _, posMode in ipairs(piChargePositions) do
-             local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-             radio:SetPoint("TOPLEFT", 10, y)
-             radio:SetChecked(effectiveCountdownPos == posMode.val)
-             radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
-             radio.text:SetText(posMode.text)
-
-             radio:SetScript("OnClick", function(self)
-                 group.countdownTextPosition = posMode.val
-                 -- Refresh to update label/check and Reset button
-                 Wise:RefreshPropertiesPanel()
-                 if not InCombatLockdown() then
-                     Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                 end
-             end)
-             tinsert(panel.controls, radio)
-             tinsert(panel.controls, radio.text)
-             y = y - 22
-        end
-
-        y = y - 10
-
-        -- Size
-        local piCountdownSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piCountdownSizeLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveCountdownSize = group.countdownTextSize or WiseDB.settings.countdownTextSize or 12
-        piCountdownSizeLabel:SetText("Size: " .. effectiveCountdownSize)
-        tinsert(panel.controls, piCountdownSizeLabel)
-        y = y - 22
-
-        local piCountdownSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piCountdownSizeSlider:SetPoint("TOPLEFT", 37, y)
-        piCountdownSizeSlider:SetSize(126, 16)
-        piCountdownSizeSlider:SetMinMaxValues(8, 24)
-        piCountdownSizeSlider:SetValue(effectiveCountdownSize)
-        piCountdownSizeSlider:SetValueStep(1)
-        piCountdownSizeSlider:SetObeyStepOnDrag(true)
-        piCountdownSizeSlider.Low:SetText("8")
-        piCountdownSizeSlider.High:SetText("24")
-        piCountdownSizeSlider.Text:SetText(tostring(effectiveCountdownSize))
-        piCountdownSizeSlider:SetScript("OnValueChanged", function(self, value)
-            local size = math.floor(value)
-            group.countdownTextSize = size
-            self.Text:SetText(tostring(size))
-            piCountdownSizeLabel:SetText("Size: " .. size)
-            UpdateDisplayStatus()
-            C_Timer.After(0.1, function() Wise:UpdateGroupDisplay(Wise.selectedGroup) end)
-        end)
-        tinsert(panel.controls, piCountdownSizeSlider)
-
-        -- Minus Button for piCountdownSizeSlider
-        local piCountdownSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piCountdownSizeSliderMinusBtn:SetSize(27, 27)
-        piCountdownSizeSliderMinusBtn:SetPoint("RIGHT", piCountdownSizeSlider, "LEFT", -2, 0)
-        piCountdownSizeSliderMinusBtn:SetText("-")
-        piCountdownSizeSliderMinusBtn:SetScript("OnClick", function()
-            local v = piCountdownSizeSlider:GetValue() - 1
-            local min, max = piCountdownSizeSlider:GetMinMaxValues()
-            if v >= min then piCountdownSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piCountdownSizeSliderMinusBtn)
-
-        -- Plus Button for piCountdownSizeSlider
-        local piCountdownSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piCountdownSizeSliderPlusBtn:SetSize(27, 27)
-        piCountdownSizeSliderPlusBtn:SetPoint("LEFT", piCountdownSizeSlider, "RIGHT", 2, 0)
-        piCountdownSizeSliderPlusBtn:SetText("+")
-        piCountdownSizeSliderPlusBtn:SetScript("OnClick", function()
-            local v = piCountdownSizeSlider:GetValue() + 1
-            local min, max = piCountdownSizeSlider:GetMinMaxValues()
-            if v <= max then piCountdownSizeSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piCountdownSizeSliderPlusBtn)
-
-        y = y - 35
-
-        -- Per-Interface Enabled Opacity
-        local piEnabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piEnabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveEnabledOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
-        local effectiveEnabledPct = math.floor(effectiveEnabledOpacity * 100 + 0.5)
-        piEnabledOpacityLabel:SetText("Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piEnabledOpacityLabel)
-        y = y - 30
-
-        local piEnabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piEnabledSlider:SetPoint("TOPLEFT", 37, y)
-        piEnabledSlider:SetSize(126, 16)
-        piEnabledSlider:SetMinMaxValues(0, 100)
-        piEnabledSlider:SetValueStep(5)
-        piEnabledSlider:SetObeyStepOnDrag(true)
-        piEnabledSlider:SetValue(effectiveEnabledPct)
-        piEnabledSlider.Low:SetText("0%")
-        piEnabledSlider.High:SetText("100%")
-        piEnabledSlider.Text:SetText(effectiveEnabledPct .. "%")
-        piEnabledSlider:SetScript("OnValueChanged", function(self, val)
-            val = math.floor(val + 0.5)
-            group.activeOpacity = val / 100
-            self.Text:SetText(val .. "%")
-            piEnabledOpacityLabel:SetText("Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
-            UpdateDisplayStatus()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, piEnabledSlider)
-
-        local piEnabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piEnabledMinusBtn:SetSize(27, 27)
-        piEnabledMinusBtn:SetPoint("RIGHT", piEnabledSlider, "LEFT", -2, 0)
-        piEnabledMinusBtn:SetText("-")
-        piEnabledMinusBtn:SetScript("OnClick", function()
-            local v = piEnabledSlider:GetValue() - 5
-            local min, max = piEnabledSlider:GetMinMaxValues()
-            if v >= min then piEnabledSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piEnabledMinusBtn)
-
-        local piEnabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piEnabledPlusBtn:SetSize(27, 27)
-        piEnabledPlusBtn:SetPoint("LEFT", piEnabledSlider, "RIGHT", 2, 0)
-        piEnabledPlusBtn:SetText("+")
-        piEnabledPlusBtn:SetScript("OnClick", function()
-            local v = piEnabledSlider:GetValue() + 5
-            local min, max = piEnabledSlider:GetMinMaxValues()
-            if v <= max then piEnabledSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piEnabledPlusBtn)
-
-        y = y - 35
-
-        -- Per-Interface Disabled Opacity
-        local piDisabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piDisabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
-        local effectiveDisabledOpacity = group.inactiveOpacity or (WiseDB.settings and WiseDB.settings.inactiveOpacity) or 0
-        local effectiveDisabledPct = math.floor(effectiveDisabledOpacity * 100 + 0.5)
-        piDisabledOpacityLabel:SetText("Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piDisabledOpacityLabel)
-        y = y - 30
-
-        local piDisabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-        piDisabledSlider:SetPoint("TOPLEFT", 37, y)
-        piDisabledSlider:SetSize(126, 16)
-        piDisabledSlider:SetMinMaxValues(0, 100)
-        piDisabledSlider:SetValueStep(5)
-        piDisabledSlider:SetObeyStepOnDrag(true)
-        piDisabledSlider:SetValue(effectiveDisabledPct)
-        piDisabledSlider.Low:SetText("Hidden")
-        piDisabledSlider.High:SetText("100%")
-        piDisabledSlider.Text:SetText(effectiveDisabledPct == 0 and "Hidden" or (effectiveDisabledPct .. "%"))
-        piDisabledSlider:SetScript("OnValueChanged", function(self, val)
-            val = math.floor(val + 0.5)
-            group.inactiveOpacity = val / 100
-            self.Text:SetText(val == 0 and "Hidden" or (val .. "%"))
-            piDisabledOpacityLabel:SetText("Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or ""))
-            UpdateDisplayStatus()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, piDisabledSlider)
-
-        local piDisabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piDisabledMinusBtn:SetSize(27, 27)
-        piDisabledMinusBtn:SetPoint("RIGHT", piDisabledSlider, "LEFT", -2, 0)
-        piDisabledMinusBtn:SetText("-")
-        piDisabledMinusBtn:SetScript("OnClick", function()
-            local v = piDisabledSlider:GetValue() - 5
-            local min, max = piDisabledSlider:GetMinMaxValues()
-            if v >= min then piDisabledSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piDisabledMinusBtn)
-
-        local piDisabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        piDisabledPlusBtn:SetSize(27, 27)
-        piDisabledPlusBtn:SetPoint("LEFT", piDisabledSlider, "RIGHT", 2, 0)
-        piDisabledPlusBtn:SetText("+")
-        piDisabledPlusBtn:SetScript("OnClick", function()
-            local v = piDisabledSlider:GetValue() + 5
-            local min, max = piDisabledSlider:GetMinMaxValues()
-            if v <= max then piDisabledSlider:SetValue(v) end
-        end)
-        tinsert(panel.controls, piDisabledPlusBtn)
-
-        y = y - 35
-
-        -- Per-Interface GCD Setting
-        local piGCDLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        piGCDLabel:SetPoint("TOPLEFT", 10, y)
-        piGCDLabel:SetText("Show GCD:" .. (group.showGCD ~= nil and " |cffff8800(Custom)|r" or ""))
-        tinsert(panel.controls, piGCDLabel)
-        y = y - 22
-
-        local piShowGCD = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        piShowGCD:SetPoint("TOPLEFT", 10, y)
-
-        local currentShowGCD = group.showGCD
-        if currentShowGCD == nil then
-             currentShowGCD = WiseDB.settings.showGCD
-             if currentShowGCD == nil then currentShowGCD = true end
-        end
-        piShowGCD:SetChecked(currentShowGCD)
-
-        piShowGCD.text = piShowGCD:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        piShowGCD.text:SetPoint("LEFT", piShowGCD, "RIGHT", 5, 0)
-        piShowGCD.text:SetText("Show")
-        piShowGCD:SetScript("OnClick", function(self)
-            group.showGCD = self:GetChecked()
-            UpdateDisplayStatus() -- Updates Reset Button
-            Wise:RefreshPropertiesPanel() -- To update label (Custom)
-            C_Timer.After(0.1, function() Wise:UpdateAllCooldowns() end)
-        end)
-        tinsert(panel.controls, piShowGCD)
-        tinsert(panel.controls, piShowGCD.text)
-
-        y = y - 30
-
-        -- Reset to Global Settings Button
-        resetGlobalBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-        resetGlobalBtn:SetSize(180, 22)
-        resetGlobalBtn:SetPoint("TOPLEFT", 10, y)
-        resetGlobalBtn:SetText("Reset to Global Settings")
-
-        -- Initial State Check
-        if not group.iconStyle and not group.iconSize and not group.textSize and not group.font and group.showKeybinds == nil and not group.keybindPosition and not group.keybindTextSize and not group.chargeTextSize and not group.chargeTextPosition and not group.countdownTextSize and not group.countdownTextPosition and group.activeOpacity == nil and group.inactiveOpacity == nil and group.showGCD == nil and group.showChargeText == nil and group.showCountdownText == nil and group.hideEmptySlots == nil then
-            resetGlobalBtn:Disable()
-        end
-
-        resetGlobalBtn:SetScript("OnClick", function()
-            group.iconStyle = nil
-            group.iconSize = nil
-            group.textSize = nil
-            group.font = nil
-            group.showKeybinds = nil
-            group.keybindPosition = nil
-            group.keybindTextSize = nil
-            group.showChargeText = nil
-            group.chargeTextSize = nil
-            group.chargeTextPosition = nil
-            group.showCountdownText = nil
-            group.countdownTextSize = nil
-            group.countdownTextPosition = nil
-            group.activeOpacity = nil
-            group.inactiveOpacity = nil
-            group.showGCD = nil
-            group.hideEmptySlots = nil
-
-            C_Timer.After(0.1, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-            Wise:RefreshPropertiesPanel()
-        end)
-        tinsert(panel.controls, resetGlobalBtn)
-
-        y = y - 30
-    end
-
-    if not suppress.Padding then
-        -- =============================================
-        -- PADDING / SPACING SETTINGS (based on layout type)
-        -- =============================================
-        if group.type == "line" or group.type == "list" then
-            -- Single Padding Slider
-            local padLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            padLabel:SetPoint("TOPLEFT", 10, y)
-            local currentPadding = group.padding or (group.type == "list" and 8 or 5)
-            padLabel:SetText("Padding: " .. currentPadding)
-            tinsert(panel.controls, padLabel)
-
-            y = y - 22
-            local padSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padSlider:SetPoint("TOPLEFT", 37, y)
-            padSlider:SetSize(126, 16)
-            padSlider:SetMinMaxValues(0, 40)
-            padSlider:SetValue(currentPadding)
-            padSlider:SetValueStep(1)
-            padSlider:SetObeyStepOnDrag(true)
-            padSlider.Low:SetText("0")
-            padSlider.High:SetText("40")
-            padSlider.Text:SetText(tostring(currentPadding))
-            padSlider:SetScript("OnValueChanged", function(self, value)
-                local v = math.floor(value)
-                group.padding = v
-                padLabel:SetText("Padding: " .. v)
-                self.Text:SetText(tostring(v))
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, padSlider)
-
-            -- Minus Button for padSlider
-            local padSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padSliderMinusBtn:SetSize(27, 27)
-            padSliderMinusBtn:SetPoint("RIGHT", padSlider, "LEFT", -2, 0)
-            padSliderMinusBtn:SetText("-")
-            padSliderMinusBtn:SetScript("OnClick", function()
-                local v = padSlider:GetValue() - 1
-                local min, max = padSlider:GetMinMaxValues()
-                if v >= min then padSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padSliderMinusBtn)
-
-            -- Plus Button for padSlider
-            local padSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padSliderPlusBtn:SetSize(27, 27)
-            padSliderPlusBtn:SetPoint("LEFT", padSlider, "RIGHT", 2, 0)
-            padSliderPlusBtn:SetText("+")
-            padSliderPlusBtn:SetScript("OnClick", function()
-                local v = padSlider:GetValue() + 1
-                local min, max = padSlider:GetMinMaxValues()
-                if v <= max then padSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padSliderPlusBtn)
-            y = y - 40
-
-        elseif group.type == "box" then
-            -- X Padding Slider
-            local padXLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            padXLabel:SetPoint("TOPLEFT", 10, y)
-            local currentPadX = group.paddingX or 5
-            padXLabel:SetText("X Padding: " .. currentPadX)
-            tinsert(panel.controls, padXLabel)
-
-            y = y - 22
-            local padXSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padXSlider:SetPoint("TOPLEFT", 37, y)
-            padXSlider:SetSize(126, 16)
-            padXSlider:SetMinMaxValues(0, 40)
-            padXSlider:SetValue(currentPadX)
-            padXSlider:SetValueStep(1)
-            padXSlider:SetObeyStepOnDrag(true)
-            padXSlider.Low:SetText("0")
-            padXSlider.High:SetText("40")
-            padXSlider.Text:SetText(tostring(currentPadX))
-            padXSlider:SetScript("OnValueChanged", function(self, value)
-                local v = math.floor(value)
-                group.paddingX = v
-                padXLabel:SetText("X Padding: " .. v)
-                self.Text:SetText(tostring(v))
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, padXSlider)
-
-            -- Minus Button for padXSlider
-            local padXSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padXSliderMinusBtn:SetSize(27, 27)
-            padXSliderMinusBtn:SetPoint("RIGHT", padXSlider, "LEFT", -2, 0)
-            padXSliderMinusBtn:SetText("-")
-            padXSliderMinusBtn:SetScript("OnClick", function()
-                local v = padXSlider:GetValue() - 1
-                local min, max = padXSlider:GetMinMaxValues()
-                if v >= min then padXSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padXSliderMinusBtn)
-
-            -- Plus Button for padXSlider
-            local padXSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padXSliderPlusBtn:SetSize(27, 27)
-            padXSliderPlusBtn:SetPoint("LEFT", padXSlider, "RIGHT", 2, 0)
-            padXSliderPlusBtn:SetText("+")
-            padXSliderPlusBtn:SetScript("OnClick", function()
-                local v = padXSlider:GetValue() + 1
-                local min, max = padXSlider:GetMinMaxValues()
-                if v <= max then padXSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padXSliderPlusBtn)
-            y = y - 40
-
-            -- Y Padding Slider
-            local padYLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            padYLabel:SetPoint("TOPLEFT", 10, y)
-            local currentPadY = group.paddingY or 5
-            padYLabel:SetText("Y Padding: " .. currentPadY)
-            tinsert(panel.controls, padYLabel)
-
-            y = y - 22
-            local padYSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            padYSlider:SetPoint("TOPLEFT", 37, y)
-            padYSlider:SetSize(126, 16)
-            padYSlider:SetMinMaxValues(0, 40)
-            padYSlider:SetValue(currentPadY)
-            padYSlider:SetValueStep(1)
-            padYSlider:SetObeyStepOnDrag(true)
-            padYSlider.Low:SetText("0")
-            padYSlider.High:SetText("40")
-            padYSlider.Text:SetText(tostring(currentPadY))
-            padYSlider:SetScript("OnValueChanged", function(self, value)
-                local v = math.floor(value)
-                group.paddingY = v
-                padYLabel:SetText("Y Padding: " .. v)
-                self.Text:SetText(tostring(v))
-                C_Timer.After(0.1, function()
-                    if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    end
-                end)
-            end)
-            tinsert(panel.controls, padYSlider)
-
-            -- Minus Button for padYSlider
-            local padYSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padYSliderMinusBtn:SetSize(27, 27)
-            padYSliderMinusBtn:SetPoint("RIGHT", padYSlider, "LEFT", -2, 0)
-            padYSliderMinusBtn:SetText("-")
-            padYSliderMinusBtn:SetScript("OnClick", function()
-                local v = padYSlider:GetValue() - 1
-                local min, max = padYSlider:GetMinMaxValues()
-                if v >= min then padYSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padYSliderMinusBtn)
-
-            -- Plus Button for padYSlider
-            local padYSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            padYSliderPlusBtn:SetSize(27, 27)
-            padYSliderPlusBtn:SetPoint("LEFT", padYSlider, "RIGHT", 2, 0)
-            padYSliderPlusBtn:SetText("+")
-            padYSliderPlusBtn:SetScript("OnClick", function()
-                local v = padYSlider:GetValue() + 1
-                local min, max = padYSlider:GetMinMaxValues()
-                if v <= max then padYSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, padYSliderPlusBtn)
-            y = y - 40
-        end
-    end
-
-    if not suppress.AnchorMode then
-        -- Anchor Mode
-        local anchorLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        anchorLabel:SetPoint("TOPLEFT", 10, y)
-        anchorLabel:SetText("Anchor Mode:")
-        tinsert(panel.controls, anchorLabel)
-
-        y = y - 20
-        local anchorBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-        anchorBtn:SetSize(140, 22)
-        anchorBtn:SetPoint("TOPLEFT", 10, y)
-        anchorBtn:SetText((group.anchorMode or "fixed"):upper())
-        anchorBtn:SetScript("OnClick", function()
-            local modes = {"fixed", "mouse"}
-            local current = group.anchorMode or "fixed"
-            local nextIndex = current == "fixed" and 2 or 1
-            group.anchorMode = modes[nextIndex]
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
-        tinsert(panel.controls, anchorBtn)
-
-        -- Reset Position button (resets to CENTER 0,0)
-        y = y - 25
-        local resetBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-        resetBtn:SetSize(140, 22)
-        resetBtn:SetPoint("TOPLEFT", 10, y)
-        resetBtn:SetText("Reset Position")
-        Wise:AddTooltip(resetBtn, "Reset this interface to the center of the screen.")
-        resetBtn:SetScript("OnClick", function()
-            if InCombatLockdown() then
-                print("|cffff0000Wise:|r Cannot reposition during combat.")
-                return
-            end
-            group.anchor = { point = "CENTER", x = 0, y = 0 }
-            local f = Wise.frames[Wise.selectedGroup]
-            if f and f.Anchor then
-                f.Anchor:ClearAllPoints()
-                f.Anchor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-                f:ClearAllPoints()
-                f:SetPoint("CENTER", f.Anchor, "CENTER")
-            end
-            Wise:RefreshPropertiesPanel()
-        end)
-        tinsert(panel.controls, resetBtn)
-
-        -- Mouse offset sliders (only show if mouse mode)
-        if group.anchorMode == "mouse" then
-            y = y - 25
-
-            -- X Offset
-            local xOffsetLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            xOffsetLabel:SetPoint("TOPLEFT", 10, y)
-            xOffsetLabel:SetText("X Offset: " .. (group.mouseOffsetX or 0))
-            tinsert(panel.controls, xOffsetLabel)
-
-            y = y - 18
-            local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            xSlider:SetPoint("TOPLEFT", 37, y)
-            xSlider:SetSize(126, 16)
-            xSlider:SetMinMaxValues(-100, 100)
-            xSlider:SetValue(group.mouseOffsetX or 0)
-            xSlider:SetValueStep(5)
-            xSlider:SetObeyStepOnDrag(true)
-            xSlider.Low:SetText("-100")
-            xSlider.High:SetText("100")
-            xSlider.Text:SetText("")
-            xSlider:SetScript("OnValueChanged", function(self, value)
-                group.mouseOffsetX = math.floor(value)
-                xOffsetLabel:SetText("X Offset: " .. group.mouseOffsetX)
-            end)
-            tinsert(panel.controls, xSlider)
-
-            -- Minus Button for xSlider
-            local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            xSliderMinusBtn:SetSize(27, 27)
-            xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
-            xSliderMinusBtn:SetText("-")
-            xSliderMinusBtn:SetScript("OnClick", function()
-                local v = xSlider:GetValue() - 5
-                local min, max = xSlider:GetMinMaxValues()
-                if v >= min then xSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, xSliderMinusBtn)
-
-            -- Plus Button for xSlider
-            local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            xSliderPlusBtn:SetSize(27, 27)
-            xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
-            xSliderPlusBtn:SetText("+")
-            xSliderPlusBtn:SetScript("OnClick", function()
-                local v = xSlider:GetValue() + 5
-                local min, max = xSlider:GetMinMaxValues()
-                if v <= max then xSlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, xSliderPlusBtn)
-
-            y = y - 25
-
-            -- Y Offset
-            local yOffsetLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            yOffsetLabel:SetPoint("TOPLEFT", 10, y)
-            yOffsetLabel:SetText("Y Offset: " .. (group.mouseOffsetY or 0))
-            tinsert(panel.controls, yOffsetLabel)
-
-            y = y - 18
-            local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
-            ySlider:SetPoint("TOPLEFT", 37, y)
-            ySlider:SetSize(126, 16)
-            ySlider:SetMinMaxValues(-100, 100)
-            ySlider:SetValue(group.mouseOffsetY or 0)
-            ySlider:SetValueStep(5)
-            ySlider:SetObeyStepOnDrag(true)
-            ySlider.Low:SetText("-100")
-            ySlider.High:SetText("100")
-            ySlider.Text:SetText("")
-            ySlider:SetScript("OnValueChanged", function(self, value)
-                group.mouseOffsetY = math.floor(value)
-                yOffsetLabel:SetText("Y Offset: " .. group.mouseOffsetY)
-            end)
-            tinsert(panel.controls, ySlider)
-
-            -- Minus Button for ySlider
-            local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            ySliderMinusBtn:SetSize(27, 27)
-            ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
-            ySliderMinusBtn:SetText("-")
-            ySliderMinusBtn:SetScript("OnClick", function()
-                local v = ySlider:GetValue() - 5
-                local min, max = ySlider:GetMinMaxValues()
-                if v >= min then ySlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, ySliderMinusBtn)
-
-            -- Plus Button for ySlider
-            local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-            ySliderPlusBtn:SetSize(27, 27)
-            ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
-            ySliderPlusBtn:SetText("+")
-            ySliderPlusBtn:SetScript("OnClick", function()
-                local v = ySlider:GetValue() + 5
-                local min, max = ySlider:GetMinMaxValues()
-                if v <= max then ySlider:SetValue(v) end
-            end)
-            tinsert(panel.controls, ySliderPlusBtn)
-
-            y = y - 10
-        end
-    end
-
-    if Wise.selectedSlot and group.actions and group.actions[Wise.selectedSlot] then
-         y = y - 30
-
-         local slotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-         slotLabel:SetPoint("TOPLEFT", 10, y)
-         slotLabel:SetText("Slot " .. Wise.selectedSlot .. " Keybind:")
-         tinsert(panel.controls, slotLabel)
-         y = y - 20
-
-         local slotBindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-         slotBindBtn:SetSize(140, 22)
-         slotBindBtn:SetPoint("TOPLEFT", 10, y)
-         local slotBind = group.actions[Wise.selectedSlot].keybind
-         slotBindBtn:SetText(slotBind or "None")
-
-         slotBindBtn:RegisterForClicks("AnyUp")
-         slotBindBtn:SetScript("OnClick", function(self, button)
-             if button == "RightButton" then
-                 group.actions[Wise.selectedSlot].keybind = nil
-                 Wise:UpdateBindings() -- Update bindings logic
-                 self:SetText("None")
-             else
-                 self:SetText("Press Key...")
-                 self:EnableKeyboard(true)
-
-                 local function FinishSlotBinding(key)
-                     if not key then return end
-                     if key == "ESCAPE" then
-                         self:EnableKeyboard(false)
-                         self:SetScript("OnKeyDown", nil)
-                         self:SetScript("OnMouseDown", nil)
-                         self:SetText(group.actions[Wise.selectedSlot].keybind or "None")
-                         return
-                     end
-                     if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then return end
-
-                     local mods = ""
-                     if IsAltKeyDown() then mods = mods .. "ALT-" end
-                     if IsControlKeyDown() then mods = mods .. "CTRL-" end
-                     if IsShiftKeyDown() then mods = mods .. "SHIFT-" end
-
-                     local fullKey = mods .. key
-                     self:EnableKeyboard(false)
-                     self:SetScript("OnKeyDown", nil)
-                     self:SetScript("OnMouseDown", nil)
-
-                     if Wise:CheckBindingConflict(fullKey, group, Wise.selectedSlot, true, self) then
-                         return
-                     end
-
-                     group.actions[Wise.selectedSlot].keybind = fullKey
-                     self:SetText(fullKey)
-
-                     Wise:UpdateBindings()
-                 end
-
-                 self:SetScript("OnKeyDown", function(self, key)
-                     FinishSlotBinding(key)
-                 end)
-
-                 self:SetScript("OnMouseDown", function(self, button)
-                     if button == "LeftButton" or button == "RightButton" then return end
-                     local key = button
-                     if button == "MiddleButton" then key = "BUTTON3" end
-                    if button == "Button4" then key = "BUTTON4" end
-                    if button == "Button5" then key = "BUTTON5" end
-                     FinishSlotBinding(key)
-                 end)
-             end
-         end)
-         tinsert(panel.controls, slotBindBtn)
-
-         -- Hint
-         local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-         hint:SetPoint("LEFT", slotBindBtn, "RIGHT", 5, 0)
-         hint:SetText( (group.keybindSettings and group.keybindSettings.nested) and "[Nested]" or "[Global]" )
-         tinsert(panel.controls, hint)
-
-         y = y - 10
-    elseif group.actions and #group.actions > 0 then
-         y = y - 30
-
-         local slotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-         slotLabel:SetPoint("TOPLEFT", 10, y)
-         slotLabel:SetText("Slot Keybind:")
-         tinsert(panel.controls, slotLabel)
-         y = y - 20
-
-         local disabledBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-         disabledBtn:SetSize(140, 22)
-         disabledBtn:SetPoint("TOPLEFT", 10, y)
-         disabledBtn:SetText("Select a slot first")
-         disabledBtn:SetEnabled(false)
-         tinsert(panel.controls, disabledBtn)
-         y = y - 10
-    end
-
-    y = y - 30
-
-    if not suppress.Visibility then
-        -- Visibility Section
-        -- (Top Spacer)
-        y = y - 10
-
-        -- Easy Mode Header
-        local visLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        visLabel:SetPoint("TOPLEFT", 10, y)
-        visLabel:SetText("Visibility (Easy Mode):")
-        tinsert(panel.controls, visLabel)
-
-        y = y - 25
-
-        --------------------------------------------------
-        -- VISIBILITY MODE LOGIC
-        --------------------------------------------------
-
-        local function GetVisibilityMode()
-            local s = group.visibilitySettings.customShow or ""
-            local h = group.visibilitySettings.customHide or ""
-            local held = group.visibilitySettings.held
-            local toggle = group.visibilitySettings.toggleOnPress
-
-            -- Strict checks for preset modes
-            if s == "[always]" and h == "" and not held and not toggle then return "always" end
-            if h == "[always]" and s == "" and not held and not toggle then return "hidden" end
-            if s == "[combat]" and h == "" and not held and not toggle then return "combat" end
-            if s == "[nocombat]" and h == "" and not held and not toggle then return "nocombat" end
-            if (s == "[undermouse]" or s == "[nocombat,undermouse]") and h == "" and not held and not toggle then return "undermouse" end
-
-            local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
-            if held and s == groupToken and not toggle then return "held" end
-            if toggle and s == groupToken and not held then return "toggle" end
-
-            return nil -- Custom or mixed state
-        end
-
-        local function SetVisibilityMode(mode, enable)
-            -- 1. Clear everything first (Enforce Exclusivity)
-            group.visibilitySettings.customShow = ""
-            group.visibilitySettings.customHide = ""
-            group.visibilitySettings.held = false
-            group.visibilitySettings.toggleOnPress = false
-            -- Note: We DON'T clear hideOnUse here, handled separately or by mode
-
-            if not enable then
-                -- Just cleared, done
-                return
-            end
-
-            -- 2. Apply Mode
-            if mode == "always" then
-                group.visibilitySettings.customShow = "[always]"
-            elseif mode == "hidden" then
-                group.visibilitySettings.customHide = "[always]"
-            elseif mode == "combat" then
-                group.visibilitySettings.customShow = "[combat]"
-            elseif mode == "nocombat" then
-                group.visibilitySettings.customShow = "[nocombat]"
-            elseif mode == "undermouse" then
-                group.visibilitySettings.customShow = "[nocombat,undermouse]"
-            elseif mode == "held" then
-                local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
-                group.visibilitySettings.customShow = groupToken
-                group.visibilitySettings.held = true
-
-                -- Enforce trigger compatibility
-                if group.keybindSettings and group.keybindSettings.trigger == "press" then
-                     group.keybindSettings.trigger = "release_mouseover"
-                end
-            elseif mode == "toggle" then
-                local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
-                group.visibilitySettings.customShow = groupToken
-                group.visibilitySettings.toggleOnPress = true
-
-                -- Force NONE Trigger for Toggle Mode
-                if not group.keybindSettings then group.keybindSettings = {} end
-                group.keybindSettings.trigger = "none"
-            end
-        end
-
-        local currentMode = GetVisibilityMode()
-
-        local function CreateCheckLogic(check, mode)
-            check:SetChecked(currentMode == mode)
-            check:SetScript("OnClick", function(self)
-                SetVisibilityMode(mode, self:GetChecked())
-                Wise:RefreshPropertiesPanel()
-
-                C_Timer.After(0, function()
-                   if not InCombatLockdown() then
-                        Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                        -- Force refresh Edit Mode state if needed (e.g. disabled -> hide overlay)
-                        if Wise.editMode then
-                            local f = Wise.frames[Wise.selectedGroup]
-                            if f and Wise.SetFrameEditMode then
-                                local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
-                                Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
-                            end
-                        end
-                        -- Refresh sidebar list to update enabled/disabled colors
-                        Wise:RefreshGroupList()
-                   end
-                end)
-            end)
-        end
-
-        -- Row 1: Always Vis | Always Hide
-        local chkAlwaysVis = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkAlwaysVis:SetPoint("TOPLEFT", 10, y)
-        chkAlwaysVis.text = chkAlwaysVis:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        chkAlwaysVis.text:SetPoint("LEFT", chkAlwaysVis, "RIGHT", 5, 0)
-        chkAlwaysVis.text:SetText("Always Visible")
-        CreateCheckLogic(chkAlwaysVis, "always")
-        tinsert(panel.controls, chkAlwaysVis)
-        tinsert(panel.controls, chkAlwaysVis.text)
-
-        y = y - 25
-
-        local chkAlwaysHide = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkAlwaysHide:SetPoint("TOPLEFT", 10, y)
-        chkAlwaysHide.text = chkAlwaysHide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        chkAlwaysHide.text:SetPoint("LEFT", chkAlwaysHide, "RIGHT", 5, 0)
-        chkAlwaysHide.text:SetText("Always Hidden")
-        CreateCheckLogic(chkAlwaysHide, "hidden")
-        tinsert(panel.controls, chkAlwaysHide)
-        tinsert(panel.controls, chkAlwaysHide.text)
-
-        y = y - 25
-
-        -- Row 2: Combat | No Combat
-        local chkCombat = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkCombat:SetPoint("TOPLEFT", 10, y)
-        chkCombat.text = chkCombat:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        chkCombat.text:SetPoint("LEFT", chkCombat, "RIGHT", 5, 0)
-        chkCombat.text:SetText("Show In Combat")
-        CreateCheckLogic(chkCombat, "combat")
-        tinsert(panel.controls, chkCombat)
-        tinsert(panel.controls, chkCombat.text)
-
-        y = y - 25
-
-        local chkOOC = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkOOC:SetPoint("TOPLEFT", 10, y)
-        chkOOC.text = chkOOC:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        chkOOC.text:SetPoint("LEFT", chkOOC, "RIGHT", 5, 0)
-        chkOOC.text:SetText("Show Out of Combat")
-        CreateCheckLogic(chkOOC, "nocombat")
-        tinsert(panel.controls, chkOOC)
-        tinsert(panel.controls, chkOOC.text)
-
-        y = y - 25
-
-        -- Row 2.5: Undermouse
-        local chkUnderMouse = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-        chkUnderMouse:SetPoint("TOPLEFT", 10, y)
-        chkUnderMouse.text = chkUnderMouse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        chkUnderMouse.text:SetPoint("LEFT", chkUnderMouse, "RIGHT", 5, 0)
-        chkUnderMouse.text:SetText("Show on Mouseover")
-        CreateCheckLogic(chkUnderMouse, "undermouse")
-        tinsert(panel.controls, chkUnderMouse)
-        tinsert(panel.controls, chkUnderMouse.text)
-
-        if currentMode == "undermouse" then
-            y = y - 22
-            local mouseWarning = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            mouseWarning:SetPoint("TOPLEFT", 35, y)
-            mouseWarning:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
-            mouseWarning:SetJustifyH("LEFT")
-            mouseWarning:SetTextColor(0.8, 0.35, 0.35)
-            mouseWarning:SetText("Actions/Items are not clickable in combat\ndue to WoW restrictions.")
-            tinsert(panel.controls, mouseWarning)
-            y = y - 26
-        end
-
-        y = y - 30
-
-        -- Row 3: Keybind Interactions (Only if Binding Exists)
-        if group.binding then
-             local visIntLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-             visIntLabel:SetPoint("TOPLEFT", 10, y)
-             visIntLabel:SetText("Keybind Interaction (Visibility):")
-             tinsert(panel.controls, visIntLabel)
-             y = y - 20
-
-             local chkHeld = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             chkHeld:SetPoint("TOPLEFT", 10, y)
-             chkHeld.text = chkHeld:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             chkHeld.text:SetPoint("LEFT", chkHeld, "RIGHT", 5, 0)
-             chkHeld.text:SetText("Hold to Show")
-             CreateCheckLogic(chkHeld, "held")
-             tinsert(panel.controls, chkHeld)
-             tinsert(panel.controls, chkHeld.text)
-             y = y - 22
-
-             local chkToggle = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-             chkToggle:SetPoint("TOPLEFT", 10, y)
-             chkToggle.text = chkToggle:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-             chkToggle.text:SetPoint("LEFT", chkToggle, "RIGHT", 5, 0)
-             chkToggle.text:SetText("Toggle on Press")
-             CreateCheckLogic(chkToggle, "toggle")
-             tinsert(panel.controls, chkToggle)
-             tinsert(panel.controls, chkToggle.text)
-             y = y - 22
-
-             -- Hide on Action (Dependent on Toggle)
-             if currentMode == "toggle" then
-                local chkHideUse = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-                chkHideUse:SetPoint("TOPLEFT", 30, y) -- Indented
-                chkHideUse.text = chkHideUse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                chkHideUse.text:SetPoint("LEFT", chkHideUse, "RIGHT", 5, 0)
-                chkHideUse.text:SetText("Hide on Action")
-                chkHideUse:SetChecked(group.visibilitySettings.hideOnUse == true)
-                chkHideUse:SetScript("OnClick", function(self)
-                     group.visibilitySettings.hideOnUse = self:GetChecked()
-                     -- No refresh needed for logic change logic, just redraw?
-                     -- Actually refresh ensures consistency
-                end)
-                tinsert(panel.controls, chkHideUse)
-                tinsert(panel.controls, chkHideUse.text)
-                y = y - 22
-             else
-                group.visibilitySettings.hideOnUse = false
-             end
-
-             -- Nested Keybinds (Only if Toggle + Hide on Action are ON)
-             if currentMode == "toggle" and group.visibilitySettings.hideOnUse then
-                 local chkNested = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-                 chkNested:SetPoint("TOPLEFT", 10, y - 22)
-                 chkNested.text = chkNested:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                 chkNested.text:SetPoint("LEFT", chkNested, "RIGHT", 5, 0)
-                 chkNested.text:SetText("Nested Keybinds")
-
-                 if not group.keybindSettings then group.keybindSettings = {} end
-                 chkNested:SetChecked(group.keybindSettings.nested == true)
-
-                 chkNested:SetScript("OnClick", function(self)
-                      group.keybindSettings.nested = self:GetChecked()
-                      Wise:UpdateBindings() -- Need to update binding logic
-                      Wise:RefreshPropertiesPanel()
-                      C_Timer.After(0, function() if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end end)
-                 end)
-                 tinsert(panel.controls, chkNested)
-                 tinsert(panel.controls, chkNested.text)
-                 y = y - 22 -- Space for nested
-             else
-                 if group.keybindSettings then group.keybindSettings.nested = false end
-             end
-
-             y = y - 10
-        end
-
-        -- Custom Show / Hide (Hard Mode)
-        local hardLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        hardLabel:SetPoint("TOPLEFT", 10, y)
-        hardLabel:SetText("Visibility (Hard Mode):")
-        tinsert(panel.controls, hardLabel)
-        y = y - 25
-
-        local customShowLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        customShowLabel:SetPoint("TOPLEFT", 10, y)
-        customShowLabel:SetText("Custom Show Condition:")
-        tinsert(panel.controls, customShowLabel)
-        y = y - 18
-
-        local customShowEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        customShowEdit:SetSize(200, 24) -- slightly taller
-        customShowEdit:SetPoint("TOPLEFT", 14, y)
-        customShowEdit:SetAutoFocus(false)
-        customShowEdit:SetText((group.visibilitySettings and group.visibilitySettings.customShow) or "")
-        customShowEdit:SetCursorPosition(0)
-
-        local function SaveCustomShow(self)
-            if not group.visibilitySettings then group.visibilitySettings = {} end
-            local newText = self:GetText()
-            if group.visibilitySettings.customShow == newText then return end
-            group.visibilitySettings.customShow = newText
-
-            Wise:RefreshPropertiesPanel() -- This will update checkboxes based on the new text
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    if Wise.editMode then
-                        local f = Wise.frames[Wise.selectedGroup]
-                        if f and Wise.SetFrameEditMode then
-                            local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
-                            Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
-                        end
-                    end
-                    -- Refresh sidebar list to update enabled/disabled colors
-                    Wise:RefreshGroupList()
-                end
-            end)
-        end
-
-        customShowEdit:SetScript("OnEnterPressed", function(self)
-            self:ClearFocus()
-            SaveCustomShow(self)
-        end)
-        customShowEdit:SetScript("OnEditFocusLost", function(self)
-            SaveCustomShow(self)
-        end)
-        customShowEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-
-        tinsert(panel.controls, customShowEdit)
-        tinsert(panel.controls, CreateConditionValidator(customShowEdit, panel))
-        y = y - 35
-
-        local customHideLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        customHideLabel:SetPoint("TOPLEFT", 10, y)
-        customHideLabel:SetText("Custom Hide Condition:")
-        tinsert(panel.controls, customHideLabel)
-        y = y - 18
-
-        local customHideEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-        customHideEdit:SetSize(200, 24) -- slightly taller
-        customHideEdit:SetPoint("TOPLEFT", 14, y)
-        customHideEdit:SetAutoFocus(false)
-        customHideEdit:SetText((group.visibilitySettings and group.visibilitySettings.customHide) or "")
-        customHideEdit:SetCursorPosition(0)
-
-        local function SaveCustomHide(self)
-            if not group.visibilitySettings then group.visibilitySettings = {} end
-            local newText = self:GetText()
-            if group.visibilitySettings.customHide == newText then return end
-            group.visibilitySettings.customHide = newText
-
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                    if Wise.editMode then
-                        local f = Wise.frames[Wise.selectedGroup]
-                        if f and Wise.SetFrameEditMode then
-                            local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser) and group.anchorMode ~= "mouse"
-                            Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
-                        end
-                    end
-                    -- Refresh sidebar list to update enabled/disabled colors
-                    Wise:RefreshGroupList()
-                end
-            end)
-        end
-
-        customHideEdit:SetScript("OnEnterPressed", function(self)
-            self:ClearFocus()
-            SaveCustomHide(self)
-        end)
-        customHideEdit:SetScript("OnEditFocusLost", function(self)
-            SaveCustomHide(self)
-        end)
-        customHideEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-
-        tinsert(panel.controls, customHideEdit)
-        tinsert(panel.controls, CreateConditionValidator(customHideEdit, panel))
-        y = y - 30
-
-        -- Header / Spacer
-        local header = panel:CreateTexture(nil, "ARTWORK")
-        header:SetColorTexture(1, 1, 1, 0.2)
-        header:SetSize(200, 1)
-        header:SetPoint("TOPLEFT", 10, y)
-        tinsert(panel.controls, header)
-        y = y - 20
-    end
-
-    if not suppress.Keybind then
-        -- KEYBIND SECTION
-        local kbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        kbLabel:SetPoint("TOPLEFT", 10, y)
-        kbLabel:SetText("Keybind (Right Click to Clear):")
-        tinsert(panel.controls, kbLabel)
-
-        y = y - 20
-        local bindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-        bindBtn:SetSize(140, 22)
-        bindBtn:SetPoint("TOPLEFT", 10, y)
-        local currentBind = group.binding
-        bindBtn:SetText(currentBind or "None")
-
-        bindBtn:RegisterForClicks("AnyUp")
-        bindBtn:SetScript("OnClick", function(self, button)
-            if button == "RightButton" then
-                group.binding = nil
-                Wise:UpdateBindings()
-                Wise:UpdateOptionsUI()
-            elseif button == "LeftButton" then
-                self:SetText("Press Key...")
-                self:EnableKeyboard(true)
-                self:EnableMouseWheel(true)
-
-                local function FinishBinding(key)
-                    if not key then return end
-
-                    if key == "ESCAPE" then
-                        self:EnableKeyboard(false)
-                        self:EnableMouseWheel(false)
-                        self:SetScript("OnKeyDown", nil)
-                        self:SetScript("OnMouseWheel", nil)
-                        self:SetScript("OnMouseDown", nil)
-                        Wise:RefreshPropertiesPanel()
-                        return
-                    end
-
-                    if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
-                        return
-                    end
-
-                    local mods = ""
-                    if IsAltKeyDown() then mods = mods .. "ALT-" end
-                    if IsControlKeyDown() then mods = mods .. "CTRL-" end
-                    if IsShiftKeyDown() then mods = mods .. "SHIFT-" end
-
-                    -- Check MouseWheel Validation
-                    if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
-                        -- If this is an initial binding (no previous binding), auto-fix settings
-                        if not group.binding or group.binding == "" then
-                            if not group.keybindSettings then group.keybindSettings = {} end
-                            group.keybindSettings.trigger = "press"
-                            if group.visibilitySettings then
-                                group.visibilitySettings.held = false
-                            end
-                        end
-
-                        local isValid, err = Wise:ValidateMouseWheelBinding(group, false)
-                        if not isValid then
-                            EnsureBindingErrorPopup()
-                            StaticPopup_Show("WISE_BINDING_ERROR", err)
-                            self:EnableKeyboard(false)
-                            self:EnableMouseWheel(false)
-                            self:SetScript("OnKeyDown", nil)
-                            self:SetScript("OnMouseWheel", nil)
-                            self:SetScript("OnMouseDown", nil)
-                            Wise:RefreshPropertiesPanel()
-                            return
-                        end
-                    end
-
-                    local fullKey = mods .. key
-                    self:EnableKeyboard(false)
-                    self:EnableMouseWheel(false)
-                    self:SetScript("OnKeyDown", nil)
-                    self:SetScript("OnMouseWheel", nil)
-                    self:SetScript("OnMouseDown", nil)
-
-                    if Wise:CheckBindingConflict(fullKey, group, nil, false, self) then
-                        return
-                    end
-
-                    group.binding = fullKey
-
-                    Wise:UpdateBindings()
-                    Wise:UpdateOptionsUI()
-                end
-
-                self:SetScript("OnKeyDown", function(self, key)
-                    FinishBinding(key)
-                end)
-
-                self:SetScript("OnMouseWheel", function(self, delta)
-                    local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
-                    FinishBinding(key)
-                end)
-
-                self:SetScript("OnMouseDown", function(self, button)
-                    if button == "LeftButton" or button == "RightButton" then return end
-                    local key = button
-                    if button == "MiddleButton" then key = "BUTTON3" end
-                    if button == "Button4" then key = "BUTTON4" end
-                    if button == "Button5" then key = "BUTTON5" end
-                    FinishBinding(key)
-                end)
-            end
-        end)
-        tinsert(panel.controls, bindBtn)
-        y = y - 30
-
-        -- Show Interactions only if Keybind exists
-        if group.binding then
-             -- Separator
-             local div = panel:CreateTexture(nil, "ARTWORK")
-             div:SetColorTexture(1, 1, 1, 0.2)
-             div:SetSize(200, 1)
-             div:SetPoint("TOPLEFT", 10, y)
-             tinsert(panel.controls, div)
-             y = y - 20
-
-            local function IsTriggerAllowed(triggerVal)
-                -- Toggle Mode Rule: ONLY "none" is allowed
-                if group.visibilitySettings.toggleOnPress then
-                    return triggerVal == "none"
-                end
-
-                if triggerVal == "press" then
-                    -- Allowed for all layout types (button, line, circle, list, grid)
-                    return true
-                elseif triggerVal == "release_mouseover" or triggerVal == "release_repeat" then
-                    -- Only allowed for NON-"button" type interfaces
-                    return (group.type ~= "button")
-                end
-                -- "none" is always allowed
-                return true
-            end
-
-            y = y - 10
-
-            local actIntLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            actIntLabel:SetPoint("TOPLEFT", 10, y)
-            actIntLabel:SetText("Keybind Trigger method:")
-            tinsert(panel.controls, actIntLabel)
-            y = y - 20
-
-            -- 4-Way Radio Buttons for Trigger Mode
-            local function CreateRadio(label, triggerValue)
-                local check = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-                check:SetPoint("TOPLEFT", 10, y)
-
-                -- Normalize current trigger
-                local currentTrigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
-                -- Legacy fallback
-                if currentTrigger == "release_mouseover" and group.keybindSettings and group.keybindSettings.repeatPrevious then
-                     currentTrigger = "release_repeat"
-                end
-
-                check:SetChecked(currentTrigger == triggerValue)
-
-                check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                check.text:SetPoint("LEFT", check, "RIGHT", 5, 0)
-                check.text:SetText(label)
-
-                -- Disable if not allowed (e.g. "press" on non-button)
-                if not IsTriggerAllowed(triggerValue) then
-                    check:Disable()
-                    check:SetAlpha(0.5)
-                    check.text:SetTextColor(0.5, 0.5, 0.5)
-
-                    -- Force unchecked if disabled to prevent confusing double-selection in UI
-                    check:SetChecked(false)
-                else
-                    check:Enable()
-                    check:SetAlpha(1)
-                    check.text:SetTextColor(1, 1, 1) -- Normal color (actually usually handled by template, but ensuring white/standard)
-                end
-
-                check:SetScript("OnClick", function(self)
-                     if not IsTriggerAllowed(triggerValue) then
-                         self:SetChecked(false)
-                         return
-                     end
-
-                     if not group.keybindSettings then group.keybindSettings = {} end
-
-                     group.keybindSettings.trigger = triggerValue
-                     group.keybindSettings.repeatPrevious = false
-
-                     -- Rule: Press -> Disable Hold to Show
-                     if triggerValue == "press" then
-                         if group.visibilitySettings.held then
-                             group.visibilitySettings.held = false
-                             local token = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
-                             group.visibilitySettings.customShow = UpdateConditionStr(group.visibilitySettings.customShow, token, false)
-                         end
-                     end
-
-                     Wise:RefreshPropertiesPanel()
-                     C_Timer.After(0, function()
-                        if not InCombatLockdown() then Wise:UpdateGroupDisplay(Wise.selectedGroup) end
-                     end)
-                end)
-
-                tinsert(panel.controls, check)
-                tinsert(panel.controls, check.text)
-                y = y - 22
-            end
-
-            CreateRadio("On Key Press", "press")
-            CreateRadio("On Key Release @ Mouseover", "release_mouseover")
-            CreateRadio("On Key Release with repeat if no change", "release_repeat")
-            CreateRadio("None", "none")
-
-        else
-            local help = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            help:SetPoint("TOPLEFT", 10, y)
-            help:SetText("(Assign a keybind to configure interactions)")
-            help:SetTextColor(0.5, 0.5, 0.5)
-            tinsert(panel.controls, help)
-            y = y - 20
-        end
-
-        -- Right click hint
-        local clearHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        clearHint:SetPoint("LEFT", bindBtn, "RIGHT", 5, 0)
-        clearHint:SetText("(right click to clear)")
-        tinsert(panel.controls, clearHint)
-
-        y = y - 30
-    end
-
-    if inject.Bottom then
-        y = inject.Bottom(panel, group, y)
-    end
-
-    if not suppress.Actions then
-        -- Export Interface Button (custom interfaces only)
-        if not group.isWiser then
-            local exportBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-            exportBtn:SetSize(140, 22)
-            exportBtn:SetPoint("TOPLEFT", 10, y)
-            exportBtn:SetText("Export Interface")
-            exportBtn:SetScript("OnClick", function()
-                local name = Wise.selectedGroup
-                if not name or not WiseDB.groups[name] then return end
-                local encoded = Wise:ExportInterfaces({name})
-                StaticPopupDialogs["WISE_EXPORT"] = {
-                    text = "Copy the export string below (Ctrl+A, Ctrl+C):",
-                    button1 = "Close",
-                    hasEditBox = true,
-                    editBoxWidth = 350,
-                    OnShow = function(self)
-                        local eb = self.EditBox or self.editBox; if not eb then return end
-                        eb:SetText(encoded)
-                        eb:HighlightText()
-                        eb:SetFocus()
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                    preferredIndex = 3,
-                }
-                StaticPopup_Show("WISE_EXPORT")
-            end)
-            tinsert(panel.controls, exportBtn)
-            y = y - 26
-        end
-
-        if group.isWiser then
-             -- Duplicate Button for Wiser Groups
-             local dupBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-             dupBtn:SetSize(140, 22)
-             dupBtn:SetPoint("TOPLEFT", 10, y)
-             dupBtn:SetText("Duplicate Interface")
-             dupBtn:SetScript("OnClick", function()
-                 local newName = Wise.selectedGroup .. " - copy"
-                 local conflictCount = 1
-                 while WiseDB.groups[newName] do
-                     conflictCount = conflictCount + 1
-                     newName = Wise.selectedGroup .. " - copy " .. conflictCount
-                 end
-
-                 -- Deep Copy
-                 local source = WiseDB.groups[Wise.selectedGroup]
-                 local newGroup = {}
-                 -- Helper recursive copy
-                 local function deepCopy(t)
-                     local copy = {}
-                     for k, v in pairs(t) do
-                         if type(v) == "table" then
-                             copy[k] = deepCopy(v)
-                         else
-                             copy[k] = v
-                         end
-                     end
-                     return copy
-                 end
-                 newGroup = deepCopy(source)
-
-                 newGroup.isWiser = nil -- It's now a custom custom group
-                 WiseDB.groups[newName] = newGroup
-
-                 Wise:UpdateGroupDisplay(newName)
-                 Wise.selectedGroup = newName
-                 Wise:RefreshGroupList()
-                 Wise:RefreshPropertiesPanel()
-             end)
-             tinsert(panel.controls, dupBtn)
-
-             -- Reset to Default Button for Wiser Groups
-             y = y - 25
-             local resetBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-             resetBtn:SetSize(140, 22)
-             resetBtn:SetPoint("TOPLEFT", 10, y)
-             resetBtn:SetText("Reset to Default")
-             resetBtn:SetScript("OnClick", function()
-                 StaticPopupDialogs["WISE_CONFIRM_RESET"] = {
-                    text = "Reset '" .. Wise.selectedGroup .. "' to default configuration?",
-                    button1 = "Yes",
-                    button2 = "No",
-                    OnAccept = function()
-                        -- Determine which type of Wiser interface this is and regenerate it
-                        -- Simply calling UpdateWiserInterfaces will regenerate all, which is fine and safe
-                        -- But first we must clear the current buttons to ensure clean slate
-                        local g = WiseDB.groups[Wise.selectedGroup]
-                        if g then g.buttons = {} end
-
-                        Wise:UpdateWiserInterfaces()
-
-                        C_Timer.After(0.5, function()
-                             Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                             Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-                             Wise:RefreshPropertiesPanel()
-                        end)
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                    preferredIndex = 3,
-                }
-                StaticPopup_Show("WISE_CONFIRM_RESET")
-             end)
-             tinsert(panel.controls, resetBtn)
-
-        else
-            -- Delete Group Button
-            local delBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-            delBtn:SetSize(140, 22)
-            delBtn:SetPoint("TOPLEFT", 10, y)
-            delBtn:SetText("Delete Interface")
-            delBtn:SetScript("OnClick", function()
-                 StaticPopupDialogs["WISE_CONFIRM_DELETE"] = {
-                    text = "Delete group '" .. Wise.selectedGroup .. "'?",
-                    button1 = "Yes",
-                    button2 = "No",
-                    OnAccept = function()
-                        Wise:DeleteGroup(Wise.selectedGroup)
-                        Wise.selectedGroup = nil
-                        Wise:RefreshGroupList()
-                        Wise:RefreshPropertiesPanel()
-                        Wise:UpdateOptionsUI()
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                    preferredIndex = 3,
-                }
-                StaticPopup_Show("WISE_CONFIRM_DELETE")
-            end)
-            tinsert(panel.controls, delBtn)
-        end
-        y = y - 40
-    end
-
-    return y
+	local hook = Wise:GetPropertyHook(group)
+	local suppress = hook and hook.suppress or {}
+	local inject = hook and hook.inject or {}
+
+	-- Rename Interface (Custom Only or Wiser if not suppressed)
+	if (not group.isWiser and not suppress.Rename) or (group.isWiser and not suppress.Rename) then
+		-- For standard Wiser, we usually suppress renaming, but let's check flag
+		if not group.isWiser then
+			local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			nameLabel:SetPoint("TOPLEFT", 10, y)
+			nameLabel:SetText("Interface Name:")
+			tinsert(panel.controls, nameLabel)
+
+			y = y - 20
+			local nameEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+			nameEdit:SetSize(180, 20)
+			nameEdit:SetPoint("TOPLEFT", 14, y)
+			nameEdit:SetAutoFocus(false)
+			nameEdit:SetText(Wise.selectedGroup or "")
+			nameEdit:SetCursorPosition(0)
+
+			local statusBtn = CreateFrame("Button", nil, panel)
+			statusBtn:SetSize(20, 20)
+			statusBtn:SetPoint("LEFT", nameEdit, "RIGHT", 5, 0)
+			statusBtn.icon = statusBtn:CreateTexture(nil, "ARTWORK")
+			statusBtn.icon:SetAllPoints()
+			statusBtn:Hide()
+
+			local function ValidateName(newName)
+				local oldName = Wise.selectedGroup
+
+				if not newName then
+					return false
+				end
+
+				if newName == oldName then
+					return false, nil, false, "No change"
+				end
+
+				if newName:match("^%s*$") then
+					return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Name cannot be empty."
+				end
+
+				if WiseDB.groups[newName] then
+					return true,
+						"Interface\\RAIDFRAME\\ReadyCheck-NotReady",
+						false,
+						"Name '" .. newName .. "' is already taken."
+				end
+
+				if InCombatLockdown() then
+					return true, "Interface\\RAIDFRAME\\ReadyCheck-NotReady", false, "Cannot rename in combat."
+				end
+
+				return true, "Interface\\RAIDFRAME\\ReadyCheck-Ready", true, nil
+			end
+
+			local function UpdateStatus()
+				local text = nameEdit:GetText()
+				local show, texture, isValid, msg = ValidateName(text)
+
+				if show then
+					statusBtn:Show()
+					statusBtn.icon:SetTexture(texture)
+					statusBtn.isValid = isValid
+					statusBtn.errorMsg = msg
+				else
+					statusBtn:Hide()
+					statusBtn.isValid = false
+					statusBtn.errorMsg = nil
+				end
+			end
+
+			nameEdit:SetScript("OnTextChanged", function(self)
+				UpdateStatus()
+			end)
+
+			local function AttemptRename()
+				local text = nameEdit:GetText()
+				local _, _, isValid, msg = ValidateName(text)
+
+				if isValid then
+					local newName = text
+					local oldName = Wise.selectedGroup
+
+					-- Rename Group
+					WiseDB.groups[newName] = WiseDB.groups[oldName]
+					WiseDB.groups[oldName] = nil
+					Wise.selectedGroup = newName
+
+					-- Cleanup Old Frame
+					local oldF = Wise.frames[oldName]
+					if oldF then
+						oldF:Hide()
+						if oldF.visualDisplay then
+							oldF.visualDisplay:Hide()
+						end
+						oldF:SetScript("OnUpdate", nil)
+						if oldF.Anchor then
+							oldF.Anchor:SetScript("OnUpdate", nil)
+						end
+						UnregisterStateDriver(oldF, "visibility")
+						Wise.frames[oldName] = nil
+					end
+
+					-- Create New Frame
+					Wise:UpdateGroupDisplay(newName)
+
+					-- Update Bindings (since button name changed)
+					Wise:UpdateBindings()
+
+					-- Refresh UI
+					Wise:UpdateOptionsUI()
+				elseif msg then
+					-- Show Tooltip on failure
+					GameTooltip:SetOwner(statusBtn, "ANCHOR_RIGHT")
+					GameTooltip:SetText("Cannot Rename", 1, 0, 0)
+					GameTooltip:AddLine(msg, 1, 1, 1)
+					GameTooltip:Show()
+				elseif text == Wise.selectedGroup then
+					nameEdit:ClearFocus()
+				end
+			end
+
+			nameEdit:SetScript("OnEnterPressed", AttemptRename)
+			nameEdit:SetScript("OnEditFocusLost", AttemptRename)
+			nameEdit:SetScript("OnEscapePressed", function(self)
+				self:SetText(Wise.selectedGroup or "")
+				self:ClearFocus()
+				UpdateStatus()
+			end)
+
+			statusBtn:SetScript("OnClick", AttemptRename)
+
+			statusBtn:SetScript("OnEnter", function(self)
+				if self.errorMsg then
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText("Cannot Rename", 1, 0, 0)
+					GameTooltip:AddLine(self.errorMsg, 1, 1, 1)
+					GameTooltip:Show()
+				elseif self.isValid then
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText("Click to Rename", 0, 1, 0)
+					GameTooltip:Show()
+				end
+			end)
+
+			statusBtn:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+
+			tinsert(panel.controls, nameEdit)
+			tinsert(panel.controls, statusBtn)
+
+			-- Initial update
+			UpdateStatus()
+			y = y - 30
+		end
+	end
+
+	if inject.PostRename then
+		y = inject.PostRename(panel, group, y)
+	end
+
+	-- Smart Item generated interface specific properties
+	if group.isSmartItem and Wise.CreateSmartItemRefreshButton then
+		y = Wise:CreateSmartItemRefreshButton(panel, group, Wise.selectedGroup, y)
+	end
+
+	-- Wiser Interface specific headers
+	if group.isWiser then
+		-- Ensure availability struct exists (migration/safety)
+		if not group.availability then
+			group.availability = { mode = "NONE", characters = {} }
+			if group.enabled ~= nil then
+				if group.enabled then
+					group.availability.mode = "ALL"
+				end
+				group.enabled = nil
+			end
+		end
+		y = y - 5 -- Small spacer
+	end
+
+	-- Logic enforcement:
+	if group.binding then
+		group.visibility = nil
+		if not group.interaction then
+			group.interaction = "toggle"
+		end
+	else
+		group.interaction = nil
+		if not group.visibility then
+			group.visibility = "always"
+		end
+	end
+
+	if not suppress.InterfaceMode then
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		label:SetPoint("TOPLEFT", 10, y)
+		label:SetText("Interface Mode:")
+		tinsert(panel.controls, label)
+
+		y = y - 20
+
+		-- Radial Picker for Interface Mode (Radio Buttons)
+		local currentType = group.type or "circle"
+		local modeTypes = {
+			{ value = "circle", label = "Circle" },
+			{ value = "button", label = "Button" },
+			{ value = "box", label = "Box" },
+			{ value = "line", label = "Line" },
+			{ value = "list", label = "List" },
+		}
+
+		for _, modeInfo in ipairs(modeTypes) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(currentType == modeInfo.value)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+
+			local label = modeInfo.label
+			local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+			if modeInfo.value == "circle" and masqueActive then
+				label = label .. " |cffff8800(Masque)|r"
+			end
+			radio.text:SetText(label)
+
+			radio:SetScript("OnClick", function(self)
+				group.type = modeInfo.value
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+	end
+
+	if not suppress.InterfaceStyle then
+		-- Interface Style Header
+		local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		styleLabel:SetPoint("TOPLEFT", 10, y)
+		styleLabel:SetText("Interface Style:")
+		tinsert(panel.controls, styleLabel)
+
+		y = y - 25
+
+		-- Dynamic Checkbox
+		local dynamicCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		dynamicCheck:SetPoint("TOPLEFT", 10, y)
+		dynamicCheck:SetChecked(group.dynamic or false)
+		tinsert(panel.controls, dynamicCheck)
+
+		local dynamicLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		dynamicLabel:SetPoint("LEFT", dynamicCheck, "RIGHT", 5, 0)
+		dynamicLabel:SetText("Dynamic")
+		tinsert(panel.controls, dynamicLabel)
+
+		y = y - 25
+
+		-- Static Checkbox
+		local staticCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		staticCheck:SetPoint("TOPLEFT", 10, y)
+		staticCheck:SetChecked(not group.dynamic)
+		tinsert(panel.controls, staticCheck)
+
+		local staticLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		staticLabel:SetPoint("LEFT", staticCheck, "RIGHT", 5, 0)
+		staticLabel:SetText("Static")
+		tinsert(panel.controls, staticLabel)
+
+		-- CooldownWiser interfaces must remain dynamic (imported slots are spec-dependent)
+		local isCooldownWiser = group.propertyType == "CooldownWiser"
+		if isCooldownWiser then
+			group.dynamic = true
+			dynamicCheck:SetChecked(true)
+			dynamicCheck:Disable()
+			staticCheck:SetChecked(false)
+			staticCheck:Disable()
+			staticLabel:SetTextColor(0.5, 0.5, 0.5)
+			dynamicLabel:SetTextColor(0.5, 0.5, 0.5)
+
+			y = y - 25
+
+			local lockNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			lockNote:SetPoint("TOPLEFT", 10, y)
+			lockNote:SetText("Cooldown interfaces must be dynamic.")
+			tinsert(panel.controls, lockNote)
+		end
+
+		-- Logic for mutually exclusive checkboxes
+		dynamicCheck:SetScript("OnClick", function(self)
+			if isCooldownWiser then
+				self:SetChecked(true)
+				return
+			end
+			if self:GetChecked() then
+				group.dynamic = true
+				staticCheck:SetChecked(false)
+			else
+				-- Force one to be checked
+				self:SetChecked(true)
+				group.dynamic = true
+			end
+
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			-- Defer secure frame update
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+
+		staticCheck:SetScript("OnClick", function(self)
+			if isCooldownWiser then
+				self:SetChecked(false)
+				return
+			end
+			if self:GetChecked() then
+				group.dynamic = false
+				dynamicCheck:SetChecked(false)
+			else
+				-- Force one to be checked
+				self:SetChecked(true)
+				group.dynamic = false
+			end
+
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			-- Defer secure frame update
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+
+		y = y - 30
+
+		-- Animation checkbox
+		local animCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		animCheck:SetPoint("TOPLEFT", 10, y)
+		animCheck:SetChecked(group.animation or false)
+		animCheck:SetScript("OnClick", function(self)
+			group.animation = self:GetChecked()
+		end)
+		tinsert(panel.controls, animCheck)
+
+		local animLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		animLabel:SetPoint("LEFT", animCheck, "RIGHT", 5, 0)
+		animLabel:SetText("Animate")
+		tinsert(panel.controls, animLabel)
+
+		y = y - 25
+
+		-- Invert Order checkbox
+		local invertCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		invertCheck:SetPoint("TOPLEFT", 10, y)
+		invertCheck:SetChecked(group.invertOrder or false)
+		invertCheck:SetScript("OnClick", function(self)
+			group.invertOrder = self:GetChecked()
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, invertCheck)
+
+		local invertLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		invertLabel:SetPoint("LEFT", invertCheck, "RIGHT", 5, 0)
+		invertLabel:SetText("Invert Order")
+		tinsert(panel.controls, invertLabel)
+
+		y = y - 30
+
+		if group.type == "line" then
+			local dirLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			dirLabel:SetPoint("TOPLEFT", 10, y)
+			dirLabel:SetText("Line Orientation:")
+			tinsert(panel.controls, dirLabel)
+
+			y = y - 22
+
+			-- Radial Picker for Growth Direction (Radio Buttons)
+			local currentDir = group.lineOrientation or "horizontal"
+			local dirTypes = {
+				{ value = "horizontal", label = "Horizontal" },
+				{ value = "vertical", label = "Vertical" },
+			}
+
+			for _, dirInfo in ipairs(dirTypes) do
+				local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				radio:SetPoint("TOPLEFT", 10, y)
+				radio:SetChecked(currentDir == dirInfo.value)
+				radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+				radio.text:SetText(dirInfo.label)
+
+				radio:SetScript("OnClick", function(self)
+					group.lineOrientation = dirInfo.value
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, radio)
+				tinsert(panel.controls, radio.text)
+				y = y - 22
+			end
+		elseif group.type == "list" then
+			local alignLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			alignLabel:SetPoint("TOPLEFT", 10, y)
+			alignLabel:SetText("Text Position:")
+			tinsert(panel.controls, alignLabel)
+
+			y = y - 22
+
+			-- Radial Picker for Text Alignment (Radio Buttons)
+			local currentAlign = group.textAlign or "right"
+
+			local alignTypes = {
+				{ value = "right", label = "Right of Icon" },
+				{ value = "left", label = "Left of Icon" },
+			}
+
+			for _, alignInfo in ipairs(alignTypes) do
+				local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				radio:SetPoint("TOPLEFT", 10, y)
+				radio:SetChecked(currentAlign == alignInfo.value)
+				radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+				radio.text:SetText(alignInfo.label)
+
+				radio:SetScript("OnClick", function(self)
+					group.textAlign = alignInfo.value
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, radio)
+				tinsert(panel.controls, radio.text)
+				y = y - 22
+			end
+		elseif group.type == "box" then
+			-- Box Configuration Header
+			local boxLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			boxLabel:SetPoint("TOPLEFT", 10, y)
+			boxLabel:SetText("Box Layout:")
+			tinsert(panel.controls, boxLabel)
+			y = y - 40
+
+			-- Defaults
+			if not group.boxWidth then
+				group.boxWidth = 3
+			end
+			if not group.boxHeight then
+				group.boxHeight = 3
+			end
+			if group.fixedAxis == nil then
+				group.fixedAxis = "x"
+			end -- 'x' or 'y'
+
+			-- X Dimension Slider
+			local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			xSlider:SetPoint("TOPLEFT", 37, y)
+			xSlider:SetSize(126, 16)
+			xSlider:SetMinMaxValues(2, 10)
+			xSlider:SetValue(group.boxWidth)
+			xSlider:SetValueStep(1)
+			xSlider:SetObeyStepOnDrag(true)
+			xSlider.Low:SetText("2")
+			xSlider.High:SetText("10")
+			xSlider.Text:SetText("Width: " .. group.boxWidth)
+			xSlider:SetScript("OnValueChanged", function(self, value)
+				group.boxWidth = math.floor(value)
+				self.Text:SetText("Width: " .. group.boxWidth)
+				C_Timer.After(0, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, xSlider)
+
+			-- Minus Button for xSlider
+			local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			xSliderMinusBtn:SetSize(27, 27)
+			xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
+			xSliderMinusBtn:SetText("-")
+			xSliderMinusBtn:SetScript("OnClick", function()
+				local v = xSlider:GetValue() - 1
+				local min, max = xSlider:GetMinMaxValues()
+				if v >= min then
+					xSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, xSliderMinusBtn)
+
+			-- Plus Button for xSlider
+			local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			xSliderPlusBtn:SetSize(27, 27)
+			xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
+			xSliderPlusBtn:SetText("+")
+			xSliderPlusBtn:SetScript("OnClick", function()
+				local v = xSlider:GetValue() + 1
+				local min, max = xSlider:GetMinMaxValues()
+				if v <= max then
+					xSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, xSliderPlusBtn)
+
+			-- Fixed X Checkbox
+			local fixedX = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			fixedX:SetPoint("LEFT", xSliderPlusBtn, "RIGHT", 10, 0)
+			fixedX:SetChecked(group.fixedAxis == "x")
+			fixedX.text = fixedX:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			fixedX.text:SetPoint("LEFT", fixedX, "RIGHT", 5, 0)
+			fixedX.text:SetText("Fixed")
+			fixedX:SetScript("OnClick", function(self)
+				if self:GetChecked() then
+					group.fixedAxis = "x"
+					Wise:RefreshPropertiesPanel()
+				else
+					-- Can't uncheck directly, must check other. But for UX, re-checking ensures state.
+					self:SetChecked(true)
+				end
+				C_Timer.After(0, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, fixedX)
+			tinsert(panel.controls, fixedX.text)
+
+			y = y - 45
+
+			-- Y Dimension Slider
+			local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			ySlider:SetPoint("TOPLEFT", 37, y)
+			ySlider:SetSize(126, 16)
+			ySlider:SetMinMaxValues(2, 10)
+			ySlider:SetValue(group.boxHeight)
+			ySlider:SetValueStep(1)
+			ySlider:SetObeyStepOnDrag(true)
+			ySlider.Low:SetText("2")
+			ySlider.High:SetText("10")
+			ySlider.Text:SetText("Height: " .. group.boxHeight)
+			ySlider:SetScript("OnValueChanged", function(self, value)
+				group.boxHeight = math.floor(value)
+				self.Text:SetText("Height: " .. group.boxHeight)
+				C_Timer.After(0, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, ySlider)
+
+			-- Minus Button for ySlider
+			local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			ySliderMinusBtn:SetSize(27, 27)
+			ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
+			ySliderMinusBtn:SetText("-")
+			ySliderMinusBtn:SetScript("OnClick", function()
+				local v = ySlider:GetValue() - 1
+				local min, max = ySlider:GetMinMaxValues()
+				if v >= min then
+					ySlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, ySliderMinusBtn)
+
+			-- Plus Button for ySlider
+			local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			ySliderPlusBtn:SetSize(27, 27)
+			ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
+			ySliderPlusBtn:SetText("+")
+			ySliderPlusBtn:SetScript("OnClick", function()
+				local v = ySlider:GetValue() + 1
+				local min, max = ySlider:GetMinMaxValues()
+				if v <= max then
+					ySlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, ySliderPlusBtn)
+
+			-- Fixed Y Checkbox
+			local fixedY = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			fixedY:SetPoint("LEFT", ySliderPlusBtn, "RIGHT", 10, 0)
+			fixedY:SetChecked(group.fixedAxis == "y")
+			fixedY.text = fixedY:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			fixedY.text:SetPoint("LEFT", fixedY, "RIGHT", 5, 0)
+			fixedY.text:SetText("Fixed")
+			fixedY:SetScript("OnClick", function(self)
+				if self:GetChecked() then
+					group.fixedAxis = "y"
+					Wise:RefreshPropertiesPanel()
+				else
+					self:SetChecked(true)
+				end
+				C_Timer.After(0, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, fixedY)
+			tinsert(panel.controls, fixedY.text)
+
+			y = y - 40
+		end
+
+		y = y - 35
+	end
+
+	if not suppress.DisplaySettings then
+		-- =============================================
+		-- PER-INTERFACE DISPLAY SETTINGS (Override Global)
+		-- =============================================
+		local displayHeader = panel:CreateTexture(nil, "ARTWORK")
+		displayHeader:SetColorTexture(1, 1, 1, 0.2)
+		displayHeader:SetSize(200, 1)
+		displayHeader:SetPoint("TOPLEFT", 10, y)
+		tinsert(panel.controls, displayHeader)
+		y = y - 15
+
+		local resetGlobalBtn -- Pre-declare for visibility in UpdateDisplayStatus
+
+		local displayLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		displayLabel:SetPoint("TOPLEFT", 10, y)
+		displayLabel:SetText("Display Settings:")
+		tinsert(panel.controls, displayLabel)
+
+		-- Show "(Custom)" or "(Global)" indicator
+		local displayHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		displayHint:SetPoint("LEFT", displayLabel, "RIGHT", 8, 0)
+		local hasOverride = group.iconStyle
+			or group.iconSize
+			or group.textSize
+			or group.font
+			or (group.showKeybinds ~= nil)
+			or group.keybindPosition
+			or group.keybindTextSize
+			or group.chargeTextSize
+			or group.chargeTextPosition
+			or (group.activeOpacity ~= nil)
+			or (group.inactiveOpacity ~= nil)
+			or (group.hideEmptySlots ~= nil)
+		displayHint:SetText(hasOverride and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
+		tinsert(panel.controls, displayHint)
+
+		y = y - 25
+
+		-- Per-Interface Icon Style
+		local piStyleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piStyleLabel:SetPoint("TOPLEFT", 10, y)
+
+		local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
+		local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+		if masqueActive then
+			piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
+		else
+			piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"
+		end
+		piStyleLabel:SetText(piLabelText)
+		tinsert(panel.controls, piStyleLabel)
+
+		y = y - 22
+		local effectiveIconStyle = group.iconStyle or (WiseDB.settings and WiseDB.settings.iconStyle) or "rounded"
+
+		local styles = {
+			{ val = "rounded", text = "Rounded" },
+			{ val = "square", text = "Square" },
+			{ val = "round", text = "Round" },
+			{ val = "hexagon", text = "Hexagon", tooltip = "bestagon" },
+			{ val = "octagon", text = "Octagon", tooltip = "secondbestagon" },
+		}
+
+		for _, styleMode in ipairs(styles) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(effectiveIconStyle == styleMode.val)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+			radio.text:SetText(styleMode.text)
+
+			if styleMode.tooltip then
+				radio:SetScript("OnEnter", function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText(styleMode.tooltip, nil, nil, nil, nil, true)
+					GameTooltip:Show()
+				end)
+				radio:SetScript("OnLeave", function(self)
+					GameTooltip:Hide()
+				end)
+			end
+
+			radio:SetScript("OnClick", function(self)
+				group.iconStyle = styleMode.val
+				Wise:RefreshPropertiesPanel() -- To update label (Custom)
+				C_Timer.After(0.1, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+
+		y = y - 5
+
+		-- Hide Empty Slots checkbox (per-group)
+		local hideEmptyCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		hideEmptyCheck:SetPoint("TOPLEFT", 10, y)
+		local effectiveHideEmpty = group.hideEmptySlots
+		if effectiveHideEmpty == nil then
+			effectiveHideEmpty = (WiseDB.settings and WiseDB.settings.hideEmptySlots) or false
+		end
+		hideEmptyCheck:SetChecked(effectiveHideEmpty)
+		hideEmptyCheck.text = hideEmptyCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		hideEmptyCheck.text:SetPoint("LEFT", hideEmptyCheck, "RIGHT", 5, 0)
+		local hideEmptyLabelText = "Hide Empty Slots"
+		if group.hideEmptySlots ~= nil then
+			hideEmptyLabelText = hideEmptyLabelText .. " |cffff8800(Custom)|r"
+		end
+		hideEmptyCheck.text:SetText(hideEmptyLabelText)
+		hideEmptyCheck:SetScript("OnClick", function(self)
+			group.hideEmptySlots = self:GetChecked() or false
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		tinsert(panel.controls, hideEmptyCheck)
+		tinsert(panel.controls, hideEmptyCheck.text)
+		y = y - 25
+
+		y = y - 5
+
+		-- Per-Interface Icon Size
+		local piIconLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piIconLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
+
+		local function UpdateDisplayStatus()
+			local over = group.iconStyle
+				or group.iconSize
+				or group.textSize
+				or group.font
+				or (group.showKeybinds ~= nil)
+				or group.keybindPosition
+				or group.keybindTextSize
+				or group.chargeTextSize
+				or group.chargeTextPosition
+				or group.countdownTextSize
+				or group.countdownTextPosition
+				or (group.activeOpacity ~= nil)
+				or (group.inactiveOpacity ~= nil)
+				or (group.showGCD ~= nil)
+				or (group.showChargeText ~= nil)
+				or (group.showCountdownText ~= nil)
+				or (group.hideEmptySlots ~= nil)
+			displayHint:SetText(over and "|cffff8800(Custom)|r" or "|cff00cc00(Global)|r")
+
+			local piLabelText = "Icon Style:" .. (group.iconStyle and " |cffff8800(Custom)|r" or "")
+			local masqueActive = Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled)
+			if masqueActive then
+				piLabelText = piLabelText .. " |cffff0000(being overridden by Masque)|r"
+			else
+				piLabelText = piLabelText .. " |cffaaaaaa(more with Masque addon)|r"
+			end
+			piStyleLabel:SetText(piLabelText)
+			piIconLabel:SetText("Icon Size:" .. (group.iconSize and " |cffff8800(Custom)|r" or ""))
+			-- Note: Other labels (Text/Font) will be updated via the full refresh on font change,
+			-- but for sliders we update their specific label here.
+
+			if over then
+				resetGlobalBtn:Enable()
+			else
+				resetGlobalBtn:Disable()
+			end
+		end
+
+		piIconLabel:SetText("Icon Size:" .. (group.iconSize and " |cffff8800(Custom)|r" or ""))
+		tinsert(panel.controls, piIconLabel)
+
+		y = y - 22
+		local piIconSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piIconSlider:SetPoint("TOPLEFT", 37, y)
+		piIconSlider:SetSize(126, 16)
+		piIconSlider:SetMinMaxValues(16, 64)
+		piIconSlider:SetValue(effectiveIconSize)
+		piIconSlider:SetValueStep(2)
+		piIconSlider:SetObeyStepOnDrag(true)
+		piIconSlider.Low:SetText("16")
+		piIconSlider.High:SetText("64")
+		piIconSlider.Text:SetText(tostring(effectiveIconSize))
+		piIconSlider:SetScript("OnValueChanged", function(self, value)
+			local size = math.floor(value)
+			group.iconSize = size
+			self.Text:SetText(tostring(size))
+			UpdateDisplayStatus()
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, piIconSlider)
+
+		-- Minus Button for piIconSlider
+		local piIconSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piIconSliderMinusBtn:SetSize(27, 27)
+		piIconSliderMinusBtn:SetPoint("RIGHT", piIconSlider, "LEFT", -2, 0)
+		piIconSliderMinusBtn:SetText("-")
+		piIconSliderMinusBtn:SetScript("OnClick", function()
+			local v = piIconSlider:GetValue() - 2
+			local min, max = piIconSlider:GetMinMaxValues()
+			if v >= min then
+				piIconSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piIconSliderMinusBtn)
+
+		-- Plus Button for piIconSlider
+		local piIconSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piIconSliderPlusBtn:SetSize(27, 27)
+		piIconSliderPlusBtn:SetPoint("LEFT", piIconSlider, "RIGHT", 2, 0)
+		piIconSliderPlusBtn:SetText("+")
+		piIconSliderPlusBtn:SetScript("OnClick", function()
+			local v = piIconSlider:GetValue() + 2
+			local min, max = piIconSlider:GetMinMaxValues()
+			if v <= max then
+				piIconSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piIconSliderPlusBtn)
+
+		y = y - 40
+
+		-- Per-Interface Circle Radius & Rotation (if circle)
+		if group.type == "circle" then
+			-- Radius Slider
+			local effectiveIconSize = group.iconSize or (WiseDB.settings and WiseDB.settings.iconSize) or 30
+			local actionCount = 0
+			if group.actions then
+				for _ in pairs(group.actions) do
+					actionCount = actionCount + 1
+				end
+			end
+			if actionCount < 2 then
+				actionCount = 2
+			end -- Prevent division by zero
+			local minRadius = math.ceil(effectiveIconSize / (2 * math.sin(math.pi / actionCount)))
+			if minRadius < effectiveIconSize then
+				minRadius = effectiveIconSize
+			end -- Absolute floor
+
+			local currentRadius = group.circleRadius or (effectiveIconSize * 2)
+			if currentRadius < minRadius then
+				currentRadius = minRadius
+			end
+
+			local radLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			radLabel:SetPoint("TOPLEFT", 10, y)
+			radLabel:SetText("Radius: " .. currentRadius)
+			tinsert(panel.controls, radLabel)
+
+			y = y - 22
+			local radSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			radSlider:SetPoint("TOPLEFT", 37, y)
+			radSlider:SetSize(126, 16)
+			local maxRadius = math.max(200, minRadius + 100)
+			radSlider:SetMinMaxValues(minRadius, maxRadius)
+			radSlider:SetValue(currentRadius)
+			radSlider:SetValueStep(1)
+			radSlider:SetObeyStepOnDrag(true)
+			radSlider.Low:SetText(tostring(minRadius))
+			radSlider.High:SetText(tostring(maxRadius))
+			radSlider.Text:SetText(tostring(currentRadius))
+
+			local function UpdateRadius(v)
+				v = math.floor(v)
+				if v < minRadius then
+					v = minRadius
+				end
+				if v > maxRadius then
+					v = maxRadius
+				end
+				group.circleRadius = v
+				radSlider:SetValue(v)
+				radLabel:SetText("Radius: " .. v)
+				radSlider.Text:SetText(tostring(v))
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end
+
+			radSlider:SetScript("OnValueChanged", function(self, value)
+				UpdateRadius(value)
+			end)
+			tinsert(panel.controls, radSlider)
+
+			-- Minus Button for Radius
+			local radMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			radMinusBtn:SetSize(27, 27)
+			radMinusBtn:SetPoint("RIGHT", radSlider, "LEFT", -2, 0)
+			radMinusBtn:SetText("-")
+			radMinusBtn:SetScript("OnClick", function()
+				UpdateRadius(radSlider:GetValue() - 1)
+			end)
+			tinsert(panel.controls, radMinusBtn)
+
+			-- Plus Button for Radius
+			local radPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			radPlusBtn:SetSize(27, 27)
+			radPlusBtn:SetPoint("LEFT", radSlider, "RIGHT", 2, 0)
+			radPlusBtn:SetText("+")
+			radPlusBtn:SetScript("OnClick", function()
+				UpdateRadius(radSlider:GetValue() + 1)
+			end)
+			tinsert(panel.controls, radPlusBtn)
+
+			y = y - 40
+
+			-- Rotation Slider (0-359 degrees)
+			local currentRotation = group.circleRotation or 0
+			local rotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			rotLabel:SetPoint("TOPLEFT", 10, y)
+			rotLabel:SetText("Rotation: " .. currentRotation .. "\194\176")
+			tinsert(panel.controls, rotLabel)
+
+			y = y - 22
+			local rotSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			rotSlider:SetPoint("TOPLEFT", 37, y)
+			rotSlider:SetSize(126, 16)
+			rotSlider:SetMinMaxValues(0, 359)
+			rotSlider:SetValue(currentRotation)
+			rotSlider:SetValueStep(1)
+			rotSlider:SetObeyStepOnDrag(true)
+			rotSlider.Low:SetText("0\194\176")
+			rotSlider.High:SetText("359\194\176")
+			rotSlider.Text:SetText(tostring(currentRotation) .. "\194\176")
+
+			local function UpdateRotation(v)
+				v = math.floor(v)
+				if v < 0 then
+					v = 359
+				end
+				if v > 359 then
+					v = 0
+				end
+				group.circleRotation = v
+				rotSlider:SetValue(v)
+				rotLabel:SetText("Rotation: " .. v .. "\194\176")
+				rotSlider.Text:SetText(tostring(v) .. "\194\176")
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end
+
+			rotSlider:SetScript("OnValueChanged", function(self, value)
+				-- We only use OnValueChanged when dragging the slider
+				-- The manual update function handles wrapping for the buttons
+				local v = math.floor(value)
+				group.circleRotation = v
+				rotLabel:SetText("Rotation: " .. v .. "\194\176")
+				self.Text:SetText(tostring(v) .. "\194\176")
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, rotSlider)
+
+			-- Minus Button for Rotation
+			local rotMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			rotMinusBtn:SetSize(27, 27)
+			rotMinusBtn:SetPoint("RIGHT", rotSlider, "LEFT", -2, 0)
+			rotMinusBtn:SetText("-")
+			rotMinusBtn:SetScript("OnClick", function()
+				UpdateRotation(rotSlider:GetValue() - 1)
+			end)
+			tinsert(panel.controls, rotMinusBtn)
+
+			-- Plus Button for Rotation
+			local rotPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			rotPlusBtn:SetSize(27, 27)
+			rotPlusBtn:SetPoint("LEFT", rotSlider, "RIGHT", 2, 0)
+			rotPlusBtn:SetText("+")
+			rotPlusBtn:SetScript("OnClick", function()
+				UpdateRotation(rotSlider:GetValue() + 1)
+			end)
+			tinsert(panel.controls, rotPlusBtn)
+
+			y = y - 40
+		end
+
+		-- Per-Interface Text Size
+		local piTextLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piTextLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveTextSize = group.textSize or (WiseDB.settings and WiseDB.settings.textSize) or 12
+		piTextLabel:SetText("Text Size:" .. (group.textSize and " |cffff8800(Custom)|r" or ""))
+		tinsert(panel.controls, piTextLabel)
+
+		y = y - 22
+		local piTextSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piTextSlider:SetPoint("TOPLEFT", 37, y)
+		piTextSlider:SetSize(126, 16)
+		piTextSlider:SetMinMaxValues(8, 24)
+		piTextSlider:SetValue(effectiveTextSize)
+		piTextSlider:SetValueStep(1)
+		piTextSlider:SetObeyStepOnDrag(true)
+		piTextSlider.Low:SetText("8")
+		piTextSlider.High:SetText("24")
+		piTextSlider.Text:SetText(tostring(effectiveTextSize))
+		piTextSlider:SetScript("OnValueChanged", function(self, value)
+			local size = math.floor(value)
+			group.textSize = size
+			self.Text:SetText(tostring(size))
+			-- Manual update for Text Label
+			piTextLabel:SetText("Text Size:" .. (group.textSize and " |cffff8800(Custom)|r" or ""))
+			UpdateDisplayStatus()
+
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, piTextSlider)
+
+		-- Minus Button for piTextSlider
+		local piTextSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piTextSliderMinusBtn:SetSize(27, 27)
+		piTextSliderMinusBtn:SetPoint("RIGHT", piTextSlider, "LEFT", -2, 0)
+		piTextSliderMinusBtn:SetText("-")
+		piTextSliderMinusBtn:SetScript("OnClick", function()
+			local v = piTextSlider:GetValue() - 1
+			local min, max = piTextSlider:GetMinMaxValues()
+			if v >= min then
+				piTextSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piTextSliderMinusBtn)
+
+		-- Plus Button for piTextSlider
+		local piTextSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piTextSliderPlusBtn:SetSize(27, 27)
+		piTextSliderPlusBtn:SetPoint("LEFT", piTextSlider, "RIGHT", 2, 0)
+		piTextSliderPlusBtn:SetText("+")
+		piTextSliderPlusBtn:SetScript("OnClick", function()
+			local v = piTextSlider:GetValue() + 1
+			local min, max = piTextSlider:GetMinMaxValues()
+			if v <= max then
+				piTextSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piTextSliderPlusBtn)
+		y = y - 40
+
+		-- Per-Interface Font Selection
+		local piFontLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piFontLabel:SetPoint("TOPLEFT", 10, y)
+		piFontLabel:SetText("Font:" .. (group.font and " |cffff8800(Custom)|r" or ""))
+		tinsert(panel.controls, piFontLabel)
+		y = y - 22
+
+		-- Build font list dynamically (same approach as global)
+		local piValidFonts = {}
+		local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+
+		if LSM then
+			local lsmFonts = LSM:HashTable("font")
+			if lsmFonts then
+				for fname, fpath in pairs(lsmFonts) do
+					table.insert(piValidFonts, { name = fname, path = fpath })
+				end
+			end
+			table.sort(piValidFonts, function(a, b)
+				return a.name < b.name
+			end)
+		end
+
+		if #piValidFonts == 0 then
+			local defaultFonts = {
+				{ name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+				{ name = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
+				{ name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+				{ name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+				{ name = "2002", path = "Fonts\\2002.TTF" },
+				{ name = "2002 Bold", path = "Fonts\\2002B.TTF" },
+				{ name = "Friz Quadrata (CYR)", path = "Fonts\\FRIZQT___CYR.TTF" },
+			}
+
+			local testFrame = CreateFrame("Frame")
+			local testFont = testFrame:CreateFontString(nil, "OVERLAY")
+
+			for _, f in ipairs(defaultFonts) do
+				local success = testFont:SetFont(f.path, 12, "")
+				if success then
+					table.insert(piValidFonts, f)
+				end
+			end
+
+			if #piValidFonts == 0 then
+				piValidFonts = { { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" } }
+			end
+		end
+
+		-- Determine effective font
+		local effectiveFontPath = group.font or (WiseDB.settings and WiseDB.settings.font) or "Fonts\\FRIZQT__.TTF"
+		local currentPiFontName = "Friz Quadrata"
+		for _, f in ipairs(piValidFonts) do
+			if f.path == effectiveFontPath then
+				currentPiFontName = f.name
+				break
+			end
+		end
+		if currentPiFontName == "Friz Quadrata" and effectiveFontPath ~= "Fonts\\FRIZQT__.TTF" then
+			local filename = effectiveFontPath:match("([^\\]+)$") or effectiveFontPath
+			currentPiFontName = filename
+		end
+
+		local piFontBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		piFontBtn:SetSize(180, 22)
+		piFontBtn:SetPoint("TOPLEFT", 10, y)
+		piFontBtn:SetText(currentPiFontName)
+		piFontBtn:SetScript("OnClick", function(self)
+			if self.dropdown and self.dropdown:IsShown() then
+				self.dropdown:Hide()
+				return
+			end
+
+			if not self.dropdown then
+				local d = CreateFrame("Frame", nil, self, "BackdropTemplate")
+				self.dropdown = d
+
+				local itemHeight = 22
+				local maxVisible = 10
+				local visibleCount = math.min(#piValidFonts, maxVisible)
+				local dropdownHeight = (visibleCount * itemHeight) + 20
+				local needsScroll = #piValidFonts > maxVisible
+
+				d:SetSize(220, dropdownHeight)
+				d:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+				d:SetFrameStrata("DIALOG")
+				d:SetBackdrop({
+					bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+					edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+					tile = true,
+					tileSize = 32,
+					edgeSize = 16,
+					insets = { left = 5, right = 5, top = 5, bottom = 5 },
+				})
+
+				local scrollContent
+
+				if needsScroll then
+					local scrollFrame = CreateFrame("ScrollFrame", nil, d, "UIPanelScrollFrameTemplate")
+					scrollFrame:SetPoint("TOPLEFT", 8, -8)
+					scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
+
+					scrollContent = CreateFrame("Frame", nil, scrollFrame)
+					scrollContent:SetSize(175, itemHeight * #piValidFonts)
+					scrollFrame:SetScrollChild(scrollContent)
+					scrollFrame:SetVerticalScroll(0)
+				else
+					scrollContent = CreateFrame("Frame", nil, d)
+					scrollContent:SetPoint("TOPLEFT", 8, -8)
+					scrollContent:SetPoint("BOTTOMRIGHT", -8, 8)
+				end
+
+				for i, f in ipairs(piValidFonts) do
+					local btn = CreateFrame("Button", nil, scrollContent)
+					btn:SetSize(175, itemHeight - 2)
+					btn:SetPoint("TOPLEFT", 0, -((i - 1) * itemHeight))
+					btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+
+					btn.text = btn:CreateFontString(nil, "OVERLAY")
+					btn.text:SetPoint("LEFT", 5, 0)
+					btn.text:SetPoint("RIGHT", -5, 0)
+					btn.text:SetJustifyH("LEFT")
+					btn.text:SetFont(f.path, 12, "")
+					btn.text:SetText(f.name)
+					btn.text:SetTextColor(1, 0.82, 0)
+
+					btn:SetScript("OnClick", function()
+						group.font = f.path
+						self:SetText(f.name)
+						d:Hide()
+						C_Timer.After(0.1, function()
+							if not InCombatLockdown() then
+								Wise:UpdateGroupDisplay(Wise.selectedGroup)
+							end
+						end)
+						-- Refresh to show "(Custom)" label
+						Wise:RefreshPropertiesPanel()
+					end)
+
+					btn:SetScript("OnEnter", function(self)
+						self.text:SetTextColor(1, 1, 1)
+					end)
+					btn:SetScript("OnLeave", function(self)
+						self.text:SetTextColor(1, 0.82, 0)
+					end)
+				end
+			end
+			self.dropdown:Show()
+		end)
+		tinsert(panel.controls, piFontBtn)
+
+		y = y - 35
+
+		-- Per-Interface Keybind Settings
+		local piKbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piKbLabel:SetPoint("TOPLEFT", 10, y)
+		piKbLabel:SetText(
+			"Keybinds:"
+				.. (
+					(
+							group.showKeybinds ~= nil
+							or group.showInterfaceKeybind ~= nil
+							or group.keybindPosition
+							or group.keybindTextSize
+						)
+						and " |cffff8800(Custom)|r"
+					or ""
+				)
+		)
+		tinsert(panel.controls, piKbLabel)
+		y = y - 22
+
+		-- Show Slot Keybinds Checkbox
+		local piShowKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		piShowKb:SetPoint("TOPLEFT", 10, y)
+		local currentShow = group.showKeybinds
+		if currentShow == nil then
+			currentShow = WiseDB.settings.showKeybinds
+		end
+		piShowKb:SetChecked(currentShow)
+
+		piShowKb.text = piShowKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		piShowKb.text:SetPoint("LEFT", piShowKb, "RIGHT", 5, 0)
+		piShowKb.text:SetText("Show Slot Keybinds" .. (group.showKeybinds == nil and " |cff888888(global)|r" or ""))
+		piShowKb:SetScript("OnClick", function(self)
+			group.showKeybinds = self:GetChecked()
+			UpdateDisplayStatus()
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		piShowKb:SetScript("OnMouseDown", function(self, button)
+			if button == "RightButton" then
+				group.showKeybinds = nil
+				UpdateDisplayStatus()
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0.1, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end
+		end)
+		tinsert(panel.controls, piShowKb)
+		tinsert(panel.controls, piShowKb.text)
+		y = y - 22
+
+		-- Show Interface Keybind Checkbox
+		local piShowIntKb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		piShowIntKb:SetPoint("TOPLEFT", 10, y)
+		local currentIntShow = group.showInterfaceKeybind
+		if currentIntShow == nil then
+			currentIntShow = WiseDB.settings.showInterfaceKeybind
+		end
+		piShowIntKb:SetChecked(currentIntShow)
+
+		piShowIntKb.text = piShowIntKb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		piShowIntKb.text:SetPoint("LEFT", piShowIntKb, "RIGHT", 5, 0)
+		piShowIntKb.text:SetText(
+			"Show Interface Keybind" .. (group.showInterfaceKeybind == nil and " |cff888888(global)|r" or "")
+		)
+		piShowIntKb:SetScript("OnClick", function(self)
+			group.showInterfaceKeybind = self:GetChecked()
+			UpdateDisplayStatus()
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		piShowIntKb:SetScript("OnMouseDown", function(self, button)
+			if button == "RightButton" then
+				group.showInterfaceKeybind = nil
+				UpdateDisplayStatus()
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0.1, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end
+		end)
+		tinsert(panel.controls, piShowIntKb)
+		tinsert(panel.controls, piShowIntKb.text)
+		y = y - 22
+
+		-- Hint text
+		local kbHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		kbHint:SetPoint("TOPLEFT", 14, y)
+		kbHint:SetText("Right-click checkbox to reset to global")
+		tinsert(panel.controls, kbHint)
+		y = y - 22
+
+		-- Position
+		local piKbPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piKbPosLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveKbPos = group.keybindPosition or WiseDB.settings.keybindPosition or "TOP"
+		piKbPosLabel:SetText("Position: " .. effectiveKbPos)
+		tinsert(panel.controls, piKbPosLabel)
+		y = y - 22
+
+		local kbPositions = {
+			{ val = "TOPLEFT", text = "Top Left" },
+			{ val = "TOP", text = "Top" },
+			{ val = "TOPRIGHT", text = "Top Right" },
+			{ val = "LEFT", text = "Left" },
+			{ val = "CENTER", text = "Center" },
+			{ val = "RIGHT", text = "Right" },
+			{ val = "BOTTOMLEFT", text = "Bottom Left" },
+			{ val = "BOTTOM", text = "Bottom" },
+			{ val = "BOTTOMRIGHT", text = "Bottom Right" },
+		}
+		for _, posMode in ipairs(kbPositions) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(effectiveKbPos == posMode.val)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+			radio.text:SetText(posMode.text)
+
+			radio:SetScript("OnClick", function(self)
+				group.keybindPosition = posMode.val
+				-- Refresh to update label/check and Reset button
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0.1, function()
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end)
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+
+		y = y - 10
+
+		-- Size
+		local piKbSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piKbSizeLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveKbSize = group.keybindTextSize or WiseDB.settings.keybindTextSize or 10
+		piKbSizeLabel:SetText("Size: " .. effectiveKbSize)
+		tinsert(panel.controls, piKbSizeLabel)
+		y = y - 22
+
+		local piKbSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piKbSizeSlider:SetPoint("TOPLEFT", 37, y)
+		piKbSizeSlider:SetSize(126, 16)
+		piKbSizeSlider:SetMinMaxValues(8, 24)
+		piKbSizeSlider:SetValue(effectiveKbSize)
+		piKbSizeSlider:SetValueStep(1)
+		piKbSizeSlider:SetObeyStepOnDrag(true)
+		piKbSizeSlider.Low:SetText("8")
+		piKbSizeSlider.High:SetText("24")
+		piKbSizeSlider.Text:SetText(tostring(effectiveKbSize))
+		piKbSizeSlider:SetScript("OnValueChanged", function(self, value)
+			local size = math.floor(value)
+			group.keybindTextSize = size
+			self.Text:SetText(tostring(size))
+			piKbSizeLabel:SetText("Size: " .. size)
+			UpdateDisplayStatus()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		tinsert(panel.controls, piKbSizeSlider)
+
+		-- Minus Button for piKbSizeSlider
+		local piKbSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piKbSizeSliderMinusBtn:SetSize(27, 27)
+		piKbSizeSliderMinusBtn:SetPoint("RIGHT", piKbSizeSlider, "LEFT", -2, 0)
+		piKbSizeSliderMinusBtn:SetText("-")
+		piKbSizeSliderMinusBtn:SetScript("OnClick", function()
+			local v = piKbSizeSlider:GetValue() - 1
+			local min, max = piKbSizeSlider:GetMinMaxValues()
+			if v >= min then
+				piKbSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piKbSizeSliderMinusBtn)
+
+		-- Plus Button for piKbSizeSlider
+		local piKbSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piKbSizeSliderPlusBtn:SetSize(27, 27)
+		piKbSizeSliderPlusBtn:SetPoint("LEFT", piKbSizeSlider, "RIGHT", 2, 0)
+		piKbSizeSliderPlusBtn:SetText("+")
+		piKbSizeSliderPlusBtn:SetScript("OnClick", function()
+			local v = piKbSizeSlider:GetValue() + 1
+			local min, max = piKbSizeSlider:GetMinMaxValues()
+			if v <= max then
+				piKbSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piKbSizeSliderPlusBtn)
+
+		y = y - 35
+
+		-- Per-Interface Charge Text Settings
+		local piChargeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piChargeLabel:SetPoint("TOPLEFT", 10, y)
+		piChargeLabel:SetText(
+			"Charge Text:"
+				.. (
+					(group.chargeTextSize or group.chargeTextPosition or group.showChargeText ~= nil)
+						and " |cffff8800(Custom)|r"
+					or ""
+				)
+		)
+		tinsert(panel.controls, piChargeLabel)
+		y = y - 22
+
+		-- Show Checkbox
+		local piShowCharge = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		piShowCharge:SetPoint("TOPLEFT", 10, y)
+		local currentShowCharge = group.showChargeText
+		if currentShowCharge == nil then
+			currentShowCharge = WiseDB.settings.showChargeText
+		end
+		if currentShowCharge == nil then
+			currentShowCharge = true
+		end
+		piShowCharge:SetChecked(currentShowCharge)
+
+		piShowCharge.text = piShowCharge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		piShowCharge.text:SetPoint("LEFT", piShowCharge, "RIGHT", 5, 0)
+		piShowCharge.text:SetText("Show")
+		piShowCharge:SetScript("OnClick", function(self)
+			group.showChargeText = self:GetChecked()
+			UpdateDisplayStatus() -- Updates Reset Button
+			Wise:RefreshPropertiesPanel() -- To update label (Custom)
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+				if Wise.UpdateAllCharges then
+					Wise:UpdateAllCharges()
+				end
+			end)
+		end)
+		tinsert(panel.controls, piShowCharge)
+		tinsert(panel.controls, piShowCharge.text)
+
+		y = y - 30
+
+		-- Position
+		local piChargePosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piChargePosLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveChargePos = group.chargeTextPosition or WiseDB.settings.chargeTextPosition or "BOTTOMRIGHT"
+		piChargePosLabel:SetText("Position: " .. effectiveChargePos)
+		tinsert(panel.controls, piChargePosLabel)
+		y = y - 22
+
+		local piChargePositions = {
+			{ val = "TOPLEFT", text = "Top Left" },
+			{ val = "TOP", text = "Top" },
+			{ val = "TOPRIGHT", text = "Top Right" },
+			{ val = "LEFT", text = "Left" },
+			{ val = "CENTER", text = "Center" },
+			{ val = "RIGHT", text = "Right" },
+			{ val = "BOTTOMLEFT", text = "Bottom Left" },
+			{ val = "BOTTOM", text = "Bottom" },
+			{ val = "BOTTOMRIGHT", text = "Bottom Right" },
+		}
+		for _, posMode in ipairs(piChargePositions) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(effectiveChargePos == posMode.val)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+			radio.text:SetText(posMode.text)
+
+			radio:SetScript("OnClick", function(self)
+				group.chargeTextPosition = posMode.val
+				-- Refresh to update label/check and Reset button
+				Wise:RefreshPropertiesPanel()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+
+		y = y - 10
+
+		-- Size
+		local piChargeSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piChargeSizeLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveChargeSize = group.chargeTextSize or WiseDB.settings.chargeTextSize or 12
+		piChargeSizeLabel:SetText("Size: " .. effectiveChargeSize)
+		tinsert(panel.controls, piChargeSizeLabel)
+		y = y - 22
+
+		local piChargeSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piChargeSizeSlider:SetPoint("TOPLEFT", 37, y)
+		piChargeSizeSlider:SetSize(126, 16)
+		piChargeSizeSlider:SetMinMaxValues(8, 24)
+		piChargeSizeSlider:SetValue(effectiveChargeSize)
+		piChargeSizeSlider:SetValueStep(1)
+		piChargeSizeSlider:SetObeyStepOnDrag(true)
+		piChargeSizeSlider.Low:SetText("8")
+		piChargeSizeSlider.High:SetText("24")
+		piChargeSizeSlider.Text:SetText(tostring(effectiveChargeSize))
+		piChargeSizeSlider:SetScript("OnValueChanged", function(self, value)
+			local size = math.floor(value)
+			group.chargeTextSize = size
+			self.Text:SetText(tostring(size))
+			piChargeSizeLabel:SetText("Size: " .. size)
+			UpdateDisplayStatus()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		tinsert(panel.controls, piChargeSizeSlider)
+
+		-- Minus Button for piChargeSizeSlider
+		local piChargeSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piChargeSizeSliderMinusBtn:SetSize(27, 27)
+		piChargeSizeSliderMinusBtn:SetPoint("RIGHT", piChargeSizeSlider, "LEFT", -2, 0)
+		piChargeSizeSliderMinusBtn:SetText("-")
+		piChargeSizeSliderMinusBtn:SetScript("OnClick", function()
+			local v = piChargeSizeSlider:GetValue() - 1
+			local min, max = piChargeSizeSlider:GetMinMaxValues()
+			if v >= min then
+				piChargeSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piChargeSizeSliderMinusBtn)
+
+		-- Plus Button for piChargeSizeSlider
+		local piChargeSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piChargeSizeSliderPlusBtn:SetSize(27, 27)
+		piChargeSizeSliderPlusBtn:SetPoint("LEFT", piChargeSizeSlider, "RIGHT", 2, 0)
+		piChargeSizeSliderPlusBtn:SetText("+")
+		piChargeSizeSliderPlusBtn:SetScript("OnClick", function()
+			local v = piChargeSizeSlider:GetValue() + 1
+			local min, max = piChargeSizeSlider:GetMinMaxValues()
+			if v <= max then
+				piChargeSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piChargeSizeSliderPlusBtn)
+
+		y = y - 35
+
+		-- Per-Interface Countdown Text Settings
+		local piCountdownLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piCountdownLabel:SetPoint("TOPLEFT", 10, y)
+		piCountdownLabel:SetText(
+			"Countdown Text:"
+				.. (
+					(group.countdownTextSize or group.countdownTextPosition or group.showCountdownText ~= nil)
+						and " |cffff8800(Custom)|r"
+					or ""
+				)
+		)
+		tinsert(panel.controls, piCountdownLabel)
+		y = y - 22
+
+		-- Show Checkbox
+		local piShowCountdown = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		piShowCountdown:SetPoint("TOPLEFT", 10, y)
+		local currentShowCountdown = group.showCountdownText
+		if currentShowCountdown == nil then
+			currentShowCountdown = WiseDB.settings.showCountdownText
+		end
+		if currentShowCountdown == nil then
+			currentShowCountdown = true
+		end
+		piShowCountdown:SetChecked(currentShowCountdown)
+
+		piShowCountdown.text = piShowCountdown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		piShowCountdown.text:SetPoint("LEFT", piShowCountdown, "RIGHT", 5, 0)
+		piShowCountdown.text:SetText("Show")
+		piShowCountdown:SetScript("OnClick", function(self)
+			group.showCountdownText = self:GetChecked()
+			UpdateDisplayStatus() -- Updates Reset Button
+			Wise:RefreshPropertiesPanel() -- To update label (Custom)
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() and Wise.UpdateAllCooldowns then
+					Wise:UpdateAllCooldowns()
+				end
+			end)
+		end)
+		tinsert(panel.controls, piShowCountdown)
+		tinsert(panel.controls, piShowCountdown.text)
+
+		y = y - 30
+
+		-- Position
+		local piCountdownPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piCountdownPosLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveCountdownPos = group.countdownTextPosition or WiseDB.settings.countdownTextPosition or "CENTER"
+		piCountdownPosLabel:SetText("Position: " .. effectiveCountdownPos)
+		tinsert(panel.controls, piCountdownPosLabel)
+		y = y - 22
+
+		-- Re-use charge text positions list as they are standard compass points
+		for _, posMode in ipairs(piChargePositions) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10, y)
+			radio:SetChecked(effectiveCountdownPos == posMode.val)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 5, 0)
+			radio.text:SetText(posMode.text)
+
+			radio:SetScript("OnClick", function(self)
+				group.countdownTextPosition = posMode.val
+				-- Refresh to update label/check and Reset button
+				Wise:RefreshPropertiesPanel()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+			y = y - 22
+		end
+
+		y = y - 10
+
+		-- Size
+		local piCountdownSizeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piCountdownSizeLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveCountdownSize = group.countdownTextSize or WiseDB.settings.countdownTextSize or 12
+		piCountdownSizeLabel:SetText("Size: " .. effectiveCountdownSize)
+		tinsert(panel.controls, piCountdownSizeLabel)
+		y = y - 22
+
+		local piCountdownSizeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piCountdownSizeSlider:SetPoint("TOPLEFT", 37, y)
+		piCountdownSizeSlider:SetSize(126, 16)
+		piCountdownSizeSlider:SetMinMaxValues(8, 24)
+		piCountdownSizeSlider:SetValue(effectiveCountdownSize)
+		piCountdownSizeSlider:SetValueStep(1)
+		piCountdownSizeSlider:SetObeyStepOnDrag(true)
+		piCountdownSizeSlider.Low:SetText("8")
+		piCountdownSizeSlider.High:SetText("24")
+		piCountdownSizeSlider.Text:SetText(tostring(effectiveCountdownSize))
+		piCountdownSizeSlider:SetScript("OnValueChanged", function(self, value)
+			local size = math.floor(value)
+			group.countdownTextSize = size
+			self.Text:SetText(tostring(size))
+			piCountdownSizeLabel:SetText("Size: " .. size)
+			UpdateDisplayStatus()
+			C_Timer.After(0.1, function()
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end)
+		end)
+		tinsert(panel.controls, piCountdownSizeSlider)
+
+		-- Minus Button for piCountdownSizeSlider
+		local piCountdownSizeSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piCountdownSizeSliderMinusBtn:SetSize(27, 27)
+		piCountdownSizeSliderMinusBtn:SetPoint("RIGHT", piCountdownSizeSlider, "LEFT", -2, 0)
+		piCountdownSizeSliderMinusBtn:SetText("-")
+		piCountdownSizeSliderMinusBtn:SetScript("OnClick", function()
+			local v = piCountdownSizeSlider:GetValue() - 1
+			local min, max = piCountdownSizeSlider:GetMinMaxValues()
+			if v >= min then
+				piCountdownSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piCountdownSizeSliderMinusBtn)
+
+		-- Plus Button for piCountdownSizeSlider
+		local piCountdownSizeSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piCountdownSizeSliderPlusBtn:SetSize(27, 27)
+		piCountdownSizeSliderPlusBtn:SetPoint("LEFT", piCountdownSizeSlider, "RIGHT", 2, 0)
+		piCountdownSizeSliderPlusBtn:SetText("+")
+		piCountdownSizeSliderPlusBtn:SetScript("OnClick", function()
+			local v = piCountdownSizeSlider:GetValue() + 1
+			local min, max = piCountdownSizeSlider:GetMinMaxValues()
+			if v <= max then
+				piCountdownSizeSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piCountdownSizeSliderPlusBtn)
+
+		y = y - 35
+
+		-- Per-Interface Enabled Opacity
+		local piEnabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piEnabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveEnabledOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
+		local effectiveEnabledPct = math.floor(effectiveEnabledOpacity * 100 + 0.5)
+		piEnabledOpacityLabel:SetText(
+			"Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or "")
+		)
+		tinsert(panel.controls, piEnabledOpacityLabel)
+		y = y - 30
+
+		local piEnabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piEnabledSlider:SetPoint("TOPLEFT", 37, y)
+		piEnabledSlider:SetSize(126, 16)
+		piEnabledSlider:SetMinMaxValues(0, 100)
+		piEnabledSlider:SetValueStep(5)
+		piEnabledSlider:SetObeyStepOnDrag(true)
+		piEnabledSlider:SetValue(effectiveEnabledPct)
+		piEnabledSlider.Low:SetText("0%")
+		piEnabledSlider.High:SetText("100%")
+		piEnabledSlider.Text:SetText(effectiveEnabledPct .. "%")
+		piEnabledSlider:SetScript("OnValueChanged", function(self, val)
+			val = math.floor(val + 0.5)
+			group.activeOpacity = val / 100
+			self.Text:SetText(val .. "%")
+			piEnabledOpacityLabel:SetText(
+				"Enabled Opacity:" .. (group.activeOpacity ~= nil and " |cffff8800(Custom)|r" or "")
+			)
+			UpdateDisplayStatus()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, piEnabledSlider)
+
+		local piEnabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piEnabledMinusBtn:SetSize(27, 27)
+		piEnabledMinusBtn:SetPoint("RIGHT", piEnabledSlider, "LEFT", -2, 0)
+		piEnabledMinusBtn:SetText("-")
+		piEnabledMinusBtn:SetScript("OnClick", function()
+			local v = piEnabledSlider:GetValue() - 5
+			local min, max = piEnabledSlider:GetMinMaxValues()
+			if v >= min then
+				piEnabledSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piEnabledMinusBtn)
+
+		local piEnabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piEnabledPlusBtn:SetSize(27, 27)
+		piEnabledPlusBtn:SetPoint("LEFT", piEnabledSlider, "RIGHT", 2, 0)
+		piEnabledPlusBtn:SetText("+")
+		piEnabledPlusBtn:SetScript("OnClick", function()
+			local v = piEnabledSlider:GetValue() + 5
+			local min, max = piEnabledSlider:GetMinMaxValues()
+			if v <= max then
+				piEnabledSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piEnabledPlusBtn)
+
+		y = y - 35
+
+		-- Per-Interface Disabled Opacity
+		local piDisabledOpacityLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piDisabledOpacityLabel:SetPoint("TOPLEFT", 10, y)
+		local effectiveDisabledOpacity = group.inactiveOpacity
+			or (WiseDB.settings and WiseDB.settings.inactiveOpacity)
+			or 0
+		local effectiveDisabledPct = math.floor(effectiveDisabledOpacity * 100 + 0.5)
+		piDisabledOpacityLabel:SetText(
+			"Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or "")
+		)
+		tinsert(panel.controls, piDisabledOpacityLabel)
+		y = y - 30
+
+		local piDisabledSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+		piDisabledSlider:SetPoint("TOPLEFT", 37, y)
+		piDisabledSlider:SetSize(126, 16)
+		piDisabledSlider:SetMinMaxValues(0, 100)
+		piDisabledSlider:SetValueStep(5)
+		piDisabledSlider:SetObeyStepOnDrag(true)
+		piDisabledSlider:SetValue(effectiveDisabledPct)
+		piDisabledSlider.Low:SetText("Hidden")
+		piDisabledSlider.High:SetText("100%")
+		piDisabledSlider.Text:SetText(effectiveDisabledPct == 0 and "Hidden" or (effectiveDisabledPct .. "%"))
+		piDisabledSlider:SetScript("OnValueChanged", function(self, val)
+			val = math.floor(val + 0.5)
+			group.inactiveOpacity = val / 100
+			self.Text:SetText(val == 0 and "Hidden" or (val .. "%"))
+			piDisabledOpacityLabel:SetText(
+				"Disabled Opacity:" .. (group.inactiveOpacity ~= nil and " |cffff8800(Custom)|r" or "")
+			)
+			UpdateDisplayStatus()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, piDisabledSlider)
+
+		local piDisabledMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piDisabledMinusBtn:SetSize(27, 27)
+		piDisabledMinusBtn:SetPoint("RIGHT", piDisabledSlider, "LEFT", -2, 0)
+		piDisabledMinusBtn:SetText("-")
+		piDisabledMinusBtn:SetScript("OnClick", function()
+			local v = piDisabledSlider:GetValue() - 5
+			local min, max = piDisabledSlider:GetMinMaxValues()
+			if v >= min then
+				piDisabledSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piDisabledMinusBtn)
+
+		local piDisabledPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		piDisabledPlusBtn:SetSize(27, 27)
+		piDisabledPlusBtn:SetPoint("LEFT", piDisabledSlider, "RIGHT", 2, 0)
+		piDisabledPlusBtn:SetText("+")
+		piDisabledPlusBtn:SetScript("OnClick", function()
+			local v = piDisabledSlider:GetValue() + 5
+			local min, max = piDisabledSlider:GetMinMaxValues()
+			if v <= max then
+				piDisabledSlider:SetValue(v)
+			end
+		end)
+		tinsert(panel.controls, piDisabledPlusBtn)
+
+		y = y - 35
+
+		-- Per-Interface GCD Setting
+		local piGCDLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piGCDLabel:SetPoint("TOPLEFT", 10, y)
+		piGCDLabel:SetText("Show GCD:" .. (group.showGCD ~= nil and " |cffff8800(Custom)|r" or ""))
+		tinsert(panel.controls, piGCDLabel)
+		y = y - 22
+
+		local piShowGCD = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		piShowGCD:SetPoint("TOPLEFT", 10, y)
+
+		local currentShowGCD = group.showGCD
+		if currentShowGCD == nil then
+			currentShowGCD = WiseDB.settings.showGCD
+			if currentShowGCD == nil then
+				currentShowGCD = true
+			end
+		end
+		piShowGCD:SetChecked(currentShowGCD)
+
+		piShowGCD.text = piShowGCD:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		piShowGCD.text:SetPoint("LEFT", piShowGCD, "RIGHT", 5, 0)
+		piShowGCD.text:SetText("Show")
+		piShowGCD:SetScript("OnClick", function(self)
+			group.showGCD = self:GetChecked()
+			UpdateDisplayStatus() -- Updates Reset Button
+			Wise:RefreshPropertiesPanel() -- To update label (Custom)
+			C_Timer.After(0.1, function()
+				Wise:UpdateAllCooldowns()
+			end)
+		end)
+		tinsert(panel.controls, piShowGCD)
+		tinsert(panel.controls, piShowGCD.text)
+
+		y = y - 30
+
+		-- Reset to Global Settings Button
+		resetGlobalBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		resetGlobalBtn:SetSize(180, 22)
+		resetGlobalBtn:SetPoint("TOPLEFT", 10, y)
+		resetGlobalBtn:SetText("Reset to Global Settings")
+
+		-- Initial State Check
+		if
+			not group.iconStyle
+			and not group.iconSize
+			and not group.textSize
+			and not group.font
+			and group.showKeybinds == nil
+			and not group.keybindPosition
+			and not group.keybindTextSize
+			and not group.chargeTextSize
+			and not group.chargeTextPosition
+			and not group.countdownTextSize
+			and not group.countdownTextPosition
+			and group.activeOpacity == nil
+			and group.inactiveOpacity == nil
+			and group.showGCD == nil
+			and group.showChargeText == nil
+			and group.showCountdownText == nil
+			and group.hideEmptySlots == nil
+		then
+			resetGlobalBtn:Disable()
+		end
+
+		resetGlobalBtn:SetScript("OnClick", function()
+			group.iconStyle = nil
+			group.iconSize = nil
+			group.textSize = nil
+			group.font = nil
+			group.showKeybinds = nil
+			group.keybindPosition = nil
+			group.keybindTextSize = nil
+			group.showChargeText = nil
+			group.chargeTextSize = nil
+			group.chargeTextPosition = nil
+			group.showCountdownText = nil
+			group.countdownTextSize = nil
+			group.countdownTextPosition = nil
+			group.activeOpacity = nil
+			group.inactiveOpacity = nil
+			group.showGCD = nil
+			group.hideEmptySlots = nil
+
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+			Wise:RefreshPropertiesPanel()
+		end)
+		tinsert(panel.controls, resetGlobalBtn)
+
+		y = y - 30
+	end
+
+	if not suppress.Padding then
+		-- =============================================
+		-- PADDING / SPACING SETTINGS (based on layout type)
+		-- =============================================
+		if group.type == "line" or group.type == "list" then
+			-- Single Padding Slider
+			local padLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			padLabel:SetPoint("TOPLEFT", 10, y)
+			local currentPadding = group.padding or (group.type == "list" and 8 or 5)
+			padLabel:SetText("Padding: " .. currentPadding)
+			tinsert(panel.controls, padLabel)
+
+			y = y - 22
+			local padSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			padSlider:SetPoint("TOPLEFT", 37, y)
+			padSlider:SetSize(126, 16)
+			padSlider:SetMinMaxValues(0, 40)
+			padSlider:SetValue(currentPadding)
+			padSlider:SetValueStep(1)
+			padSlider:SetObeyStepOnDrag(true)
+			padSlider.Low:SetText("0")
+			padSlider.High:SetText("40")
+			padSlider.Text:SetText(tostring(currentPadding))
+			padSlider:SetScript("OnValueChanged", function(self, value)
+				local v = math.floor(value)
+				group.padding = v
+				padLabel:SetText("Padding: " .. v)
+				self.Text:SetText(tostring(v))
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, padSlider)
+
+			-- Minus Button for padSlider
+			local padSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padSliderMinusBtn:SetSize(27, 27)
+			padSliderMinusBtn:SetPoint("RIGHT", padSlider, "LEFT", -2, 0)
+			padSliderMinusBtn:SetText("-")
+			padSliderMinusBtn:SetScript("OnClick", function()
+				local v = padSlider:GetValue() - 1
+				local min, max = padSlider:GetMinMaxValues()
+				if v >= min then
+					padSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padSliderMinusBtn)
+
+			-- Plus Button for padSlider
+			local padSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padSliderPlusBtn:SetSize(27, 27)
+			padSliderPlusBtn:SetPoint("LEFT", padSlider, "RIGHT", 2, 0)
+			padSliderPlusBtn:SetText("+")
+			padSliderPlusBtn:SetScript("OnClick", function()
+				local v = padSlider:GetValue() + 1
+				local min, max = padSlider:GetMinMaxValues()
+				if v <= max then
+					padSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padSliderPlusBtn)
+			y = y - 40
+		elseif group.type == "box" then
+			-- X Padding Slider
+			local padXLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			padXLabel:SetPoint("TOPLEFT", 10, y)
+			local currentPadX = group.paddingX or 5
+			padXLabel:SetText("X Padding: " .. currentPadX)
+			tinsert(panel.controls, padXLabel)
+
+			y = y - 22
+			local padXSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			padXSlider:SetPoint("TOPLEFT", 37, y)
+			padXSlider:SetSize(126, 16)
+			padXSlider:SetMinMaxValues(0, 40)
+			padXSlider:SetValue(currentPadX)
+			padXSlider:SetValueStep(1)
+			padXSlider:SetObeyStepOnDrag(true)
+			padXSlider.Low:SetText("0")
+			padXSlider.High:SetText("40")
+			padXSlider.Text:SetText(tostring(currentPadX))
+			padXSlider:SetScript("OnValueChanged", function(self, value)
+				local v = math.floor(value)
+				group.paddingX = v
+				padXLabel:SetText("X Padding: " .. v)
+				self.Text:SetText(tostring(v))
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, padXSlider)
+
+			-- Minus Button for padXSlider
+			local padXSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padXSliderMinusBtn:SetSize(27, 27)
+			padXSliderMinusBtn:SetPoint("RIGHT", padXSlider, "LEFT", -2, 0)
+			padXSliderMinusBtn:SetText("-")
+			padXSliderMinusBtn:SetScript("OnClick", function()
+				local v = padXSlider:GetValue() - 1
+				local min, max = padXSlider:GetMinMaxValues()
+				if v >= min then
+					padXSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padXSliderMinusBtn)
+
+			-- Plus Button for padXSlider
+			local padXSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padXSliderPlusBtn:SetSize(27, 27)
+			padXSliderPlusBtn:SetPoint("LEFT", padXSlider, "RIGHT", 2, 0)
+			padXSliderPlusBtn:SetText("+")
+			padXSliderPlusBtn:SetScript("OnClick", function()
+				local v = padXSlider:GetValue() + 1
+				local min, max = padXSlider:GetMinMaxValues()
+				if v <= max then
+					padXSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padXSliderPlusBtn)
+			y = y - 40
+
+			-- Y Padding Slider
+			local padYLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			padYLabel:SetPoint("TOPLEFT", 10, y)
+			local currentPadY = group.paddingY or 5
+			padYLabel:SetText("Y Padding: " .. currentPadY)
+			tinsert(panel.controls, padYLabel)
+
+			y = y - 22
+			local padYSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			padYSlider:SetPoint("TOPLEFT", 37, y)
+			padYSlider:SetSize(126, 16)
+			padYSlider:SetMinMaxValues(0, 40)
+			padYSlider:SetValue(currentPadY)
+			padYSlider:SetValueStep(1)
+			padYSlider:SetObeyStepOnDrag(true)
+			padYSlider.Low:SetText("0")
+			padYSlider.High:SetText("40")
+			padYSlider.Text:SetText(tostring(currentPadY))
+			padYSlider:SetScript("OnValueChanged", function(self, value)
+				local v = math.floor(value)
+				group.paddingY = v
+				padYLabel:SetText("Y Padding: " .. v)
+				self.Text:SetText(tostring(v))
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end)
+			tinsert(panel.controls, padYSlider)
+
+			-- Minus Button for padYSlider
+			local padYSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padYSliderMinusBtn:SetSize(27, 27)
+			padYSliderMinusBtn:SetPoint("RIGHT", padYSlider, "LEFT", -2, 0)
+			padYSliderMinusBtn:SetText("-")
+			padYSliderMinusBtn:SetScript("OnClick", function()
+				local v = padYSlider:GetValue() - 1
+				local min, max = padYSlider:GetMinMaxValues()
+				if v >= min then
+					padYSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padYSliderMinusBtn)
+
+			-- Plus Button for padYSlider
+			local padYSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			padYSliderPlusBtn:SetSize(27, 27)
+			padYSliderPlusBtn:SetPoint("LEFT", padYSlider, "RIGHT", 2, 0)
+			padYSliderPlusBtn:SetText("+")
+			padYSliderPlusBtn:SetScript("OnClick", function()
+				local v = padYSlider:GetValue() + 1
+				local min, max = padYSlider:GetMinMaxValues()
+				if v <= max then
+					padYSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, padYSliderPlusBtn)
+			y = y - 40
+		end
+	end
+
+	if not suppress.AnchorMode then
+		-- Anchor Mode
+		local anchorLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		anchorLabel:SetPoint("TOPLEFT", 10, y)
+		anchorLabel:SetText("Anchor Mode:")
+		tinsert(panel.controls, anchorLabel)
+
+		y = y - 20
+		local anchorBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		anchorBtn:SetSize(140, 22)
+		anchorBtn:SetPoint("TOPLEFT", 10, y)
+		anchorBtn:SetText((group.anchorMode or "fixed"):upper())
+		anchorBtn:SetScript("OnClick", function()
+			local modes = { "fixed", "mouse" }
+			local current = group.anchorMode or "fixed"
+			local nextIndex = current == "fixed" and 2 or 1
+			group.anchorMode = modes[nextIndex]
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
+		tinsert(panel.controls, anchorBtn)
+
+		-- Reset Position button (resets to CENTER 0,0)
+		y = y - 25
+		local resetBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		resetBtn:SetSize(140, 22)
+		resetBtn:SetPoint("TOPLEFT", 10, y)
+		resetBtn:SetText("Reset Position")
+		Wise:AddTooltip(resetBtn, "Reset this interface to the center of the screen.")
+		resetBtn:SetScript("OnClick", function()
+			if InCombatLockdown() then
+				print("|cffff0000Wise:|r Cannot reposition during combat.")
+				return
+			end
+			group.anchor = { point = "CENTER", x = 0, y = 0 }
+			local f = Wise.frames[Wise.selectedGroup]
+			if f and f.Anchor then
+				f.Anchor:ClearAllPoints()
+				f.Anchor:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+				f:ClearAllPoints()
+				f:SetPoint("CENTER", f.Anchor, "CENTER")
+			end
+			Wise:RefreshPropertiesPanel()
+		end)
+		tinsert(panel.controls, resetBtn)
+
+		-- Mouse offset sliders (only show if mouse mode)
+		if group.anchorMode == "mouse" then
+			y = y - 25
+
+			-- X Offset
+			local xOffsetLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			xOffsetLabel:SetPoint("TOPLEFT", 10, y)
+			xOffsetLabel:SetText("X Offset: " .. (group.mouseOffsetX or 0))
+			tinsert(panel.controls, xOffsetLabel)
+
+			y = y - 18
+			local xSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			xSlider:SetPoint("TOPLEFT", 37, y)
+			xSlider:SetSize(126, 16)
+			xSlider:SetMinMaxValues(-100, 100)
+			xSlider:SetValue(group.mouseOffsetX or 0)
+			xSlider:SetValueStep(5)
+			xSlider:SetObeyStepOnDrag(true)
+			xSlider.Low:SetText("-100")
+			xSlider.High:SetText("100")
+			xSlider.Text:SetText("")
+			xSlider:SetScript("OnValueChanged", function(self, value)
+				group.mouseOffsetX = math.floor(value)
+				xOffsetLabel:SetText("X Offset: " .. group.mouseOffsetX)
+			end)
+			tinsert(panel.controls, xSlider)
+
+			-- Minus Button for xSlider
+			local xSliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			xSliderMinusBtn:SetSize(27, 27)
+			xSliderMinusBtn:SetPoint("RIGHT", xSlider, "LEFT", -2, 0)
+			xSliderMinusBtn:SetText("-")
+			xSliderMinusBtn:SetScript("OnClick", function()
+				local v = xSlider:GetValue() - 5
+				local min, max = xSlider:GetMinMaxValues()
+				if v >= min then
+					xSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, xSliderMinusBtn)
+
+			-- Plus Button for xSlider
+			local xSliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			xSliderPlusBtn:SetSize(27, 27)
+			xSliderPlusBtn:SetPoint("LEFT", xSlider, "RIGHT", 2, 0)
+			xSliderPlusBtn:SetText("+")
+			xSliderPlusBtn:SetScript("OnClick", function()
+				local v = xSlider:GetValue() + 5
+				local min, max = xSlider:GetMinMaxValues()
+				if v <= max then
+					xSlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, xSliderPlusBtn)
+
+			y = y - 25
+
+			-- Y Offset
+			local yOffsetLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			yOffsetLabel:SetPoint("TOPLEFT", 10, y)
+			yOffsetLabel:SetText("Y Offset: " .. (group.mouseOffsetY or 0))
+			tinsert(panel.controls, yOffsetLabel)
+
+			y = y - 18
+			local ySlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+			ySlider:SetPoint("TOPLEFT", 37, y)
+			ySlider:SetSize(126, 16)
+			ySlider:SetMinMaxValues(-100, 100)
+			ySlider:SetValue(group.mouseOffsetY or 0)
+			ySlider:SetValueStep(5)
+			ySlider:SetObeyStepOnDrag(true)
+			ySlider.Low:SetText("-100")
+			ySlider.High:SetText("100")
+			ySlider.Text:SetText("")
+			ySlider:SetScript("OnValueChanged", function(self, value)
+				group.mouseOffsetY = math.floor(value)
+				yOffsetLabel:SetText("Y Offset: " .. group.mouseOffsetY)
+			end)
+			tinsert(panel.controls, ySlider)
+
+			-- Minus Button for ySlider
+			local ySliderMinusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			ySliderMinusBtn:SetSize(27, 27)
+			ySliderMinusBtn:SetPoint("RIGHT", ySlider, "LEFT", -2, 0)
+			ySliderMinusBtn:SetText("-")
+			ySliderMinusBtn:SetScript("OnClick", function()
+				local v = ySlider:GetValue() - 5
+				local min, max = ySlider:GetMinMaxValues()
+				if v >= min then
+					ySlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, ySliderMinusBtn)
+
+			-- Plus Button for ySlider
+			local ySliderPlusBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+			ySliderPlusBtn:SetSize(27, 27)
+			ySliderPlusBtn:SetPoint("LEFT", ySlider, "RIGHT", 2, 0)
+			ySliderPlusBtn:SetText("+")
+			ySliderPlusBtn:SetScript("OnClick", function()
+				local v = ySlider:GetValue() + 5
+				local min, max = ySlider:GetMinMaxValues()
+				if v <= max then
+					ySlider:SetValue(v)
+				end
+			end)
+			tinsert(panel.controls, ySliderPlusBtn)
+
+			y = y - 10
+		end
+	end
+
+	if Wise.selectedSlot and group.actions and group.actions[Wise.selectedSlot] then
+		y = y - 30
+
+		local slotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		slotLabel:SetPoint("TOPLEFT", 10, y)
+		slotLabel:SetText("Slot " .. Wise.selectedSlot .. " Keybind:")
+		tinsert(panel.controls, slotLabel)
+		y = y - 20
+
+		local slotBindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		slotBindBtn:SetSize(140, 22)
+		slotBindBtn:SetPoint("TOPLEFT", 10, y)
+		local slotBind = group.actions[Wise.selectedSlot].keybind
+		slotBindBtn:SetText(slotBind or "None")
+
+		slotBindBtn:RegisterForClicks("AnyUp")
+		slotBindBtn:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				group.actions[Wise.selectedSlot].keybind = nil
+				Wise:UpdateBindings() -- Update bindings logic
+				self:SetText("None")
+			else
+				self:SetText("Press Key...")
+				self:EnableKeyboard(true)
+
+				local function FinishSlotBinding(key)
+					if not key then
+						return
+					end
+					if key == "ESCAPE" then
+						self:EnableKeyboard(false)
+						self:SetScript("OnKeyDown", nil)
+						self:SetScript("OnMouseDown", nil)
+						self:SetText(group.actions[Wise.selectedSlot].keybind or "None")
+						return
+					end
+					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
+						return
+					end
+
+					local mods = ""
+					if IsAltKeyDown() then
+						mods = mods .. "ALT-"
+					end
+					if IsControlKeyDown() then
+						mods = mods .. "CTRL-"
+					end
+					if IsShiftKeyDown() then
+						mods = mods .. "SHIFT-"
+					end
+
+					local fullKey = mods .. key
+					self:EnableKeyboard(false)
+					self:SetScript("OnKeyDown", nil)
+					self:SetScript("OnMouseDown", nil)
+
+					if Wise:CheckBindingConflict(fullKey, group, Wise.selectedSlot, true, self) then
+						return
+					end
+
+					group.actions[Wise.selectedSlot].keybind = fullKey
+					self:SetText(fullKey)
+
+					Wise:UpdateBindings()
+				end
+
+				self:SetScript("OnKeyDown", function(self, key)
+					FinishSlotBinding(key)
+				end)
+
+				self:SetScript("OnMouseDown", function(self, button)
+					if button == "LeftButton" or button == "RightButton" then
+						return
+					end
+					local key = button
+					if button == "MiddleButton" then
+						key = "BUTTON3"
+					end
+					if button == "Button4" then
+						key = "BUTTON4"
+					end
+					if button == "Button5" then
+						key = "BUTTON5"
+					end
+					FinishSlotBinding(key)
+				end)
+			end
+		end)
+		tinsert(panel.controls, slotBindBtn)
+
+		-- Hint
+		local hint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		hint:SetPoint("LEFT", slotBindBtn, "RIGHT", 5, 0)
+		hint:SetText((group.keybindSettings and group.keybindSettings.nested) and "[Nested]" or "[Global]")
+		tinsert(panel.controls, hint)
+
+		y = y - 10
+	elseif group.actions and #group.actions > 0 then
+		y = y - 30
+
+		local slotLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		slotLabel:SetPoint("TOPLEFT", 10, y)
+		slotLabel:SetText("Slot Keybind:")
+		tinsert(panel.controls, slotLabel)
+		y = y - 20
+
+		local disabledBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		disabledBtn:SetSize(140, 22)
+		disabledBtn:SetPoint("TOPLEFT", 10, y)
+		disabledBtn:SetText("Select a slot first")
+		disabledBtn:SetEnabled(false)
+		tinsert(panel.controls, disabledBtn)
+		y = y - 10
+	end
+
+	y = y - 30
+
+	if not suppress.Visibility then
+		-- Visibility Section
+		-- (Top Spacer)
+		y = y - 10
+
+		-- Easy Mode Header
+		local visLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		visLabel:SetPoint("TOPLEFT", 10, y)
+		visLabel:SetText("Visibility (Easy Mode):")
+		tinsert(panel.controls, visLabel)
+
+		y = y - 25
+
+		--------------------------------------------------
+		-- VISIBILITY MODE LOGIC
+		--------------------------------------------------
+
+		local function GetVisibilityMode()
+			local s = group.visibilitySettings.customShow or ""
+			local h = group.visibilitySettings.customHide or ""
+			local held = group.visibilitySettings.held
+			local toggle = group.visibilitySettings.toggleOnPress
+
+			-- Strict checks for preset modes
+			if s == "[always]" and h == "" and not held and not toggle then
+				return "always"
+			end
+			if h == "[always]" and s == "" and not held and not toggle then
+				return "hidden"
+			end
+			if s == "[combat]" and h == "" and not held and not toggle then
+				return "combat"
+			end
+			if s == "[nocombat]" and h == "" and not held and not toggle then
+				return "nocombat"
+			end
+			if (s == "[undermouse]" or s == "[nocombat,undermouse]") and h == "" and not held and not toggle then
+				return "undermouse"
+			end
+
+			local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
+			if held and s == groupToken and not toggle then
+				return "held"
+			end
+			if toggle and s == groupToken and not held then
+				return "toggle"
+			end
+
+			return nil -- Custom or mixed state
+		end
+
+		local function SetVisibilityMode(mode, enable)
+			-- 1. Clear everything first (Enforce Exclusivity)
+			group.visibilitySettings.customShow = ""
+			group.visibilitySettings.customHide = ""
+			group.visibilitySettings.held = false
+			group.visibilitySettings.toggleOnPress = false
+			-- Note: We DON'T clear hideOnUse here, handled separately or by mode
+
+			if not enable then
+				-- Just cleared, done
+				return
+			end
+
+			-- 2. Apply Mode
+			if mode == "always" then
+				group.visibilitySettings.customShow = "[always]"
+			elseif mode == "hidden" then
+				group.visibilitySettings.customHide = "[always]"
+			elseif mode == "combat" then
+				group.visibilitySettings.customShow = "[combat]"
+			elseif mode == "nocombat" then
+				group.visibilitySettings.customShow = "[nocombat]"
+			elseif mode == "undermouse" then
+				group.visibilitySettings.customShow = "[nocombat,undermouse]"
+			elseif mode == "held" then
+				local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
+				group.visibilitySettings.customShow = groupToken
+				group.visibilitySettings.held = true
+
+				-- Enforce trigger compatibility
+				if group.keybindSettings and group.keybindSettings.trigger == "press" then
+					group.keybindSettings.trigger = "release_mouseover"
+				end
+			elseif mode == "toggle" then
+				local groupToken = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
+				group.visibilitySettings.customShow = groupToken
+				group.visibilitySettings.toggleOnPress = true
+
+				-- Force NONE Trigger for Toggle Mode
+				if not group.keybindSettings then
+					group.keybindSettings = {}
+				end
+				group.keybindSettings.trigger = "none"
+			end
+		end
+
+		local currentMode = GetVisibilityMode()
+
+		local function CreateCheckLogic(check, mode)
+			check:SetChecked(currentMode == mode)
+			check:SetScript("OnClick", function(self)
+				SetVisibilityMode(mode, self:GetChecked())
+				Wise:RefreshPropertiesPanel()
+
+				C_Timer.After(0, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						-- Force refresh Edit Mode state if needed (e.g. disabled -> hide overlay)
+						if Wise.editMode then
+							local f = Wise.frames[Wise.selectedGroup]
+							if f and Wise.SetFrameEditMode then
+								local shouldShow = (
+									not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser
+								) and group.anchorMode ~= "mouse"
+								Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
+							end
+						end
+						-- Refresh sidebar list to update enabled/disabled colors
+						Wise:RefreshGroupList()
+					end
+				end)
+			end)
+		end
+
+		-- Row 1: Always Vis | Always Hide
+		local chkAlwaysVis = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		chkAlwaysVis:SetPoint("TOPLEFT", 10, y)
+		chkAlwaysVis.text = chkAlwaysVis:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		chkAlwaysVis.text:SetPoint("LEFT", chkAlwaysVis, "RIGHT", 5, 0)
+		chkAlwaysVis.text:SetText("Always Visible")
+		CreateCheckLogic(chkAlwaysVis, "always")
+		tinsert(panel.controls, chkAlwaysVis)
+		tinsert(panel.controls, chkAlwaysVis.text)
+
+		y = y - 25
+
+		local chkAlwaysHide = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		chkAlwaysHide:SetPoint("TOPLEFT", 10, y)
+		chkAlwaysHide.text = chkAlwaysHide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		chkAlwaysHide.text:SetPoint("LEFT", chkAlwaysHide, "RIGHT", 5, 0)
+		chkAlwaysHide.text:SetText("Always Hidden")
+		CreateCheckLogic(chkAlwaysHide, "hidden")
+		tinsert(panel.controls, chkAlwaysHide)
+		tinsert(panel.controls, chkAlwaysHide.text)
+
+		y = y - 25
+
+		-- Row 2: Combat | No Combat
+		local chkCombat = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		chkCombat:SetPoint("TOPLEFT", 10, y)
+		chkCombat.text = chkCombat:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		chkCombat.text:SetPoint("LEFT", chkCombat, "RIGHT", 5, 0)
+		chkCombat.text:SetText("Show In Combat")
+		CreateCheckLogic(chkCombat, "combat")
+		tinsert(panel.controls, chkCombat)
+		tinsert(panel.controls, chkCombat.text)
+
+		y = y - 25
+
+		local chkOOC = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		chkOOC:SetPoint("TOPLEFT", 10, y)
+		chkOOC.text = chkOOC:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		chkOOC.text:SetPoint("LEFT", chkOOC, "RIGHT", 5, 0)
+		chkOOC.text:SetText("Show Out of Combat")
+		CreateCheckLogic(chkOOC, "nocombat")
+		tinsert(panel.controls, chkOOC)
+		tinsert(panel.controls, chkOOC.text)
+
+		y = y - 25
+
+		-- Row 2.5: Undermouse
+		local chkUnderMouse = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+		chkUnderMouse:SetPoint("TOPLEFT", 10, y)
+		chkUnderMouse.text = chkUnderMouse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		chkUnderMouse.text:SetPoint("LEFT", chkUnderMouse, "RIGHT", 5, 0)
+		chkUnderMouse.text:SetText("Show on Mouseover")
+		CreateCheckLogic(chkUnderMouse, "undermouse")
+		tinsert(panel.controls, chkUnderMouse)
+		tinsert(panel.controls, chkUnderMouse.text)
+
+		if currentMode == "undermouse" then
+			y = y - 22
+			local mouseWarning = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			mouseWarning:SetPoint("TOPLEFT", 35, y)
+			mouseWarning:SetPoint("RIGHT", panel, "RIGHT", -10, 0)
+			mouseWarning:SetJustifyH("LEFT")
+			mouseWarning:SetTextColor(0.8, 0.35, 0.35)
+			mouseWarning:SetText("Actions/Items are not clickable in combat\ndue to WoW restrictions.")
+			tinsert(panel.controls, mouseWarning)
+			y = y - 26
+		end
+
+		y = y - 30
+
+		-- Row 3: Keybind Interactions (Only if Binding Exists)
+		if group.binding then
+			local visIntLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			visIntLabel:SetPoint("TOPLEFT", 10, y)
+			visIntLabel:SetText("Keybind Interaction (Visibility):")
+			tinsert(panel.controls, visIntLabel)
+			y = y - 20
+
+			local chkHeld = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			chkHeld:SetPoint("TOPLEFT", 10, y)
+			chkHeld.text = chkHeld:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			chkHeld.text:SetPoint("LEFT", chkHeld, "RIGHT", 5, 0)
+			chkHeld.text:SetText("Hold to Show")
+			CreateCheckLogic(chkHeld, "held")
+			tinsert(panel.controls, chkHeld)
+			tinsert(panel.controls, chkHeld.text)
+			y = y - 22
+
+			local chkToggle = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+			chkToggle:SetPoint("TOPLEFT", 10, y)
+			chkToggle.text = chkToggle:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			chkToggle.text:SetPoint("LEFT", chkToggle, "RIGHT", 5, 0)
+			chkToggle.text:SetText("Toggle on Press")
+			CreateCheckLogic(chkToggle, "toggle")
+			tinsert(panel.controls, chkToggle)
+			tinsert(panel.controls, chkToggle.text)
+			y = y - 22
+
+			-- Hide on Action (Dependent on Toggle)
+			if currentMode == "toggle" then
+				local chkHideUse = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+				chkHideUse:SetPoint("TOPLEFT", 30, y) -- Indented
+				chkHideUse.text = chkHideUse:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				chkHideUse.text:SetPoint("LEFT", chkHideUse, "RIGHT", 5, 0)
+				chkHideUse.text:SetText("Hide on Action")
+				chkHideUse:SetChecked(group.visibilitySettings.hideOnUse == true)
+				chkHideUse:SetScript("OnClick", function(self)
+					group.visibilitySettings.hideOnUse = self:GetChecked()
+					-- No refresh needed for logic change logic, just redraw?
+					-- Actually refresh ensures consistency
+				end)
+				tinsert(panel.controls, chkHideUse)
+				tinsert(panel.controls, chkHideUse.text)
+				y = y - 22
+			else
+				group.visibilitySettings.hideOnUse = false
+			end
+
+			-- Nested Keybinds (Only if Toggle + Hide on Action are ON)
+			if currentMode == "toggle" and group.visibilitySettings.hideOnUse then
+				local chkNested = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+				chkNested:SetPoint("TOPLEFT", 10, y - 22)
+				chkNested.text = chkNested:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				chkNested.text:SetPoint("LEFT", chkNested, "RIGHT", 5, 0)
+				chkNested.text:SetText("Nested Keybinds")
+
+				if not group.keybindSettings then
+					group.keybindSettings = {}
+				end
+				chkNested:SetChecked(group.keybindSettings.nested == true)
+
+				chkNested:SetScript("OnClick", function(self)
+					group.keybindSettings.nested = self:GetChecked()
+					Wise:UpdateBindings() -- Need to update binding logic
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+				tinsert(panel.controls, chkNested)
+				tinsert(panel.controls, chkNested.text)
+				y = y - 22 -- Space for nested
+			else
+				if group.keybindSettings then
+					group.keybindSettings.nested = false
+				end
+			end
+
+			y = y - 10
+		end
+
+		-- Custom Show / Hide (Hard Mode)
+		local hardLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		hardLabel:SetPoint("TOPLEFT", 10, y)
+		hardLabel:SetText("Visibility (Hard Mode):")
+		tinsert(panel.controls, hardLabel)
+		y = y - 25
+
+		local customShowLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		customShowLabel:SetPoint("TOPLEFT", 10, y)
+		customShowLabel:SetText("Custom Show Condition:")
+		tinsert(panel.controls, customShowLabel)
+		y = y - 18
+
+		local customShowEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		customShowEdit:SetSize(200, 24) -- slightly taller
+		customShowEdit:SetPoint("TOPLEFT", 14, y)
+		customShowEdit:SetAutoFocus(false)
+		customShowEdit:SetText((group.visibilitySettings and group.visibilitySettings.customShow) or "")
+		customShowEdit:SetCursorPosition(0)
+
+		local function SaveCustomShow(self)
+			if not group.visibilitySettings then
+				group.visibilitySettings = {}
+			end
+			local newText = self:GetText()
+			if group.visibilitySettings.customShow == newText then
+				return
+			end
+			group.visibilitySettings.customShow = newText
+
+			Wise:RefreshPropertiesPanel() -- This will update checkboxes based on the new text
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					if Wise.editMode then
+						local f = Wise.frames[Wise.selectedGroup]
+						if f and Wise.SetFrameEditMode then
+							local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser)
+								and group.anchorMode ~= "mouse"
+							Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
+						end
+					end
+					-- Refresh sidebar list to update enabled/disabled colors
+					Wise:RefreshGroupList()
+				end
+			end)
+		end
+
+		customShowEdit:SetScript("OnEnterPressed", function(self)
+			self:ClearFocus()
+			SaveCustomShow(self)
+		end)
+		customShowEdit:SetScript("OnEditFocusLost", function(self)
+			SaveCustomShow(self)
+		end)
+		customShowEdit:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+		end)
+
+		tinsert(panel.controls, customShowEdit)
+		tinsert(panel.controls, CreateConditionValidator(customShowEdit, panel))
+		y = y - 35
+
+		local customHideLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		customHideLabel:SetPoint("TOPLEFT", 10, y)
+		customHideLabel:SetText("Custom Hide Condition:")
+		tinsert(panel.controls, customHideLabel)
+		y = y - 18
+
+		local customHideEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		customHideEdit:SetSize(200, 24) -- slightly taller
+		customHideEdit:SetPoint("TOPLEFT", 14, y)
+		customHideEdit:SetAutoFocus(false)
+		customHideEdit:SetText((group.visibilitySettings and group.visibilitySettings.customHide) or "")
+		customHideEdit:SetCursorPosition(0)
+
+		local function SaveCustomHide(self)
+			if not group.visibilitySettings then
+				group.visibilitySettings = {}
+			end
+			local newText = self:GetText()
+			if group.visibilitySettings.customHide == newText then
+				return
+			end
+			group.visibilitySettings.customHide = newText
+
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					if Wise.editMode then
+						local f = Wise.frames[Wise.selectedGroup]
+						if f and Wise.SetFrameEditMode then
+							local shouldShow = (not Wise:IsGroupDisabled(group, Wise.selectedGroup) or group.isWiser)
+								and group.anchorMode ~= "mouse"
+							Wise:SetFrameEditMode(f, Wise.selectedGroup, shouldShow)
+						end
+					end
+					-- Refresh sidebar list to update enabled/disabled colors
+					Wise:RefreshGroupList()
+				end
+			end)
+		end
+
+		customHideEdit:SetScript("OnEnterPressed", function(self)
+			self:ClearFocus()
+			SaveCustomHide(self)
+		end)
+		customHideEdit:SetScript("OnEditFocusLost", function(self)
+			SaveCustomHide(self)
+		end)
+		customHideEdit:SetScript("OnEscapePressed", function(self)
+			self:ClearFocus()
+		end)
+
+		tinsert(panel.controls, customHideEdit)
+		tinsert(panel.controls, CreateConditionValidator(customHideEdit, panel))
+		y = y - 30
+
+		-- Header / Spacer
+		local header = panel:CreateTexture(nil, "ARTWORK")
+		header:SetColorTexture(1, 1, 1, 0.2)
+		header:SetSize(200, 1)
+		header:SetPoint("TOPLEFT", 10, y)
+		tinsert(panel.controls, header)
+		y = y - 20
+	end
+
+	if not suppress.Keybind then
+		-- KEYBIND SECTION
+		local kbLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		kbLabel:SetPoint("TOPLEFT", 10, y)
+		kbLabel:SetText("Keybind (Right Click to Clear):")
+		tinsert(panel.controls, kbLabel)
+
+		y = y - 20
+		local bindBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		bindBtn:SetSize(140, 22)
+		bindBtn:SetPoint("TOPLEFT", 10, y)
+		local currentBind = group.binding
+		bindBtn:SetText(currentBind or "None")
+
+		bindBtn:RegisterForClicks("AnyUp")
+		bindBtn:SetScript("OnClick", function(self, button)
+			if button == "RightButton" then
+				group.binding = nil
+				Wise:UpdateBindings()
+				Wise:UpdateOptionsUI()
+			elseif button == "LeftButton" then
+				self:SetText("Press Key...")
+				self:EnableKeyboard(true)
+				self:EnableMouseWheel(true)
+
+				local function FinishBinding(key)
+					if not key then
+						return
+					end
+
+					if key == "ESCAPE" then
+						self:EnableKeyboard(false)
+						self:EnableMouseWheel(false)
+						self:SetScript("OnKeyDown", nil)
+						self:SetScript("OnMouseWheel", nil)
+						self:SetScript("OnMouseDown", nil)
+						Wise:RefreshPropertiesPanel()
+						return
+					end
+
+					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
+						return
+					end
+
+					local mods = ""
+					if IsAltKeyDown() then
+						mods = mods .. "ALT-"
+					end
+					if IsControlKeyDown() then
+						mods = mods .. "CTRL-"
+					end
+					if IsShiftKeyDown() then
+						mods = mods .. "SHIFT-"
+					end
+
+					-- Check MouseWheel Validation
+					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
+						-- If this is an initial binding (no previous binding), auto-fix settings
+						if not group.binding or group.binding == "" then
+							if not group.keybindSettings then
+								group.keybindSettings = {}
+							end
+							group.keybindSettings.trigger = "press"
+							if group.visibilitySettings then
+								group.visibilitySettings.held = false
+							end
+						end
+
+						local isValid, err = Wise:ValidateMouseWheelBinding(group, false)
+						if not isValid then
+							EnsureBindingErrorPopup()
+							StaticPopup_Show("WISE_BINDING_ERROR", err)
+							self:EnableKeyboard(false)
+							self:EnableMouseWheel(false)
+							self:SetScript("OnKeyDown", nil)
+							self:SetScript("OnMouseWheel", nil)
+							self:SetScript("OnMouseDown", nil)
+							Wise:RefreshPropertiesPanel()
+							return
+						end
+					end
+
+					local fullKey = mods .. key
+					self:EnableKeyboard(false)
+					self:EnableMouseWheel(false)
+					self:SetScript("OnKeyDown", nil)
+					self:SetScript("OnMouseWheel", nil)
+					self:SetScript("OnMouseDown", nil)
+
+					if Wise:CheckBindingConflict(fullKey, group, nil, false, self) then
+						return
+					end
+
+					group.binding = fullKey
+
+					Wise:UpdateBindings()
+					Wise:UpdateOptionsUI()
+				end
+
+				self:SetScript("OnKeyDown", function(self, key)
+					FinishBinding(key)
+				end)
+
+				self:SetScript("OnMouseWheel", function(self, delta)
+					local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
+					FinishBinding(key)
+				end)
+
+				self:SetScript("OnMouseDown", function(self, button)
+					if button == "LeftButton" or button == "RightButton" then
+						return
+					end
+					local key = button
+					if button == "MiddleButton" then
+						key = "BUTTON3"
+					end
+					if button == "Button4" then
+						key = "BUTTON4"
+					end
+					if button == "Button5" then
+						key = "BUTTON5"
+					end
+					FinishBinding(key)
+				end)
+			end
+		end)
+		tinsert(panel.controls, bindBtn)
+		y = y - 30
+
+		-- Show Interactions only if Keybind exists
+		if group.binding then
+			-- Separator
+			local div = panel:CreateTexture(nil, "ARTWORK")
+			div:SetColorTexture(1, 1, 1, 0.2)
+			div:SetSize(200, 1)
+			div:SetPoint("TOPLEFT", 10, y)
+			tinsert(panel.controls, div)
+			y = y - 20
+
+			local function IsTriggerAllowed(triggerVal)
+				-- Toggle Mode Rule: ONLY "none" is allowed
+				if group.visibilitySettings.toggleOnPress then
+					return triggerVal == "none"
+				end
+
+				if triggerVal == "press" then
+					-- Allowed for all layout types (button, line, circle, list, grid)
+					return true
+				elseif triggerVal == "release_mouseover" or triggerVal == "release_repeat" then
+					-- Only allowed for NON-"button" type interfaces
+					return (group.type ~= "button")
+				end
+				-- "none" is always allowed
+				return true
+			end
+
+			y = y - 10
+
+			local actIntLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			actIntLabel:SetPoint("TOPLEFT", 10, y)
+			actIntLabel:SetText("Keybind Trigger method:")
+			tinsert(panel.controls, actIntLabel)
+			y = y - 20
+
+			-- 4-Way Radio Buttons for Trigger Mode
+			local function CreateRadio(label, triggerValue)
+				local check = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+				check:SetPoint("TOPLEFT", 10, y)
+
+				-- Normalize current trigger
+				local currentTrigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
+				-- Legacy fallback
+				if
+					currentTrigger == "release_mouseover"
+					and group.keybindSettings
+					and group.keybindSettings.repeatPrevious
+				then
+					currentTrigger = "release_repeat"
+				end
+
+				check:SetChecked(currentTrigger == triggerValue)
+
+				check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+				check.text:SetPoint("LEFT", check, "RIGHT", 5, 0)
+				check.text:SetText(label)
+
+				-- Disable if not allowed (e.g. "press" on non-button)
+				if not IsTriggerAllowed(triggerValue) then
+					check:Disable()
+					check:SetAlpha(0.5)
+					check.text:SetTextColor(0.5, 0.5, 0.5)
+
+					-- Force unchecked if disabled to prevent confusing double-selection in UI
+					check:SetChecked(false)
+				else
+					check:Enable()
+					check:SetAlpha(1)
+					check.text:SetTextColor(1, 1, 1) -- Normal color (actually usually handled by template, but ensuring white/standard)
+				end
+
+				check:SetScript("OnClick", function(self)
+					if not IsTriggerAllowed(triggerValue) then
+						self:SetChecked(false)
+						return
+					end
+
+					if not group.keybindSettings then
+						group.keybindSettings = {}
+					end
+
+					group.keybindSettings.trigger = triggerValue
+					group.keybindSettings.repeatPrevious = false
+
+					-- Rule: Press -> Disable Hold to Show
+					if triggerValue == "press" then
+						if group.visibilitySettings.held then
+							group.visibilitySettings.held = false
+							local token = "[wise:" .. (Wise.selectedGroup or "Group") .. "]"
+							group.visibilitySettings.customShow =
+								UpdateConditionStr(group.visibilitySettings.customShow, token, false)
+						end
+					end
+
+					Wise:RefreshPropertiesPanel()
+					C_Timer.After(0, function()
+						if not InCombatLockdown() then
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+						end
+					end)
+				end)
+
+				tinsert(panel.controls, check)
+				tinsert(panel.controls, check.text)
+				y = y - 22
+			end
+
+			CreateRadio("On Key Press", "press")
+			CreateRadio("On Key Release @ Mouseover", "release_mouseover")
+			CreateRadio("On Key Release with repeat if no change", "release_repeat")
+			CreateRadio("None", "none")
+		else
+			local help = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			help:SetPoint("TOPLEFT", 10, y)
+			help:SetText("(Assign a keybind to configure interactions)")
+			help:SetTextColor(0.5, 0.5, 0.5)
+			tinsert(panel.controls, help)
+			y = y - 20
+		end
+
+		-- Right click hint
+		local clearHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		clearHint:SetPoint("LEFT", bindBtn, "RIGHT", 5, 0)
+		clearHint:SetText("(right click to clear)")
+		tinsert(panel.controls, clearHint)
+
+		y = y - 30
+	end
+
+	if inject.Bottom then
+		y = inject.Bottom(panel, group, y)
+	end
+
+	if not suppress.Actions then
+		-- Export Interface Button (custom interfaces only)
+		if not group.isWiser then
+			local exportBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+			exportBtn:SetSize(140, 22)
+			exportBtn:SetPoint("TOPLEFT", 10, y)
+			exportBtn:SetText("Export Interface")
+			exportBtn:SetScript("OnClick", function()
+				local name = Wise.selectedGroup
+				if not name or not WiseDB.groups[name] then
+					return
+				end
+				local encoded = Wise:ExportInterfaces({ name })
+				StaticPopupDialogs["WISE_EXPORT"] = {
+					text = "Copy the export string below (Ctrl+A, Ctrl+C):",
+					button1 = "Close",
+					hasEditBox = true,
+					editBoxWidth = 350,
+					OnShow = function(self)
+						local eb = self.EditBox or self.editBox
+						if not eb then
+							return
+						end
+						eb:SetText(encoded)
+						eb:HighlightText()
+						eb:SetFocus()
+					end,
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+					preferredIndex = 3,
+				}
+				StaticPopup_Show("WISE_EXPORT")
+			end)
+			tinsert(panel.controls, exportBtn)
+			y = y - 26
+		end
+
+		if group.isWiser then
+			-- Duplicate Button for Wiser Groups
+			local dupBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+			dupBtn:SetSize(140, 22)
+			dupBtn:SetPoint("TOPLEFT", 10, y)
+			dupBtn:SetText("Duplicate Interface")
+			dupBtn:SetScript("OnClick", function()
+				local newName = Wise.selectedGroup .. " - copy"
+				local conflictCount = 1
+				while WiseDB.groups[newName] do
+					conflictCount = conflictCount + 1
+					newName = Wise.selectedGroup .. " - copy " .. conflictCount
+				end
+
+				-- Deep Copy
+				local source = WiseDB.groups[Wise.selectedGroup]
+				local newGroup = {}
+				-- Helper recursive copy
+				local function deepCopy(t)
+					local copy = {}
+					for k, v in pairs(t) do
+						if type(v) == "table" then
+							copy[k] = deepCopy(v)
+						else
+							copy[k] = v
+						end
+					end
+					return copy
+				end
+				newGroup = deepCopy(source)
+
+				newGroup.isWiser = nil -- It's now a custom custom group
+				WiseDB.groups[newName] = newGroup
+
+				Wise:UpdateGroupDisplay(newName)
+				Wise.selectedGroup = newName
+				Wise:RefreshGroupList()
+				Wise:RefreshPropertiesPanel()
+			end)
+			tinsert(panel.controls, dupBtn)
+
+			-- Reset to Default Button for Wiser Groups
+			y = y - 25
+			local resetBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+			resetBtn:SetSize(140, 22)
+			resetBtn:SetPoint("TOPLEFT", 10, y)
+			resetBtn:SetText("Reset to Default")
+			resetBtn:SetScript("OnClick", function()
+				StaticPopupDialogs["WISE_CONFIRM_RESET"] = {
+					text = "Reset '" .. Wise.selectedGroup .. "' to default configuration?",
+					button1 = "Yes",
+					button2 = "No",
+					OnAccept = function()
+						-- Determine which type of Wiser interface this is and regenerate it
+						-- Simply calling UpdateWiserInterfaces will regenerate all, which is fine and safe
+						-- But first we must clear the current buttons to ensure clean slate
+						local g = WiseDB.groups[Wise.selectedGroup]
+						if g then
+							g.buttons = {}
+						end
+
+						Wise:UpdateWiserInterfaces()
+
+						C_Timer.After(0.5, function()
+							Wise:UpdateGroupDisplay(Wise.selectedGroup)
+							Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+							Wise:RefreshPropertiesPanel()
+						end)
+					end,
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+					preferredIndex = 3,
+				}
+				StaticPopup_Show("WISE_CONFIRM_RESET")
+			end)
+			tinsert(panel.controls, resetBtn)
+		else
+			-- Delete Group Button
+			local delBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+			delBtn:SetSize(140, 22)
+			delBtn:SetPoint("TOPLEFT", 10, y)
+			delBtn:SetText("Delete Interface")
+			delBtn:SetScript("OnClick", function()
+				StaticPopupDialogs["WISE_CONFIRM_DELETE"] = {
+					text = "Delete group '" .. Wise.selectedGroup .. "'?",
+					button1 = "Yes",
+					button2 = "No",
+					OnAccept = function()
+						Wise:DeleteGroup(Wise.selectedGroup)
+						Wise.selectedGroup = nil
+						Wise:RefreshGroupList()
+						Wise:RefreshPropertiesPanel()
+						Wise:UpdateOptionsUI()
+					end,
+					timeout = 0,
+					whileDead = true,
+					hideOnEscape = true,
+					preferredIndex = 3,
+				}
+				StaticPopup_Show("WISE_CONFIRM_DELETE")
+			end)
+			tinsert(panel.controls, delBtn)
+		end
+		y = y - 40
+	end
+
+	return y
 end
 
 function Wise:CreateEmbeddedSpecPicker(parent, action)
-    local ep = Wise.EmbeddedSpecPicker
+	local ep = Wise.EmbeddedSpecPicker
 
-    if ep and ep.parent == parent then
-        ep.CancelBtn:Show()
-        ep.titleLabel:Show()
-        ep.descLabel:Show()
-        ep.Scroll:Show()
-    else
-        -- Build new picker UI into parent
-        ep = {}
-        Wise.EmbeddedSpecPicker = ep
-        ep.parent = parent
+	if ep and ep.parent == parent then
+		ep.CancelBtn:Show()
+		ep.titleLabel:Show()
+		ep.descLabel:Show()
+		ep.Scroll:Show()
+	else
+		-- Build new picker UI into parent
+		ep = {}
+		Wise.EmbeddedSpecPicker = ep
+		ep.parent = parent
 
-        -- Cancel / Back button
-        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
-        ep.CancelBtn:SetSize(80, 22)
-        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
-        ep.CancelBtn:SetText("< Back")
-        ep.CancelBtn:SetScript("OnClick", function()
-            Wise.pickingSpecs = false
-            Wise.pickingSpecsAction = nil
-            Wise:RefreshPropertiesPanel()
+		-- Cancel / Back button
+		ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+		ep.CancelBtn:SetSize(80, 22)
+		ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+		ep.CancelBtn:SetText("< Back")
+		ep.CancelBtn:SetScript("OnClick", function()
+			Wise.pickingSpecs = false
+			Wise.pickingSpecsAction = nil
+			Wise:RefreshPropertiesPanel()
 
-            -- Update display
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
+			-- Update display
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
 
-        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
-        ep.titleLabel:SetText("Select Required Specs")
+		ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+		ep.titleLabel:SetText("Select Required Specs")
 
-        -- Description
-        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
-        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
-        ep.descLabel:SetJustifyH("LEFT")
-        ep.descLabel:SetText("Action will only be visible if ANY selected spec is active.")
+		-- Description
+		ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+		ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+		ep.descLabel:SetJustifyH("LEFT")
+		ep.descLabel:SetText("Action will only be visible if ANY selected spec is active.")
 
-        -- ScrollFrame
-        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
-        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+		-- ScrollFrame
+		ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+		ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+		ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
 
-        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
-        ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
-        ep.Scroll:SetScrollChild(ep.Content)
+		ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+		ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
+		ep.Scroll:SetScrollChild(ep.Content)
 
-        ep.buttons = {}
-    end
+		ep.buttons = {}
+	end
 
-    tinsert(parent.controls, ep.CancelBtn)
-    tinsert(parent.controls, ep.titleLabel)
-    tinsert(parent.controls, ep.descLabel)
-    tinsert(parent.controls, ep.Scroll)
+	tinsert(parent.controls, ep.CancelBtn)
+	tinsert(parent.controls, ep.titleLabel)
+	tinsert(parent.controls, ep.descLabel)
+	tinsert(parent.controls, ep.Scroll)
 
-    for _, btn in pairs(ep.buttons) do
-        btn:Hide()
-    end
+	for _, btn in pairs(ep.buttons) do
+		btn:Hide()
+	end
 
-    -- Collect Specs
-    local items = {}
+	-- Collect Specs
+	local items = {}
 
-    local numSpecs = GetNumSpecializations()
-    for i = 1, numSpecs do
-        local id, name, _, icon = GetSpecializationInfo(i)
-        if id then
-            table.insert(items, {
-                specID = id,
-                name = name,
-                icon = icon
-            })
-        end
-    end
+	local numSpecs = GetNumSpecializations()
+	for i = 1, numSpecs do
+		local id, name, _, icon = GetSpecializationInfo(i)
+		if id then
+			table.insert(items, {
+				specID = id,
+				name = name,
+				icon = icon,
+			})
+		end
+	end
 
-    -- Ensure specRequirements is a table
-    if type(action.specRequirements) ~= "table" then
-        action.specRequirements = {}
-        if action.addedBySpec then
-            table.insert(action.specRequirements, action.addedBySpec)
-        end
-    end
+	-- Ensure specRequirements is a table
+	if type(action.specRequirements) ~= "table" then
+		action.specRequirements = {}
+		if action.addedBySpec then
+			table.insert(action.specRequirements, action.addedBySpec)
+		end
+	end
 
-    local selectedMap = {}
-    for _, id in ipairs(action.specRequirements) do
-        selectedMap[id] = true
-    end
+	local selectedMap = {}
+	for _, id in ipairs(action.specRequirements) do
+		selectedMap[id] = true
+	end
 
-    local y = 0
-    local btnWidth = ep.Content:GetWidth() - 10
-    if btnWidth < 100 then btnWidth = 200 end
+	local y = 0
+	local btnWidth = ep.Content:GetWidth() - 10
+	if btnWidth < 100 then
+		btnWidth = 200
+	end
 
-    for i, data in ipairs(items) do
-        local btn = ep.buttons[i]
-        if not btn then
-            btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
+	for i, data in ipairs(items) do
+		local btn = ep.buttons[i]
+		if not btn then
+			btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
 
-            -- Checkbox
-            local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
-            chk:SetSize(24, 24)
-            chk:SetPoint("LEFT", 0, 0)
-            btn.chk = chk
+			-- Checkbox
+			local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+			chk:SetSize(24, 24)
+			chk:SetPoint("LEFT", 0, 0)
+			btn.chk = chk
 
-            -- Icon
-            local icon = btn:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(20, 20)
-            icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
-            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            btn.icon = icon
+			-- Icon
+			local icon = btn:CreateTexture(nil, "ARTWORK")
+			icon:SetSize(20, 20)
+			icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
+			icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+			btn.icon = icon
 
-            -- Name
-            local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-            nameLabel:SetPoint("RIGHT", 0, 0)
-            nameLabel:SetJustifyH("LEFT")
-            btn.nameLabel = nameLabel
+			-- Name
+			local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+			nameLabel:SetPoint("RIGHT", 0, 0)
+			nameLabel:SetJustifyH("LEFT")
+			btn.nameLabel = nameLabel
 
-            -- Make row clickable to toggle checkbox
-            btn:SetScript("OnClick", function(self)
-                self.chk:SetChecked(not self.chk:GetChecked())
-                self.chk:GetScript("OnClick")(self.chk)
-            end)
+			-- Make row clickable to toggle checkbox
+			btn:SetScript("OnClick", function(self)
+				self.chk:SetChecked(not self.chk:GetChecked())
+				self.chk:GetScript("OnClick")(self.chk)
+			end)
 
-            table.insert(ep.buttons, btn)
-        end
+			table.insert(ep.buttons, btn)
+		end
 
-        btn:SetSize(btnWidth, 24)
-        btn:SetPoint("TOPLEFT", 4, y)
-        btn:Show()
+		btn:SetSize(btnWidth, 24)
+		btn:SetPoint("TOPLEFT", 4, y)
+		btn:Show()
 
-        btn.icon:SetTexture(data.icon)
-        btn.nameLabel:SetText(data.name)
-        btn.chk:SetChecked(selectedMap[data.specID] or false)
+		btn.icon:SetTexture(data.icon)
+		btn.nameLabel:SetText(data.name)
+		btn.chk:SetChecked(selectedMap[data.specID] or false)
 
-        btn.chk:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            selectedMap[data.specID] = isChecked
+		btn.chk:SetScript("OnClick", function(self)
+			local isChecked = self:GetChecked()
+			selectedMap[data.specID] = isChecked
 
-            -- Rebuild specRequirements
-            action.specRequirements = {}
-            for id, selected in pairs(selectedMap) do
-                if selected then
-                    table.insert(action.specRequirements, id)
-                end
-            end
+			-- Rebuild specRequirements
+			action.specRequirements = {}
+			for id, selected in pairs(selectedMap) do
+				if selected then
+					table.insert(action.specRequirements, id)
+				end
+			end
 
-            -- Mirror to visibilityEnable
-            action.visibilityEnable = action.visibilityEnable or {}
-            for i = #action.visibilityEnable, 1, -1 do
-                if action.visibilityEnable[i]:match("^spec:") then
-                    table.remove(action.visibilityEnable, i)
-                end
-            end
-            for id, selected in pairs(selectedMap) do
-                if selected then
-                    table.insert(action.visibilityEnable, "spec:" .. id)
-                end
-            end
-        end)
+			-- Mirror to visibilityEnable
+			action.visibilityEnable = action.visibilityEnable or {}
+			for i = #action.visibilityEnable, 1, -1 do
+				if action.visibilityEnable[i]:match("^spec:") then
+					table.remove(action.visibilityEnable, i)
+				end
+			end
+			for id, selected in pairs(selectedMap) do
+				if selected then
+					table.insert(action.visibilityEnable, "spec:" .. id)
+				end
+			end
+		end)
 
-        y = y - 24
-    end
+		y = y - 24
+	end
 
-    ep.Content:SetHeight(math.abs(y))
+	ep.Content:SetHeight(math.abs(y))
 end
 
 function Wise:CreateEmbeddedTalentPicker(parent, action)
-    local ep = Wise.EmbeddedTalentPicker
+	local ep = Wise.EmbeddedTalentPicker
 
-    if ep and ep.parent == parent then
-        ep.CancelBtn:Show()
-        ep.titleLabel:Show()
-        ep.descLabel:Show()
-        ep.Scroll:Show()
-    else
-        -- Build new picker UI into parent
-        ep = {}
-        Wise.EmbeddedTalentPicker = ep
-        ep.parent = parent
+	if ep and ep.parent == parent then
+		ep.CancelBtn:Show()
+		ep.titleLabel:Show()
+		ep.descLabel:Show()
+		ep.Scroll:Show()
+	else
+		-- Build new picker UI into parent
+		ep = {}
+		Wise.EmbeddedTalentPicker = ep
+		ep.parent = parent
 
-        -- Cancel / Back button
-        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
-        ep.CancelBtn:SetSize(80, 22)
-        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
-        ep.CancelBtn:SetText("< Back")
-        ep.CancelBtn:SetScript("OnClick", function()
-            Wise.pickingTalents = false
-            Wise.pickingTalentsAction = nil
-            Wise:RefreshPropertiesPanel()
+		-- Cancel / Back button
+		ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+		ep.CancelBtn:SetSize(80, 22)
+		ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+		ep.CancelBtn:SetText("< Back")
+		ep.CancelBtn:SetScript("OnClick", function()
+			Wise.pickingTalents = false
+			Wise.pickingTalentsAction = nil
+			Wise:RefreshPropertiesPanel()
 
-            -- Update display
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
+			-- Update display
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
 
-        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
-        ep.titleLabel:SetText("Select Required Talents")
+		ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+		ep.titleLabel:SetText("Select Required Talents")
 
-        -- Description
-        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
-        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
-        ep.descLabel:SetJustifyH("LEFT")
-        ep.descLabel:SetText("Action will only be visible if ALL selected talents are active.")
+		-- Description
+		ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+		ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+		ep.descLabel:SetJustifyH("LEFT")
+		ep.descLabel:SetText("Action will only be visible if ALL selected talents are active.")
 
-        -- ScrollFrame
-        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
-        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+		-- ScrollFrame
+		ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+		ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+		ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
 
-        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
-        ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
-        ep.Scroll:SetScrollChild(ep.Content)
+		ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+		ep.Content:SetSize(ep.Scroll:GetWidth(), 100) -- Will be updated
+		ep.Scroll:SetScrollChild(ep.Content)
 
-        ep.buttons = {}
-    end
+		ep.buttons = {}
+	end
 
-    tinsert(parent.controls, ep.CancelBtn)
-    tinsert(parent.controls, ep.titleLabel)
-    tinsert(parent.controls, ep.descLabel)
-    tinsert(parent.controls, ep.Scroll)
+	tinsert(parent.controls, ep.CancelBtn)
+	tinsert(parent.controls, ep.titleLabel)
+	tinsert(parent.controls, ep.descLabel)
+	tinsert(parent.controls, ep.Scroll)
 
-    for _, btn in pairs(ep.buttons) do
-        btn:Hide()
-    end
+	for _, btn in pairs(ep.buttons) do
+		btn:Hide()
+	end
 
-    -- Collect Talents
-    local items = {}
+	-- Collect Talents
+	local items = {}
 
-    local configID = C_ClassTalents.GetActiveConfigID()
-    if configID then
-        local configInfo = C_Traits.GetConfigInfo(configID)
-        if configInfo then
-            for _, treeID in ipairs(configInfo.treeIDs) do
-                local nodes = C_Traits.GetTreeNodes(treeID)
-                for _, nodeID in ipairs(nodes) do
-                    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-                    if nodeInfo and nodeInfo.entryIDs then
-                        -- Iterate all entries in this node
-                        for _, entryID in ipairs(nodeInfo.entryIDs) do
-                            local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
-                            if entryInfo and entryInfo.definitionID then
-                                local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
-                                if defInfo and defInfo.spellID then
-                                    local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
-                                    if spellInfo then
-                                        -- Deduplicate by spellID
-                                        local exists = false
-                                        for _, item in ipairs(items) do
-                                            if item.spellID == spellInfo.spellID then
-                                                exists = true
-                                                break
-                                            end
-                                        end
-                                        if not exists then
-                                            table.insert(items, {
-                                                spellID = spellInfo.spellID,
-                                                name = spellInfo.name,
-                                                icon = spellInfo.iconID
-                                            })
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+	local configID = C_ClassTalents.GetActiveConfigID()
+	if configID then
+		local configInfo = C_Traits.GetConfigInfo(configID)
+		if configInfo then
+			for _, treeID in ipairs(configInfo.treeIDs) do
+				local nodes = C_Traits.GetTreeNodes(treeID)
+				for _, nodeID in ipairs(nodes) do
+					local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+					if nodeInfo and nodeInfo.entryIDs then
+						-- Iterate all entries in this node
+						for _, entryID in ipairs(nodeInfo.entryIDs) do
+							local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+							if entryInfo and entryInfo.definitionID then
+								local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+								if defInfo and defInfo.spellID then
+									local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
+									if spellInfo then
+										-- Deduplicate by spellID
+										local exists = false
+										for _, item in ipairs(items) do
+											if item.spellID == spellInfo.spellID then
+												exists = true
+												break
+											end
+										end
+										if not exists then
+											table.insert(items, {
+												spellID = spellInfo.spellID,
+												name = spellInfo.name,
+												icon = spellInfo.iconID,
+											})
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 
-    -- Sort by name
-    table.sort(items, function(a, b) return a.name < b.name end)
+	-- Sort by name
+	table.sort(items, function(a, b)
+		return a.name < b.name
+	end)
 
-    -- Ensure talentRequirements is a table
-    if type(action.talentRequirements) ~= "table" then
-        action.talentRequirements = {}
-    end
+	-- Ensure talentRequirements is a table
+	if type(action.talentRequirements) ~= "table" then
+		action.talentRequirements = {}
+	end
 
-    local selectedMap = {}
-    for _, id in ipairs(action.talentRequirements) do
-        selectedMap[id] = true
-    end
+	local selectedMap = {}
+	for _, id in ipairs(action.talentRequirements) do
+		selectedMap[id] = true
+	end
 
-    local y = 0
-    local btnWidth = ep.Content:GetWidth() - 10
-    if btnWidth < 100 then btnWidth = 200 end
+	local y = 0
+	local btnWidth = ep.Content:GetWidth() - 10
+	if btnWidth < 100 then
+		btnWidth = 200
+	end
 
-    for i, data in ipairs(items) do
-        local btn = ep.buttons[i]
-        if not btn then
-            btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
+	for i, data in ipairs(items) do
+		local btn = ep.buttons[i]
+		if not btn then
+			btn = CreateFrame("Button", nil, ep.Content, "BackdropTemplate")
 
-            -- Checkbox
-            local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
-            chk:SetSize(24, 24)
-            chk:SetPoint("LEFT", 0, 0)
-            btn.chk = chk
+			-- Checkbox
+			local chk = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+			chk:SetSize(24, 24)
+			chk:SetPoint("LEFT", 0, 0)
+			btn.chk = chk
 
-            -- Icon
-            local icon = btn:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(20, 20)
-            icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
-            icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            btn.icon = icon
+			-- Icon
+			local icon = btn:CreateTexture(nil, "ARTWORK")
+			icon:SetSize(20, 20)
+			icon:SetPoint("LEFT", chk, "RIGHT", 4, 0)
+			icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+			btn.icon = icon
 
-            -- Name
-            local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-            nameLabel:SetPoint("RIGHT", 0, 0)
-            nameLabel:SetJustifyH("LEFT")
-            btn.nameLabel = nameLabel
+			-- Name
+			local nameLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			nameLabel:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+			nameLabel:SetPoint("RIGHT", 0, 0)
+			nameLabel:SetJustifyH("LEFT")
+			btn.nameLabel = nameLabel
 
-            -- Make row clickable to toggle checkbox
-            btn:SetScript("OnClick", function(self)
-                self.chk:SetChecked(not self.chk:GetChecked())
-                self.chk:GetScript("OnClick")(self.chk)
-            end)
+			-- Make row clickable to toggle checkbox
+			btn:SetScript("OnClick", function(self)
+				self.chk:SetChecked(not self.chk:GetChecked())
+				self.chk:GetScript("OnClick")(self.chk)
+			end)
 
-            table.insert(ep.buttons, btn)
-        end
+			table.insert(ep.buttons, btn)
+		end
 
-        btn:SetSize(btnWidth, 24)
-        btn:SetPoint("TOPLEFT", 4, y)
-        btn:Show()
+		btn:SetSize(btnWidth, 24)
+		btn:SetPoint("TOPLEFT", 4, y)
+		btn:Show()
 
-        btn.icon:SetTexture(data.icon)
-        btn.nameLabel:SetText(data.name)
-        btn.chk:SetChecked(selectedMap[data.spellID] or false)
+		btn.icon:SetTexture(data.icon)
+		btn.nameLabel:SetText(data.name)
+		btn.chk:SetChecked(selectedMap[data.spellID] or false)
 
-        btn.chk:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            selectedMap[data.spellID] = isChecked
+		btn.chk:SetScript("OnClick", function(self)
+			local isChecked = self:GetChecked()
+			selectedMap[data.spellID] = isChecked
 
-            -- Rebuild talentRequirements
-            action.talentRequirements = {}
-            for id, selected in pairs(selectedMap) do
-                if selected then
-                    table.insert(action.talentRequirements, id)
-                end
-            end
+			-- Rebuild talentRequirements
+			action.talentRequirements = {}
+			for id, selected in pairs(selectedMap) do
+				if selected then
+					table.insert(action.talentRequirements, id)
+				end
+			end
 
-            -- Mirror to visibilityEnable
-            action.visibilityEnable = action.visibilityEnable or {}
-            for i = #action.visibilityEnable, 1, -1 do
-                if action.visibilityEnable[i]:match("^talent:") then
-                    table.remove(action.visibilityEnable, i)
-                end
-            end
-            for id, selected in pairs(selectedMap) do
-                if selected then
-                    table.insert(action.visibilityEnable, "talent:" .. id)
-                end
-            end
-        end)
+			-- Mirror to visibilityEnable
+			action.visibilityEnable = action.visibilityEnable or {}
+			for i = #action.visibilityEnable, 1, -1 do
+				if action.visibilityEnable[i]:match("^talent:") then
+					table.remove(action.visibilityEnable, i)
+				end
+			end
+			for id, selected in pairs(selectedMap) do
+				if selected then
+					table.insert(action.visibilityEnable, "talent:" .. id)
+				end
+			end
+		end)
 
-        y = y - 24
-    end
+		y = y - 24
+	end
 
-    ep.Content:SetHeight(math.abs(y))
+	ep.Content:SetHeight(math.abs(y))
 end
 
 -- ============================================================================
 -- Visibility Restriction Tree Picker
 -- ============================================================================
-
 
 -- ============================================================================
 -- Visibility Restriction Tree Picker
 -- ============================================================================
 
 local function HasTag(tbl, tag)
-    if not tbl then return false end
-    for _, t in ipairs(tbl) do
-        if t == tag then return true end
-    end
-    return false
+	if not tbl then
+		return false
+	end
+	for _, t in ipairs(tbl) do
+		if t == tag then
+			return true
+		end
+	end
+	return false
 end
 
 local function AddTag(tbl, tag)
-    if not HasTag(tbl, tag) then
-        table.insert(tbl, tag)
-    end
+	if not HasTag(tbl, tag) then
+		table.insert(tbl, tag)
+	end
 end
 
 local function RemoveTag(tbl, tag)
-    if not tbl then return end
-    for i = #tbl, 1, -1 do
-        if tbl[i] == tag then
-            table.remove(tbl, i)
-        end
-    end
+	if not tbl then
+		return
+	end
+	for i = #tbl, 1, -1 do
+		if tbl[i] == tag then
+			table.remove(tbl, i)
+		end
+	end
 end
 
 function Wise:CreateEmbeddedRestrictionPicker(parent, action)
-    local ep = Wise.EmbeddedRestrictionPicker
+	local ep = Wise.EmbeddedRestrictionPicker
 
-    if ep and ep.parent == parent then
-        ep.CancelBtn:Show()
-        ep.titleLabel:Show()
-        ep.descLabel:Show()
-        ep.Scroll:Show()
-    else
-        ep = {}
-        Wise.EmbeddedRestrictionPicker = ep
-        ep.parent = parent
+	if ep and ep.parent == parent then
+		ep.CancelBtn:Show()
+		ep.titleLabel:Show()
+		ep.descLabel:Show()
+		ep.Scroll:Show()
+	else
+		ep = {}
+		Wise.EmbeddedRestrictionPicker = ep
+		ep.parent = parent
 
-        ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
-        ep.CancelBtn:SetSize(80, 22)
-        ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
-        ep.CancelBtn:SetText("< Back")
-        ep.CancelBtn:SetScript("OnClick", function()
-            Wise.pickingRestrictions = false
-            Wise.pickingRestrictionsAction = nil
-            Wise:RefreshPropertiesPanel()
-            C_Timer.After(0, function()
-                if not InCombatLockdown() then
-                    Wise:UpdateGroupDisplay(Wise.selectedGroup)
-                end
-            end)
-        end)
+		ep.CancelBtn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
+		ep.CancelBtn:SetSize(80, 22)
+		ep.CancelBtn:SetPoint("TOPLEFT", 10, -20)
+		ep.CancelBtn:SetText("< Back")
+		ep.CancelBtn:SetScript("OnClick", function()
+			Wise.pickingRestrictions = false
+			Wise.pickingRestrictionsAction = nil
+			Wise:RefreshPropertiesPanel()
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end)
 
-        ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
-        ep.titleLabel:SetText("Availability Filtering")
+		ep.titleLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		ep.titleLabel:SetPoint("LEFT", ep.CancelBtn, "RIGHT", 10, 0)
+		ep.titleLabel:SetText("Availability Filtering")
 
-        ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
-        ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
-        ep.descLabel:SetJustifyH("LEFT")
-        ep.descLabel:SetText("Show (Allowlist): The action will ONLY be shown if you match a show rule.\nHide (Blocklist): The action will NEVER be shown if you match a hide rule, overriding any shows.")
+		ep.descLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		ep.descLabel:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -10)
+		ep.descLabel:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+		ep.descLabel:SetJustifyH("LEFT")
+		ep.descLabel:SetText(
+			"Show (Allowlist): The action will ONLY be shown if you match a show rule.\nHide (Blocklist): The action will NEVER be shown if you match a hide rule, overriding any shows."
+		)
 
-        ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-        ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
-        ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
+		ep.Scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+		ep.Scroll:SetPoint("TOPLEFT", ep.descLabel, "BOTTOMLEFT", 0, -10)
+		ep.Scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -30, 10)
 
-        ep.Content = CreateFrame("Frame", nil, ep.Scroll)
-        ep.Content:SetSize(ep.Scroll:GetWidth(), 100)
-        ep.Scroll:SetScrollChild(ep.Content)
+		ep.Content = CreateFrame("Frame", nil, ep.Scroll)
+		ep.Content:SetSize(ep.Scroll:GetWidth(), 100)
+		ep.Scroll:SetScrollChild(ep.Content)
 
-        ep.buttons = {}
+		ep.buttons = {}
 
-        ep.expanded = {
-            roles = false,
-            classes = false,
-            specs = {},
-            talents = {},
-            chars = false
-        }
-    end
+		ep.expanded = {
+			roles = false,
+			classes = false,
+			specs = {},
+			talents = {},
+			chars = false,
+		}
+	end
 
-    action.visibilityEnable = action.visibilityEnable or {}
-    action.visibilityDisable = action.visibilityDisable or {}
+	action.visibilityEnable = action.visibilityEnable or {}
+	action.visibilityDisable = action.visibilityDisable or {}
 
-    if not parent.controls then parent.controls = {} end
-    tinsert(parent.controls, ep.CancelBtn)
-    tinsert(parent.controls, ep.titleLabel)
-    tinsert(parent.controls, ep.descLabel)
-    tinsert(parent.controls, ep.Scroll)
+	if not parent.controls then
+		parent.controls = {}
+	end
+	tinsert(parent.controls, ep.CancelBtn)
+	tinsert(parent.controls, ep.titleLabel)
+	tinsert(parent.controls, ep.descLabel)
+	tinsert(parent.controls, ep.Scroll)
 
-    for _, btn in pairs(ep.buttons) do
-        btn:Hide()
-    end
+	for _, btn in pairs(ep.buttons) do
+		btn:Hide()
+	end
 
-    local btnIndex = 1
-    local y = 0
-    local btnWidth = ep.Content:GetWidth() - 10
+	local btnIndex = 1
+	local y = 0
+	local btnWidth = ep.Content:GetWidth() - 10
 
-    local function CreateRow(indent, labelText, tag, isNode, nodeKey, nodeSubKey, selectionCount)
-        local btn = ep.buttons[btnIndex]
-        if not btn then
-            btn = CreateFrame("Frame", nil, ep.Content)
+	local function CreateRow(indent, labelText, tag, isNode, nodeKey, nodeSubKey, selectionCount)
+		local btn = ep.buttons[btnIndex]
+		if not btn then
+			btn = CreateFrame("Frame", nil, ep.Content)
 
-            btn.expandBtn = CreateFrame("Button", nil, btn)
-            btn.expandBtn:SetSize(16, 16)
-            btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
-            btn.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+			btn.expandBtn = CreateFrame("Button", nil, btn)
+			btn.expandBtn:SetSize(16, 16)
+			btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+			btn.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
 
-            btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            btn.label:SetJustifyH("LEFT")
+			btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			btn.label:SetJustifyH("LEFT")
 
-            btn.chkEnable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
-            btn.chkEnable:SetSize(24, 24)
-            btn.chkEnable.text = btn.chkEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.chkEnable.text:SetPoint("LEFT", btn.chkEnable, "RIGHT", 2, 0)
-            btn.chkEnable.text:SetText("Show")
+			btn.chkEnable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+			btn.chkEnable:SetSize(24, 24)
+			btn.chkEnable.text = btn.chkEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			btn.chkEnable.text:SetPoint("LEFT", btn.chkEnable, "RIGHT", 2, 0)
+			btn.chkEnable.text:SetText("Show")
 
-            btn.chkDisable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
-            btn.chkDisable:SetSize(24, 24)
-            btn.chkDisable.text = btn.chkDisable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            btn.chkDisable.text:SetPoint("LEFT", btn.chkDisable, "RIGHT", 2, 0)
-            btn.chkDisable.text:SetText("Hide")
+			btn.chkDisable = CreateFrame("CheckButton", nil, btn, "UICheckButtonTemplate")
+			btn.chkDisable:SetSize(24, 24)
+			btn.chkDisable.text = btn.chkDisable:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			btn.chkDisable.text:SetPoint("LEFT", btn.chkDisable, "RIGHT", 2, 0)
+			btn.chkDisable.text:SetText("Hide")
 
-            btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            btn.countLabel:SetJustifyH("LEFT")
+			btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			btn.countLabel:SetJustifyH("LEFT")
 
-            table.insert(ep.buttons, btn)
-        end
+			table.insert(ep.buttons, btn)
+		end
 
-        -- Lazily create countLabel for rows cached before this feature existed
-        if not btn.countLabel then
-            btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            btn.countLabel:SetJustifyH("LEFT")
-        end
+		-- Lazily create countLabel for rows cached before this feature existed
+		if not btn.countLabel then
+			btn.countLabel = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			btn.countLabel:SetJustifyH("LEFT")
+		end
 
-        btn:ClearAllPoints()
-        btn:SetSize(btnWidth, 24)
-        btn:SetPoint("TOPLEFT", 0, y)
-        btn:Show()
+		btn:ClearAllPoints()
+		btn:SetSize(btnWidth, 24)
+		btn:SetPoint("TOPLEFT", 0, y)
+		btn:Show()
 
-        btn.expandBtn:ClearAllPoints()
-        btn.expandBtn:SetPoint("LEFT", indent, 0)
+		btn.expandBtn:ClearAllPoints()
+		btn.expandBtn:SetPoint("LEFT", indent, 0)
 
-        if isNode then
-            btn.expandBtn:Show()
-            local isExp = false
-            if nodeSubKey then
-                isExp = ep.expanded[nodeKey][nodeSubKey]
-            else
-                isExp = ep.expanded[nodeKey]
-            end
-            if isExp then
-                btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
-            else
-                btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
-            end
+		if isNode then
+			btn.expandBtn:Show()
+			local isExp = false
+			if nodeSubKey then
+				isExp = ep.expanded[nodeKey][nodeSubKey]
+			else
+				isExp = ep.expanded[nodeKey]
+			end
+			if isExp then
+				btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
+			else
+				btn.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+			end
 
-            btn.expandBtn:SetScript("OnClick", function()
-                if nodeSubKey then
-                    ep.expanded[nodeKey][nodeSubKey] = not ep.expanded[nodeKey][nodeSubKey]
-                else
-                    ep.expanded[nodeKey] = not ep.expanded[nodeKey]
-                end
-                Wise:CreateEmbeddedRestrictionPicker(parent, action)
-            end)
-        else
-            btn.expandBtn:Hide()
-        end
+			btn.expandBtn:SetScript("OnClick", function()
+				if nodeSubKey then
+					ep.expanded[nodeKey][nodeSubKey] = not ep.expanded[nodeKey][nodeSubKey]
+				else
+					ep.expanded[nodeKey] = not ep.expanded[nodeKey]
+				end
+				Wise:CreateEmbeddedRestrictionPicker(parent, action)
+			end)
+		else
+			btn.expandBtn:Hide()
+		end
 
-        btn.label:SetPoint("LEFT", btn.expandBtn, "RIGHT", 5, 0)
-        btn.label:SetText(labelText)
+		btn.label:SetPoint("LEFT", btn.expandBtn, "RIGHT", 5, 0)
+		btn.label:SetText(labelText)
 
-        -- Show "N selected" count on collapsed node rows that have child selections
-        btn.countLabel:ClearAllPoints()
-        if selectionCount and selectionCount > 0 then
-            btn.countLabel:SetPoint("LEFT", btn.label, "RIGHT", 6, 0)
-            btn.countLabel:SetText("|cff888888" .. selectionCount .. " selected|r")
-            btn.countLabel:Show()
-        else
-            btn.countLabel:Hide()
-        end
+		-- Show "N selected" count on collapsed node rows that have child selections
+		btn.countLabel:ClearAllPoints()
+		if selectionCount and selectionCount > 0 then
+			btn.countLabel:SetPoint("LEFT", btn.label, "RIGHT", 6, 0)
+			btn.countLabel:SetText("|cff888888" .. selectionCount .. " selected|r")
+			btn.countLabel:Show()
+		else
+			btn.countLabel:Hide()
+		end
 
-        if not tag then
-            btn.chkEnable:Hide()
-            btn.chkDisable:Hide()
-        else
-            btn.chkEnable:Show()
-            btn.chkDisable:Show()
+		if not tag then
+			btn.chkEnable:Hide()
+			btn.chkDisable:Hide()
+		else
+			btn.chkEnable:Show()
+			btn.chkDisable:Show()
 
-            btn.chkEnable:SetChecked(HasTag(action.visibilityEnable, tag))
-            btn.chkDisable:SetChecked(HasTag(action.visibilityDisable, tag))
+			btn.chkEnable:SetChecked(HasTag(action.visibilityEnable, tag))
+			btn.chkDisable:SetChecked(HasTag(action.visibilityDisable, tag))
 
-            btn.chkDisable:ClearAllPoints()
-            btn.chkDisable:SetPoint("RIGHT", -60, 0)
+			btn.chkDisable:ClearAllPoints()
+			btn.chkDisable:SetPoint("RIGHT", -60, 0)
 
-            btn.chkEnable:ClearAllPoints()
-            btn.chkEnable:SetPoint("RIGHT", btn.chkDisable, "LEFT", -70, 0)
+			btn.chkEnable:ClearAllPoints()
+			btn.chkEnable:SetPoint("RIGHT", btn.chkDisable, "LEFT", -70, 0)
 
-            btn.chkEnable:SetScript("OnClick", function(self)
-                if self:GetChecked() then
-                    AddTag(action.visibilityEnable, tag)
-                    RemoveTag(action.visibilityDisable, tag)
-                    btn.chkDisable:SetChecked(false)
-                else
-                    RemoveTag(action.visibilityEnable, tag)
-                end
-                Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            end)
+			btn.chkEnable:SetScript("OnClick", function(self)
+				if self:GetChecked() then
+					AddTag(action.visibilityEnable, tag)
+					RemoveTag(action.visibilityDisable, tag)
+					btn.chkDisable:SetChecked(false)
+				else
+					RemoveTag(action.visibilityEnable, tag)
+				end
+				Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			end)
 
-            btn.chkDisable:SetScript("OnClick", function(self)
-                if self:GetChecked() then
-                    AddTag(action.visibilityDisable, tag)
-                    RemoveTag(action.visibilityEnable, tag)
-                    btn.chkEnable:SetChecked(false)
-                else
-                    RemoveTag(action.visibilityDisable, tag)
-                end
-                Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
-            end)
-        end
+			btn.chkDisable:SetScript("OnClick", function(self)
+				if self:GetChecked() then
+					AddTag(action.visibilityDisable, tag)
+					RemoveTag(action.visibilityEnable, tag)
+					btn.chkEnable:SetChecked(false)
+				else
+					RemoveTag(action.visibilityDisable, tag)
+				end
+				Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			end)
+		end
 
-        y = y - 24
-        btnIndex = btnIndex + 1
-    end
+		y = y - 24
+		btnIndex = btnIndex + 1
+	end
 
-    -- Helper: count how many tags matching a prefix are selected (in enable or disable)
-    local function CountTagsWithPrefix(prefix)
-        local count = 0
-        for _, tag in ipairs(action.visibilityEnable) do
-            if tag:match("^" .. prefix) then count = count + 1 end
-        end
-        for _, tag in ipairs(action.visibilityDisable) do
-            if tag:match("^" .. prefix) then count = count + 1 end
-        end
-        return count
-    end
+	-- Helper: count how many tags matching a prefix are selected (in enable or disable)
+	local function CountTagsWithPrefix(prefix)
+		local count = 0
+		for _, tag in ipairs(action.visibilityEnable) do
+			if tag:match("^" .. prefix) then
+				count = count + 1
+			end
+		end
+		for _, tag in ipairs(action.visibilityDisable) do
+			if tag:match("^" .. prefix) then
+				count = count + 1
+			end
+		end
+		return count
+	end
 
-    -- Helper: check if a tag is selected in either enable or disable
-    local function IsTagSelected(tag)
-        return HasTag(action.visibilityEnable, tag) or HasTag(action.visibilityDisable, tag)
-    end
+	-- Helper: check if a tag is selected in either enable or disable
+	local function IsTagSelected(tag)
+		return HasTag(action.visibilityEnable, tag) or HasTag(action.visibilityDisable, tag)
+	end
 
-    -- 1. Global
-    CreateRow(5, "All", "global", false)
+	-- 1. Global
+	CreateRow(5, "All", "global", false)
 
-    -- 2. Roles
-    local rolesCount = not ep.expanded.roles and CountTagsWithPrefix("role:") or nil
-    CreateRow(5, "Roles", nil, true, "roles", nil, rolesCount)
-    if ep.expanded.roles then
-        CreateRow(25, "Tank", "role:TANK", false)
-        CreateRow(25, "Healer", "role:HEALER", false)
-        CreateRow(25, "Damage", "role:DAMAGER", false)
-    end
+	-- 2. Roles
+	local rolesCount = not ep.expanded.roles and CountTagsWithPrefix("role:") or nil
+	CreateRow(5, "Roles", nil, true, "roles", nil, rolesCount)
+	if ep.expanded.roles then
+		CreateRow(25, "Tank", "role:TANK", false)
+		CreateRow(25, "Healer", "role:HEALER", false)
+		CreateRow(25, "Damage", "role:DAMAGER", false)
+	end
 
-    -- 3. Classes
-    local classes = {}
-    for i = 1, GetNumClasses() do
-        local name, tag, id = GetClassInfo(i)
-        if tag then table.insert(classes, {name=name, tag=tag, id=id}) end
-    end
-    table.sort(classes, function(a,b) return a.name < b.name end)
+	-- 3. Classes
+	local classes = {}
+	for i = 1, GetNumClasses() do
+		local name, tag, id = GetClassInfo(i)
+		if tag then
+			table.insert(classes, { name = name, tag = tag, id = id })
+		end
+	end
+	table.sort(classes, function(a, b)
+		return a.name < b.name
+	end)
 
-    -- Count all class/spec/talent selections for the top-level "Classes" node
-    local classesTopCount = nil
-    if not ep.expanded.classes then
-        classesTopCount = CountTagsWithPrefix("class:") + CountTagsWithPrefix("spec:") + CountTagsWithPrefix("talent:")
-    end
-    CreateRow(5, "Classes", nil, true, "classes", nil, classesTopCount)
+	-- Count all class/spec/talent selections for the top-level "Classes" node
+	local classesTopCount = nil
+	if not ep.expanded.classes then
+		classesTopCount = CountTagsWithPrefix("class:") + CountTagsWithPrefix("spec:") + CountTagsWithPrefix("talent:")
+	end
+	CreateRow(5, "Classes", nil, true, "classes", nil, classesTopCount)
 
-    if ep.expanded.classes then
-        for _, cInfo in ipairs(classes) do
-            -- Count child selections under this class (specs + talents, NOT the class tag itself)
-            -- Only show count when the class node is collapsed
-            local perClassCount = nil
-            if not ep.expanded.specs[cInfo.tag] then
-                perClassCount = 0
-                for i = 1, 4 do
-                    local specID = GetSpecializationInfoForClassID(cInfo.id, i)
-                    if specID then
-                        if IsTagSelected("spec:" .. specID) then
-                            perClassCount = perClassCount + 1
-                        end
-                    end
-                end
-                -- Talent tags are only shown under the player's active spec/class
-                if cInfo.tag == Wise.characterInfo.class then
-                    perClassCount = perClassCount + CountTagsWithPrefix("talent:")
-                end
-            end
-            CreateRow(25, cInfo.name, "class:"..cInfo.tag, true, "specs", cInfo.tag, perClassCount)
+	if ep.expanded.classes then
+		for _, cInfo in ipairs(classes) do
+			-- Count child selections under this class (specs + talents, NOT the class tag itself)
+			-- Only show count when the class node is collapsed
+			local perClassCount = nil
+			if not ep.expanded.specs[cInfo.tag] then
+				perClassCount = 0
+				for i = 1, 4 do
+					local specID = GetSpecializationInfoForClassID(cInfo.id, i)
+					if specID then
+						if IsTagSelected("spec:" .. specID) then
+							perClassCount = perClassCount + 1
+						end
+					end
+				end
+				-- Talent tags are only shown under the player's active spec/class
+				if cInfo.tag == Wise.characterInfo.class then
+					perClassCount = perClassCount + CountTagsWithPrefix("talent:")
+				end
+			end
+			CreateRow(25, cInfo.name, "class:" .. cInfo.tag, true, "specs", cInfo.tag, perClassCount)
 
-            if ep.expanded.specs[cInfo.tag] then
-                for i = 1, 4 do
-                    local id, name = GetSpecializationInfoForClassID(cInfo.id, i)
-                    if id and name then
-                        local isCurrentSpec = (id == Wise.characterInfo.specID)
-                        local specNodeTitle = isCurrentSpec and (name .. " (Active)") or name
-                        local specIsNode = isCurrentSpec
+			if ep.expanded.specs[cInfo.tag] then
+				for i = 1, 4 do
+					local id, name = GetSpecializationInfoForClassID(cInfo.id, i)
+					if id and name then
+						local isCurrentSpec = (id == Wise.characterInfo.specID)
+						local specNodeTitle = isCurrentSpec and (name .. " (Active)") or name
+						local specIsNode = isCurrentSpec
 
-                        -- Count talent selections under this spec (only when collapsed and it's the active spec)
-                        local specTalentCount = nil
-                        if specIsNode and not (ep.expanded.talents and ep.expanded.talents[id]) then
-                            specTalentCount = CountTagsWithPrefix("talent:")
-                        end
-                        CreateRow(45, specNodeTitle, "spec:"..id, specIsNode, "talents", id, specTalentCount)
+						-- Count talent selections under this spec (only when collapsed and it's the active spec)
+						local specTalentCount = nil
+						if specIsNode and not (ep.expanded.talents and ep.expanded.talents[id]) then
+							specTalentCount = CountTagsWithPrefix("talent:")
+						end
+						CreateRow(45, specNodeTitle, "spec:" .. id, specIsNode, "talents", id, specTalentCount)
 
-                        if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
-                            local configID = C_ClassTalents.GetActiveConfigID()
-                            if configID then
-                                local configInfo = C_Traits.GetConfigInfo(configID)
-                                local titems = {}
-                                if configInfo then
-                                    for _, treeID in ipairs(configInfo.treeIDs) do
-                                        local nodes = C_Traits.GetTreeNodes(treeID)
-                                        for _, nodeID in ipairs(nodes) do
-                                            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-                                            if nodeInfo and nodeInfo.entryIDs then
-                                                for _, entryID in ipairs(nodeInfo.entryIDs) do
-                                                    local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
-                                                    if entryInfo and entryInfo.definitionID then
-                                                        local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
-                                                        if defInfo and defInfo.spellID then
-                                                            local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
-                                                            if spellInfo then
-                                                                local exists = false
-                                                                for _, itm in ipairs(titems) do
-                                                                    if itm.spellID == spellInfo.spellID then exists = true break end
-                                                                end
-                                                                if not exists then table.insert(titems, {spellID=spellInfo.spellID, name=spellInfo.name}) end
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                                table.sort(titems, function(a,b) return a.name < b.name end)
-                                for _, tit in ipairs(titems) do
-                                    CreateRow(65, tit.name, "talent:"..tit.spellID, false)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+						if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
+							local configID = C_ClassTalents.GetActiveConfigID()
+							if configID then
+								local configInfo = C_Traits.GetConfigInfo(configID)
+								local titems = {}
+								if configInfo then
+									for _, treeID in ipairs(configInfo.treeIDs) do
+										local nodes = C_Traits.GetTreeNodes(treeID)
+										for _, nodeID in ipairs(nodes) do
+											local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+											if nodeInfo and nodeInfo.entryIDs then
+												for _, entryID in ipairs(nodeInfo.entryIDs) do
+													local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+													if entryInfo and entryInfo.definitionID then
+														local defInfo =
+															C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+														if defInfo and defInfo.spellID then
+															local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
+															if spellInfo then
+																local exists = false
+																for _, itm in ipairs(titems) do
+																	if itm.spellID == spellInfo.spellID then
+																		exists = true
+																		break
+																	end
+																end
+																if not exists then
+																	table.insert(titems, {
+																		spellID = spellInfo.spellID,
+																		name = spellInfo.name,
+																	})
+																end
+															end
+														end
+													end
+												end
+											end
+										end
+									end
+								end
+								table.sort(titems, function(a, b)
+									return a.name < b.name
+								end)
+								for _, tit in ipairs(titems) do
+									CreateRow(65, tit.name, "talent:" .. tit.spellID, false)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 
-    -- 4. Characters
-    local charsCount = not ep.expanded.chars and CountTagsWithPrefix("char:") or nil
-    CreateRow(5, "Characters", nil, true, "chars", nil, charsCount)
-    if ep.expanded.chars then
-        local chars = {}
-        if WiseDB and WiseDB.knownCharacters then
-            for charKey, _ in pairs(WiseDB.knownCharacters) do
-                table.insert(chars, charKey)
-            end
-        end
-        local currentKey = UnitName("player") .. "-" .. GetRealmName()
-        if not HasTag(chars, currentKey) then table.insert(chars, currentKey) end
+	-- 4. Characters
+	local charsCount = not ep.expanded.chars and CountTagsWithPrefix("char:") or nil
+	CreateRow(5, "Characters", nil, true, "chars", nil, charsCount)
+	if ep.expanded.chars then
+		local chars = {}
+		if WiseDB and WiseDB.knownCharacters then
+			for charKey, _ in pairs(WiseDB.knownCharacters) do
+				table.insert(chars, charKey)
+			end
+		end
+		local currentKey = UnitName("player") .. "-" .. GetRealmName()
+		if not HasTag(chars, currentKey) then
+			table.insert(chars, currentKey)
+		end
 
-        table.sort(chars)
+		table.sort(chars)
 
-        for _, charKey in ipairs(chars) do
-            CreateRow(25, charKey, "char:"..charKey, false)
-        end
-    end
+		for _, charKey in ipairs(chars) do
+			CreateRow(25, charKey, "char:" .. charKey, false)
+		end
+	end
 
-    ep.Content:SetHeight(math.abs(y) + 20)
+	ep.Content:SetHeight(math.abs(y) + 20)
 end

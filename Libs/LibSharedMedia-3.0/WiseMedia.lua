@@ -4,7 +4,9 @@ Additional fonts registered with LibSharedMedia-3.0
 ]]
 
 local LSM = LibStub("LibSharedMedia-3.0", true)
-if not LSM then return end
+if not LSM then
+	return
+end
 
 -- These are paths to fonts that may exist depending on user's system/addons
 -- The fonts will only show if they actually exist

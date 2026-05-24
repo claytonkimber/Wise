@@ -8,231 +8,242 @@ local addonName, Wise = ...
 -- Generic Tooltip Helper
 -- Adds a static text tooltip to any frame
 function Wise:AddTooltip(frame, text, anchor)
-    if not frame then return end
+	if not frame then
+		return
+	end
 
-    frame:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
-        GameTooltip:SetText(text, nil, nil, nil, nil, true)
-        GameTooltip:Show()
-    end)
+	frame:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
+		GameTooltip:SetText(text, nil, nil, nil, nil, true)
+		GameTooltip:Show()
+	end)
 
-    frame:HookScript("OnLeave", function(self)
-        GameTooltip:Hide()
-    end)
+	frame:HookScript("OnLeave", function(self)
+		GameTooltip:Hide()
+	end)
 end
 
 -- Interface Tooltip Logic
 -- Dynamically shows tooltip based on button content (spell, item, macro, etc.)
 -- Respects the 'showTooltips' setting
 function Wise:AddInterfaceTooltip(btn)
-    if not btn then return end
+	if not btn then
+		return
+	end
 
-    btn:HookScript("OnEnter", function(self)
-        -- Check setting
-        if not WiseDB.settings.showTooltips then return end
+	btn:HookScript("OnEnter", function(self)
+		-- Check setting
+		if not WiseDB.settings.showTooltips then
+			return
+		end
 
-        -- Empty slots are invisible space maintainers — no tooltip
-        if self.actionType == "empty" then return end
+		-- Empty slots are invisible space maintainers — no tooltip
+		if self.actionType == "empty" then
+			return
+		end
 
-        -- Determine Anchor
-        -- Using ANCHOR_CURSOR to avoid obscuring other ring buttons
-        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+		-- Determine Anchor
+		-- Using ANCHOR_CURSOR to avoid obscuring other ring buttons
+		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
 
-        -- Prioritize Metadata (Reliable cache from GUI.lua)
-        local meta = Wise.buttonMeta and Wise.buttonMeta[self]
-        local type = (meta and meta.actionType) or self.actionType
-        local value = (meta and meta.actionValue) or self.actionValue
-        local data = (meta and meta.actionData) or self.actionData
+		-- Prioritize Metadata (Reliable cache from GUI.lua)
+		local meta = Wise.buttonMeta and Wise.buttonMeta[self]
+		local type = (meta and meta.actionType) or self.actionType
+		local value = (meta and meta.actionValue) or self.actionValue
+		local data = (meta and meta.actionData) or self.actionData
 
-        if type == "action" then
-            local aID = tonumber(value)
-            if aID then
-                local realID = Wise:ResolveBarActionID(aID)
-                GameTooltip:SetAction(realID)
-            else
-                GameTooltip:SetText("Unknown Action", 1, 1, 1)
-            end
-        elseif type == "spell" then
-            local spellID = (meta and meta.spellID)
+		if type == "action" then
+			local aID = tonumber(value)
+			if aID then
+				local realID = Wise:ResolveBarActionID(aID)
+				GameTooltip:SetAction(realID)
+			else
+				GameTooltip:SetText("Unknown Action", 1, 1, 1)
+			end
+		elseif type == "spell" then
+			local spellID = (meta and meta.spellID)
 
-            if not spellID then
-                if tonumber(value) then
-                    spellID = Wise:GetOverrideSpellID(tonumber(value)) or tonumber(value)
-                else
-                    local overrideValue = Wise:GetOverrideSpellID(value) or value
-                    local info = C_Spell.GetSpellInfo(overrideValue)
-                    if info then spellID = info.spellID end
-                end
-            end
+			if not spellID then
+				if tonumber(value) then
+					spellID = Wise:GetOverrideSpellID(tonumber(value)) or tonumber(value)
+				else
+					local overrideValue = Wise:GetOverrideSpellID(value) or value
+					local info = C_Spell.GetSpellInfo(overrideValue)
+					if info then
+						spellID = info.spellID
+					end
+				end
+			end
 
-            if spellID then
-                GameTooltip:SetSpellByID(spellID)
-            else
-                GameTooltip:SetText(value or "Unknown Spell", 1, 1, 1)
-            end
+			if spellID then
+				GameTooltip:SetSpellByID(spellID)
+			else
+				GameTooltip:SetText(value or "Unknown Spell", 1, 1, 1)
+			end
+		elseif type == "item" or type == "toy" then
+			local itemID = (meta and meta.itemID)
+			if not itemID then
+				itemID = tonumber(value)
+			end
 
-        elseif type == "item" or type == "toy" then
-            local itemID = (meta and meta.itemID)
-            if not itemID then itemID = tonumber(value) end
+			if itemID then
+				GameTooltip:SetItemByID(itemID)
+			else
+				-- Try hyperlink or name
+				local link = select(2, C_Item.GetItemInfo(value))
+				if link then
+					GameTooltip:SetHyperlink(link)
+				else
+					GameTooltip:SetText(value or "Unknown Item", 1, 1, 1)
+				end
+			end
+		elseif type == "macro" then
+			if _G.type(value) == "string" and string.sub(value, 1, 1) == "/" then
+				local title = (data and data.name) or (meta and meta.name) or "Macro"
+				GameTooltip:SetText(title, 1, 1, 1)
+			else
+				GameTooltip:SetText("Macro: " .. tostring(value), 1, 1, 1)
+				local name, icon, body = GetMacroInfo(value)
+				if body then
+					GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
+				end
+			end
+		elseif type == "custom_macro" then
+			GameTooltip:SetText("Custom Macro", 1, 1, 1)
+			if data and data.macroText then
+				GameTooltip:AddLine(data.macroText, 0.8, 0.8, 0.8, true)
+			end
+		elseif type == "mount" then
+			local mountID = tonumber(value)
+			if C_MountJournal and mountID then
+				local name, spellID, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+				if spellID then
+					GameTooltip:SetSpellByID(spellID)
+				else
+					GameTooltip:SetText(name or "Mount " .. mountID, 1, 1, 1)
+				end
 
-            if itemID then
-                GameTooltip:SetItemByID(itemID)
-            else
-                -- Try hyperlink or name
-                local link = select(2, C_Item.GetItemInfo(value))
-                if link then
-                    GameTooltip:SetHyperlink(link)
-                else
-                    GameTooltip:SetText(value or "Unknown Item", 1, 1, 1)
-                end
-            end
+				if isCollected ~= nil then
+					if isCollected then
+						GameTooltip:AddLine("Collected", 0, 1, 0)
+					else
+						GameTooltip:AddLine("Not Collected", 1, 0, 0)
+					end
+				end
+			else
+				GameTooltip:SetText("Mount: " .. tostring(value), 1, 1, 1)
+			end
+		elseif type == "battlepet" then
+			GameTooltip:SetText("Pet: " .. tostring(value), 1, 1, 1)
+			-- Advanced pet tooltip logic requires speciesID, mostly handled by specialized addons or convoluted API
+		elseif type == "equipmentset" then
+			GameTooltip:SetText("Equipment Set: " .. tostring(value), 1, 1, 1)
+		elseif type == "interface" then
+			GameTooltip:SetText("Open Interface: " .. tostring(value), 1, 0.82, 0)
+		elseif type == "uipanel" then
+			local label = value:gsub("^%l", string.upper) -- Capitalize
+			GameTooltip:SetText("Toggle " .. label, 1, 1, 1)
+		elseif type == "misc" then
+			local hasAction = false
+			if value == "extrabutton" and data and data.showTooltip then
+				if HasExtraActionBar and HasExtraActionBar() then
+					GameTooltip:SetAction(Wise.EXTRA_ACTION_BUTTON_SLOT)
+					hasAction = true
+				end
+			elseif value == "zoneability" and data and data.showTooltip then
+				local zoneBtn = Wise:GetZoneAbilitySpellButton()
+				if zoneBtn and zoneBtn.spellID then
+					GameTooltip:SetSpellByID(zoneBtn.spellID)
+					hasAction = true
+				end
+			elseif value == "overridebar" and data and data.showTooltip then
+				local realID = Wise:ResolveBarActionID(133)
+				if HasOverrideActionBar and HasOverrideActionBar() then
+					GameTooltip:SetAction(realID)
+					hasAction = true
+				end
+			elseif value == "possessbar" and data and data.showTooltip then
+				local realID = Wise:ResolveBarActionID(121)
+				if
+					HasTempShapeshiftActionBar and HasTempShapeshiftActionBar()
+					or HasVehicleActionBar and HasVehicleActionBar()
+				then
+					GameTooltip:SetAction(realID)
+					hasAction = true
+				end
+			end
+			if not hasAction then
+				local label = value
+				if value == "hearthstone" then
+					label = "Hearthstone"
+				elseif value == "extrabutton" then
+					label = "Extra Action Button"
+				elseif value == "zoneability" then
+					label = "Zone Ability"
+				elseif value == "overridebar" then
+					label = "Override Bar"
+				elseif value == "possessbar" then
+					label = "Possess Bar"
+				elseif value == "leave_vehicle" then
+					label = "Leave Vehicle"
+				elseif value:match("^spec_") then
+					local val = tonumber(value:match("^spec_(%d+)"))
+					local name
+					if val then
+						if val <= 10 then
+							local _, sName = GetSpecializationInfo(val)
+							name = sName
+						elseif GetSpecializationInfoByID then
+							local _, sName = GetSpecializationInfoByID(val)
+							name = sName
+						end
+					end
+					label = "Activate " .. (name or ("Spec " .. (val or "?")))
+				elseif value:match("^lootspec_") then
+					local id = tonumber(value:match("^lootspec_(%d+)"))
+					local name
+					if id and GetSpecializationInfoByID then
+						_, name = GetSpecializationInfoByID(id)
+					end
+					label = "Set Loot Spec: " .. (name or (id or "?"))
+				elseif value:match("^addon_magic_") then
+					local amIdx = tonumber(value:match("^addon_magic_(%d+)"))
+					if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+						local slot = WiseDB.addonMagicSlots[amIdx]
+						label = slot.name or ("Slot " .. amIdx)
+						GameTooltip:SetText(label, 1, 0.82, 0)
+						local count = slot.addons and #slot.addons or 0
+						if count == 0 then
+							GameTooltip:AddLine("No addons selected", 0.6, 0.6, 0.6)
+						elseif count == 1 then
+							GameTooltip:AddLine("1 addon", 0.8, 0.8, 0.8)
+						else
+							GameTooltip:AddLine(count .. " addons", 0.8, 0.8, 0.8)
+						end
+						hasAction = true
+					else
+						label = "Addon Magic Slot"
+					end
+				end
 
-        elseif type == "macro" then
-            if _G.type(value) == "string" and string.sub(value, 1, 1) == "/" then
-                local title = (data and data.name) or (meta and meta.name) or "Macro"
-                GameTooltip:SetText(title, 1, 1, 1)
-            else
-                GameTooltip:SetText("Macro: " .. tostring(value), 1, 1, 1)
-                local name, icon, body = GetMacroInfo(value)
-                if body then
-                    GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
-                end
-            end
+				if not hasAction then
+					GameTooltip:SetText(label, 1, 1, 1)
+				end
+			end -- hasAction
+		else
+			-- Fallback
+			GameTooltip:SetText(tostring(value), 1, 1, 1)
+		end
 
-        elseif type == "custom_macro" then
-            GameTooltip:SetText("Custom Macro", 1, 1, 1)
-            if data and data.macroText then
-                GameTooltip:AddLine(data.macroText, 0.8, 0.8, 0.8, true)
-            end
+		GameTooltip:Show()
+	end)
 
-        elseif type == "mount" then
-            local mountID = tonumber(value)
-            if C_MountJournal and mountID then
-                 local name, spellID, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                 if spellID then
-                     GameTooltip:SetSpellByID(spellID)
-                 else
-                     GameTooltip:SetText(name or "Mount " .. mountID, 1, 1, 1)
-                 end
-
-                 if isCollected ~= nil then
-                     if isCollected then
-                         GameTooltip:AddLine("Collected", 0, 1, 0)
-                     else
-                         GameTooltip:AddLine("Not Collected", 1, 0, 0)
-                     end
-                 end
-            else
-                GameTooltip:SetText("Mount: " .. tostring(value), 1, 1, 1)
-            end
-
-        elseif type == "battlepet" then
-             GameTooltip:SetText("Pet: " .. tostring(value), 1, 1, 1)
-             -- Advanced pet tooltip logic requires speciesID, mostly handled by specialized addons or convoluted API
-
-        elseif type == "equipmentset" then
-             GameTooltip:SetText("Equipment Set: " .. tostring(value), 1, 1, 1)
-
-        elseif type == "interface" then
-             GameTooltip:SetText("Open Interface: " .. tostring(value), 1, 0.82, 0)
-
-        elseif type == "uipanel" then
-             local label = value:gsub("^%l", string.upper) -- Capitalize
-             GameTooltip:SetText("Toggle " .. label, 1, 1, 1)
-
-        elseif type == "misc" then
-             local hasAction = false
-             if value == "extrabutton" and data and data.showTooltip then
-                 if HasExtraActionBar and HasExtraActionBar() then
-                     GameTooltip:SetAction(Wise.EXTRA_ACTION_BUTTON_SLOT)
-                     hasAction = true
-                 end
-             elseif value == "zoneability" and data and data.showTooltip then
-                 local zoneBtn = Wise:GetZoneAbilitySpellButton()
-                 if zoneBtn and zoneBtn.spellID then
-                     GameTooltip:SetSpellByID(zoneBtn.spellID)
-                     hasAction = true
-                 end
-             elseif value == "overridebar" and data and data.showTooltip then
-                 local realID = Wise:ResolveBarActionID(133)
-                 if HasOverrideActionBar and HasOverrideActionBar() then
-                     GameTooltip:SetAction(realID)
-                     hasAction = true
-                 end
-             elseif value == "possessbar" and data and data.showTooltip then
-                 local realID = Wise:ResolveBarActionID(121)
-                 if HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() or HasVehicleActionBar and HasVehicleActionBar() then
-                     GameTooltip:SetAction(realID)
-                     hasAction = true
-                 end
-             end
-             if not hasAction then
-             local label = value
-             if value == "hearthstone" then label = "Hearthstone"
-             elseif value == "extrabutton" then label = "Extra Action Button"
-             elseif value == "zoneability" then label = "Zone Ability"
-             elseif value == "overridebar" then label = "Override Bar"
-             elseif value == "possessbar" then label = "Possess Bar"
-             elseif value == "leave_vehicle" then label = "Leave Vehicle"
-             elseif value:match("^spec_") then
-                 local val = tonumber(value:match("^spec_(%d+)"))
-                 local name
-                 if val then
-                     if val <= 10 then
-                         local _, sName = GetSpecializationInfo(val)
-                         name = sName
-                     elseif GetSpecializationInfoByID then
-                         local _, sName = GetSpecializationInfoByID(val)
-                         name = sName
-                     end
-                 end
-                 label = "Activate " .. (name or ("Spec " .. (val or "?")))
-             elseif value:match("^lootspec_") then
-                 local id = tonumber(value:match("^lootspec_(%d+)"))
-                 local name
-                 if id and GetSpecializationInfoByID then
-                     _, name = GetSpecializationInfoByID(id)
-                 end
-                 label = "Set Loot Spec: " .. (name or (id or "?"))
-             elseif value:match("^addon_magic_") then
-                 local amIdx = tonumber(value:match("^addon_magic_(%d+)"))
-                 if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
-                     local slot = WiseDB.addonMagicSlots[amIdx]
-                     label = slot.name or ("Slot " .. amIdx)
-                     GameTooltip:SetText(label, 1, 0.82, 0)
-                     local count = slot.addons and #slot.addons or 0
-                     if count == 0 then
-                         GameTooltip:AddLine("No addons selected", 0.6, 0.6, 0.6)
-                     elseif count == 1 then
-                         GameTooltip:AddLine("1 addon", 0.8, 0.8, 0.8)
-                     else
-                         GameTooltip:AddLine(count .. " addons", 0.8, 0.8, 0.8)
-                     end
-                     hasAction = true
-                 else
-                     label = "Addon Magic Slot"
-                 end
-             end
-
-             if not hasAction then
-                 GameTooltip:SetText(label, 1, 1, 1)
-             end
-             end -- hasAction
-
-        else
-             -- Fallback
-             GameTooltip:SetText(tostring(value), 1, 1, 1)
-        end
-
-        GameTooltip:Show()
-    end)
-
-    btn:HookScript("OnLeave", function(self)
-        GameTooltip:Hide()
-    end)
+	btn:HookScript("OnLeave", function(self)
+		GameTooltip:Hide()
+	end)
 end
 
 function Wise:InitTooltips()
-    -- Placeholder for any tooltip-specific initialization
-    -- (e.g. hooking GameTooltip if needed, though usually not required)
+	-- Placeholder for any tooltip-specific initialization
+	-- (e.g. hooking GameTooltip if needed, though usually not required)
 end

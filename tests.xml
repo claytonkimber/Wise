@@ -178,4 +178,13 @@
             <KeyValue key="clearAction" value="if Wise.frames['Test_Waterfall'] then Wise.frames['Test_Waterfall']:Hide() end; WiseDB.groups['Test_Waterfall'] = nil" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_HideActionBar1ReloadPersistence" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Hide Action Bar 1 Reload Persistence" type="string"/>
+            <KeyValue key="instructions" value="Verify that the action buttons stay hidden after a UI reload.\n1. Go to Options -> Settings.\n2. Ensure 'Hide Action Bar 1' is checked.\n3. Reload UI (/reload).\n4. Verify that Action Bar 1 buttons do not show up or overlap the interface.\n5. Toggle 'Hide Action Bar 1' off and verify they reappear." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

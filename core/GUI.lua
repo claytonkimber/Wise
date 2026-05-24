@@ -35,27 +35,31 @@ local RegisterStateDriver = RegisterStateDriver
 -- simulated click uses the correct button name; without it WoW silently
 -- drops the event for some mouse keys (BUTTON3 in particular).
 local MOUSE_BUTTON_CLICK_NAME = {
-    ["BUTTON3"]       = "MiddleButton",
-    ["BUTTON4"]       = "Button4",
-    ["BUTTON5"]       = "Button5",
-    ["MOUSEWHEELUP"]  = "LeftButton",
-    ["MOUSEWHEELDOWN"]= "LeftButton",
-    ["MIDDLEMOUSE"]   = "MiddleButton",
+	["BUTTON3"] = "MiddleButton",
+	["BUTTON4"] = "Button4",
+	["BUTTON5"] = "Button5",
+	["MOUSEWHEELUP"] = "LeftButton",
+	["MOUSEWHEELDOWN"] = "LeftButton",
+	["MIDDLEMOUSE"] = "MiddleButton",
 }
 
 local function GetMouseClickName(key)
-    if not key then return nil end
-    -- Strip modifier prefix (ALT-SHIFT-BUTTON3 → BUTTON3)
-    local base = key:match("[^%-]+$")
-    return MOUSE_BUTTON_CLICK_NAME[base]
+	if not key then
+		return nil
+	end
+	-- Strip modifier prefix (ALT-SHIFT-BUTTON3 → BUTTON3)
+	local base = key:match("[^%-]+$")
+	return MOUSE_BUTTON_CLICK_NAME[base]
 end
 
 -- True when the key already carries an explicit modifier prefix.
 -- We intentionally don't treat a literal "-" (the minus key) as a prefix:
 -- e.g. plain "-" or "SHIFT--" both end with the bare key after the last dash.
 local function HasModifierPrefix(key)
-    if not key or key == "" then return false end
-    return key:find("^SHIFT%-") or key:find("^CTRL%-") or key:find("^ALT%-") or false
+	if not key or key == "" then
+		return false
+	end
+	return key:find("^SHIFT%-") or key:find("^CTRL%-") or key:find("^ALT%-") or false
 end
 
 -- Mirror an override binding under SHIFT-/CTRL-/ALT- prefixes. Some global
@@ -65,67 +69,79 @@ end
 -- modified variants guarantees that pressing e.g. Shift+- still routes the
 -- click to our slot button so the macro's [mod:shift] clause can fire.
 local function ApplyModifierMirrors(frame, key, target, mouseBtn)
-    if HasModifierPrefix(key) then return end
-    local mods = { "SHIFT-", "CTRL-", "ALT-" }
-    for _, m in ipairs(mods) do
-        if mouseBtn then
-            SetOverrideBindingClick(frame, true, m .. key, target, mouseBtn)
-        else
-            SetOverrideBindingClick(frame, true, m .. key, target)
-        end
-    end
+	if HasModifierPrefix(key) then
+		return
+	end
+	local mods = { "SHIFT-", "CTRL-", "ALT-" }
+	for _, m in ipairs(mods) do
+		if mouseBtn then
+			SetOverrideBindingClick(frame, true, m .. key, target, mouseBtn)
+		else
+			SetOverrideBindingClick(frame, true, m .. key, target)
+		end
+	end
 end
 
 -- Helper: Get the first active spell button from ZoneAbilityFrame.
 -- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
 -- instead of a direct .SpellButton child.
 local function GetZoneAbilitySpellButton()
-    local zoneFrame = _G["ZoneAbilityFrame"]
-    if not zoneFrame then return nil end
-    -- Modern: SpellButtonContainer with dynamic children
-    if zoneFrame.SpellButtonContainer then
-        local children = { zoneFrame.SpellButtonContainer:GetChildren() }
-        for _, child in ipairs(children) do
-            if child.spellID and child:IsShown() then
-                return child
-            end
-        end
-        -- Return first child even if not shown (for secure click binding)
-        for _, child in ipairs(children) do
-            if child.spellID then
-                return child
-            end
-        end
-    end
-    -- Legacy fallback: direct SpellButton
-    if zoneFrame.SpellButton then
-        return zoneFrame.SpellButton
-    end
-    return nil
+	local zoneFrame = _G["ZoneAbilityFrame"]
+	if not zoneFrame then
+		return nil
+	end
+	-- Modern: SpellButtonContainer with dynamic children
+	if zoneFrame.SpellButtonContainer then
+		local children = { zoneFrame.SpellButtonContainer:GetChildren() }
+		for _, child in ipairs(children) do
+			if child.spellID and child:IsShown() then
+				return child
+			end
+		end
+		-- Return first child even if not shown (for secure click binding)
+		for _, child in ipairs(children) do
+			if child.spellID then
+				return child
+			end
+		end
+	end
+	-- Legacy fallback: direct SpellButton
+	if zoneFrame.SpellButton then
+		return zoneFrame.SpellButton
+	end
+	return nil
 end
 
 function Wise:SelectEditModeLayout(name)
-    if not EditModeManagerFrame then return end
-    -- Presets are at fixed indices and not returned by GetLayouts()
-    if name == "Modern" then EditModeManagerFrame:SelectLayout(1) return end
-    if name == "Classic" then EditModeManagerFrame:SelectLayout(2) return end
-    -- Custom layouts start at index 3
-    if C_EditMode and C_EditMode.GetLayouts then
-        local layoutInfo = C_EditMode.GetLayouts()
-        if layoutInfo and layoutInfo.layouts then
-            for i, layout in ipairs(layoutInfo.layouts) do
-                if layout.layoutName == name then
-                    EditModeManagerFrame:SelectLayout(i + 2)
-                    return
-                end
-            end
-        end
-    end
+	if not EditModeManagerFrame then
+		return
+	end
+	-- Presets are at fixed indices and not returned by GetLayouts()
+	if name == "Modern" then
+		EditModeManagerFrame:SelectLayout(1)
+		return
+	end
+	if name == "Classic" then
+		EditModeManagerFrame:SelectLayout(2)
+		return
+	end
+	-- Custom layouts start at index 3
+	if C_EditMode and C_EditMode.GetLayouts then
+		local layoutInfo = C_EditMode.GetLayouts()
+		if layoutInfo and layoutInfo.layouts then
+			for i, layout in ipairs(layoutInfo.layouts) do
+				if layout.layoutName == name then
+					EditModeManagerFrame:SelectLayout(i + 2)
+					return
+				end
+			end
+		end
+	end
 end
 
 -- Expose on Wise table for use in other modules (Actions.lua)
 function Wise:GetZoneAbilitySpellButton()
-    return GetZoneAbilitySpellButton()
+	return GetZoneAbilitySpellButton()
 end
 
 -- Resolve the real action ID for override/possess/vehicle bar slots.
@@ -134,20 +150,20 @@ end
 -- (same approach as EXTRA_ACTION_BUTTON_SLOT) instead of reading .action from
 -- Blizzard's protected ActionButton frames which would spread taint.
 function Wise:ResolveBarActionID(aID)
-    if aID >= 133 and aID <= 144 then
-        local buttonIndex = aID - 132
-        if HasOverrideActionBar and HasOverrideActionBar() and GetOverrideBarIndex then
-            return buttonIndex + (GetOverrideBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
-        end
-    elseif aID >= 121 and aID <= 132 then
-        local buttonIndex = aID - 120
-        if HasVehicleActionBar and HasVehicleActionBar() and GetVehicleBarIndex then
-            return buttonIndex + (GetVehicleBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
-        elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and GetTempShapeshiftBarIndex then
-            return buttonIndex + (GetTempShapeshiftBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
-        end
-    end
-    return aID
+	if aID >= 133 and aID <= 144 then
+		local buttonIndex = aID - 132
+		if HasOverrideActionBar and HasOverrideActionBar() and GetOverrideBarIndex then
+			return buttonIndex + (GetOverrideBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+		end
+	elseif aID >= 121 and aID <= 132 then
+		local buttonIndex = aID - 120
+		if HasVehicleActionBar and HasVehicleActionBar() and GetVehicleBarIndex then
+			return buttonIndex + (GetVehicleBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+		elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and GetTempShapeshiftBarIndex then
+			return buttonIndex + (GetTempShapeshiftBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+		end
+	end
+	return aID
 end
 
 -- Derive the ExtraActionButton1 slot at load time via GetExtraBarIndex().
@@ -163,336 +179,444 @@ Wise.EXTRA_ACTION_BUTTON_SLOT = EXTRA_ACTION_BUTTON_SLOT
 -- spell button children inside SpellButtonContainer retain their shown state, so this
 -- still returns true when the user has hidden the Blizzard frame via Wise settings.
 local function IsZoneAbilityActive()
-    local zoneFrame = _G["ZoneAbilityFrame"]
-    if not zoneFrame then return false end
-    if zoneFrame.SpellButtonContainer then
-        local children = { zoneFrame.SpellButtonContainer:GetChildren() }
-        for _, child in ipairs(children) do
-            if child.spellID and child:IsShown() then
-                return true
-            end
-        end
-    end
-    if zoneFrame.SpellButton and zoneFrame.SpellButton.spellID then
-        return zoneFrame.SpellButton:IsShown()
-    end
-    return false
+	local zoneFrame = _G["ZoneAbilityFrame"]
+	if not zoneFrame then
+		return false
+	end
+	if zoneFrame.SpellButtonContainer then
+		local children = { zoneFrame.SpellButtonContainer:GetChildren() }
+		for _, child in ipairs(children) do
+			if child.spellID and child:IsShown() then
+				return true
+			end
+		end
+	end
+	if zoneFrame.SpellButton and zoneFrame.SpellButton.spellID then
+		return zoneFrame.SpellButton:IsShown()
+	end
+	return false
 end
 
 -- All custom conditionals that are NOT understood by WoW's secure state driver.
 -- Used by BuildVisibilityDriver (SanitizeCustom) and UpdateGroupDisplay (CheckCustomVisibility).
 local CUSTOM_VIS_CONDITIONALS = {
-    ["guildbank"] = true, ["bank"] = true, ["mailbox"] = true,
-    ["auctionhouse"] = true, ["zoneability"] = true, ["undermouse"] = true,
+	["guildbank"] = true,
+	["bank"] = true,
+	["mailbox"] = true,
+	["auctionhouse"] = true,
+	["zoneability"] = true,
+	["undermouse"] = true,
 }
 
 -- Evaluate a single custom conditional token. Returns true/false.
 local function EvalCustomToken(token)
-    local negated = false
-    local t = token:match("^%s*(.-)%s*$") -- trim
-    if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
-        negated = true
-        t = t:sub(3)
-    end
-    local base = t:match("^([^:]+)") or t
-    base = base:lower()
+	local negated = false
+	local t = token:match("^%s*(.-)%s*$") -- trim
+	if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
+		negated = true
+		t = t:sub(3)
+	end
+	local base = t:match("^([^:]+)") or t
+	base = base:lower()
 
-    local result = false
-    if base == "bank" then
-        result = BankFrame and BankFrame:IsShown() or false
-    elseif base == "guildbank" then
-        result = GuildBankFrame and GuildBankFrame:IsShown() or false
-    elseif base == "mailbox" then
-        result = MailFrame and MailFrame:IsShown() or false
-    elseif base == "auctionhouse" then
-        result = AuctionHouseFrame and AuctionHouseFrame:IsShown() or false
-    elseif base == "zoneability" then
-        result = IsZoneAbilityActive()
-    end
+	local result = false
+	if base == "bank" then
+		result = BankFrame and BankFrame:IsShown() or false
+	elseif base == "guildbank" then
+		result = GuildBankFrame and GuildBankFrame:IsShown() or false
+	elseif base == "mailbox" then
+		result = MailFrame and MailFrame:IsShown() or false
+	elseif base == "auctionhouse" then
+		result = AuctionHouseFrame and AuctionHouseFrame:IsShown() or false
+	elseif base == "zoneability" then
+		result = IsZoneAbilityActive()
+	end
 
-    if negated then result = not result end
-    return result
+	if negated then
+		result = not result
+	end
+	return result
 end
 
 -- Evaluate a full condition string (e.g. "[extrabar]", "[zoneability]", "[combat,bank]")
 -- Returns true if ANY bracket group matches (OR across groups). Handles both custom and secure conditionals.
 -- Used by dynamic groups to determine per-slot visibility.
 local function EvalFullConditionString(str)
-    if not str or str == "" then return true end -- No condition = always show
+	if not str or str == "" then
+		return true
+	end -- No condition = always show
 
-    for block in str:gmatch("%[([^%]]*)%]") do
-        local customTokens = {}
-        local secureTokens = {}
+	for block in str:gmatch("%[([^%]]*)%]") do
+		local customTokens = {}
+		local secureTokens = {}
 
-        for token in block:gmatch("[^,]+") do
-            local trimmed = token:match("^%s*(.-)%s*$")
-            local check = trimmed:lower()
-            local lookupBase = check
-            if lookupBase:sub(1, 2) == "no" then
-                local stripped = lookupBase:sub(3)
-                local stripBase = stripped:match("^([^:]+)") or stripped
-                if CUSTOM_VIS_CONDITIONALS[stripBase] then
-                    lookupBase = stripped
-                end
-            end
-            local baseToken = lookupBase:match("^([^:]+)") or lookupBase
+		for token in block:gmatch("[^,]+") do
+			local trimmed = token:match("^%s*(.-)%s*$")
+			local check = trimmed:lower()
+			local lookupBase = check
+			if lookupBase:sub(1, 2) == "no" then
+				local stripped = lookupBase:sub(3)
+				local stripBase = stripped:match("^([^:]+)") or stripped
+				if CUSTOM_VIS_CONDITIONALS[stripBase] then
+					lookupBase = stripped
+				end
+			end
+			local baseToken = lookupBase:match("^([^:]+)") or lookupBase
 
-            if CUSTOM_VIS_CONDITIONALS[baseToken] then
-                table.insert(customTokens, trimmed)
-            else
-                table.insert(secureTokens, trimmed)
-            end
-        end
+			if CUSTOM_VIS_CONDITIONALS[baseToken] then
+				table.insert(customTokens, trimmed)
+			else
+				table.insert(secureTokens, trimmed)
+			end
+		end
 
-        local groupMatch = true
+		local groupMatch = true
 
-        for _, ct in ipairs(customTokens) do
-            if not EvalCustomToken(ct) then
-                groupMatch = false
-                break
-            end
-        end
+		for _, ct in ipairs(customTokens) do
+			if not EvalCustomToken(ct) then
+				groupMatch = false
+				break
+			end
+		end
 
-        if groupMatch and #secureTokens > 0 then
-            local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
-            local result = SecureCmdOptionParse(secureStr)
-            if result ~= "true" then groupMatch = false end
-        end
+		if groupMatch and #secureTokens > 0 then
+			local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
+			local result = SecureCmdOptionParse(secureStr)
+			if result ~= "true" then
+				groupMatch = false
+			end
+		end
 
-        if groupMatch then return true end
-    end
+		if groupMatch then
+			return true
+		end
+	end
 
-    return false
+	return false
 end
 
 -- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
 -- Returns true if ANY bracket group containing a custom conditional matches (OR across groups).
 -- Bracket groups with ONLY built-in conditionals are skipped (secure driver handles those).
 local function EvalConditionString(str)
-    if not str or str == "" then return false end
+	if not str or str == "" then
+		return false
+	end
 
-    for block in str:gmatch("%[([^%]]*)%]") do
-        local blockHasCustom = false
-        local customTokens = {}
-        local secureTokens = {}
+	for block in str:gmatch("%[([^%]]*)%]") do
+		local blockHasCustom = false
+		local customTokens = {}
+		local secureTokens = {}
 
-        for token in block:gmatch("[^,]+") do
-            local trimmed = token:match("^%s*(.-)%s*$")
-            local check = trimmed:lower()
-            -- Strip 'no' prefix for lookup
-            local lookupBase = check
-            if lookupBase:sub(1, 2) == "no" then
-                local stripped = lookupBase:sub(3)
-                local stripBase = stripped:match("^([^:]+)") or stripped
-                if CUSTOM_VIS_CONDITIONALS[stripBase] then
-                    lookupBase = stripped
-                end
-            end
-            local baseToken = lookupBase:match("^([^:]+)") or lookupBase
+		for token in block:gmatch("[^,]+") do
+			local trimmed = token:match("^%s*(.-)%s*$")
+			local check = trimmed:lower()
+			-- Strip 'no' prefix for lookup
+			local lookupBase = check
+			if lookupBase:sub(1, 2) == "no" then
+				local stripped = lookupBase:sub(3)
+				local stripBase = stripped:match("^([^:]+)") or stripped
+				if CUSTOM_VIS_CONDITIONALS[stripBase] then
+					lookupBase = stripped
+				end
+			end
+			local baseToken = lookupBase:match("^([^:]+)") or lookupBase
 
-            if CUSTOM_VIS_CONDITIONALS[baseToken] then
-                blockHasCustom = true
-                table.insert(customTokens, trimmed)
-            else
-                table.insert(secureTokens, trimmed)
-            end
-        end
+			if CUSTOM_VIS_CONDITIONALS[baseToken] then
+				blockHasCustom = true
+				table.insert(customTokens, trimmed)
+			else
+				table.insert(secureTokens, trimmed)
+			end
+		end
 
-        if blockHasCustom then
-            local groupMatch = true
+		if blockHasCustom then
+			local groupMatch = true
 
-            for _, ct in ipairs(customTokens) do
-                if not EvalCustomToken(ct) then
-                    groupMatch = false
-                    break
-                end
-            end
+			for _, ct in ipairs(customTokens) do
+				if not EvalCustomToken(ct) then
+					groupMatch = false
+					break
+				end
+			end
 
-            if groupMatch and #secureTokens > 0 then
-                local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
-                local result = SecureCmdOptionParse(secureStr)
-                if result ~= "true" then groupMatch = false end
-            end
+			if groupMatch and #secureTokens > 0 then
+				local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
+				local result = SecureCmdOptionParse(secureStr)
+				if result ~= "true" then
+					groupMatch = false
+				end
+			end
 
-            if groupMatch then return true end
-        end
-    end
+			if groupMatch then
+				return true
+			end
+		end
+	end
 
-    return false
+	return false
 end
 
 function Wise:GetGroupDisplaySettings(groupName)
-    local group = groupName and WiseDB.groups[groupName]
-    local settings = WiseDB.settings or {}
-    
-    local globalIconSize = settings.iconSize or 30
-    local globalTextSize = settings.textSize or 12
-    local globalFont = settings.font or "Fonts\\FRIZQT__.TTF"
-    local globalIconStyle = settings.iconStyle or "rounded"
-    
-    local iconSize = globalIconSize
-    local textSize = globalTextSize
-    local fontPath = globalFont
-    local iconStyle = globalIconStyle
-    
-    if group then
-        if group.iconSize then iconSize = group.iconSize end
-        if group.textSize then textSize = group.textSize end
-        if group.font then fontPath = group.font end
-        if group.iconStyle then iconStyle = group.iconStyle end
-    end
-    
-    local showKeybinds = (group and group.showKeybinds ~= nil and group.showKeybinds) or (group and group.showKeybinds == nil and settings.showKeybinds) or (not group and settings.showKeybinds)
-    local keybindPosition = (group and group.keybindPosition) or settings.keybindPosition
-    local keybindTextSize = (group and group.keybindTextSize) or settings.keybindTextSize
-    local chargeTextSize = (group and group.chargeTextSize) or settings.chargeTextSize or 12
-    local chargeTextPosition = (group and group.chargeTextPosition) or settings.chargeTextPosition or "TOP"
-    
-    local countdownTextSize = (group and group.countdownTextSize) or settings.countdownTextSize or 12
-    local countdownTextPosition = (group and group.countdownTextPosition) or settings.countdownTextPosition or "CENTER"
+	local group = groupName and WiseDB.groups[groupName]
+	local settings = WiseDB.settings or {}
 
-    -- Tri-state logic for overrides: nil = global, true/false = override
-    local showGlows = settings.showGlows
-    if group and group.showGlows ~= nil then showGlows = group.showGlows end
-    if showGlows == nil then showGlows = true end -- Default true
+	local globalIconSize = settings.iconSize or 30
+	local globalTextSize = settings.textSize or 12
+	local globalFont = settings.font or "Fonts\\FRIZQT__.TTF"
+	local globalIconStyle = settings.iconStyle or "rounded"
 
-    local showBuffs = settings.showBuffs
-    if group and group.showBuffs ~= nil then showBuffs = group.showBuffs end
-    if showBuffs == nil then showBuffs = false end -- Default false
-    
-    local showGCD = settings.showGCD
-    if group and group.showGCD ~= nil then showGCD = group.showGCD end
-    if showGCD == nil then showGCD = true end -- Default true
+	local iconSize = globalIconSize
+	local textSize = globalTextSize
+	local fontPath = globalFont
+	local iconStyle = globalIconStyle
 
-    local showChargeText = settings.showChargeText
-    if group and group.showChargeText ~= nil then showChargeText = group.showChargeText end
-    if showChargeText == nil then showChargeText = true end
+	if group then
+		if group.iconSize then
+			iconSize = group.iconSize
+		end
+		if group.textSize then
+			textSize = group.textSize
+		end
+		if group.font then
+			fontPath = group.font
+		end
+		if group.iconStyle then
+			iconStyle = group.iconStyle
+		end
+	end
 
-    local showCountdownText = settings.showCountdownText
-    if group and group.showCountdownText ~= nil then showCountdownText = group.showCountdownText end
-    if showCountdownText == nil then showCountdownText = true end
+	local showKeybinds = (group and group.showKeybinds ~= nil and group.showKeybinds)
+		or (group and group.showKeybinds == nil and settings.showKeybinds)
+		or (not group and settings.showKeybinds)
+	local keybindPosition = (group and group.keybindPosition) or settings.keybindPosition
+	local keybindTextSize = (group and group.keybindTextSize) or settings.keybindTextSize
+	local chargeTextSize = (group and group.chargeTextSize) or settings.chargeTextSize or 12
+	local chargeTextPosition = (group and group.chargeTextPosition) or settings.chargeTextPosition or "TOP"
 
-    local hideEmptySlots = settings.hideEmptySlots
-    if group and group.hideEmptySlots ~= nil then hideEmptySlots = group.hideEmptySlots end
-    if hideEmptySlots == nil then hideEmptySlots = false end
+	local countdownTextSize = (group and group.countdownTextSize) or settings.countdownTextSize or 12
+	local countdownTextPosition = (group and group.countdownTextPosition) or settings.countdownTextPosition or "CENTER"
 
-    local showInterfaceKeybind = settings.showInterfaceKeybind
-    if group and group.showInterfaceKeybind ~= nil then showInterfaceKeybind = group.showInterfaceKeybind end
-    if showInterfaceKeybind == nil then showInterfaceKeybind = false end
+	-- Tri-state logic for overrides: nil = global, true/false = override
+	local showGlows = settings.showGlows
+	if group and group.showGlows ~= nil then
+		showGlows = group.showGlows
+	end
+	if showGlows == nil then
+		showGlows = true
+	end -- Default true
 
-    -- Debuff overlay (CDM-like target debuff display)
-    local showDebuffs = settings.showDebuffs
-    if group and group.showDebuffs ~= nil then showDebuffs = group.showDebuffs end
-    if showDebuffs == nil then showDebuffs = true end -- Default true (CDM parity)
+	local showBuffs = settings.showBuffs
+	if group and group.showBuffs ~= nil then
+		showBuffs = group.showBuffs
+	end
+	if showBuffs == nil then
+		showBuffs = false
+	end -- Default false
 
-    -- Buff stack counter
-    local showBuffStacks = settings.showBuffStacks
-    if group and group.showBuffStacks ~= nil then showBuffStacks = group.showBuffStacks end
-    if showBuffStacks == nil then showBuffStacks = true end
+	local showGCD = settings.showGCD
+	if group and group.showGCD ~= nil then
+		showGCD = group.showGCD
+	end
+	if showGCD == nil then
+		showGCD = true
+	end -- Default true
 
-    local buffStackPosition = (group and group.buffStackPosition) or settings.buffStackPosition or "TOPRIGHT"
-    local buffStackTextSize = (group and group.buffStackTextSize) or settings.buffStackTextSize or 12
+	local showChargeText = settings.showChargeText
+	if group and group.showChargeText ~= nil then
+		showChargeText = group.showChargeText
+	end
+	if showChargeText == nil then
+		showChargeText = true
+	end
 
-    -- Swipe direction overrides
-    local cooldownSwipeReverse = settings.cooldownSwipeReverse
-    if group and group.cooldownSwipeReverse ~= nil then cooldownSwipeReverse = group.cooldownSwipeReverse end
-    if cooldownSwipeReverse == nil then cooldownSwipeReverse = false end
+	local showCountdownText = settings.showCountdownText
+	if group and group.showCountdownText ~= nil then
+		showCountdownText = group.showCountdownText
+	end
+	if showCountdownText == nil then
+		showCountdownText = true
+	end
 
-    local buffSwipeReverse = settings.buffSwipeReverse
-    if group and group.buffSwipeReverse ~= nil then buffSwipeReverse = group.buffSwipeReverse end
-    if buffSwipeReverse == nil then buffSwipeReverse = false end
+	local hideEmptySlots = settings.hideEmptySlots
+	if group and group.hideEmptySlots ~= nil then
+		hideEmptySlots = group.hideEmptySlots
+	end
+	if hideEmptySlots == nil then
+		hideEmptySlots = false
+	end
 
-    local debuffSwipeReverse = settings.debuffSwipeReverse
-    if group and group.debuffSwipeReverse ~= nil then debuffSwipeReverse = group.debuffSwipeReverse end
-    if debuffSwipeReverse == nil then debuffSwipeReverse = false end
+	local showInterfaceKeybind = settings.showInterfaceKeybind
+	if group and group.showInterfaceKeybind ~= nil then
+		showInterfaceKeybind = group.showInterfaceKeybind
+	end
+	if showInterfaceKeybind == nil then
+		showInterfaceKeybind = false
+	end
 
-    return iconSize, textSize, fontPath, showKeybinds, keybindPosition, keybindTextSize, chargeTextSize, chargeTextPosition, countdownTextSize, countdownTextPosition, showGlows, showBuffs, iconStyle, showGCD, showChargeText, showCountdownText, hideEmptySlots, showInterfaceKeybind, showDebuffs, showBuffStacks, buffStackPosition, buffStackTextSize, cooldownSwipeReverse, buffSwipeReverse, debuffSwipeReverse
+	-- Debuff overlay (CDM-like target debuff display)
+	local showDebuffs = settings.showDebuffs
+	if group and group.showDebuffs ~= nil then
+		showDebuffs = group.showDebuffs
+	end
+	if showDebuffs == nil then
+		showDebuffs = true
+	end -- Default true (CDM parity)
+
+	-- Buff stack counter
+	local showBuffStacks = settings.showBuffStacks
+	if group and group.showBuffStacks ~= nil then
+		showBuffStacks = group.showBuffStacks
+	end
+	if showBuffStacks == nil then
+		showBuffStacks = true
+	end
+
+	local buffStackPosition = (group and group.buffStackPosition) or settings.buffStackPosition or "TOPRIGHT"
+	local buffStackTextSize = (group and group.buffStackTextSize) or settings.buffStackTextSize or 12
+
+	-- Swipe direction overrides
+	local cooldownSwipeReverse = settings.cooldownSwipeReverse
+	if group and group.cooldownSwipeReverse ~= nil then
+		cooldownSwipeReverse = group.cooldownSwipeReverse
+	end
+	if cooldownSwipeReverse == nil then
+		cooldownSwipeReverse = false
+	end
+
+	local buffSwipeReverse = settings.buffSwipeReverse
+	if group and group.buffSwipeReverse ~= nil then
+		buffSwipeReverse = group.buffSwipeReverse
+	end
+	if buffSwipeReverse == nil then
+		buffSwipeReverse = false
+	end
+
+	local debuffSwipeReverse = settings.debuffSwipeReverse
+	if group and group.debuffSwipeReverse ~= nil then
+		debuffSwipeReverse = group.debuffSwipeReverse
+	end
+	if debuffSwipeReverse == nil then
+		debuffSwipeReverse = false
+	end
+
+	return iconSize,
+		textSize,
+		fontPath,
+		showKeybinds,
+		keybindPosition,
+		keybindTextSize,
+		chargeTextSize,
+		chargeTextPosition,
+		countdownTextSize,
+		countdownTextPosition,
+		showGlows,
+		showBuffs,
+		iconStyle,
+		showGCD,
+		showChargeText,
+		showCountdownText,
+		hideEmptySlots,
+		showInterfaceKeybind,
+		showDebuffs,
+		showBuffStacks,
+		buffStackPosition,
+		buffStackTextSize,
+		cooldownSwipeReverse,
+		buffSwipeReverse,
+		debuffSwipeReverse
 end
 
 function Wise:CreateGroup(name, type)
-    if not WiseDB.groups[name] then
-        WiseDB.groups[name] = {
-            type = type or "circle",
-            dynamic = false,
-            actions = {},
-            anchor = {point = "CENTER", x = 0, y = 0},
-            visibilitySettings = {},
-            keybindSettings = {},
-        }
-    end
-    
-    -- Ensure display is created and updated
-    Wise:UpdateGroupDisplay(name)
-    local f = Wise.frames[name]
-    if f then
-        f:Show()
-        -- Apply Edit Mode if active (skip for mouse-anchored)
-        local group = name and WiseDB.groups[name]
-        if Wise.editMode and group and group.anchorMode ~= "mouse" then
-            Wise:SetFrameEditMode(f, name, true)
-        end
-    end
+	if not WiseDB.groups[name] then
+		WiseDB.groups[name] = {
+			type = type or "circle",
+			dynamic = false,
+			actions = {},
+			anchor = { point = "CENTER", x = 0, y = 0 },
+			visibilitySettings = {},
+			keybindSettings = {},
+		}
+	end
 
-    Wise:UpdateOptionsUI()
+	-- Ensure display is created and updated
+	Wise:UpdateGroupDisplay(name)
+	local f = Wise.frames[name]
+	if f then
+		f:Show()
+		-- Apply Edit Mode if active (skip for mouse-anchored)
+		local group = name and WiseDB.groups[name]
+		if Wise.editMode and group and group.anchorMode ~= "mouse" then
+			Wise:SetFrameEditMode(f, name, true)
+		end
+	end
+
+	Wise:UpdateOptionsUI()
 end
 
 function Wise:DeleteGroup(name)
-    local f = Wise.frames[name]
-    if f then
-        if InCombatLockdown() then
-            print("|cff00ccff[Wise]|r Cannot delete interface in combat (protected).")
-            return
-        end
-        f:Hide()
-        if f.toggleBtn then f.toggleBtn:Hide() end
-        if f.visualDisplay then f.visualDisplay:Hide() end
-        -- Unregister events/scripts to stop updates
-        f:SetScript("OnUpdate", nil)
-        if f.Anchor then f.Anchor:SetScript("OnUpdate", nil) end
-        
-        -- Clear from internal frame registry
-        Wise.frames[name] = nil
-    end
-    
-    WiseDB.groups[name] = nil
+	local f = Wise.frames[name]
+	if f then
+		if InCombatLockdown() then
+			print("|cff00ccff[Wise]|r Cannot delete interface in combat (protected).")
+			return
+		end
+		f:Hide()
+		if f.toggleBtn then
+			f.toggleBtn:Hide()
+		end
+		if f.visualDisplay then
+			f.visualDisplay:Hide()
+		end
+		-- Unregister events/scripts to stop updates
+		f:SetScript("OnUpdate", nil)
+		if f.Anchor then
+			f.Anchor:SetScript("OnUpdate", nil)
+		end
 
-    local modifiedParents = {}
-    for gName, group in pairs(WiseDB.groups) do
-        if gName ~= name then
-            local modified = false
-            if group.actions then
-                for slotIdx, states in pairs(group.actions) do
-                    if type(slotIdx) == "number" and type(states) == "table" then
-                        for i = #states, 1, -1 do
-                            local action = states[i]
-                            if action.type == "interface" and action.value == name then
-                                table.remove(states, i)
-                                modified = true
-                            end
-                        end
-                    end
-                end
-            end
-            if group.buttons then
-                for i = #group.buttons, 1, -1 do
-                    local action = group.buttons[i]
-                    if action.type == "interface" and action.value == name then
-                        table.remove(group.buttons, i)
-                        modified = true
-                    end
-                end
-            end
-            if modified then
-                modifiedParents[gName] = true
-            end
-        end
-    end
+		-- Clear from internal frame registry
+		Wise.frames[name] = nil
+	end
 
-    for pName in pairs(modifiedParents) do
-        Wise:UpdateGroupDisplay(pName)
-    end
+	WiseDB.groups[name] = nil
 
-    Wise:UpdateOptionsUI()
+	local modifiedParents = {}
+	for gName, group in pairs(WiseDB.groups) do
+		if gName ~= name then
+			local modified = false
+			if group.actions then
+				for slotIdx, states in pairs(group.actions) do
+					if type(slotIdx) == "number" and type(states) == "table" then
+						for i = #states, 1, -1 do
+							local action = states[i]
+							if action.type == "interface" and action.value == name then
+								table.remove(states, i)
+								modified = true
+							end
+						end
+					end
+				end
+			end
+			if group.buttons then
+				for i = #group.buttons, 1, -1 do
+					local action = group.buttons[i]
+					if action.type == "interface" and action.value == name then
+						table.remove(group.buttons, i)
+						modified = true
+					end
+				end
+			end
+			if modified then
+				modifiedParents[gName] = true
+			end
+		end
+	end
+
+	for pName in pairs(modifiedParents) do
+		Wise:UpdateGroupDisplay(pName)
+	end
+
+	Wise:UpdateOptionsUI()
 end
 
 Wise.frames = {}
@@ -514,183 +638,209 @@ Wise.CooldownUpdateFrame:Hide()
 local scheduleCooldownUpdate
 
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
-    local now = GetTime()
-    local hasActive = false
+	local now = GetTime()
+	local hasActive = false
 
-    -- Throttled aura re-validation for buff/debuff timers (~10 Hz)
-    self._auraCheckElapsed = (self._auraCheckElapsed or 0) + elapsed
-    local doAuraCheck = self._auraCheckElapsed >= 0.1
-    if doAuraCheck then self._auraCheckElapsed = 0 end
+	-- Throttled aura re-validation for buff/debuff timers (~10 Hz)
+	self._auraCheckElapsed = (self._auraCheckElapsed or 0) + elapsed
+	local doAuraCheck = self._auraCheckElapsed >= 0.1
+	if doAuraCheck then
+		self._auraCheckElapsed = 0
+	end
 
-    for btn, info in pairs(Wise.ActiveCooldownButtons) do
-        hasActive = true
+	for btn, info in pairs(Wise.ActiveCooldownButtons) do
+		hasActive = true
 
-        -- Re-validate buff/debuff auras periodically. If the aura was
-        -- dispelled, expired early, or the target changed, schedule a
-        -- full re-evaluation so the button falls back to showing its
-        -- regular cooldown (or clears entirely).
-        if doAuraCheck and info.scanSpellID and (info.isBuffActive or info.isDebuffActive) then
-            local auraGone = false
-            local spellName = C_Spell.GetSpellName(info.scanSpellID)
-            if info.isBuffActive then
-                local aura = C_UnitAuras.GetPlayerAuraBySpellID(info.scanSpellID)
-                if not aura and spellName then
-                    aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
-                end
-                if not aura then auraGone = true end
-            elseif info.isDebuffActive then
-                if not UnitExists("target") then
-                    auraGone = true
-                else
-                    local debuffAura
-                    if spellName then
-                        debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
-                    end
-                    if not debuffAura then auraGone = true end
-                end
-            end
-            if auraGone then
-                -- Clear the aura flags so this entry is treated as a
-                -- regular cooldown until the deferred re-evaluation runs.
-                info.isBuffActive = false
-                info.isDebuffActive = false
-                info.scanSpellID = nil
-                -- Schedule a proper re-evaluation (taint-safe, deferred)
-                scheduleCooldownUpdate()
-            end
-        end
+		-- Re-validate buff/debuff auras periodically. If the aura was
+		-- dispelled, expired early, or the target changed, schedule a
+		-- full re-evaluation so the button falls back to showing its
+		-- regular cooldown (or clears entirely).
+		if doAuraCheck and info.scanSpellID and (info.isBuffActive or info.isDebuffActive) then
+			local auraGone = false
+			local spellName = C_Spell.GetSpellName(info.scanSpellID)
+			if info.isBuffActive then
+				local aura = C_UnitAuras.GetPlayerAuraBySpellID(info.scanSpellID)
+				if not aura and spellName then
+					aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+				end
+				if not aura then
+					auraGone = true
+				end
+			elseif info.isDebuffActive then
+				if not UnitExists("target") then
+					auraGone = true
+				else
+					local debuffAura
+					if spellName then
+						debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
+					end
+					if not debuffAura then
+						auraGone = true
+					end
+				end
+			end
+			if auraGone then
+				-- Clear the aura flags so this entry is treated as a
+				-- regular cooldown until the deferred re-evaluation runs.
+				info.isBuffActive = false
+				info.isDebuffActive = false
+				info.scanSpellID = nil
+				-- Schedule a proper re-evaluation (taint-safe, deferred)
+				scheduleCooldownUpdate()
+			end
+		end
 
-        local start = info.start
-        local duration = info.duration
-        local groupName = info.groupName
-        local isListMode = info.isListMode
+		local start = info.start
+		local duration = info.duration
+		local groupName = info.groupName
+		local isListMode = info.isListMode
 
-        -- Try to compute remaining time. start/duration may be secret in combat.
-        local rem = 0
-        local secretMode = false
-        local success, val = pcall(function() return (start + duration) - now end)
-        if success then
-            rem = val
-        else
-            secretMode = true
-        end
+		-- Try to compute remaining time. start/duration may be secret in combat.
+		local rem = 0
+		local secretMode = false
+		local success, val = pcall(function()
+			return (start + duration) - now
+		end)
+		if success then
+			rem = val
+		else
+			secretMode = true
+		end
 
-        -- Check if cooldown is finished
-        local finished = false
-        if secretMode then
-            finished = not (btn.cooldown and btn.cooldown:IsShown())
-        else
-            finished = (rem <= 0)
-        end
+		-- Check if cooldown is finished
+		local finished = false
+		if secretMode then
+			finished = not (btn.cooldown and btn.cooldown:IsShown())
+		else
+			finished = (rem <= 0)
+		end
 
-        if finished then
-            Wise.ActiveCooldownButtons[btn] = nil
+		if finished then
+			Wise.ActiveCooldownButtons[btn] = nil
 
-            -- Restore our custom text mode
-            if btn.cooldown then
-                btn.cooldown:SetHideCountdownNumbers(true)
-            end
-            if btn._wiseBlizzCDActive then
-                btn._wiseBlizzCDActive = nil
-                local fs = btn.cooldown and btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
-                if fs then
-                    pcall(fs.SetParent, fs, btn.cooldown)
-                end
-            end
+			-- Restore our custom text mode
+			if btn.cooldown then
+				btn.cooldown:SetHideCountdownNumbers(true)
+			end
+			if btn._wiseBlizzCDActive then
+				btn._wiseBlizzCDActive = nil
+				local fs = btn.cooldown
+					and btn.cooldown.GetCountdownFontString
+					and btn.cooldown:GetCountdownFontString()
+				if fs then
+					pcall(fs.SetParent, fs, btn.cooldown)
+				end
+			end
 
-            -- Cooldown Finished
-            if isListMode then
-                if btn.timerLabel then btn.timerLabel:SetText("") end
-                if btn.redLine then btn.redLine:SetWidth(0); btn.redLine:Hide() end
-                if btn.cooldown then btn.cooldown:SetAlpha(0) end
-            else
-                Wise:Text_UpdateCountdown(btn, groupName, "")
-                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                local vClone = (meta and meta.visualClone) or btn.visualClone
-                if vClone then
-                     Wise:Text_UpdateCountdown(vClone, groupName, "")
-                end
-            end
-        elseif secretMode then
-            -- Secret numbers: let Blizzard render its own countdown text.
-            -- Enable Blizzard countdown on the cooldown widget and style it.
-            if not btn._wiseBlizzCDActive then
-                btn._wiseBlizzCDActive = true
-                btn.cooldown:SetHideCountdownNumbers(false)
-                -- Hide our custom countdown to avoid double text
-                if btn.countdown then btn.countdown:Hide() end
-                -- Style Blizzard's countdown FontString to match our look
-                local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
-                if fs then
-                    local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
-                    if fontPath and countdownTextSize then
-                        pcall(fs.SetFont, fs, fontPath, countdownTextSize, "OUTLINE")
-                    end
-                    -- Reparent to text overlay so it renders above the cooldown swipe
-                    local overlay = btn._textOverlay or btn
-                    pcall(fs.SetParent, fs, overlay)
-                end
-            end
-        else
-            -- Normal mode: we have numeric remaining time
-            -- Ensure Blizzard countdown is off, our custom text is active
-            if btn._wiseBlizzCDActive then
-                btn._wiseBlizzCDActive = nil
-                btn.cooldown:SetHideCountdownNumbers(true)
-                -- Restore Blizzard FontString parent if we changed it
-                local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
-                if fs then
-                    pcall(fs.SetParent, fs, btn.cooldown)
-                end
-            end
+			-- Cooldown Finished
+			if isListMode then
+				if btn.timerLabel then
+					btn.timerLabel:SetText("")
+				end
+				if btn.redLine then
+					btn.redLine:SetWidth(0)
+					btn.redLine:Hide()
+				end
+				if btn.cooldown then
+					btn.cooldown:SetAlpha(0)
+				end
+			else
+				Wise:Text_UpdateCountdown(btn, groupName, "")
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local vClone = (meta and meta.visualClone) or btn.visualClone
+				if vClone then
+					Wise:Text_UpdateCountdown(vClone, groupName, "")
+				end
+			end
+		elseif secretMode then
+			-- Secret numbers: let Blizzard render its own countdown text.
+			-- Enable Blizzard countdown on the cooldown widget and style it.
+			if not btn._wiseBlizzCDActive then
+				btn._wiseBlizzCDActive = true
+				btn.cooldown:SetHideCountdownNumbers(false)
+				-- Hide our custom countdown to avoid double text
+				if btn.countdown then
+					btn.countdown:Hide()
+				end
+				-- Style Blizzard's countdown FontString to match our look
+				local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
+				if fs then
+					local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
+					if fontPath and countdownTextSize then
+						pcall(fs.SetFont, fs, fontPath, countdownTextSize, "OUTLINE")
+					end
+					-- Reparent to text overlay so it renders above the cooldown swipe
+					local overlay = btn._textOverlay or btn
+					pcall(fs.SetParent, fs, overlay)
+				end
+			end
+		else
+			-- Normal mode: we have numeric remaining time
+			-- Ensure Blizzard countdown is off, our custom text is active
+			if btn._wiseBlizzCDActive then
+				btn._wiseBlizzCDActive = nil
+				btn.cooldown:SetHideCountdownNumbers(true)
+				-- Restore Blizzard FontString parent if we changed it
+				local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
+				if fs then
+					pcall(fs.SetParent, fs, btn.cooldown)
+				end
+			end
 
-            if isListMode then
-                local m = floor(rem / 60)
-                local s = floor(rem % 60)
-                local text = strformat("%d:%02d", m, s)
-                if info.lastText ~= text then
-                    if btn.timerLabel then btn.timerLabel:SetText(text) end
-                    info.lastText = text
-                end
+			if isListMode then
+				local m = floor(rem / 60)
+				local s = floor(rem % 60)
+				local text = strformat("%d:%02d", m, s)
+				if info.lastText ~= text then
+					if btn.timerLabel then
+						btn.timerLabel:SetText(text)
+					end
+					info.lastText = text
+				end
 
-                local maxWidth = 50
-                if btn.redLine then
-                     local ok4, pct = pcall(function() return rem / info.duration end)
-                     if ok4 and type(pct) == "number" then
-                         if pct > 1 then pct = 1 end
-                         if pct < 0 then pct = 0 end
-                         btn.redLine:SetWidth(maxWidth * pct)
-                     end
-                end
-            else
-                -- Standard Mode
-                local text = ""
-                if rem >= 3600 then
-                    text = strformat("%dh", ceil(rem / 3600))
-                elseif rem >= 60 then
-                    text = strformat("%dm", ceil(rem / 60))
-                else
-                    text = strformat("%d", ceil(rem))
-                end
+				local maxWidth = 50
+				if btn.redLine then
+					local ok4, pct = pcall(function()
+						return rem / info.duration
+					end)
+					if ok4 and type(pct) == "number" then
+						if pct > 1 then
+							pct = 1
+						end
+						if pct < 0 then
+							pct = 0
+						end
+						btn.redLine:SetWidth(maxWidth * pct)
+					end
+				end
+			else
+				-- Standard Mode
+				local text = ""
+				if rem >= 3600 then
+					text = strformat("%dh", ceil(rem / 3600))
+				elseif rem >= 60 then
+					text = strformat("%dm", ceil(rem / 60))
+				else
+					text = strformat("%d", ceil(rem))
+				end
 
-                if info.lastText ~= text then
-                    Wise:Text_UpdateCountdown(btn, groupName, text)
-                    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                    local vClone = (meta and meta.visualClone) or btn.visualClone
-                    if vClone then
-                        Wise:Text_UpdateCountdown(vClone, groupName, text)
-                    end
-                    info.lastText = text
-                end
-            end
-        end
-    end
+				if info.lastText ~= text then
+					Wise:Text_UpdateCountdown(btn, groupName, text)
+					local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+					local vClone = (meta and meta.visualClone) or btn.visualClone
+					if vClone then
+						Wise:Text_UpdateCountdown(vClone, groupName, text)
+					end
+					info.lastText = text
+				end
+			end
+		end
+	end
 
-    if not hasActive then
-        self:Hide()
-    end
+	if not hasActive then
+		self:Hide()
+	end
 end)
-
 
 -- ============================================================================
 -- Glow Overlay Implementation (Adapted from LibButtonGlow-1.0)
@@ -699,195 +849,199 @@ local glowUnusedOverlays = {}
 local glowNumOverlays = 0
 
 local function OverlayGlowAnimOutFinished(animGroup)
-    local overlay = animGroup:GetParent()
-    local frame = overlay:GetParent()
-    overlay:Hide()
-    table.insert(glowUnusedOverlays, overlay)
-    frame.__WiseOverlay = nil
+	local overlay = animGroup:GetParent()
+	local frame = overlay:GetParent()
+	overlay:Hide()
+	table.insert(glowUnusedOverlays, overlay)
+	frame.__WiseOverlay = nil
 end
 
 local function OverlayGlow_OnHide(self)
-    if self.animOut:IsPlaying() then
-        self.animOut:Stop()
-        OverlayGlowAnimOutFinished(self.animOut)
-    end
+	if self.animOut:IsPlaying() then
+		self.animOut:Stop()
+		OverlayGlowAnimOutFinished(self.animOut)
+	end
 end
 
 local function OverlayGlow_OnUpdate(self, elapsed)
-    AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, 0.01)
-    -- we need some threshold to avoid dimming the glow during the gdc
-    -- (removed cooldown check to avoid taint error "attempt to compare secret number")
-    self:SetAlpha(1.0)
+	AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, 0.01)
+	-- we need some threshold to avoid dimming the glow during the gdc
+	-- (removed cooldown check to avoid taint error "attempt to compare secret number")
+	self:SetAlpha(1.0)
 end
 
 local function CreateScaleAnim(group, target, order, duration, x, y, delay)
-    local scale = group:CreateAnimation("Scale")
-    scale:SetTarget(target)
-    scale:SetOrder(order)
-    scale:SetDuration(duration)
-    scale:SetScale(x, y)
-    if delay then scale:SetStartDelay(delay) end
+	local scale = group:CreateAnimation("Scale")
+	scale:SetTarget(target)
+	scale:SetOrder(order)
+	scale:SetDuration(duration)
+	scale:SetScale(x, y)
+	if delay then
+		scale:SetStartDelay(delay)
+	end
 end
 
 local function CreateAlphaAnim(group, target, order, duration, fromAlpha, toAlpha, delay)
-    local alpha = group:CreateAnimation("Alpha")
-    alpha:SetTarget(target)
-    alpha:SetOrder(order)
-    alpha:SetDuration(duration)
-    alpha:SetFromAlpha(fromAlpha)
-    alpha:SetToAlpha(toAlpha)
-    if delay then alpha:SetStartDelay(delay) end
+	local alpha = group:CreateAnimation("Alpha")
+	alpha:SetTarget(target)
+	alpha:SetOrder(order)
+	alpha:SetDuration(duration)
+	alpha:SetFromAlpha(fromAlpha)
+	alpha:SetToAlpha(toAlpha)
+	if delay then
+		alpha:SetStartDelay(delay)
+	end
 end
 
 local function AnimIn_OnPlay(group)
-    local frame = group:GetParent()
-    local frameWidth, frameHeight = frame:GetSize()
-    frame.spark:SetSize(frameWidth, frameHeight)
-    frame.spark:SetAlpha(0.3)
-    frame.innerGlow:SetSize(frameWidth / 2, frameHeight / 2)
-    frame.innerGlow:SetAlpha(1.0)
-    frame.innerGlowOver:SetAlpha(1.0)
-    frame.outerGlow:SetSize(frameWidth * 2, frameHeight * 2)
-    frame.outerGlow:SetAlpha(1.0)
-    frame.outerGlowOver:SetAlpha(1.0)
-    frame.ants:SetSize(frameWidth * 0.85, frameHeight * 0.85)
-    frame.ants:SetAlpha(0)
-    frame:Show()
+	local frame = group:GetParent()
+	local frameWidth, frameHeight = frame:GetSize()
+	frame.spark:SetSize(frameWidth, frameHeight)
+	frame.spark:SetAlpha(0.3)
+	frame.innerGlow:SetSize(frameWidth / 2, frameHeight / 2)
+	frame.innerGlow:SetAlpha(1.0)
+	frame.innerGlowOver:SetAlpha(1.0)
+	frame.outerGlow:SetSize(frameWidth * 2, frameHeight * 2)
+	frame.outerGlow:SetAlpha(1.0)
+	frame.outerGlowOver:SetAlpha(1.0)
+	frame.ants:SetSize(frameWidth * 0.85, frameHeight * 0.85)
+	frame.ants:SetAlpha(0)
+	frame:Show()
 end
 
 local function AnimIn_OnFinished(group)
-    local frame = group:GetParent()
-    local frameWidth, frameHeight = frame:GetSize()
-    frame.spark:SetAlpha(0)
-    frame.innerGlow:SetAlpha(0)
-    frame.innerGlow:SetSize(frameWidth, frameHeight)
-    frame.innerGlowOver:SetAlpha(0.0)
-    frame.outerGlow:SetSize(frameWidth, frameHeight)
-    frame.outerGlowOver:SetAlpha(0.0)
-    frame.outerGlowOver:SetSize(frameWidth, frameHeight)
-    frame.ants:SetAlpha(1.0)
+	local frame = group:GetParent()
+	local frameWidth, frameHeight = frame:GetSize()
+	frame.spark:SetAlpha(0)
+	frame.innerGlow:SetAlpha(0)
+	frame.innerGlow:SetSize(frameWidth, frameHeight)
+	frame.innerGlowOver:SetAlpha(0.0)
+	frame.outerGlow:SetSize(frameWidth, frameHeight)
+	frame.outerGlowOver:SetAlpha(0.0)
+	frame.outerGlowOver:SetSize(frameWidth, frameHeight)
+	frame.ants:SetAlpha(1.0)
 end
 
 local function CreateOverlayGlow()
-    glowNumOverlays = glowNumOverlays + 1
-    local name = "WiseButtonGlowOverlay" .. tostring(glowNumOverlays)
-    local overlay = CreateFrame("Frame", name, UIParent)
+	glowNumOverlays = glowNumOverlays + 1
+	local name = "WiseButtonGlowOverlay" .. tostring(glowNumOverlays)
+	local overlay = CreateFrame("Frame", name, UIParent)
 
-    -- spark
-    overlay.spark = overlay:CreateTexture(name .. "Spark", "BACKGROUND")
-    overlay.spark:SetPoint("CENTER")
-    overlay.spark:SetAlpha(0)
-    overlay.spark:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    overlay.spark:SetTexCoord(0.00781250, 0.61718750, 0.00390625, 0.26953125)
+	-- spark
+	overlay.spark = overlay:CreateTexture(name .. "Spark", "BACKGROUND")
+	overlay.spark:SetPoint("CENTER")
+	overlay.spark:SetAlpha(0)
+	overlay.spark:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	overlay.spark:SetTexCoord(0.00781250, 0.61718750, 0.00390625, 0.26953125)
 
-    -- inner glow
-    overlay.innerGlow = overlay:CreateTexture(name .. "InnerGlow", "ARTWORK")
-    overlay.innerGlow:SetPoint("CENTER")
-    overlay.innerGlow:SetAlpha(0)
-    overlay.innerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    overlay.innerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	-- inner glow
+	overlay.innerGlow = overlay:CreateTexture(name .. "InnerGlow", "ARTWORK")
+	overlay.innerGlow:SetPoint("CENTER")
+	overlay.innerGlow:SetAlpha(0)
+	overlay.innerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	overlay.innerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
 
-    -- inner glow over
-    overlay.innerGlowOver = overlay:CreateTexture(name .. "InnerGlowOver", "ARTWORK")
-    overlay.innerGlowOver:SetPoint("TOPLEFT", overlay.innerGlow, "TOPLEFT")
-    overlay.innerGlowOver:SetPoint("BOTTOMRIGHT", overlay.innerGlow, "BOTTOMRIGHT")
-    overlay.innerGlowOver:SetAlpha(0)
-    overlay.innerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    overlay.innerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
+	-- inner glow over
+	overlay.innerGlowOver = overlay:CreateTexture(name .. "InnerGlowOver", "ARTWORK")
+	overlay.innerGlowOver:SetPoint("TOPLEFT", overlay.innerGlow, "TOPLEFT")
+	overlay.innerGlowOver:SetPoint("BOTTOMRIGHT", overlay.innerGlow, "BOTTOMRIGHT")
+	overlay.innerGlowOver:SetAlpha(0)
+	overlay.innerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	overlay.innerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
 
-    -- outer glow
-    overlay.outerGlow = overlay:CreateTexture(name .. "OuterGlow", "ARTWORK")
-    overlay.outerGlow:SetPoint("CENTER")
-    overlay.outerGlow:SetAlpha(0)
-    overlay.outerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    overlay.outerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	-- outer glow
+	overlay.outerGlow = overlay:CreateTexture(name .. "OuterGlow", "ARTWORK")
+	overlay.outerGlow:SetPoint("CENTER")
+	overlay.outerGlow:SetAlpha(0)
+	overlay.outerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	overlay.outerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
 
-    -- outer glow over
-    overlay.outerGlowOver = overlay:CreateTexture(name .. "OuterGlowOver", "ARTWORK")
-    overlay.outerGlowOver:SetPoint("TOPLEFT", overlay.outerGlow, "TOPLEFT")
-    overlay.outerGlowOver:SetPoint("BOTTOMRIGHT", overlay.outerGlow, "BOTTOMRIGHT")
-    overlay.outerGlowOver:SetAlpha(0)
-    overlay.outerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    overlay.outerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
+	-- outer glow over
+	overlay.outerGlowOver = overlay:CreateTexture(name .. "OuterGlowOver", "ARTWORK")
+	overlay.outerGlowOver:SetPoint("TOPLEFT", overlay.outerGlow, "TOPLEFT")
+	overlay.outerGlowOver:SetPoint("BOTTOMRIGHT", overlay.outerGlow, "BOTTOMRIGHT")
+	overlay.outerGlowOver:SetAlpha(0)
+	overlay.outerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	overlay.outerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
 
-    -- ants
-    overlay.ants = overlay:CreateTexture(name .. "Ants", "OVERLAY")
-    overlay.ants:SetPoint("CENTER")
-    overlay.ants:SetAlpha(0)
-    overlay.ants:SetTexture([[Interface\SpellActivationOverlay\IconAlertAnts]])
+	-- ants
+	overlay.ants = overlay:CreateTexture(name .. "Ants", "OVERLAY")
+	overlay.ants:SetPoint("CENTER")
+	overlay.ants:SetAlpha(0)
+	overlay.ants:SetTexture([[Interface\SpellActivationOverlay\IconAlertAnts]])
 
-    -- setup antimations
-    overlay.animIn = overlay:CreateAnimationGroup()
-    CreateScaleAnim(overlay.animIn, overlay.spark,          1, 0.2, 1.5, 1.5)
-    CreateAlphaAnim(overlay.animIn, overlay.spark,          1, 0.2, 0, 1)
-    CreateScaleAnim(overlay.animIn, overlay.innerGlow,      1, 0.3, 2, 2)
-    CreateScaleAnim(overlay.animIn, overlay.innerGlowOver,  1, 0.3, 2, 2)
-    CreateAlphaAnim(overlay.animIn, overlay.innerGlowOver,  1, 0.3, 1, 0)
-    CreateScaleAnim(overlay.animIn, overlay.outerGlow,      1, 0.3, 0.5, 0.5)
-    CreateScaleAnim(overlay.animIn, overlay.outerGlowOver,  1, 0.3, 0.5, 0.5)
-    CreateAlphaAnim(overlay.animIn, overlay.outerGlowOver,  1, 0.3, 1, 0)
-    CreateScaleAnim(overlay.animIn, overlay.spark,          1, 0.2, 2/3, 2/3, 0.2)
-    CreateAlphaAnim(overlay.animIn, overlay.spark,          1, 0.2, 1, 0, 0.2)
-    CreateAlphaAnim(overlay.animIn, overlay.innerGlow,      1, 0.2, 1, 0, 0.3)
-    CreateAlphaAnim(overlay.animIn, overlay.ants,           1, 0.2, 0, 1, 0.3)
-    overlay.animIn:SetScript("OnPlay", AnimIn_OnPlay)
-    overlay.animIn:SetScript("OnFinished", AnimIn_OnFinished)
+	-- setup antimations
+	overlay.animIn = overlay:CreateAnimationGroup()
+	CreateScaleAnim(overlay.animIn, overlay.spark, 1, 0.2, 1.5, 1.5)
+	CreateAlphaAnim(overlay.animIn, overlay.spark, 1, 0.2, 0, 1)
+	CreateScaleAnim(overlay.animIn, overlay.innerGlow, 1, 0.3, 2, 2)
+	CreateScaleAnim(overlay.animIn, overlay.innerGlowOver, 1, 0.3, 2, 2)
+	CreateAlphaAnim(overlay.animIn, overlay.innerGlowOver, 1, 0.3, 1, 0)
+	CreateScaleAnim(overlay.animIn, overlay.outerGlow, 1, 0.3, 0.5, 0.5)
+	CreateScaleAnim(overlay.animIn, overlay.outerGlowOver, 1, 0.3, 0.5, 0.5)
+	CreateAlphaAnim(overlay.animIn, overlay.outerGlowOver, 1, 0.3, 1, 0)
+	CreateScaleAnim(overlay.animIn, overlay.spark, 1, 0.2, 2 / 3, 2 / 3, 0.2)
+	CreateAlphaAnim(overlay.animIn, overlay.spark, 1, 0.2, 1, 0, 0.2)
+	CreateAlphaAnim(overlay.animIn, overlay.innerGlow, 1, 0.2, 1, 0, 0.3)
+	CreateAlphaAnim(overlay.animIn, overlay.ants, 1, 0.2, 0, 1, 0.3)
+	overlay.animIn:SetScript("OnPlay", AnimIn_OnPlay)
+	overlay.animIn:SetScript("OnFinished", AnimIn_OnFinished)
 
-    overlay.animOut = overlay:CreateAnimationGroup()
-    CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 1, 0.2, 0, 1)
-    CreateAlphaAnim(overlay.animOut, overlay.ants,          1, 0.2, 1, 0)
-    CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 2, 0.2, 1, 0)
-    CreateAlphaAnim(overlay.animOut, overlay.outerGlow,     2, 0.2, 1, 0)
-    overlay.animOut:SetScript("OnFinished", OverlayGlowAnimOutFinished)
+	overlay.animOut = overlay:CreateAnimationGroup()
+	CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 1, 0.2, 0, 1)
+	CreateAlphaAnim(overlay.animOut, overlay.ants, 1, 0.2, 1, 0)
+	CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 2, 0.2, 1, 0)
+	CreateAlphaAnim(overlay.animOut, overlay.outerGlow, 2, 0.2, 1, 0)
+	overlay.animOut:SetScript("OnFinished", OverlayGlowAnimOutFinished)
 
-    -- scripts
-    overlay:SetScript("OnUpdate", OverlayGlow_OnUpdate)
-    overlay:SetScript("OnHide", OverlayGlow_OnHide)
+	-- scripts
+	overlay:SetScript("OnUpdate", OverlayGlow_OnUpdate)
+	overlay:SetScript("OnHide", OverlayGlow_OnHide)
 
-    return overlay
+	return overlay
 end
 
 local function GetOverlayGlow()
-    local overlay = table.remove(glowUnusedOverlays)
-    if not overlay then
-        overlay = CreateOverlayGlow()
-    end
-    return overlay
+	local overlay = table.remove(glowUnusedOverlays)
+	if not overlay then
+		overlay = CreateOverlayGlow()
+	end
+	return overlay
 end
 
 function Wise:ShowOverlayGlow(frame, targetRegion)
-    targetRegion = targetRegion or frame
-    if frame.__WiseOverlay then
-        if frame.__WiseOverlay.animOut:IsPlaying() then
-            frame.__WiseOverlay.animOut:Stop()
-            frame.__WiseOverlay.animIn:Play()
-        end
-    else
-        local overlay = GetOverlayGlow()
-        local targetWidth, targetHeight = targetRegion:GetSize()
-        overlay:SetParent(frame)
-        overlay:SetFrameLevel(frame:GetFrameLevel() + 5)
-        overlay:ClearAllPoints()
-        --Make the height/width available before the next frame:
-        overlay:SetSize(targetWidth * 1.4, targetHeight * 1.4)
-        overlay:SetPoint("TOPLEFT", targetRegion, "TOPLEFT", -targetWidth * 0.2, targetHeight * 0.2)
-        overlay:SetPoint("BOTTOMRIGHT", targetRegion, "BOTTOMRIGHT", targetWidth * 0.2, -targetHeight * 0.2)
-        overlay.animIn:Play()
-        frame.__WiseOverlay = overlay
-    end
+	targetRegion = targetRegion or frame
+	if frame.__WiseOverlay then
+		if frame.__WiseOverlay.animOut:IsPlaying() then
+			frame.__WiseOverlay.animOut:Stop()
+			frame.__WiseOverlay.animIn:Play()
+		end
+	else
+		local overlay = GetOverlayGlow()
+		local targetWidth, targetHeight = targetRegion:GetSize()
+		overlay:SetParent(frame)
+		overlay:SetFrameLevel(frame:GetFrameLevel() + 5)
+		overlay:ClearAllPoints()
+		--Make the height/width available before the next frame:
+		overlay:SetSize(targetWidth * 1.4, targetHeight * 1.4)
+		overlay:SetPoint("TOPLEFT", targetRegion, "TOPLEFT", -targetWidth * 0.2, targetHeight * 0.2)
+		overlay:SetPoint("BOTTOMRIGHT", targetRegion, "BOTTOMRIGHT", targetWidth * 0.2, -targetHeight * 0.2)
+		overlay.animIn:Play()
+		frame.__WiseOverlay = overlay
+	end
 end
 
 function Wise:HideOverlayGlow(frame)
-    if frame.__WiseOverlay then
-        if frame.__WiseOverlay.animIn:IsPlaying() then
-            frame.__WiseOverlay.animIn:Stop()
-        end
-        if frame:IsVisible() then
-            frame.__WiseOverlay.animOut:Play()
-        else
-            OverlayGlowAnimOutFinished(frame.__WiseOverlay.animOut)
-        end
-    end
+	if frame.__WiseOverlay then
+		if frame.__WiseOverlay.animIn:IsPlaying() then
+			frame.__WiseOverlay.animIn:Stop()
+		end
+		if frame:IsVisible() then
+			frame.__WiseOverlay.animOut:Play()
+		else
+			OverlayGlowAnimOutFinished(frame.__WiseOverlay.animOut)
+		end
+	end
 end
 -- ============================================================================
 
@@ -901,113 +1055,121 @@ local HOVER_SCALE = 1.05
 local HOVER_GLOW_ALPHA = 0.5
 
 local function IsHiddenEmptySlot(btn)
-    local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
-    return btnActionType == "empty"
+	local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
+	local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
+	return btnActionType == "empty"
 end
 
 local function CreateHoverGlow(parent)
-    local glow = CreateFrame("Frame", nil, parent)
-    glow:SetFrameLevel(parent:GetFrameLevel() + 3)
-    glow:SetAllPoints(parent)
+	local glow = CreateFrame("Frame", nil, parent)
+	glow:SetFrameLevel(parent:GetFrameLevel() + 3)
+	glow:SetAllPoints(parent)
 
-    glow.inner = glow:CreateTexture(nil, "ARTWORK")
-    glow.inner:SetPoint("CENTER")
-    glow.inner:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    glow.inner:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
-    glow.inner:SetBlendMode("ADD")
-    glow.inner:SetAlpha(HOVER_GLOW_ALPHA)
+	glow.inner = glow:CreateTexture(nil, "ARTWORK")
+	glow.inner:SetPoint("CENTER")
+	glow.inner:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	glow.inner:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	glow.inner:SetBlendMode("ADD")
+	glow.inner:SetAlpha(HOVER_GLOW_ALPHA)
 
-    glow.outer = glow:CreateTexture(nil, "ARTWORK")
-    glow.outer:SetPoint("CENTER")
-    glow.outer:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-    glow.outer:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
-    glow.outer:SetBlendMode("ADD")
-    glow.outer:SetAlpha(HOVER_GLOW_ALPHA * 0.6)
+	glow.outer = glow:CreateTexture(nil, "ARTWORK")
+	glow.outer:SetPoint("CENTER")
+	glow.outer:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
+	glow.outer:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	glow.outer:SetBlendMode("ADD")
+	glow.outer:SetAlpha(HOVER_GLOW_ALPHA * 0.6)
 
-    glow:Hide()
-    return glow
+	glow:Hide()
+	return glow
 end
 
 local function ShowHoverGlow(btn)
-    if IsHiddenEmptySlot(btn) then return end
+	if IsHiddenEmptySlot(btn) then
+		return
+	end
 
-    if not btn._hoverGlow then
-        btn._hoverGlow = CreateHoverGlow(btn)
-    end
-    -- For list layouts, anchor glow to the icon only (not the wide text button)
-    local parentFrame = btn:GetParent()
-    local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
-    if isListLayout and btn.icon then
-        local iw, ih = btn.icon:GetSize()
-        btn._hoverGlow:ClearAllPoints()
-        btn._hoverGlow:SetPoint("CENTER", btn.icon, "CENTER")
-        btn._hoverGlow:SetSize(iw, ih)
-        btn._hoverGlow.inner:SetSize(iw * 1.2, ih * 1.2)
-        btn._hoverGlow.outer:SetSize(iw * 1.5, ih * 1.5)
-    else
-        local w, h = btn:GetSize()
-        btn._hoverGlow:ClearAllPoints()
-        btn._hoverGlow:SetAllPoints(btn)
-        btn._hoverGlow.inner:SetSize(w * 1.2, h * 1.2)
-        btn._hoverGlow.outer:SetSize(w * 1.5, h * 1.5)
-    end
-    btn._hoverGlow:Show()
+	if not btn._hoverGlow then
+		btn._hoverGlow = CreateHoverGlow(btn)
+	end
+	-- For list layouts, anchor glow to the icon only (not the wide text button)
+	local parentFrame = btn:GetParent()
+	local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+	if isListLayout and btn.icon then
+		local iw, ih = btn.icon:GetSize()
+		btn._hoverGlow:ClearAllPoints()
+		btn._hoverGlow:SetPoint("CENTER", btn.icon, "CENTER")
+		btn._hoverGlow:SetSize(iw, ih)
+		btn._hoverGlow.inner:SetSize(iw * 1.2, ih * 1.2)
+		btn._hoverGlow.outer:SetSize(iw * 1.5, ih * 1.5)
+	else
+		local w, h = btn:GetSize()
+		btn._hoverGlow:ClearAllPoints()
+		btn._hoverGlow:SetAllPoints(btn)
+		btn._hoverGlow.inner:SetSize(w * 1.2, h * 1.2)
+		btn._hoverGlow.outer:SetSize(w * 1.5, h * 1.5)
+	end
+	btn._hoverGlow:Show()
 end
 
 local function HideHoverGlow(btn)
-    if btn._hoverGlow then
-        btn._hoverGlow:Hide()
-    end
+	if btn._hoverGlow then
+		btn._hoverGlow:Hide()
+	end
 end
 
 local function ApplyHoverScale(btn, scale)
-    if IsHiddenEmptySlot(btn) then return end
+	if IsHiddenEmptySlot(btn) then
+		return
+	end
 
-    if btn.icon then
-        btn.icon:SetScale(scale)
-    end
-    if btn.hotkey then
-        btn.hotkey:SetScale(scale)
-    end
-    if btn.count then
-        btn.count:SetScale(scale)
-    end
+	if btn.icon then
+		btn.icon:SetScale(scale)
+	end
+	if btn.hotkey then
+		btn.hotkey:SetScale(scale)
+	end
+	if btn.count then
+		btn.count:SetScale(scale)
+	end
 end
 
 function Wise:AddHoverIndication(btn)
-    if not btn then return end
+	if not btn then
+		return
+	end
 
-    btn:HookScript("OnEnter", function(self)
-        if IsHiddenEmptySlot(self) then return end
+	btn:HookScript("OnEnter", function(self)
+		if IsHiddenEmptySlot(self) then
+			return
+		end
 
-        local parentFrame = self:GetParent()
-        local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
-        local isLineLayout = parentFrame and parentFrame.effectiveDisplayType == "line"
-        if not isListLayout then
-            -- Scale icon texture by 5% (not the button frame, to avoid hit-rect flicker)
-            ApplyHoverScale(self, HOVER_SCALE)
-        end
-        -- Raise FrameLevel on line layout to prevent slot overlap
-        if isLineLayout and not InCombatLockdown() then
-            self._savedFrameLevel = self:GetFrameLevel()
-            self:SetFrameLevel(self:GetFrameLevel() + 5)
-        end
-        -- Show dim glow (overlay frame, not protected)
-        ShowHoverGlow(self)
-    end)
+		local parentFrame = self:GetParent()
+		local isListLayout = parentFrame and parentFrame.effectiveDisplayType == "list"
+		local isLineLayout = parentFrame and parentFrame.effectiveDisplayType == "line"
+		if not isListLayout then
+			-- Scale icon texture by 5% (not the button frame, to avoid hit-rect flicker)
+			ApplyHoverScale(self, HOVER_SCALE)
+		end
+		-- Raise FrameLevel on line layout to prevent slot overlap
+		if isLineLayout and not InCombatLockdown() then
+			self._savedFrameLevel = self:GetFrameLevel()
+			self:SetFrameLevel(self:GetFrameLevel() + 5)
+		end
+		-- Show dim glow (overlay frame, not protected)
+		ShowHoverGlow(self)
+	end)
 
-    btn:HookScript("OnLeave", function(self)
-        -- Reset icon scale
-        ApplyHoverScale(self, 1.0)
-        -- Restore FrameLevel on line layout
-        if self._savedFrameLevel and not InCombatLockdown() then
-            self:SetFrameLevel(self._savedFrameLevel)
-            self._savedFrameLevel = nil
-        end
-        -- Hide glow
-        HideHoverGlow(self)
-    end)
+	btn:HookScript("OnLeave", function(self)
+		-- Reset icon scale
+		ApplyHoverScale(self, 1.0)
+		-- Restore FrameLevel on line layout
+		if self._savedFrameLevel and not InCombatLockdown() then
+			self:SetFrameLevel(self._savedFrameLevel)
+			self._savedFrameLevel = nil
+		end
+		-- Hide glow
+		HideHoverGlow(self)
+	end)
 end
 
 -- ============================================================================
@@ -1020,16 +1182,21 @@ Wise.WiseStateDriver = WiseStateDriver
 WiseStateDriver:SetAttribute("frameCount", 0)
 
 -- Secure snippet: Toggle the state for a given group name, then update all frames.
-WiseStateDriver:SetAttribute("ToggleState", [[
+WiseStateDriver:SetAttribute(
+	"ToggleState",
+	[[
     local name = ...
     local current = self:GetAttribute("state_" .. name) or "inactive"
     local newState = (current == "active") and "inactive" or "active"
     self:SetAttribute("state_" .. name, newState)
     self:RunAttribute("UpdateAll")
-]])
+]]
+)
 
 -- Secure snippet: Iterate all registered frames and trigger their UpdateWiseState.
-WiseStateDriver:SetAttribute("UpdateAll", [[
+WiseStateDriver:SetAttribute(
+	"UpdateAll",
+	[[
     local count = self:GetAttribute("frameCount") or 0
     for i = 1, count do
         local frame = self:GetFrameRef("Group_" .. i)
@@ -1037,71 +1204,85 @@ WiseStateDriver:SetAttribute("UpdateAll", [[
             frame:RunAttribute("UpdateWiseState")
         end
     end
-]])
+]]
+)
 
 -- Secure snippet: Explicitly set state for a group (fixes desync issues)
-WiseStateDriver:SetAttribute("SetState", [[
+WiseStateDriver:SetAttribute(
+	"SetState",
+	[[
     local name, state = ...
     local current = self:GetAttribute("state_" .. name)
     if current ~= state then
         self:SetAttribute("state_" .. name, state)
         self:RunAttribute("UpdateAll")
     end
-]])
+]]
+)
 
 -- Secure snippet: Allow insecure code (Lua) to trigger SetState via attribute change
-WiseStateDriver:SetAttribute("_onattribute-wisesetstate", [[
+WiseStateDriver:SetAttribute(
+	"_onattribute-wisesetstate",
+	[[
     if not value then return end
     local name, state = strsplit(":", value)
     if name and state then
         self:RunAttribute("SetState", name, state)
     end
-]])
+]]
+)
 
 function Wise:CreateGroupFrame(name, instanceId)
-    local frameKey = instanceId or name
-    if Wise.frames[frameKey] then return Wise.frames[frameKey] end
-    
-    local uiName = "WiseGroup_" .. (instanceId and instanceId:gsub("[: ]", "_") or name)
-    local f = CreateFrame("Frame", uiName, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
-    f:SetSize(50, 50)
-    f:EnableMouse(false) -- Default to click-through (enabled only in Edit Mode)
-    
-    -- Proxy Anchor Pattern:
-    -- Create an insecure anchor frame that we can move freely (even in combat).
-    -- The Secure Group is anchored to this proxy.
-    -- This allows "spawn at mouse" logic to work in combat (mostly).
-    f.Anchor = CreateFrame("Frame", nil, UIParent)
-    f.Anchor:SetSize(1, 1)
-    f.Anchor:SetPoint("CENTER")
-    
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", f.Anchor, "CENTER") 
-    f.buttons = {}
-    
-    -- Visual anchor for Edit Mode
-    f.texture = f:CreateTexture(nil, "BACKGROUND")
-    f.texture:SetAllPoints()
-    f.texture:SetColorTexture(0, 0, 0, 0.5)
-    f.texture:Hide()
-    
-    -- Secure Toggle Button (Hidden)
-    -- Secure Toggle Button (Hidden but active)
-    -- Must be parented to UIParent (or similar) so it doesn't get hidden when 'f' is hidden by State Driver
-    local toggleBtn = CreateFrame("Button", "WiseGroupToggle_"..(instanceId and instanceId:gsub("[: ]", "_") or name), UIParent, "SecureActionButtonTemplate, SecureHandlerAttributeTemplate")
-    toggleBtn:RegisterForClicks("AnyDown", "AnyUp")
-    -- SecureHandlerAttributeTemplate provides SetFrameRef via SecureHandler_OnLoad mixin
-    
-    -- Debug Attribute Changes (insecure script, safe to print)
-    toggleBtn:SetScript("OnAttributeChanged", function(self, key, value)
-        -- Debug Attribute Changes (Cleaned up)
-    end)
-    
-    -- Keep small size to ensure pressAndHoldAction valid
-    toggleBtn:SetSize(2, 2)
-    toggleBtn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+	local frameKey = instanceId or name
+	if Wise.frames[frameKey] then
+		return Wise.frames[frameKey]
+	end
 
-    local gatekeeper = [[
+	local uiName = "WiseGroup_" .. (instanceId and instanceId:gsub("[: ]", "_") or name)
+	local f = CreateFrame("Frame", uiName, UIParent, "SecureHandlerStateTemplate, SecureHandlerShowHideTemplate")
+	f:SetSize(50, 50)
+	f:EnableMouse(false) -- Default to click-through (enabled only in Edit Mode)
+
+	-- Proxy Anchor Pattern:
+	-- Create an insecure anchor frame that we can move freely (even in combat).
+	-- The Secure Group is anchored to this proxy.
+	-- This allows "spawn at mouse" logic to work in combat (mostly).
+	f.Anchor = CreateFrame("Frame", nil, UIParent)
+	f.Anchor:SetSize(1, 1)
+	f.Anchor:SetPoint("CENTER")
+
+	f:ClearAllPoints()
+	f:SetPoint("CENTER", f.Anchor, "CENTER")
+	f.buttons = {}
+
+	-- Visual anchor for Edit Mode
+	f.texture = f:CreateTexture(nil, "BACKGROUND")
+	f.texture:SetAllPoints()
+	f.texture:SetColorTexture(0, 0, 0, 0.5)
+	f.texture:Hide()
+
+	-- Secure Toggle Button (Hidden)
+	-- Secure Toggle Button (Hidden but active)
+	-- Must be parented to UIParent (or similar) so it doesn't get hidden when 'f' is hidden by State Driver
+	local toggleBtn = CreateFrame(
+		"Button",
+		"WiseGroupToggle_" .. (instanceId and instanceId:gsub("[: ]", "_") or name),
+		UIParent,
+		"SecureActionButtonTemplate, SecureHandlerAttributeTemplate"
+	)
+	toggleBtn:RegisterForClicks("AnyDown", "AnyUp")
+	-- SecureHandlerAttributeTemplate provides SetFrameRef via SecureHandler_OnLoad mixin
+
+	-- Debug Attribute Changes (insecure script, safe to print)
+	toggleBtn:SetScript("OnAttributeChanged", function(self, key, value)
+		-- Debug Attribute Changes (Cleaned up)
+	end)
+
+	-- Keep small size to ensure pressAndHoldAction valid
+	toggleBtn:SetSize(2, 2)
+	toggleBtn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+
+	local gatekeeper = [[
         local editmode = self:GetAttribute("state-editmode") or "hide"
         local game = self:GetAttribute("state-game") or "hide"
         local manual = self:GetAttribute("state-manual") or "hide"
@@ -1139,16 +1320,18 @@ function Wise:CreateGroupFrame(name, instanceId)
              driver:RunAttribute("SetState", groupName, driverState)
         end
     ]]
-    f:SetAttribute("wiseGroupName", name)
-    f:SetAttribute("_onstate-game", gatekeeper)
-    f:SetAttribute("_onstate-manual", gatekeeper)
-    f:SetAttribute("_onstate-custom", gatekeeper)
-    f:SetAttribute("_onstate-wise-show", gatekeeper)
-    f:SetAttribute("_onstate-wise-hide", gatekeeper)
-    f:SetAttribute("_onstate-editmode", gatekeeper)
-    
-    -- Support for Nested Keybinds (Active only when shown)
-    f:SetAttribute("_onshow", [[
+	f:SetAttribute("wiseGroupName", name)
+	f:SetAttribute("_onstate-game", gatekeeper)
+	f:SetAttribute("_onstate-manual", gatekeeper)
+	f:SetAttribute("_onstate-custom", gatekeeper)
+	f:SetAttribute("_onstate-wise-show", gatekeeper)
+	f:SetAttribute("_onstate-wise-hide", gatekeeper)
+	f:SetAttribute("_onstate-editmode", gatekeeper)
+
+	-- Support for Nested Keybinds (Active only when shown)
+	f:SetAttribute(
+		"_onshow",
+		[[
         local nested = self:GetAttribute("nestedKeybinds")
         if nested then
             local max = self:GetAttribute("nested_max_keys") or 100
@@ -1166,15 +1349,19 @@ function Wise:CreateGroupFrame(name, instanceId)
                 end
             end
         end
-    ]])
-    
-    f:SetAttribute("_onhide", [[
-        self:ClearBindings()
-    ]])
+    ]]
+	)
 
-    -- Inline condition resolver for secure restricted environment (no 'function' keyword allowed).
-    -- _rv_ref must be set before this block runs; it sets _rv_t, _rv_s, _rv_i, _rv_m.
-    local RESOLVE_BLOCK = [[
+	f:SetAttribute(
+		"_onhide",
+		[[
+        self:ClearBindings()
+    ]]
+	)
+
+	-- Inline condition resolver for secure restricted environment (no 'function' keyword allowed).
+	-- _rv_ref must be set before this block runs; it sets _rv_t, _rv_s, _rv_i, _rv_m.
+	local RESOLVE_BLOCK = [[
         do
             local _rc = _rv_ref:GetAttribute("isa_count") or 0
             _rv_t = _rv_ref:GetAttribute("type")
@@ -1365,10 +1552,10 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
     ]]
 
-    -- Store RESOLVE_BLOCK on Wise table so UpdateGroupDisplay can reuse the same code
-    Wise.RESOLVE_BLOCK = RESOLVE_BLOCK
+	-- Store RESOLVE_BLOCK on Wise table so UpdateGroupDisplay can reuse the same code
+	Wise.RESOLVE_BLOCK = RESOLVE_BLOCK
 
-    local snippet = [[
+	local snippet = [[
         local f = self:GetFrameRef("group")
         local trigger = self:GetAttribute("trigger") or "release_mouseover"
         local layoutType = self:GetAttribute("layoutType") or "circle"
@@ -1655,315 +1842,347 @@ function Wise:CreateGroupFrame(name, instanceId)
         end
     ]]
 
-    -- Use PreClick so attributes are set BEFORE the action executes
-    SecureHandlerWrapScript(toggleBtn, "PreClick", toggleBtn, snippet)
-    toggleBtn:SetFrameRef("group", f)
-    toggleBtn:SetFrameRef("WiseStateDriver", WiseStateDriver)
-    toggleBtn:SetAttribute("groupName", name)
+	-- Use PreClick so attributes are set BEFORE the action executes
+	SecureHandlerWrapScript(toggleBtn, "PreClick", toggleBtn, snippet)
+	toggleBtn:SetFrameRef("group", f)
+	toggleBtn:SetFrameRef("WiseStateDriver", WiseStateDriver)
+	toggleBtn:SetAttribute("groupName", name)
 
-    -- Error suppression: check ANY button in this group for isa_suppress before the action fires.
-    -- For keybind presses on button layouts, hoveredButton is nil, so we must check all group buttons.
-    toggleBtn:HookScript("PreClick", function(self, mouseButton, isDown)
-        local groupName = self:GetAttribute("groupName")
-        if groupName and Wise.frames[groupName] then
-            for _, btn in ipairs(Wise.frames[groupName].buttons) do
-                if btn:GetAttribute("isa_suppress") == 1 then
-                    Wise:BeginErrorSuppression()
-                    return
-                end
-            end
-        end
-        -- Debug: log resolved action after secure PreClick (/wise resolve)
-        if Wise.debugResolve then
-            local t = self:GetAttribute("type") or "nil"
-            local s = self:GetAttribute("spell") or ""
-            local m = self:GetAttribute("macrotext") or ""
-            local hovered = self:GetAttribute("hoveredButton") or "none"
-            local preview = m ~= "" and m:sub(1, 80):gsub("\n", "\\n") or s
-            print(string.format("|cffFFD700[Wise Resolve]|r toggle=%s down=%s hovered=%s type=%s → %s",
-                self:GetName() or "?", tostring(isDown), hovered, t, tostring(preview)))
-            self._resolveTime = debugprofilestop()
-        end
-    end)
-    toggleBtn:HookScript("PostClick", function(self)
-        if Wise.debugResolve and self._resolveTime then
-            local elapsed = debugprofilestop() - self._resolveTime
-            print(string.format("|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r", self:GetName() or "?", elapsed))
-            self._resolveTime = nil
-        end
-    end)
+	-- Error suppression: check ANY button in this group for isa_suppress before the action fires.
+	-- For keybind presses on button layouts, hoveredButton is nil, so we must check all group buttons.
+	toggleBtn:HookScript("PreClick", function(self, mouseButton, isDown)
+		local groupName = self:GetAttribute("groupName")
+		if groupName and Wise.frames[groupName] then
+			for _, btn in ipairs(Wise.frames[groupName].buttons) do
+				if btn:GetAttribute("isa_suppress") == 1 then
+					Wise:BeginErrorSuppression()
+					return
+				end
+			end
+		end
+		-- Debug: log resolved action after secure PreClick (/wise resolve)
+		if Wise.debugResolve then
+			local t = self:GetAttribute("type") or "nil"
+			local s = self:GetAttribute("spell") or ""
+			local m = self:GetAttribute("macrotext") or ""
+			local hovered = self:GetAttribute("hoveredButton") or "none"
+			local preview = m ~= "" and m:sub(1, 80):gsub("\n", "\\n") or s
+			print(
+				string.format(
+					"|cffFFD700[Wise Resolve]|r toggle=%s down=%s hovered=%s type=%s → %s",
+					self:GetName() or "?",
+					tostring(isDown),
+					hovered,
+					t,
+					tostring(preview)
+				)
+			)
+			self._resolveTime = debugprofilestop()
+		end
+	end)
+	toggleBtn:HookScript("PostClick", function(self)
+		if Wise.debugResolve and self._resolveTime then
+			local elapsed = debugprofilestop() - self._resolveTime
+			print(
+				string.format(
+					"|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r",
+					self:GetName() or "?",
+					elapsed
+				)
+			)
+			self._resolveTime = nil
+		end
+	end)
 
-    f.toggleBtn = toggleBtn
-    f.groupName = name  -- Store for animation lookup
-    f.isClosing = false -- Flag to track closing animation in progress
-    
+	f.toggleBtn = toggleBtn
+	f.groupName = name -- Store for animation lookup
+	f.isClosing = false -- Flag to track closing animation in progress
 
-    
-    -- OnUpdate for continuous mouse following (when in mouse anchor mode)
-    local function MouseFollowOnUpdate(self)
-        if self.mouseAnchorLocked then return end -- Locked in place on keydown (for hold/toggle modes)
-        
-        local group = WiseDB.groups[self.groupName]
-        if not group or group.anchorMode ~= "mouse" then return end
-        
-        local x, y = GetCursorPosition()
-        local offsetX = group.mouseOffsetX or 0
-        local offsetY = group.mouseOffsetY or 0
-        
-        -- Position frame at cursor using BOTTOMLEFT (raw pixel coords)
-        if not InCombatLockdown() then
-            self:ClearAllPoints()
-            self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x + offsetX, y + offsetY)
-        end
-    end
-    
-    -- Module 2: Blocker Strategy
-    -- Prevent "Invisible Walls" by enabling mouse only when shown.
-    f:SetScript("OnShow", function(self)
-        if self.isClosing then
-            -- Safety: if isClosing is stuck (e.g. WoW forced hide during close animation),
-            -- reset it so the frame can re-show properly
-            if not self._closingAnimActive then
-                self.isClosing = false
-            else
-                return
-            end
-        end
+	-- OnUpdate for continuous mouse following (when in mouse anchor mode)
+	local function MouseFollowOnUpdate(self)
+		if self.mouseAnchorLocked then
+			return
+		end -- Locked in place on keydown (for hold/toggle modes)
 
-        -- Stop any lingering animations from a previous show/hide cycle
-        Wise:StopSlideAnimations(self)
+		local group = WiseDB.groups[self.groupName]
+		if not group or group.anchorMode ~= "mouse" then
+			return
+		end
 
-        local group = WiseDB.groups[self.groupName]
-        
-        local isNestedInstance = self.parentInstanceId and not (group and group.isWiser)
+		local x, y = GetCursorPosition()
+		local offsetX = group.mouseOffsetX or 0
+		local offsetY = group.mouseOffsetY or 0
 
-        if isNestedInstance then
-            -- Nested child: always position relative to parent button,
-            -- regardless of the child group's own anchorMode setting.
-            Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
+		-- Position frame at cursor using BOTTOMLEFT (raw pixel coords)
+		if not InCombatLockdown() then
+			self:ClearAllPoints()
+			self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x + offsetX, y + offsetY)
+		end
+	end
 
-            -- Auto-close on leave: start monitoring mouse proximity
-            Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
-        elseif group and group.anchorMode == "mouse" then
-            -- Standalone mouse-anchor mode: position at cursor
-            local cursorX, cursorY = GetCursorPosition()
-            local uiScale = UIParent:GetScale()
-            local frameScale = self:GetScale()
+	-- Module 2: Blocker Strategy
+	-- Prevent "Invisible Walls" by enabling mouse only when shown.
+	f:SetScript("OnShow", function(self)
+		if self.isClosing then
+			-- Safety: if isClosing is stuck (e.g. WoW forced hide during close animation),
+			-- reset it so the frame can re-show properly
+			if not self._closingAnimActive then
+				self.isClosing = false
+			else
+				return
+			end
+		end
 
-            local correctedX = (cursorX / uiScale) / frameScale
-            local correctedY = (cursorY / uiScale) / frameScale
-            local offsetX = (group.mouseOffsetX or 0) / frameScale
-            local offsetY = (group.mouseOffsetY or 0) / frameScale
+		-- Stop any lingering animations from a previous show/hide cycle
+		Wise:StopSlideAnimations(self)
 
-            if self.Anchor and not InCombatLockdown() then
-                self.Anchor:ClearAllPoints()
-                self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
-            end
+		local group = WiseDB.groups[self.groupName]
 
-            if not InCombatLockdown() then
-                 self:ClearAllPoints()
-                 self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
-            end
+		local isNestedInstance = self.parentInstanceId and not (group and group.isWiser)
 
-            local layoutType = group.type or "circle"
-            local mode = group.interaction or "toggle"
-            if (layoutType == "button" and mode == "press_visible") or (group.visibility == "always" or group.visibility == "combat") then
-                self.mouseAnchorLocked = false
-            else
-                self.mouseAnchorLocked = true
-            end
-        end
+		if isNestedInstance then
+			-- Nested child: always position relative to parent button,
+			-- regardless of the child group's own anchorMode setting.
+			Wise:PositionNestedChild(self, self.instanceId, self.parentInstanceId)
 
-        -- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
-        if InCombatLockdown() then return end
+			-- Auto-close on leave: start monitoring mouse proximity
+			Wise:StartNestedCloseOnLeave(self, self.groupName, self.parentInstanceId)
+		elseif group and group.anchorMode == "mouse" then
+			-- Standalone mouse-anchor mode: position at cursor
+			local cursorX, cursorY = GetCursorPosition()
+			local uiScale = UIParent:GetScale()
+			local frameScale = self:GetScale()
 
-        -- Rebuild group display on show so dynamic slots (extrabutton, zoneability, etc.)
-        -- reflect current availability. Visibility drivers may show the frame after conditions
-        -- change (e.g. [extrabar] becomes true), but UpdateGroupDisplay hasn't run since then.
-        if group and group.dynamic and not self._rebuildingOnShow then
-            self._rebuildingOnShow = true
-            Wise:UpdateGroupDisplay(self.groupName)
-            self._rebuildingOnShow = nil
-        end
+			local correctedX = (cursorX / uiScale) / frameScale
+			local correctedY = (cursorY / uiScale) / frameScale
+			local offsetX = (group.mouseOffsetX or 0) / frameScale
+			local offsetY = (group.mouseOffsetY or 0) / frameScale
 
-        -- Refresh usability and active state for all buttons on show
-        -- (e.g. addon magic slots need to reflect current addon load state)
-        if self.buttons then
-            for _, btn in ipairs(self.buttons) do
-                Wise:UpdateButtonUsability(btn)
-                Wise:UpdateButtonState(btn)
-            end
-        end
+			if self.Anchor and not InCombatLockdown() then
+				self.Anchor:ClearAllPoints()
+				self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
+			end
 
-        local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
-        if shouldAnimate then
-            -- Animate: slide buttons from center to target
-            -- Nested children inherit animation setting from parent
-            Wise:PlaySlideAnimation(self, true)
-        else
-            -- No animation: place buttons directly at target positions
-            for _, btn in ipairs(self.buttons or {}) do
-                if btn:IsShown() then
-                    btn:ClearAllPoints()
-                    btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
-                end
-            end
+			if not InCombatLockdown() then
+				self:ClearAllPoints()
+				self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
+			end
 
-        end
-        
-        -- Fix for button selection on spawn (OnEnter doesn't fire if appearing under mouse)
-        -- Skip if animating, as movement will naturally trigger OnEnter
-        if not InCombatLockdown() and self.buttons and not shouldAnimate then
-             local found = nil
-             for _, btn in ipairs(self.buttons) do
-                 if btn:IsShown() and btn:IsMouseOver() then
-                     found = btn:GetName()
-                     break
-                 end
-             end
-             -- Force update the attribute
-             if self.toggleBtn then
-                 self.toggleBtn:SetAttribute("hoveredButton", found) 
-             end
-        end
-    end)
-    
-    f:SetScript("OnHide", function(self)
-        -- Reset hover indication on all buttons (skip in combat — protected frames)
-        if not InCombatLockdown() then
-            for _, btn in ipairs(self.buttons or {}) do
-                btn:SetScale(1.0)
-                HideHoverGlow(btn)
-            end
-        end
+			local layoutType = group.type or "circle"
+			local mode = group.interaction or "toggle"
+			if
+				(layoutType == "button" and mode == "press_visible")
+				or (group.visibility == "always" or group.visibility == "combat")
+			then
+				self.mouseAnchorLocked = false
+			else
+				self.mouseAnchorLocked = true
+			end
+		end
 
-        -- Cancel nested close-on-leave ticker
-        if self.nestedCloseTicker then
-            self.nestedCloseTicker:Cancel()
-            self.nestedCloseTicker = nil
-        end
+		-- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
+		if InCombatLockdown() then
+			return
+		end
 
-        -- Cascade close child interfaces ONLY if this is a deliberate close
-        -- (not a held-mode release, which may have just opened a child via nesting)
-        local group2 = WiseDB.groups[self.groupName]
-        local isHeld = group2 and group2.visibilitySettings and group2.visibilitySettings.held
-        local customShow2 = group2 and group2.visibilitySettings and group2.visibilitySettings.customShow or ""
-        local autoHeld2 = customShow2:find("wise:", 1, true)
-        if not isHeld and not autoHeld2 then
-            Wise:CloseChildInterfaces(self.groupName)
-        end
+		-- Rebuild group display on show so dynamic slots (extrabutton, zoneability, etc.)
+		-- reflect current availability. Visibility drivers may show the frame after conditions
+		-- change (e.g. [extrabar] becomes true), but UpdateGroupDisplay hasn't run since then.
+		if group and group.dynamic and not self._rebuildingOnShow then
+			self._rebuildingOnShow = true
+			Wise:UpdateGroupDisplay(self.groupName)
+			self._rebuildingOnShow = nil
+		end
 
-        local group = WiseDB.groups[self.groupName]
+		-- Refresh usability and active state for all buttons on show
+		-- (e.g. addon magic slots need to reflect current addon load state)
+		if self.buttons then
+			for _, btn in ipairs(self.buttons) do
+				Wise:UpdateButtonUsability(btn)
+				Wise:UpdateButtonState(btn)
+			end
+		end
 
-        -- For mouse anchor mode: unlock and keep tracking while hidden
-        -- This allows the frame to appear at cursor position on next show
-        if group and group.anchorMode == "mouse" then
-            self.mouseAnchorLocked = false
-            -- Keep OnUpdate running to track mouse position while hidden
-        else
-            self:SetScript("OnUpdate", nil)
-        end
+		local shouldAnimate = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+		if shouldAnimate then
+			-- Animate: slide buttons from center to target
+			-- Nested children inherit animation setting from parent
+			Wise:PlaySlideAnimation(self, true)
+		else
+			-- No animation: place buttons directly at target positions
+			for _, btn in ipairs(self.buttons or {}) do
+				if btn:IsShown() then
+					btn:ClearAllPoints()
+					btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
+				end
+			end
+		end
 
-        if self.isClosing then
-            -- This is the final hide after animation completed - allow it and reset flag
-            self.isClosing = false
-            self._closingAnimActive = false
-            return
-        end
+		-- Fix for button selection on spawn (OnEnter doesn't fire if appearing under mouse)
+		-- Skip if animating, as movement will naturally trigger OnEnter
+		if not InCombatLockdown() and self.buttons and not shouldAnimate then
+			local found = nil
+			for _, btn in ipairs(self.buttons) do
+				if btn:IsShown() and btn:IsMouseOver() then
+					found = btn:GetName()
+					break
+				end
+			end
+			-- Force update the attribute
+			if self.toggleBtn then
+				self.toggleBtn:SetAttribute("hoveredButton", found)
+			end
+		end
+	end)
 
-        local group = WiseDB.groups[self.groupName]
-        local shouldAnimateClose = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
-        if shouldAnimateClose and not InCombatLockdown() then
-            -- Detect WoW-forced UI hide (quest dialogues, cutscenes, etc.)
-            -- UIParent is hidden during these events; fighting it with Show() causes
-            -- animation state corruption that leaves frames permanently invisible.
-            if not UIParent:IsShown() then
-                -- WoW forced the hide — stop any in-flight animations and reset buttons
-                Wise:StopSlideAnimations(self)
-                for _, btn in ipairs(self.buttons or {}) do
-                    if not InCombatLockdown() then
-                        btn:ClearAllPoints()
-                        btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
-                    end
-                end
-                self.isClosing = false
-                self._closingAnimActive = false
-                return
-            end
-            -- User-initiated hide: animate close, then truly hide
-            self.isClosing = true
-            self._closingAnimActive = true
-            self:Show()
-            Wise:PlaySlideAnimation(self, false, function()
-                self._closingAnimActive = false
-                -- isClosing stays true so the Hide() call below passes through OnHide
-                self:Hide()
-            end)
-        end
-    end)
-    
-    -- Mousewheel scroll support: cycle through buttons on scroll
-    f:EnableMouseWheel(true)
-    f:SetScript("OnMouseWheel", function(self, delta)
-        if not self.buttons or #self.buttons == 0 then return end
-        if not self.toggleBtn then return end
+	f:SetScript("OnHide", function(self)
+		-- Reset hover indication on all buttons (skip in combat — protected frames)
+		if not InCombatLockdown() then
+			for _, btn in ipairs(self.buttons or {}) do
+				btn:SetScale(1.0)
+				HideHoverGlow(btn)
+			end
+		end
 
-        -- Build list of visible button names
-        local visible = {}
-        for _, btn in ipairs(self.buttons) do
-            if btn:IsShown() then
-                table.insert(visible, btn)
-            end
-        end
-        if #visible == 0 then return end
+		-- Cancel nested close-on-leave ticker
+		if self.nestedCloseTicker then
+			self.nestedCloseTicker:Cancel()
+			self.nestedCloseTicker = nil
+		end
 
-        -- Find current hovered index
-        local currentName = self.toggleBtn:GetAttribute("hoveredButton")
-        local currentIdx = 0
-        for i, btn in ipairs(visible) do
-            if btn:GetName() == currentName then
-                currentIdx = i
-                break
-            end
-        end
+		-- Cascade close child interfaces ONLY if this is a deliberate close
+		-- (not a held-mode release, which may have just opened a child via nesting)
+		local group2 = WiseDB.groups[self.groupName]
+		local isHeld = group2 and group2.visibilitySettings and group2.visibilitySettings.held
+		local customShow2 = group2 and group2.visibilitySettings and group2.visibilitySettings.customShow or ""
+		local autoHeld2 = customShow2:find("wise:", 1, true)
+		if not isHeld and not autoHeld2 then
+			Wise:CloseChildInterfaces(self.groupName)
+		end
 
-        -- Advance by scroll direction (delta > 0 = up = previous, delta < 0 = down = next)
-        local newIdx
-        if currentIdx == 0 then
-            newIdx = (delta > 0) and 1 or #visible
-        else
-            newIdx = currentIdx - delta
-            if newIdx < 1 then newIdx = #visible end
-            if newIdx > #visible then newIdx = 1 end
-        end
+		local group = WiseDB.groups[self.groupName]
 
-        local newBtn = visible[newIdx]
-        if newBtn and not InCombatLockdown() then
-            self.toggleBtn:SetAttribute("hoveredButton", newBtn:GetName())
-            -- Update hover indication visuals
-            for _, btn in ipairs(visible) do
-                if btn:GetName() == newBtn:GetName() then
-                    ApplyHoverScale(btn, HOVER_SCALE)
-                    ShowHoverGlow(btn)
-                else
-                    ApplyHoverScale(btn, 1.0)
-                    HideHoverGlow(btn)
-                end
-            end
-        end
-    end)
+		-- For mouse anchor mode: unlock and keep tracking while hidden
+		-- This allows the frame to appear at cursor position on next show
+		if group and group.anchorMode == "mouse" then
+			self.mouseAnchorLocked = false
+			-- Keep OnUpdate running to track mouse position while hidden
+		else
+			self:SetScript("OnUpdate", nil)
+		end
 
-    -- Register with WiseStateDriver for cross-interface visibility
-    local driver = WiseStateDriver
-    f:SetFrameRef("WiseStateDriver", driver)
+		if self.isClosing then
+			-- This is the final hide after animation completed - allow it and reset flag
+			self.isClosing = false
+			self._closingAnimActive = false
+			return
+		end
 
-    local count = (driver:GetAttribute("frameCount") or 0) + 1
-    driver:SetAttribute("frameCount", count)
-    driver:SetFrameRef("Group_" .. count, f)
-    f:SetAttribute("wiseDriverIndex", count)
+		local group = WiseDB.groups[self.groupName]
+		local shouldAnimateClose = (group and group.animation) or (self.parentInstanceId and self.parentAnimation)
+		if shouldAnimateClose and not InCombatLockdown() then
+			-- Detect WoW-forced UI hide (quest dialogues, cutscenes, etc.)
+			-- UIParent is hidden during these events; fighting it with Show() causes
+			-- animation state corruption that leaves frames permanently invisible.
+			if not UIParent:IsShown() then
+				-- WoW forced the hide — stop any in-flight animations and reset buttons
+				Wise:StopSlideAnimations(self)
+				for _, btn in ipairs(self.buttons or {}) do
+					if not InCombatLockdown() then
+						btn:ClearAllPoints()
+						btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
+					end
+				end
+				self.isClosing = false
+				self._closingAnimActive = false
+				return
+			end
+			-- User-initiated hide: animate close, then truly hide
+			self.isClosing = true
+			self._closingAnimActive = true
+			self:Show()
+			Wise:PlaySlideAnimation(self, false, function()
+				self._closingAnimActive = false
+				-- isClosing stays true so the Hide() call below passes through OnHide
+				self:Hide()
+			end)
+		end
+	end)
 
-    -- Secure snippet on each frame: evaluate [wise:] dependencies and set state-wise-show / state-wise-hide
-    f:SetAttribute("UpdateWiseState", [[
+	-- Mousewheel scroll support: cycle through buttons on scroll
+	f:EnableMouseWheel(true)
+	f:SetScript("OnMouseWheel", function(self, delta)
+		if not self.buttons or #self.buttons == 0 then
+			return
+		end
+		if not self.toggleBtn then
+			return
+		end
+
+		-- Build list of visible button names
+		local visible = {}
+		for _, btn in ipairs(self.buttons) do
+			if btn:IsShown() then
+				table.insert(visible, btn)
+			end
+		end
+		if #visible == 0 then
+			return
+		end
+
+		-- Find current hovered index
+		local currentName = self.toggleBtn:GetAttribute("hoveredButton")
+		local currentIdx = 0
+		for i, btn in ipairs(visible) do
+			if btn:GetName() == currentName then
+				currentIdx = i
+				break
+			end
+		end
+
+		-- Advance by scroll direction (delta > 0 = up = previous, delta < 0 = down = next)
+		local newIdx
+		if currentIdx == 0 then
+			newIdx = (delta > 0) and 1 or #visible
+		else
+			newIdx = currentIdx - delta
+			if newIdx < 1 then
+				newIdx = #visible
+			end
+			if newIdx > #visible then
+				newIdx = 1
+			end
+		end
+
+		local newBtn = visible[newIdx]
+		if newBtn and not InCombatLockdown() then
+			self.toggleBtn:SetAttribute("hoveredButton", newBtn:GetName())
+			-- Update hover indication visuals
+			for _, btn in ipairs(visible) do
+				if btn:GetName() == newBtn:GetName() then
+					ApplyHoverScale(btn, HOVER_SCALE)
+					ShowHoverGlow(btn)
+				else
+					ApplyHoverScale(btn, 1.0)
+					HideHoverGlow(btn)
+				end
+			end
+		end
+	end)
+
+	-- Register with WiseStateDriver for cross-interface visibility
+	local driver = WiseStateDriver
+	f:SetFrameRef("WiseStateDriver", driver)
+
+	local count = (driver:GetAttribute("frameCount") or 0) + 1
+	driver:SetAttribute("frameCount", count)
+	driver:SetFrameRef("Group_" .. count, f)
+	f:SetAttribute("wiseDriverIndex", count)
+
+	-- Secure snippet on each frame: evaluate [wise:] dependencies and set state-wise-show / state-wise-hide
+	f:SetAttribute(
+		"UpdateWiseState",
+		[[
         local driver = self:GetFrameRef("WiseStateDriver")
         if not driver then return end
 
@@ -1988,967 +2207,1091 @@ function Wise:CreateGroupFrame(name, instanceId)
 
         self:SetAttribute("state-wise-show", shouldShow and "show" or "hide")
         self:SetAttribute("state-wise-hide", shouldHide and "show" or "hide")
-    ]])
+    ]]
+	)
 
-    Wise.frames[frameKey] = f
-    return f
+	Wise.frames[frameKey] = f
+	return f
 end
-
 
 -- Module 1: The Visibility Engine (Helper)
 function Wise:BuildVisibilityDriver(f, group)
-    local showStr = group.visibilitySettings.customShow or ""
-    local hideStr = group.visibilitySettings.customHide or ""
-    local name = f:GetAttribute("wiseGroupName") or ""
+	local showStr = group.visibilitySettings.customShow or ""
+	local hideStr = group.visibilitySettings.customHide or ""
+	local name = f:GetAttribute("wiseGroupName") or ""
 
-    -- Parse [wise:name] dependencies from show/hide strings
-    -- Store as attributes so the secure UpdateWiseState snippet can evaluate them
-    -- Clear old dependency attributes first (handles reconfiguration)
-    local oldDeps = f:GetAttribute("wise_dependencies") or ""
-    for oldDep in oldDeps:gmatch("[^,]+") do
-        f:SetAttribute("wise_dep_show_" .. oldDep, nil)
-        f:SetAttribute("wise_dep_hide_" .. oldDep, nil)
-    end
+	-- Parse [wise:name] dependencies from show/hide strings
+	-- Store as attributes so the secure UpdateWiseState snippet can evaluate them
+	-- Clear old dependency attributes first (handles reconfiguration)
+	local oldDeps = f:GetAttribute("wise_dependencies") or ""
+	for oldDep in oldDeps:gmatch("[^,]+") do
+		f:SetAttribute("wise_dep_show_" .. oldDep, nil)
+		f:SetAttribute("wise_dep_hide_" .. oldDep, nil)
+	end
 
-    local deps = {}
-    local depSet = {}
+	local deps = {}
+	local depSet = {}
 
-    for dep in showStr:gmatch("%[%s*wise:([^%],]+)") do
-        dep = dep:match("^%s*(.-)%s*$") -- trim
-        if string.lower(dep) ~= string.lower(name) then
-            if not depSet[dep] then
-                depSet[dep] = true
-                table.insert(deps, dep)
-            end
-            f:SetAttribute("wise_dep_show_" .. dep, true)
-        end
-    end
+	for dep in showStr:gmatch("%[%s*wise:([^%],]+)") do
+		dep = dep:match("^%s*(.-)%s*$") -- trim
+		if string.lower(dep) ~= string.lower(name) then
+			if not depSet[dep] then
+				depSet[dep] = true
+				table.insert(deps, dep)
+			end
+			f:SetAttribute("wise_dep_show_" .. dep, true)
+		end
+	end
 
-    for dep in hideStr:gmatch("%[%s*wise:([^%],]+)") do
-        dep = dep:match("^%s*(.-)%s*$") -- trim
-        if string.lower(dep) ~= string.lower(name) then
-            if not depSet[dep] then
-                depSet[dep] = true
-                table.insert(deps, dep)
-            end
-            f:SetAttribute("wise_dep_hide_" .. dep, true)
-        end
-    end
+	for dep in hideStr:gmatch("%[%s*wise:([^%],]+)") do
+		dep = dep:match("^%s*(.-)%s*$") -- trim
+		if string.lower(dep) ~= string.lower(name) then
+			if not depSet[dep] then
+				depSet[dep] = true
+				table.insert(deps, dep)
+			end
+			f:SetAttribute("wise_dep_hide_" .. dep, true)
+		end
+	end
 
-    f:SetAttribute("wise_dependencies", table.concat(deps, ","))
+	f:SetAttribute("wise_dependencies", table.concat(deps, ","))
 
-    -- Helper: replacements (convert [always] to [])
-    -- [always] is user-friendly for "true". In macro syntax, [] is true.
-    -- [wise:name] is a placeholder for Manual State. We strip it from Driver (so Driver=Hide), letting Manual State control visibility.
-    local function Sanitize(str)
-        if not str then return "" end
-        
-        -- 1. Remove solitary [wise:...] blocks entirely FIRST
-        -- Handle separators to avoid parsing errors
-        -- Replace [wise:...] with nothing, then clean up semicolons
-        str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "") 
-        
-        -- Clean up semicolons (e.g. "; ;" -> ";")
-        str = str:gsub(";", " ; ") -- padding
-        str = str:gsub("%s+", " ") -- normalize spaces
-        str = str:gsub("%s*;%s*", "; ") -- normalize semicolons
-        str = str:gsub("^;%s*", "") -- remove leading
-        str = str:gsub(";%s*$", "") -- remove trailing
-        str = str:gsub("; ;", ";") -- remove doubles
-        
-        -- 2. Strip wise:name content inside mixed brackets (e.g. [mod:shift, wise:dev])
-        -- (This handles "AND" logic inside single brackets)
-        str = str:gsub("wise:[^,^%]]+,?", "") -- Remove "wise:name," or "wise:name"
-        str = str:gsub(",?%s*wise:[^,^%]]+", "") -- Remove ", wise:name"
-        
-        -- 3. Convert [always] to []
-        str = str:gsub("%[always%]", "[]") 
-        str = str:gsub("%[always, ", "[") 
-        
-        -- Final Clean
-        str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-        
-        return str
-    end
-    
-    local function SanitizeCustom(str)
-         if not str then return "" end
-         -- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
-         -- so the secure driver always returns false for it (Lua handles it via state-custom).
-         str = str:gsub("%[([^%]]+)%]", function(inner)
-             for token in inner:gmatch("[^,]+") do
-                 token = token:match("^%s*(.-)%s*$") -- trim
-                 local base = token:match("^no?(.+)") or token
-                 base = base:match("^([^:]+)") or base
-                 if CUSTOM_VIS_CONDITIONALS[base:lower()] then
-                     return "[actionbar:99]"
-                 end
-             end
-             return "[" .. inner .. "]"
-         end)
-         return str
-    end
-    
-    showStr = Sanitize(showStr)
-    hideStr = Sanitize(hideStr)
-    
-    showStr = Wise:SanitizeMacroCondition(showStr)
-    hideStr = Wise:SanitizeMacroCondition(hideStr)
-    
-    showStr = SanitizeCustom(showStr)
-    hideStr = SanitizeCustom(hideStr)
+	-- Helper: replacements (convert [always] to [])
+	-- [always] is user-friendly for "true". In macro syntax, [] is true.
+	-- [wise:name] is a placeholder for Manual State. We strip it from Driver (so Driver=Hide), letting Manual State control visibility.
+	local function Sanitize(str)
+		if not str then
+			return ""
+		end
 
-    -- Apply defaults AFTER sanitization (wise: tags and custom conditionals are now stripped).
-    -- If both strings are effectively empty, set showStr based on interaction mode / base visibility.
-    -- Hold/Toggle modes always default to hidden (state-manual controls visibility via hotkey).
-    -- Only press_visible mode respects base visibility for the state-game driver.
-    if showStr == "" and hideStr == "" then
-        local mode = group.interaction or "toggle"
-        local base = f.effectiveBaseVisibility or group.visibilitySettings.baseVisibility
-        local isHeldOrToggle = (group.visibilitySettings.held or (f.effectiveToggleOnPress ~= nil and f.effectiveToggleOnPress or group.visibilitySettings.toggleOnPress))
+		-- 1. Remove solitary [wise:...] blocks entirely FIRST
+		-- Handle separators to avoid parsing errors
+		-- Replace [wise:...] with nothing, then clean up semicolons
+		str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "")
 
-        if isHeldOrToggle then
-            -- Hold/Toggle: driver stays empty → defaults to "hide"
-            -- Visibility is controlled by state-manual via hotkey
-        elseif mode == "press_visible" then
-            if base == "COMBAT_ONLY" then
-                showStr = "[combat]"
-            elseif base == "NO_COMBAT_ONLY" then
-                showStr = "[nocombat]"
-            else
-                showStr = "[]"
-            end
-        end
-    end
+		-- Clean up semicolons (e.g. "; ;" -> ";")
+		str = str:gsub(";", " ; ") -- padding
+		str = str:gsub("%s+", " ") -- normalize spaces
+		str = str:gsub("%s*;%s*", "; ") -- normalize semicolons
+		str = str:gsub("^;%s*", "") -- remove leading
+		str = str:gsub(";%s*$", "") -- remove trailing
+		str = str:gsub("; ;", ";") -- remove doubles
 
-    -- Construct Driver
-    -- Logic: Hide conditions take precedence? Standard convention is typically Deny > Allow?
-    -- If user has "Hide in Combat" and "Show on Shift". If I am in Combat+Shift:
-    -- If Hide First: [combat] hide; [mod:shift] show; ... -> Hides.
-    -- If Show First: [mod:shift] show; [combat] hide; ... -> Shows.
-    -- Given the UI separates them, we need a deterministic order. 
-    -- Let's do HIDE then SHOW.
-    
-    local parts = {}
-    
-    if hideStr ~= "" then
-        table.insert(parts, hideStr .. " hide")
-    end
-    
-    -- Only add 'show' if we have a valid condition string (e.g. [mod:shift]) or explicit [always] ([])
-    -- If Sanitize returned "", it means we stripped [wise:name] and had nothing left.
-    -- In that case, we want the driver to default to HIDE (waiting for manual).
-    if showStr ~= "" then
-        table.insert(parts, showStr .. " show")
-    end
-    
-    -- Default fallback if nothing matches
-    table.insert(parts, "hide")
-    
-    local driverString = table.concat(parts, "; ")
-    -- Note: We don't need to force "; hide" at the end because we explicitly added "hide" to parts list
-    -- But just to be safe if table.concat does something weird with empty parts (it doesn't)
-    
-    RegisterStateDriver(f, "game", driverString)
-    return driverString
+		-- 2. Strip wise:name content inside mixed brackets (e.g. [mod:shift, wise:dev])
+		-- (This handles "AND" logic inside single brackets)
+		str = str:gsub("wise:[^,^%]]+,?", "") -- Remove "wise:name," or "wise:name"
+		str = str:gsub(",?%s*wise:[^,^%]]+", "") -- Remove ", wise:name"
+
+		-- 3. Convert [always] to []
+		str = str:gsub("%[always%]", "[]")
+		str = str:gsub("%[always, ", "[")
+
+		-- Final Clean
+		str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+
+		return str
+	end
+
+	local function SanitizeCustom(str)
+		if not str then
+			return ""
+		end
+		-- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
+		-- so the secure driver always returns false for it (Lua handles it via state-custom).
+		str = str:gsub("%[([^%]]+)%]", function(inner)
+			for token in inner:gmatch("[^,]+") do
+				token = token:match("^%s*(.-)%s*$") -- trim
+				local base = token:match("^no?(.+)") or token
+				base = base:match("^([^:]+)") or base
+				if CUSTOM_VIS_CONDITIONALS[base:lower()] then
+					return "[actionbar:99]"
+				end
+			end
+			return "[" .. inner .. "]"
+		end)
+		return str
+	end
+
+	showStr = Sanitize(showStr)
+	hideStr = Sanitize(hideStr)
+
+	showStr = Wise:SanitizeMacroCondition(showStr)
+	hideStr = Wise:SanitizeMacroCondition(hideStr)
+
+	showStr = SanitizeCustom(showStr)
+	hideStr = SanitizeCustom(hideStr)
+
+	-- Apply defaults AFTER sanitization (wise: tags and custom conditionals are now stripped).
+	-- If both strings are effectively empty, set showStr based on interaction mode / base visibility.
+	-- Hold/Toggle modes always default to hidden (state-manual controls visibility via hotkey).
+	-- Only press_visible mode respects base visibility for the state-game driver.
+	if showStr == "" and hideStr == "" then
+		local mode = group.interaction or "toggle"
+		local base = f.effectiveBaseVisibility or group.visibilitySettings.baseVisibility
+		local isHeldOrToggle = (
+			group.visibilitySettings.held
+			or (f.effectiveToggleOnPress ~= nil and f.effectiveToggleOnPress or group.visibilitySettings.toggleOnPress)
+		)
+
+		if isHeldOrToggle then
+			-- Hold/Toggle: driver stays empty → defaults to "hide"
+			-- Visibility is controlled by state-manual via hotkey
+		elseif mode == "press_visible" then
+			if base == "COMBAT_ONLY" then
+				showStr = "[combat]"
+			elseif base == "NO_COMBAT_ONLY" then
+				showStr = "[nocombat]"
+			else
+				showStr = "[]"
+			end
+		end
+	end
+
+	-- Construct Driver
+	-- Logic: Hide conditions take precedence? Standard convention is typically Deny > Allow?
+	-- If user has "Hide in Combat" and "Show on Shift". If I am in Combat+Shift:
+	-- If Hide First: [combat] hide; [mod:shift] show; ... -> Hides.
+	-- If Show First: [mod:shift] show; [combat] hide; ... -> Shows.
+	-- Given the UI separates them, we need a deterministic order.
+	-- Let's do HIDE then SHOW.
+
+	local parts = {}
+
+	if hideStr ~= "" then
+		table.insert(parts, hideStr .. " hide")
+	end
+
+	-- Only add 'show' if we have a valid condition string (e.g. [mod:shift]) or explicit [always] ([])
+	-- If Sanitize returned "", it means we stripped [wise:name] and had nothing left.
+	-- In that case, we want the driver to default to HIDE (waiting for manual).
+	if showStr ~= "" then
+		table.insert(parts, showStr .. " show")
+	end
+
+	-- Default fallback if nothing matches
+	table.insert(parts, "hide")
+
+	local driverString = table.concat(parts, "; ")
+	-- Note: We don't need to force "; hide" at the end because we explicitly added "hide" to parts list
+	-- But just to be safe if table.concat does something weird with empty parts (it doesn't)
+
+	RegisterStateDriver(f, "game", driverString)
+	return driverString
 end
 
 -- Helper: Compute secure attributes for a given action data table
 -- Returns secureType, secureAttr, secureValue
 function Wise:SanitizeMacroCondition(str)
-    if not str or str == "" then return str end
-    str = str:gsub("%[([^%]]+)%]", function(inner)
-        for token in inner:gmatch("[^,]+") do
-            token = token:match("^%s*(.-)%s*$")
-            local base, arg = token:match("^(.-):(.*)$")
-            if not base then base = token end
-            if base:lower() == "aml" then
-                local isActive = false
-                if WiseDB and WiseDB.addonMagicSlots then
-                    local slotName = (arg or ""):lower()
-                    for _, slot in ipairs(WiseDB.addonMagicSlots) do
-                        if slot.name and slot.name:lower() == slotName then
-                            isActive = true
-                            if slot.addons and #slot.addons > 0 then
-                                for _, a in ipairs(slot.addons) do
-                                    if not C_AddOns.IsAddOnLoaded(a) then
-                                        isActive = false
-                                        break
-                                    end
-                                end
-                            else
-                                isActive = false
-                            end
-                            break
-                        end
-                    end
-                end
-                
-                if not isActive then
-                    return "[actionbar:99]"
-                end
-            end
-        end
-        
-        local cleanInner = inner:gsub("%s*aml:[^,]+,?%s*", "")
-        cleanInner = cleanInner:gsub(",%s*$", "")
-        cleanInner = cleanInner:gsub("^%s*,", "")
-        cleanInner = cleanInner:gsub(",%s*,", ",")
-        
-        if cleanInner:match("^%s*$") then
-            return "[]"
-        end
-        return "[" .. cleanInner .. "]"
-    end)
-    return str
+	if not str or str == "" then
+		return str
+	end
+	str = str:gsub("%[([^%]]+)%]", function(inner)
+		for token in inner:gmatch("[^,]+") do
+			token = token:match("^%s*(.-)%s*$")
+			local base, arg = token:match("^(.-):(.*)$")
+			if not base then
+				base = token
+			end
+			if base:lower() == "aml" then
+				local isActive = false
+				if WiseDB and WiseDB.addonMagicSlots then
+					local slotName = (arg or ""):lower()
+					for _, slot in ipairs(WiseDB.addonMagicSlots) do
+						if slot.name and slot.name:lower() == slotName then
+							isActive = true
+							if slot.addons and #slot.addons > 0 then
+								for _, a in ipairs(slot.addons) do
+									if not C_AddOns.IsAddOnLoaded(a) then
+										isActive = false
+										break
+									end
+								end
+							else
+								isActive = false
+							end
+							break
+						end
+					end
+				end
+
+				if not isActive then
+					return "[actionbar:99]"
+				end
+			end
+		end
+
+		local cleanInner = inner:gsub("%s*aml:[^,]+,?%s*", "")
+		cleanInner = cleanInner:gsub(",%s*$", "")
+		cleanInner = cleanInner:gsub("^%s*,", "")
+		cleanInner = cleanInner:gsub(",%s*,", ",")
+
+		if cleanInner:match("^%s*$") then
+			return "[]"
+		end
+		return "[" .. cleanInner .. "]"
+	end)
+	return str
 end
 
 function Wise:GetSecureAttributes(actionData, conditions)
-    local aType = actionData.type
-    local aValue = actionData.value
-    local hasCond = conditions and conditions ~= ""
-    
-    if hasCond then
-        conditions = Wise:SanitizeMacroCondition(conditions)
-        -- If our sanitization wiped it out or replaced it, update hasCond
-        -- "[]" is technically still a condition, but we want it to apply as unconditional
-        if conditions == "[]" then
-            conditions = ""
-            hasCond = false
-        end
-    end
+	local aType = actionData.type
+	local aValue = actionData.value
+	local hasCond = conditions and conditions ~= ""
 
-    local secureType = "macro"
-    local secureAttr = "macrotext"
-    local secureValue = ""
+	if hasCond then
+		conditions = Wise:SanitizeMacroCondition(conditions)
+		-- If our sanitization wiped it out or replaced it, update hasCond
+		-- "[]" is technically still a condition, but we want it to apply as unconditional
+		if conditions == "[]" then
+			conditions = ""
+			hasCond = false
+		end
+	end
 
-    if aType == "spell" then
-        -- Resolve spell name for use in commands
-        -- Use GetOverrideSpell to handle talent-replaced spells (e.g. skyriding abilities)
-        local spellName
-        local castID
-        local n = tonumber(aValue)
-        if n then
-            castID = Wise:GetOverrideSpellID(n) or n
-            local info = C_Spell.GetSpellInfo(castID)
-            if not info then
-                -- Fallback to original ID if override lookup failed
-                info = C_Spell.GetSpellInfo(n)
-            end
-            spellName = info and info.name
-        else
-            spellName = aValue
-        end
-        -- Final fallback: use the stored display name from the action data
-        local fallbackName = spellName or actionData.name or aValue
-        -- Build subtext-qualified name for /cast commands (e.g. "Whirling Surge(Skyriding)")
-        -- Only append subtext "Skyriding" — those abilities share names across subsystems
-        -- and require the qualifier.  Other subtexts (e.g. form-specific labels on Wild
-        -- Charge) are form-dependent and break /cast when the player changes shapeshift form.
-        local castName = fallbackName
-        if n and C_Spell.GetSpellSubtext then
-            local subtext = C_Spell.GetSpellSubtext(castID or n)
-            if subtext and subtext == "Skyriding" then
-                castName = fallbackName .. "(" .. subtext .. ")"
-            end
-        end
-        if hasCond then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/cast " .. conditions .. " " .. castName
-        else
-            secureType = "spell"
-            secureAttr = "spell"
-            -- type="spell" accepts both spell names and spell IDs
-            secureValue = spellName or castID or aValue
-        end
-    elseif aType == "item" or aType == "toy" then
-        if hasCond then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            local n = tonumber(aValue)
-            local itemRef = n and ("item:" .. n) or aValue
-            secureValue = "/use " .. conditions .. " " .. itemRef
-        else
-            secureType = "item"
-            secureAttr = "item"
-            local n = tonumber(aValue)
-            if n then
-                secureValue = "item:" .. n
-            else
-                secureValue = aValue
-            end
-        end
-    elseif aType == "macro" then
-        secureType = "macro"
-        -- Append slash command arguments if present (e.g. "/ti" + "window" → "/ti window")
-        local effectiveValue = aValue
-        if actionData.slashArgs and actionData.slashArgs ~= "" then
-            effectiveValue = aValue .. " " .. actionData.slashArgs
-        end
-        if string.sub(effectiveValue, 1, 1) == "/" then
-            secureAttr = "macrotext"
-            if hasCond then
-                -- e.g. "/click ActionButton1" -> "/click [possessbar] ActionButton1"
-                local cmd, rest = string.match(effectiveValue, "^(/%a+)%s+(.*)$")
-                if cmd and rest then
-                    secureValue = cmd .. " " .. conditions .. " " .. rest
-                else
-                    secureValue = effectiveValue
-                end
-            else
-                secureValue = effectiveValue
-            end
-        else
-            secureAttr = "macro"
-            secureValue = effectiveValue
-        end
-    elseif aType == "action" then
-        if hasCond then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            -- Action IDs 133-144 are OverrideActionBar.
-            -- Using /click OverrideActionBarButtonX works well for those.
-            local aNum = tonumber(aValue)
-            if aNum and aNum >= 133 and aNum <= 144 then
-                secureValue = "/click " .. conditions .. " OverrideActionBarButton" .. (aNum - 132)
-            elseif aNum and aNum >= 121 and aNum <= 132 then
-                -- Possess bars (bottomleft) are often ActionButton1-12 depending on mapping, but /click ActionButtonX works when possessed.
-                secureValue = "/click " .. conditions .. " ActionButton" .. (aNum - 120)
-            else
-                secureValue = "/click " .. conditions .. " ActionButton" .. (aNum or 1)
-            end
-        else
-            secureType = "action"
-            secureAttr = "action"
-            secureValue = tonumber(aValue)
-        end
-    elseif aType == "mount" then
-        if C_MountJournal then
-            local mountName, spellID = C_MountJournal.GetMountInfoByID(aValue)
-            if hasCond then
-                secureType = "macro"
-                secureAttr = "macrotext"
-                if spellID then
-                    local info = C_Spell.GetSpellInfo(spellID)
-                    local castName = (info and info.name) or spellID
-                    secureValue = "/cast " .. conditions .. " " .. castName
-                else
-                    secureValue = "/use " .. conditions .. " " .. (mountName or "")
-                end
-            else
-                if spellID then
-                    secureType = "spell"
-                    secureAttr = "spell"
-                    secureValue = spellID
-                else
-                    secureValue = "/use " .. (mountName or "")
-                end
-            end
-        end
-    elseif aType == "battlepet" then
-        secureValue = "/summonpet " .. (aValue or "")
-    elseif aType == "equipped" then
-        if hasCond then
-            secureValue = "/use " .. conditions .. " " .. (aValue or 1)
-        else
-            secureValue = "/use " .. (aValue or 1)
-        end
-    elseif aType == "equipmentset" then
-        secureValue = "/equipset " .. (aValue or "")
-    elseif aType == "raidmarker" then
-        secureValue = "/tm " .. (aValue or 0)
-    elseif aType == "worldmarker" then
-        secureValue = "/wm " .. (aValue or 0)
-    elseif aType == "uivisibility" then
-        secureType = "macro"
-        secureAttr = "macrotext"
+	local secureType = "macro"
+	local secureAttr = "macrotext"
+	local secureValue = ""
 
-        local element, state = strsplit(":", aValue)
-        local frameName
+	if aType == "spell" then
+		-- Resolve spell name for use in commands
+		-- Use GetOverrideSpell to handle talent-replaced spells (e.g. skyriding abilities)
+		local spellName
+		local castID
+		local n = tonumber(aValue)
+		if n then
+			castID = Wise:GetOverrideSpellID(n) or n
+			local info = C_Spell.GetSpellInfo(castID)
+			if not info then
+				-- Fallback to original ID if override lookup failed
+				info = C_Spell.GetSpellInfo(n)
+			end
+			spellName = info and info.name
+		else
+			spellName = aValue
+		end
+		-- Final fallback: use the stored display name from the action data
+		local fallbackName = spellName or actionData.name or aValue
+		-- Build subtext-qualified name for /cast commands (e.g. "Whirling Surge(Skyriding)")
+		-- Only append subtext "Skyriding" — those abilities share names across subsystems
+		-- and require the qualifier.  Other subtexts (e.g. form-specific labels on Wild
+		-- Charge) are form-dependent and break /cast when the player changes shapeshift form.
+		local castName = fallbackName
+		if n and C_Spell.GetSpellSubtext then
+			local subtext = C_Spell.GetSpellSubtext(castID or n)
+			if subtext and subtext == "Skyriding" then
+				castName = fallbackName .. "(" .. subtext .. ")"
+			end
+		end
+		if hasCond then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/cast " .. conditions .. " " .. castName
+		else
+			secureType = "spell"
+			secureAttr = "spell"
+			-- type="spell" accepts both spell names and spell IDs
+			secureValue = spellName or castID or aValue
+		end
+	elseif aType == "item" or aType == "toy" then
+		if hasCond then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			local n = tonumber(aValue)
+			local itemRef = n and ("item:" .. n) or aValue
+			secureValue = "/use " .. conditions .. " " .. itemRef
+		else
+			secureType = "item"
+			secureAttr = "item"
+			local n = tonumber(aValue)
+			if n then
+				secureValue = "item:" .. n
+			else
+				secureValue = aValue
+			end
+		end
+	elseif aType == "macro" then
+		secureType = "macro"
+		-- Append slash command arguments if present (e.g. "/ti" + "window" → "/ti window")
+		local effectiveValue = aValue
+		if actionData.slashArgs and actionData.slashArgs ~= "" then
+			effectiveValue = aValue .. " " .. actionData.slashArgs
+		end
+		if string.sub(effectiveValue, 1, 1) == "/" then
+			secureAttr = "macrotext"
+			if hasCond then
+				-- e.g. "/click ActionButton1" -> "/click [possessbar] ActionButton1"
+				local cmd, rest = string.match(effectiveValue, "^(/%a+)%s+(.*)$")
+				if cmd and rest then
+					secureValue = cmd .. " " .. conditions .. " " .. rest
+				else
+					secureValue = effectiveValue
+				end
+			else
+				secureValue = effectiveValue
+			end
+		else
+			secureAttr = "macro"
+			secureValue = effectiveValue
+		end
+	elseif aType == "action" then
+		local aNum = tonumber(aValue)
+		local isOverride = aNum and aNum >= 133 and aNum <= 144
+		local isPossess = aNum and aNum >= 121 and aNum <= 132
 
-        if element == "minimap" then frameName = "MinimapCluster"
-        elseif element == "micromenu" then frameName = "MicroMenuContainer"
-        elseif element == "bags" then frameName = "BagsBar"
-        elseif element == "xpbar" or element == "repbar" then frameName = "StatusTrackingBarManager"
-        elseif element == "objectives" then frameName = "ObjectiveTrackerFrame"
-        elseif element == "player" then frameName = "PlayerFrame"
-        elseif element == "target" then frameName = "TargetFrame"
-        elseif element == "buffs" then frameName = "BuffFrame"
-        elseif element == "debuffs" then frameName = "DebuffFrame"
-        elseif element == "social" then frameName = "QuickJoinToastButton"
-        elseif element == "chatchannels" then frameName = "ChatFrameChannelButton"
-        elseif element == "quickchat" then frameName = "ChatFrameMenuButton"
-        end
+		if isOverride or isPossess then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			local resolvedCond = conditions or ""
+			if isPossess then
+				if resolvedCond == "" or resolvedCond == "[possessbar]" then
+					resolvedCond = "[possessbar][vehicleui]"
+				end
 
-        if element == "editmode" then
-             secureValue = "/run Wise:SelectEditModeLayout(\"" .. state .. "\")"
-        elseif element == "friendlynameplates" or element == "enemynameplates" then
-             local cvar = element == "friendlynameplates" and "nameplateShowFriends" or "nameplateShowEnemies"
-             local op = ""
-             if state == "show" then op = "SetCVar(\"" .. cvar .. "\", 1)"
-             elseif state == "hide" then op = "SetCVar(\"" .. cvar .. "\", 0)"
-             elseif state == "toggle" then op = "SetCVar(\"" .. cvar .. "\", GetCVar(\"" .. cvar .. "\") == \"1\" and 0 or 1)"
-             end
-             if op ~= "" then
-                 secureValue = "/run " .. op
-             end
-        elseif element == "chat" then
-             local op = ""
-             if state == "show" then op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"
-             elseif state == "hide" then op = "ChatFrame1:Hide(); if GeneralDockManager then GeneralDockManager:Hide() end"
-             elseif state == "toggle" then op = "local v=not ChatFrame1:IsShown(); ChatFrame1:SetShown(v); if GeneralDockManager then GeneralDockManager:SetShown(v) end"
-             end
-             if op ~= "" then
-                 secureValue = "/run if ChatFrame1 then " .. op .. " end"
-             end
-        elseif frameName then
-             local op = ""
-             if state == "show" then op = ":Show()"
-             elseif state == "hide" then op = ":Hide()"
-             elseif state == "toggle" then op = ":SetShown(not " .. frameName .. ":IsShown())"
-             end
+				local vehicleParts = {}
+				local possessParts = {}
+				for block in resolvedCond:gmatch("%[([^%]]*)%]") do
+					local cleanBlock = {}
+					for token in block:gmatch("[^,]+") do
+						local t = token:match("^%s*(.-)%s*$")
+						if t ~= "possessbar" and t ~= "vehicleui" and t ~= "" then
+							table.insert(cleanBlock, t)
+						end
+					end
+					local subCond = table.concat(cleanBlock, ",")
+					local vPart = subCond ~= "" and ("[vehicleui," .. subCond .. "]") or "[vehicleui]"
+					local pPart = subCond ~= "" and ("[possessbar," .. subCond .. "]") or "[possessbar]"
 
-             if op ~= "" then
-                 secureValue = "/run if " .. frameName .. " then " .. frameName .. op .. " end"
-             end
-        end
+					local vExists = false
+					for _, val in ipairs(vehicleParts) do
+						if val == vPart then
+							vExists = true
+							break
+						end
+					end
+					if not vExists then
+						table.insert(vehicleParts, vPart)
+					end
 
-    elseif aType == "uipanel" then
-        local microButtons = {
-            achievements = "AchievementMicroButton",
-            questlog = "QuestLogMicroButton",
-            groupfinder = "LFDMicroButton",
-            adventureguide = "EJMicroButton",
-            collections = "CollectionsMicroButton",
-            shop = "StoreMicroButton",
-            professions = "ProfessionMicroButton",
-            housing = "HousingMicroButton",
-        }
+					local pExists = false
+					for _, val in ipairs(possessParts) do
+						if val == pPart then
+							pExists = true
+							break
+						end
+					end
+					if not pExists then
+						table.insert(possessParts, pPart)
+					end
+				end
 
-        local btnName = microButtons[aValue]
-        local btnFrame = btnName and _G[btnName]
+				if #vehicleParts == 0 then
+					table.insert(vehicleParts, "[vehicleui]")
+					table.insert(possessParts, "[possessbar]")
+				end
 
-        if not btnFrame and btnName then
-            if _G.MicroMenuContainer and _G.MicroMenuContainer[btnName] then
-                btnFrame = _G.MicroMenuContainer[btnName]
-            elseif _G.MicroMenu and _G.MicroMenu[btnName] then
-                btnFrame = _G.MicroMenu[btnName]
-            end
-        end
+				local condVehicle = table.concat(vehicleParts)
+				local condPossess = table.concat(possessParts)
 
-        if btnFrame then
-            secureType = "click"
-            secureAttr = "clickbutton"
-            secureValue = btnFrame
-        else
-            local scripts = {
-                character = "ToggleCharacter('PaperDollFrame')",
-                spellbook = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');if PlayerSpellsUtil and PlayerSpellsUtil.ToggleSpellBookFrame then PlayerSpellsUtil.ToggleSpellBookFrame() end",
-                talents = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');if PlayerSpellsUtil and PlayerSpellsUtil.ToggleClassTalentOrSpecFrame then PlayerSpellsUtil.ToggleClassTalentOrSpecFrame() end",
-                specialization = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');local f=PlayerSpellsFrame;if f then if f:IsShown() then HideUIPanel(f) else ShowUIPanel(f);if f.TabSystem then f.TabSystem:SetTab(1) end end end",
-                collections = "if ToggleCollectionsJournal then ToggleCollectionsJournal() end",
-                map = "if ToggleWorldMap then ToggleWorldMap() end",
-                groupfinder = "if PVEFrame_ToggleFrame then PVEFrame_ToggleFrame() end",
-                adventureguide = "if EncounterJournal_OpenJournal then EncounterJournal_OpenJournal() end",
-                achievements = "if ToggleAchievementFrame then ToggleAchievementFrame() end",
-                guild = "if ToggleCommunitiesFrame then ToggleCommunitiesFrame() elseif ToggleGuildFrame then ToggleGuildFrame() end",
-                menu = "ToggleFrame(GameMenuFrame)",
-                shop = "if ToggleStoreUI then ToggleStoreUI() end",
-                questlog = "if ToggleQuestLog then ToggleQuestLog() end",
-                professions = "if ToggleProfessionsBook then ToggleProfessionsBook() end",
-                housing = "if ToggleHousingDashboard then ToggleHousingDashboard() elseif HousingFramesUtil and HousingFramesUtil.ToggleHousingDashboard then HousingFramesUtil.ToggleHousingDashboard() elseif C_Housing and C_Housing.ToggleHousingDashboard then C_Housing.ToggleHousingDashboard() end",
-                bag_backpack = "ToggleBackpack()",
-                bag_1 = "ToggleBag(1)",
-                bag_2 = "ToggleBag(2)",
-                bag_3 = "ToggleBag(3)",
-                bag_4 = "ToggleBag(4)",
-                bag_reagent = "ToggleBag(5)",
-                bag_all = "ToggleAllBags()",
-                collections_mounts = "if ToggleCollectionsJournal then ToggleCollectionsJournal(1) end",
-                collections_pets = "if ToggleCollectionsJournal then ToggleCollectionsJournal(2) end",
-                collections_toys = "if ToggleCollectionsJournal then ToggleCollectionsJournal(3) end",
-                collections_heirlooms = "if ToggleCollectionsJournal then ToggleCollectionsJournal(4) end",
-                collections_appearances = "if ToggleCollectionsJournal then ToggleCollectionsJournal(5) end",
-                social = "if ToggleFriendsFrame then ToggleFriendsFrame(1) end",
-                social_friends = "if ToggleFriendsFrame then ToggleFriendsFrame(1) end",
-                social_who = "if ToggleFriendsFrame then ToggleFriendsFrame(2) end",
-                social_raid = "if ToggleFriendsFrame then ToggleFriendsFrame(3) end",
-                pvp = "if TogglePVPUI then TogglePVPUI() elseif PVEFrame_ToggleFrame then PVEFrame_ToggleFrame('PVPUIFrame') end",
-                dungeons = "PVEFrame_ToggleFrame('GroupFinderFrame')",
-                mythicplus = "if PVEFrame and PVEFrame:IsShown() and PVEFrame.activeTabIndex == 3 then HideUIPanel(PVEFrame) else ShowUIPanel(PVEFrame) PVEFrame_ShowFrame('ChallengesFrame') end",
-                reputation = "ToggleCharacter('ReputationFrame')",
-                currency = "ToggleCharacter('TokenFrame')",
-                statistics = "AchievementFrame_LoadUI() AchievementFrame_ToggleAchievementFrame(true)",
-                map_size = "if ToggleWorldMap then ToggleWorldMap() end",
-                map_zone = "if ToggleBattlefieldMap then ToggleBattlefieldMap() end",
-                map_minimap = "if Minimap then if Minimap:IsShown() then Minimap:Hide() else Minimap:Show() end end",
-                garrison = "if ExpansionLandingPageMinimapButton then ExpansionLandingPageMinimapButton.Click(ExpansionLandingPageMinimapButton) elseif GarrisonLandingPageMinimapButton then GarrisonLandingPageMinimapButton.Click(GarrisonLandingPageMinimapButton) end",
-            }
-            if scripts[aValue] then
-                secureValue = "/run " .. scripts[aValue]
-            end
-        end
-    elseif aType == "misc" then
-        if aValue == "hearthstone" then
-            secureType = "item"
-            secureAttr = "item"
-            secureValue = "Hearthstone"
-        elseif aValue == "extrabutton" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/click ExtraActionButton1"
-        elseif aValue == "zoneability" then
-            secureType = "click"
-            secureAttr = "clickbutton"
-            local zoneBtn = GetZoneAbilitySpellButton()
-            if zoneBtn then
-                secureValue = zoneBtn
-                if zoneBtn.GetName and zoneBtn:GetName() then
-                    secureType = "macro"
-                    secureAttr = "macrotext"
-                    secureValue = "/click " .. zoneBtn:GetName()
-                elseif zoneBtn.spellID then
-                    secureType = "spell"
-                    secureAttr = "spell"
-                    secureValue = zoneBtn.spellID
-                end
-            end
-        elseif aValue == "overridebar" then
-            secureType = "click"
-            secureAttr = "clickbutton"
-            local overrideBtn = _G["OverrideActionBarButton1"]
-            if overrideBtn then
-                secureValue = overrideBtn
-                if overrideBtn.GetName and overrideBtn:GetName() then
-                    secureType = "macro"
-                    secureAttr = "macrotext"
-                    secureValue = "/click " .. overrideBtn:GetName()
-                end
-            end
-        elseif aValue == "possessbar" then
-            secureType = "click"
-            secureAttr = "clickbutton"
-            -- Possess bar maps to ActionButton1 when possess is active
-            local possessBtn = _G["ActionButton1"]
-            if possessBtn then
-                secureValue = possessBtn
-                if possessBtn.GetName and possessBtn:GetName() then
-                    secureType = "macro"
-                    secureAttr = "macrotext"
-                    secureValue = "/click " .. possessBtn:GetName()
-                end
-            end
-        elseif aValue == "leave_vehicle" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/leavevehicle"
-        elseif aValue == "toggle_sound" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run local c=\"Sound_EnableAllSound\" local v=GetCVar(c) local n=v==\"1\" and \"0\" or \"1\" SetCVar(c, n) print(\"Wise toggle sound \" .. (n==\"1\" and \"on\" or \"off\"))"
-        elseif aValue == "toggle_sfx" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run local c=\"Sound_EnableSFX\" local v=GetCVar(c) local n=v==\"1\" and \"0\" or \"1\" SetCVar(c, n) print(\"Wise toggle sound effects \" .. (n==\"1\" and \"on\" or \"off\"))"
-        elseif aValue == "vol_up" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then local n=math.min(1, v+0.1) SetCVar(c, tostring(n)) print(\"Wise volume set to \" .. math.floor(n*100) .. \"%\") end"
-        elseif aValue == "vol_down" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run local c=\"Sound_MasterVolume\" local v=tonumber(GetCVar(c)) if v then local n=math.max(0, v-0.1) SetCVar(c, tostring(n)) print(\"Wise volume set to \" .. math.floor(n*100) .. \"%\") end"
-        elseif aValue == "custom_macro" then
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = actionData.macroText or ""
-        elseif aValue:match("^spec_equip_") then
-            local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
-            secureType = "macro"
-            secureAttr = "macrotext"
-            if slotIdx then
-                secureValue = "/run Wise:ExecuteSpecEquip(" .. slotIdx .. ")"
-            else
-                secureValue = "/run print('[Wise] Invalid spec_equip action')"
-            end
-        elseif aValue:match("^spec_") then
-            local val = tonumber(aValue:match("^spec_(%d+)"))
-            local specIndex = val
-            if val and val > 10 then
-                specIndex = 1
-                for i = 1, GetNumSpecializations() do
-                    local id = GetSpecializationInfo(i)
-                    if id == val then
-                        specIndex = i
-                        break
-                    end
-                end
-            end
-            secureType = "macro"
-            secureAttr = "macrotext"
-            if specIndex then
-                secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func(" .. specIndex .. ") else print('[Wise] SetSpecialization API not found') end"
-            else
-                secureValue = "/run print('[Wise] Unknown spec value')"
-            end
-        elseif aValue:match("^form_") then
-            local formIndex = tonumber(aValue:match("^form_(%d+)"))
-            if formIndex then
-                local icon, isActive, isCastable, spellID = GetShapeshiftFormInfo(formIndex)
-                if spellID then
-                    local info = C_Spell.GetSpellInfo(spellID)
-                    local castName = (info and info.name) or spellID
-                    secureType = "macro"
-                    secureAttr = "macrotext"
-                    secureValue = "/cast " .. castName
-                end
-            end
-        elseif aValue:match("^lootspec_") then
-            local specID = tonumber(aValue:match("^lootspec_(%d+)"))
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetLootSpecialization or SetLootSpecialization; if func then func(" .. specID .. ") else print('[Wise] SetLootSpecialization API not found') end"
-        elseif aValue:match("^addon_magic_") then
-            local slotIdx = tonumber(aValue:match("^addon_magic_(%d+)"))
-            secureType = "macro"
-            secureAttr = "macrotext"
-            secureValue = "/run if Wise and Wise.ExecuteAddonMagic then Wise:ExecuteAddonMagic(" .. (slotIdx or 1) .. ") end"
-        end
-    elseif aType == "interface" then
-        -- Toggle the target interface via its secure toggle button.
-        -- Must use macro+macrotext because the toggleBtn PreClick snippet
-        -- only copies type/spell/item/macrotext (not clickbutton).
-        secureType = "macro"
-        secureAttr = "macrotext"
-        secureValue = "/click WiseGroupToggle_" .. aValue
-    elseif aType == "empty" then
-        secureType = nil
-        secureAttr = nil
-        secureValue = nil
-    end
+				secureValue = "/click "
+					.. condVehicle
+					.. " OverrideActionBarButton"
+					.. (aNum - 120)
+					.. "\n/click "
+					.. condPossess
+					.. " ActionButton"
+					.. (aNum - 120)
+			else
+				if resolvedCond == "" then
+					resolvedCond = "[overridebar]"
+				end
+				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
+				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. (aNum - 132)
+			end
+		elseif hasCond then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/click " .. conditions .. " ActionButton" .. (aNum or 1)
+		else
+			secureType = "action"
+			secureAttr = "action"
+			secureValue = tonumber(aValue)
+		end
+	elseif aType == "mount" then
+		if C_MountJournal then
+			local mountName, spellID = C_MountJournal.GetMountInfoByID(aValue)
+			if hasCond then
+				secureType = "macro"
+				secureAttr = "macrotext"
+				if spellID then
+					local info = C_Spell.GetSpellInfo(spellID)
+					local castName = (info and info.name) or spellID
+					secureValue = "/cast " .. conditions .. " " .. castName
+				else
+					secureValue = "/use " .. conditions .. " " .. (mountName or "")
+				end
+			else
+				if spellID then
+					secureType = "spell"
+					secureAttr = "spell"
+					secureValue = spellID
+				else
+					secureValue = "/use " .. (mountName or "")
+				end
+			end
+		end
+	elseif aType == "battlepet" then
+		secureValue = "/summonpet " .. (aValue or "")
+	elseif aType == "equipped" then
+		if hasCond then
+			secureValue = "/use " .. conditions .. " " .. (aValue or 1)
+		else
+			secureValue = "/use " .. (aValue or 1)
+		end
+	elseif aType == "equipmentset" then
+		secureValue = "/equipset " .. (aValue or "")
+	elseif aType == "raidmarker" then
+		secureValue = "/tm " .. (aValue or 0)
+	elseif aType == "worldmarker" then
+		secureValue = "/wm " .. (aValue or 0)
+	elseif aType == "uivisibility" then
+		secureType = "macro"
+		secureAttr = "macrotext"
 
-    return secureType, secureAttr, secureValue
+		local element, state = strsplit(":", aValue)
+		local frameName
+
+		if element == "minimap" then
+			frameName = "MinimapCluster"
+		elseif element == "micromenu" then
+			frameName = "MicroMenuContainer"
+		elseif element == "bags" then
+			frameName = "BagsBar"
+		elseif element == "xpbar" or element == "repbar" then
+			frameName = "StatusTrackingBarManager"
+		elseif element == "objectives" then
+			frameName = "ObjectiveTrackerFrame"
+		elseif element == "player" then
+			frameName = "PlayerFrame"
+		elseif element == "target" then
+			frameName = "TargetFrame"
+		elseif element == "buffs" then
+			frameName = "BuffFrame"
+		elseif element == "debuffs" then
+			frameName = "DebuffFrame"
+		elseif element == "social" then
+			frameName = "QuickJoinToastButton"
+		elseif element == "chatchannels" then
+			frameName = "ChatFrameChannelButton"
+		elseif element == "quickchat" then
+			frameName = "ChatFrameMenuButton"
+		end
+
+		if element == "editmode" then
+			secureValue = '/run Wise:SelectEditModeLayout("' .. state .. '")'
+		elseif element == "friendlynameplates" or element == "enemynameplates" then
+			local cvar = element == "friendlynameplates" and "nameplateShowFriends" or "nameplateShowEnemies"
+			local op = ""
+			if state == "show" then
+				op = 'SetCVar("' .. cvar .. '", 1)'
+			elseif state == "hide" then
+				op = 'SetCVar("' .. cvar .. '", 0)'
+			elseif state == "toggle" then
+				op = 'SetCVar("' .. cvar .. '", GetCVar("' .. cvar .. '") == "1" and 0 or 1)'
+			end
+			if op ~= "" then
+				secureValue = "/run " .. op
+			end
+		elseif element == "chat" then
+			local op = ""
+			if state == "show" then
+				op = "ChatFrame1:Show(); if GeneralDockManager then GeneralDockManager:Show() end"
+			elseif state == "hide" then
+				op = "ChatFrame1:Hide(); if GeneralDockManager then GeneralDockManager:Hide() end"
+			elseif state == "toggle" then
+				op =
+					"local v=not ChatFrame1:IsShown(); ChatFrame1:SetShown(v); if GeneralDockManager then GeneralDockManager:SetShown(v) end"
+			end
+			if op ~= "" then
+				secureValue = "/run if ChatFrame1 then " .. op .. " end"
+			end
+		elseif frameName then
+			local op = ""
+			if state == "show" then
+				op = ":Show()"
+			elseif state == "hide" then
+				op = ":Hide()"
+			elseif state == "toggle" then
+				op = ":SetShown(not " .. frameName .. ":IsShown())"
+			end
+
+			if op ~= "" then
+				secureValue = "/run if " .. frameName .. " then " .. frameName .. op .. " end"
+			end
+		end
+	elseif aType == "uipanel" then
+		local microButtons = {
+			achievements = "AchievementMicroButton",
+			questlog = "QuestLogMicroButton",
+			groupfinder = "LFDMicroButton",
+			adventureguide = "EJMicroButton",
+			collections = "CollectionsMicroButton",
+			shop = "StoreMicroButton",
+			professions = "ProfessionMicroButton",
+			housing = "HousingMicroButton",
+		}
+
+		local btnName = microButtons[aValue]
+		local btnFrame = btnName and _G[btnName]
+
+		if not btnFrame and btnName then
+			if _G.MicroMenuContainer and _G.MicroMenuContainer[btnName] then
+				btnFrame = _G.MicroMenuContainer[btnName]
+			elseif _G.MicroMenu and _G.MicroMenu[btnName] then
+				btnFrame = _G.MicroMenu[btnName]
+			end
+		end
+
+		if btnFrame then
+			secureType = "click"
+			secureAttr = "clickbutton"
+			secureValue = btnFrame
+		else
+			local scripts = {
+				character = "ToggleCharacter('PaperDollFrame')",
+				spellbook = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');if PlayerSpellsUtil and PlayerSpellsUtil.ToggleSpellBookFrame then PlayerSpellsUtil.ToggleSpellBookFrame() end",
+				talents = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');if PlayerSpellsUtil and PlayerSpellsUtil.ToggleClassTalentOrSpecFrame then PlayerSpellsUtil.ToggleClassTalentOrSpecFrame() end",
+				specialization = "C_AddOns.LoadAddOn('Blizzard_PlayerSpells');local f=PlayerSpellsFrame;if f then if f:IsShown() then HideUIPanel(f) else ShowUIPanel(f);if f.TabSystem then f.TabSystem:SetTab(1) end end end",
+				collections = "if ToggleCollectionsJournal then ToggleCollectionsJournal() end",
+				map = "if ToggleWorldMap then ToggleWorldMap() end",
+				groupfinder = "if PVEFrame_ToggleFrame then PVEFrame_ToggleFrame() end",
+				adventureguide = "if EncounterJournal_OpenJournal then EncounterJournal_OpenJournal() end",
+				achievements = "if ToggleAchievementFrame then ToggleAchievementFrame() end",
+				guild = "if ToggleCommunitiesFrame then ToggleCommunitiesFrame() elseif ToggleGuildFrame then ToggleGuildFrame() end",
+				menu = "ToggleFrame(GameMenuFrame)",
+				shop = "if ToggleStoreUI then ToggleStoreUI() end",
+				questlog = "if ToggleQuestLog then ToggleQuestLog() end",
+				professions = "if ToggleProfessionsBook then ToggleProfessionsBook() end",
+				housing = "if ToggleHousingDashboard then ToggleHousingDashboard() elseif HousingFramesUtil and HousingFramesUtil.ToggleHousingDashboard then HousingFramesUtil.ToggleHousingDashboard() elseif C_Housing and C_Housing.ToggleHousingDashboard then C_Housing.ToggleHousingDashboard() end",
+				bag_backpack = "ToggleBackpack()",
+				bag_1 = "ToggleBag(1)",
+				bag_2 = "ToggleBag(2)",
+				bag_3 = "ToggleBag(3)",
+				bag_4 = "ToggleBag(4)",
+				bag_reagent = "ToggleBag(5)",
+				bag_all = "ToggleAllBags()",
+				collections_mounts = "if ToggleCollectionsJournal then ToggleCollectionsJournal(1) end",
+				collections_pets = "if ToggleCollectionsJournal then ToggleCollectionsJournal(2) end",
+				collections_toys = "if ToggleCollectionsJournal then ToggleCollectionsJournal(3) end",
+				collections_heirlooms = "if ToggleCollectionsJournal then ToggleCollectionsJournal(4) end",
+				collections_appearances = "if ToggleCollectionsJournal then ToggleCollectionsJournal(5) end",
+				social = "if ToggleFriendsFrame then ToggleFriendsFrame(1) end",
+				social_friends = "if ToggleFriendsFrame then ToggleFriendsFrame(1) end",
+				social_who = "if ToggleFriendsFrame then ToggleFriendsFrame(2) end",
+				social_raid = "if ToggleFriendsFrame then ToggleFriendsFrame(3) end",
+				pvp = "if TogglePVPUI then TogglePVPUI() elseif PVEFrame_ToggleFrame then PVEFrame_ToggleFrame('PVPUIFrame') end",
+				dungeons = "PVEFrame_ToggleFrame('GroupFinderFrame')",
+				mythicplus = "if PVEFrame and PVEFrame:IsShown() and PVEFrame.activeTabIndex == 3 then HideUIPanel(PVEFrame) else ShowUIPanel(PVEFrame) PVEFrame_ShowFrame('ChallengesFrame') end",
+				reputation = "ToggleCharacter('ReputationFrame')",
+				currency = "ToggleCharacter('TokenFrame')",
+				statistics = "AchievementFrame_LoadUI() AchievementFrame_ToggleAchievementFrame(true)",
+				map_size = "if ToggleWorldMap then ToggleWorldMap() end",
+				map_zone = "if ToggleBattlefieldMap then ToggleBattlefieldMap() end",
+				map_minimap = "if Minimap then if Minimap:IsShown() then Minimap:Hide() else Minimap:Show() end end",
+				garrison = "if ExpansionLandingPageMinimapButton then ExpansionLandingPageMinimapButton.Click(ExpansionLandingPageMinimapButton) elseif GarrisonLandingPageMinimapButton then GarrisonLandingPageMinimapButton.Click(GarrisonLandingPageMinimapButton) end",
+			}
+			if scripts[aValue] then
+				secureValue = "/run " .. scripts[aValue]
+			end
+		end
+	elseif aType == "misc" then
+		if aValue == "hearthstone" then
+			secureType = "item"
+			secureAttr = "item"
+			secureValue = "Hearthstone"
+		elseif aValue == "extrabutton" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/click ExtraActionButton1"
+		elseif aValue == "zoneability" then
+			secureType = "click"
+			secureAttr = "clickbutton"
+			local zoneBtn = GetZoneAbilitySpellButton()
+			if zoneBtn then
+				secureValue = zoneBtn
+				if zoneBtn.GetName and zoneBtn:GetName() then
+					secureType = "macro"
+					secureAttr = "macrotext"
+					secureValue = "/click " .. zoneBtn:GetName()
+				elseif zoneBtn.spellID then
+					secureType = "spell"
+					secureAttr = "spell"
+					secureValue = zoneBtn.spellID
+				end
+			end
+		elseif aValue == "overridebar" then
+			secureType = "click"
+			secureAttr = "clickbutton"
+			local overrideBtn = _G["OverrideActionBarButton1"]
+			if overrideBtn then
+				secureValue = overrideBtn
+				if overrideBtn.GetName and overrideBtn:GetName() then
+					secureType = "macro"
+					secureAttr = "macrotext"
+					secureValue = "/click " .. overrideBtn:GetName()
+				end
+			end
+		elseif aValue == "possessbar" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/click [vehicleui] OverrideActionBarButton1; [possessbar] ActionButton1"
+		elseif aValue == "leave_vehicle" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/leavevehicle"
+		elseif aValue == "toggle_sound" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue =
+				'/run local c="Sound_EnableAllSound" local v=GetCVar(c) local n=v=="1" and "0" or "1" SetCVar(c, n) print("Wise toggle sound " .. (n=="1" and "on" or "off"))'
+		elseif aValue == "toggle_sfx" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue =
+				'/run local c="Sound_EnableSFX" local v=GetCVar(c) local n=v=="1" and "0" or "1" SetCVar(c, n) print("Wise toggle sound effects " .. (n=="1" and "on" or "off"))'
+		elseif aValue == "vol_up" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue =
+				'/run local c="Sound_MasterVolume" local v=tonumber(GetCVar(c)) if v then local n=math.min(1, v+0.1) SetCVar(c, tostring(n)) print("Wise volume set to " .. math.floor(n*100) .. "%") end'
+		elseif aValue == "vol_down" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue =
+				'/run local c="Sound_MasterVolume" local v=tonumber(GetCVar(c)) if v then local n=math.max(0, v-0.1) SetCVar(c, tostring(n)) print("Wise volume set to " .. math.floor(n*100) .. "%") end'
+		elseif aValue == "custom_macro" then
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = actionData.macroText or ""
+		elseif aValue:match("^spec_equip_") then
+			local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
+			secureType = "macro"
+			secureAttr = "macrotext"
+			if slotIdx then
+				secureValue = "/run Wise:ExecuteSpecEquip(" .. slotIdx .. ")"
+			else
+				secureValue = "/run print('[Wise] Invalid spec_equip action')"
+			end
+		elseif aValue:match("^spec_") then
+			local val = tonumber(aValue:match("^spec_(%d+)"))
+			local specIndex = val
+			if val and val > 10 then
+				specIndex = 1
+				for i = 1, GetNumSpecializations() do
+					local id = GetSpecializationInfo(i)
+					if id == val then
+						specIndex = i
+						break
+					end
+				end
+			end
+			secureType = "macro"
+			secureAttr = "macrotext"
+			if specIndex then
+				secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetSpecialization or SetSpecialization; if func then func("
+					.. specIndex
+					.. ") else print('[Wise] SetSpecialization API not found') end"
+			else
+				secureValue = "/run print('[Wise] Unknown spec value')"
+			end
+		elseif aValue:match("^form_") then
+			local formIndex = tonumber(aValue:match("^form_(%d+)"))
+			if formIndex then
+				local icon, isActive, isCastable, spellID = GetShapeshiftFormInfo(formIndex)
+				if spellID then
+					local info = C_Spell.GetSpellInfo(spellID)
+					local castName = (info and info.name) or spellID
+					secureType = "macro"
+					secureAttr = "macrotext"
+					secureValue = "/cast " .. castName
+				end
+			end
+		elseif aValue:match("^lootspec_") then
+			local specID = tonumber(aValue:match("^lootspec_(%d+)"))
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/run local func = C_SpecializationInfo and C_SpecializationInfo.SetLootSpecialization or SetLootSpecialization; if func then func("
+				.. specID
+				.. ") else print('[Wise] SetLootSpecialization API not found') end"
+		elseif aValue:match("^addon_magic_") then
+			local slotIdx = tonumber(aValue:match("^addon_magic_(%d+)"))
+			secureType = "macro"
+			secureAttr = "macrotext"
+			secureValue = "/run if Wise and Wise.ExecuteAddonMagic then Wise:ExecuteAddonMagic("
+				.. (slotIdx or 1)
+				.. ") end"
+		end
+	elseif aType == "interface" then
+		-- Toggle the target interface via its secure toggle button.
+		-- Must use macro+macrotext because the toggleBtn PreClick snippet
+		-- only copies type/spell/item/macrotext (not clickbutton).
+		secureType = "macro"
+		secureAttr = "macrotext"
+		secureValue = "/click WiseGroupToggle_" .. aValue
+	elseif aType == "empty" then
+		secureType = nil
+		secureAttr = nil
+		secureValue = nil
+	end
+
+	return secureType, secureAttr, secureValue
 end
 
 -- Helper: Evaluate slot conditions (insecure context) for icon updates
 function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
-    local matches = {}
-    for i, state in ipairs(states) do
-        local cond = Wise:ComputeEffectiveConditions(states, i)
-        if cond == "" then
-            tinsert(matches, i)
-        else
-            local result = SecureCmdOptionParse(cond .. " true; false")
-            if result == "true" then
-                tinsert(matches, i)
-            end
-        end
-    end
+	local matches = {}
+	for i, state in ipairs(states) do
+		local cond = Wise:ComputeEffectiveConditions(states, i)
+		if cond == "" then
+			tinsert(matches, i)
+		else
+			local result = SecureCmdOptionParse(cond .. " true; false")
+			if result == "true" then
+				tinsert(matches, i)
+			end
+		end
+	end
 
-    if #matches == 0 then return 1 end
+	if #matches == 0 then
+		return 1
+	end
 
-    if conflictStrategy == "sequence" then
-        local seq = (btn and btn:GetAttribute("isa_seq")) or 1
-        local startIdx = nil
-        for i = 1, #matches do
-            if matches[i] >= seq then
-                startIdx = i
-                break
-            end
-        end
-        if not startIdx then startIdx = 1 end
-        return matches[startIdx]
-    elseif conflictStrategy == "random" then
-        return matches[math.random(#matches)]
-    elseif conflictStrategy == "waterfall" then
-        -- Walk matches in priority order; return the first off-cooldown action so the
-        -- icon mirrors what the engine's stacked-/cast macro will actually fire.
-        for i = 1, #matches do
-            local state = states[matches[i]]
-            if state and not Wise:IsActionOnCooldown(state.type, state.value, state) then
-                return matches[i]
-            end
-        end
-        return matches[1]
-    else
-        -- priority (default)
-        return matches[1]
-    end
+	if conflictStrategy == "sequence" then
+		local seq = (btn and btn:GetAttribute("isa_seq")) or 1
+		local startIdx = nil
+		for i = 1, #matches do
+			if matches[i] >= seq then
+				startIdx = i
+				break
+			end
+		end
+		if not startIdx then
+			startIdx = 1
+		end
+		return matches[startIdx]
+	elseif conflictStrategy == "random" then
+		return matches[math.random(#matches)]
+	elseif conflictStrategy == "waterfall" then
+		-- Walk matches in priority order; return the first off-cooldown action so the
+		-- icon mirrors what the engine's stacked-/cast macro will actually fire.
+		for i = 1, #matches do
+			local state = states[matches[i]]
+			if state and not Wise:IsActionOnCooldown(state.type, state.value, state) then
+				return matches[i]
+			end
+		end
+		return matches[1]
+	else
+		-- priority (default)
+		return matches[1]
+	end
 end
 
 -- Helper: Find if a group is nested inside another group as an "interface" action.
 -- Returns parentName, parentGroup or nil if not nested.
 function Wise:GetParentInfo(groupName)
-    if not WiseDB or not WiseDB.groups then return nil, nil end
-    for name, group in pairs(WiseDB.groups) do
-        if name ~= groupName and group.actions then
-            for slotIdx, states in pairs(group.actions) do
-                if type(slotIdx) == "number" and type(states) == "table" then
-                    for _, action in ipairs(states) do
-                        if action.type == "interface" and action.value == groupName then
-                            return name, group
-                        end
-                    end
-                end
-            end
-        end
-        -- Also check legacy buttons
-        if name ~= groupName and group.buttons then
-            for _, action in ipairs(group.buttons) do
-                if action.type == "interface" and action.value == groupName then
-                    return name, group
-                end
-            end
-        end
-    end
-    return nil, nil
+	if not WiseDB or not WiseDB.groups then
+		return nil, nil
+	end
+	for name, group in pairs(WiseDB.groups) do
+		if name ~= groupName and group.actions then
+			for slotIdx, states in pairs(group.actions) do
+				if type(slotIdx) == "number" and type(states) == "table" then
+					for _, action in ipairs(states) do
+						if action.type == "interface" and action.value == groupName then
+							return name, group
+						end
+					end
+				end
+			end
+		end
+		-- Also check legacy buttons
+		if name ~= groupName and group.buttons then
+			for _, action in ipairs(group.buttons) do
+				if action.type == "interface" and action.value == groupName then
+					return name, group
+				end
+			end
+		end
+	end
+	return nil, nil
 end
 
 -- Helper: Store a child group's resolved actions on a parent interface button
 -- so the secure RESOLVE_BLOCK can execute them for rotation modes.
 function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
-    -- Clear previous child attributes
-    local prevCount = btn:GetAttribute("isa_nest_count") or 0
-    for ci = 1, prevCount do
-        btn:SetAttribute("isa_nest_type_" .. ci, nil)
-        btn:SetAttribute("isa_nest_spell_" .. ci, nil)
-        btn:SetAttribute("isa_nest_item_" .. ci, nil)
-        btn:SetAttribute("isa_nest_macrotext_" .. ci, nil)
-        btn:SetAttribute("isa_nest_clickbutton_name_" .. ci, nil)
-        btn:SetAttribute("isa_nest_cond_" .. ci, nil)
-    end
-    btn:SetAttribute("isa_nest_count", 0)
+	-- Clear previous child attributes
+	local prevCount = btn:GetAttribute("isa_nest_count") or 0
+	for ci = 1, prevCount do
+		btn:SetAttribute("isa_nest_type_" .. ci, nil)
+		btn:SetAttribute("isa_nest_spell_" .. ci, nil)
+		btn:SetAttribute("isa_nest_item_" .. ci, nil)
+		btn:SetAttribute("isa_nest_macrotext_" .. ci, nil)
+		btn:SetAttribute("isa_nest_clickbutton_name_" .. ci, nil)
+		btn:SetAttribute("isa_nest_cond_" .. ci, nil)
+	end
+	btn:SetAttribute("isa_nest_count", 0)
 
-    if nestMode == "jump" or nestMode == nil then return end -- Jump mode opens child, no attrs needed
+	if nestMode == "jump" or nestMode == nil then
+		return
+	end -- Jump mode opens child, no attrs needed
 
-    local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
-    if not childGroup or not childGroup.actions then return end
+	local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
+	if not childGroup or not childGroup.actions then
+		return
+	end
 
-    -- Collect child slots in order
-    local slots = {}
-    for slotIdx, states in pairs(childGroup.actions) do
-        if type(slotIdx) == "number" and type(states) == "table" then
-            table.insert(slots, { index = slotIdx, states = states })
-        end
-    end
-    table.sort(slots, function(a, b) return a.index < b.index end)
+	-- Collect child slots in order
+	local slots = {}
+	for slotIdx, states in pairs(childGroup.actions) do
+		if type(slotIdx) == "number" and type(states) == "table" then
+			table.insert(slots, { index = slotIdx, states = states })
+		end
+	end
+	table.sort(slots, function(a, b)
+		return a.index < b.index
+	end)
 
-    local nestIdx = 0
-    for _, slotInfo in ipairs(slots) do
-        local states = slotInfo.states
-        -- For single-state slots, use the action directly
-        -- For multi-state slots, resolve to the currently active one (insecure)
-        local activeState = 1
-        if #states > 1 then
-            local conflictStrategy = states.conflictStrategy or "priority"
-            activeState = Wise:EvaluateSlotConditions(states, conflictStrategy, nil) or 1
-        end
-        local action = states[activeState]
-        if action and action.type and action.type ~= "interface" then
-            nestIdx = nestIdx + 1
-            local sType, sAttr, sValue = Wise:GetSecureAttributes(action, action.conditions)
-            local spellVal = (sAttr == "spell") and tostring(sValue) or ""
-            local itemVal = (sAttr == "item") and tostring(sValue) or ""
-            local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
-            local cbName = ""
-            if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
-                cbName = sValue:GetName() or ""
-            elseif sType == "click" and type(sValue) == "string" then
-                cbName = sValue
-            end
-            btn:SetAttribute("isa_nest_type_" .. nestIdx, sType)
-            btn:SetAttribute("isa_nest_spell_" .. nestIdx, spellVal)
-            btn:SetAttribute("isa_nest_item_" .. nestIdx, itemVal)
-            btn:SetAttribute("isa_nest_macrotext_" .. nestIdx, macroVal)
-            btn:SetAttribute("isa_nest_clickbutton_name_" .. nestIdx, cbName)
-            btn:SetAttribute("isa_nest_cond_" .. nestIdx, action.conditions or "")
-        end
-    end
-    btn:SetAttribute("isa_nest_count", nestIdx)
-    -- Initialize sequence counter for cycle mode
-    if not btn:GetAttribute("isa_nest_seq") then
-        btn:SetAttribute("isa_nest_seq", 1)
-    end
+	local nestIdx = 0
+	for _, slotInfo in ipairs(slots) do
+		local states = slotInfo.states
+		-- For single-state slots, use the action directly
+		-- For multi-state slots, resolve to the currently active one (insecure)
+		local activeState = 1
+		if #states > 1 then
+			local conflictStrategy = states.conflictStrategy or "priority"
+			activeState = Wise:EvaluateSlotConditions(states, conflictStrategy, nil) or 1
+		end
+		local action = states[activeState]
+		if action and action.type and action.type ~= "interface" then
+			nestIdx = nestIdx + 1
+			local sType, sAttr, sValue = Wise:GetSecureAttributes(action, action.conditions)
+			local spellVal = (sAttr == "spell") and tostring(sValue) or ""
+			local itemVal = (sAttr == "item") and tostring(sValue) or ""
+			local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+			local cbName = ""
+			if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
+				cbName = sValue:GetName() or ""
+			elseif sType == "click" and type(sValue) == "string" then
+				cbName = sValue
+			end
+			btn:SetAttribute("isa_nest_type_" .. nestIdx, sType)
+			btn:SetAttribute("isa_nest_spell_" .. nestIdx, spellVal)
+			btn:SetAttribute("isa_nest_item_" .. nestIdx, itemVal)
+			btn:SetAttribute("isa_nest_macrotext_" .. nestIdx, macroVal)
+			btn:SetAttribute("isa_nest_clickbutton_name_" .. nestIdx, cbName)
+			btn:SetAttribute("isa_nest_cond_" .. nestIdx, action.conditions or "")
+		end
+	end
+	btn:SetAttribute("isa_nest_count", nestIdx)
+	-- Initialize sequence counter for cycle mode
+	if not btn:GetAttribute("isa_nest_seq") then
+		btn:SetAttribute("isa_nest_seq", 1)
+	end
 end
 
 -- Helper: Get the icon for the current rotation action on an interface button.
 -- For cycle, shows the NEXT action. For random/priority, shows best match.
 function Wise:GetRotationIcon(btn, childGroupName, nestMode)
-    local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
-    if not childGroup or not childGroup.actions then return nil end
+	local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
+	if not childGroup or not childGroup.actions then
+		return nil
+	end
 
-    -- Collect child slots in order
-    local slots = {}
-    for slotIdx, states in pairs(childGroup.actions) do
-        if type(slotIdx) == "number" and type(states) == "table" then
-            table.insert(slots, { index = slotIdx, states = states })
-        end
-    end
-    table.sort(slots, function(a, b) return a.index < b.index end)
+	-- Collect child slots in order
+	local slots = {}
+	for slotIdx, states in pairs(childGroup.actions) do
+		if type(slotIdx) == "number" and type(states) == "table" then
+			table.insert(slots, { index = slotIdx, states = states })
+		end
+	end
+	table.sort(slots, function(a, b)
+		return a.index < b.index
+	end)
 
-    -- Build list of valid (non-interface) child actions with resolved states
-    local actions = {}
-    for _, slotInfo in ipairs(slots) do
-        local states = slotInfo.states
-        local activeState = 1
-        if #states > 1 then
-            local cs = states.conflictStrategy or "priority"
-            activeState = Wise:EvaluateSlotConditions(states, cs, nil) or 1
-        end
-        local action = states[activeState]
-        if action and action.type and action.type ~= "interface" then
-            table.insert(actions, action)
-        end
-    end
+	-- Build list of valid (non-interface) child actions with resolved states
+	local actions = {}
+	for _, slotInfo in ipairs(slots) do
+		local states = slotInfo.states
+		local activeState = 1
+		if #states > 1 then
+			local cs = states.conflictStrategy or "priority"
+			activeState = Wise:EvaluateSlotConditions(states, cs, nil) or 1
+		end
+		local action = states[activeState]
+		if action and action.type and action.type ~= "interface" then
+			table.insert(actions, action)
+		end
+	end
 
-    if #actions == 0 then return nil end
+	if #actions == 0 then
+		return nil
+	end
 
-    local chosen = nil
-    if nestMode == "priority" then
-        -- Show first action whose conditions match
-        for _, action in ipairs(actions) do
-            local cond = action.conditions or ""
-            if cond == "" then
-                chosen = action
-                break
-            else
-                local result = SecureCmdOptionParse(cond .. " true; false")
-                if result == "true" then
-                    chosen = action
-                    break
-                end
-            end
-        end
-        if not chosen then chosen = actions[1] end
-    elseif nestMode == "cycle" then
-        -- Show the action at current sequence position
-        local seq = btn:GetAttribute("isa_nest_seq") or 1
-        local idx = ((seq - 1) % #actions) + 1
-        chosen = actions[idx]
-    elseif nestMode == "random" then
-        -- For random, just show the first action (can't predict)
-        chosen = actions[1]
-    end
+	local chosen = nil
+	if nestMode == "priority" then
+		-- Show first action whose conditions match
+		for _, action in ipairs(actions) do
+			local cond = action.conditions or ""
+			if cond == "" then
+				chosen = action
+				break
+			else
+				local result = SecureCmdOptionParse(cond .. " true; false")
+				if result == "true" then
+					chosen = action
+					break
+				end
+			end
+		end
+		if not chosen then
+			chosen = actions[1]
+		end
+	elseif nestMode == "cycle" then
+		-- Show the action at current sequence position
+		local seq = btn:GetAttribute("isa_nest_seq") or 1
+		local idx = ((seq - 1) % #actions) + 1
+		chosen = actions[idx]
+	elseif nestMode == "random" then
+		-- For random, just show the first action (can't predict)
+		chosen = actions[1]
+	end
 
-    if chosen then
-        return Wise:GetActionIcon(chosen.type, chosen.value, chosen)
-    end
-    return nil
+	if chosen then
+		return Wise:GetActionIcon(chosen.type, chosen.value, chosen)
+	end
+	return nil
 end
 
-
 function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
-    -- Protect against combat execution (SecureStateDriver, SetPoint, etc.)
-    if InCombatLockdown() then
-        Wise.pendingUpdates = Wise.pendingUpdates or {}
-        Wise.pendingUpdates[name] = true
-        return
-    end
+	-- Protect against combat execution (SecureStateDriver, SetPoint, etc.)
+	if InCombatLockdown() then
+		Wise.pendingUpdates = Wise.pendingUpdates or {}
+		Wise.pendingUpdates[name] = true
+		return
+	end
 
-    local group = WiseDB.groups[name]
-    if not group then return end
-    
-    local f = Wise:CreateGroupFrame(name, instanceId)
-    
-    f.instanceId = instanceId or name
-    if overrideOpts and overrideOpts._parentInstanceId then
-        f.parentInstanceId = overrideOpts._parentInstanceId
-    end
+	local group = WiseDB.groups[name]
+	if not group then
+		return
+	end
 
-    -- Apply Anchor (only for fixed mode or initial positioning)
-    -- Mouse mode will reposition via OnUpdate
-    -- Determine if this is the "Always Visible + Mouse" mode
-    -- Determine if this is the "Always Visible + Mouse" mode
-    local displayType = group.type or "circle"
-    if overrideOpts and overrideOpts.nestedInterfaceType and overrideOpts.nestedInterfaceType ~= "default" then
-        displayType = overrideOpts.nestedInterfaceType
-    end
-    f.effectiveDisplayType = displayType
+	local f = Wise:CreateGroupFrame(name, instanceId)
 
-    -- Allow nesting options to override the child's dynamic/static style
-    local isDynamic = group.dynamic
-    if overrideOpts and overrideOpts.nestedInterfaceStyle and overrideOpts.nestedInterfaceStyle ~= "default" then
-        isDynamic = (overrideOpts.nestedInterfaceStyle == "dynamic")
-    end
+	f.instanceId = instanceId or name
+	if overrideOpts and overrideOpts._parentInstanceId then
+		f.parentInstanceId = overrideOpts._parentInstanceId
+	end
 
-    local mode = group.interaction or "toggle"
-    
-    -- Check Availability override (Wiser interfaces)
-    if not Wise:IsGroupAvailable(name) then
-        RegisterStateDriver(f, "visibility", "hide")
-        f:Hide()
-        return
-    else
-        -- Clear any previous "visibility" hide driver that may have been registered
-        -- when the group was unavailable. Without this, the "visibility" state driver
-        -- permanently overrides all other visibility logic (game, manual, custom, etc.).
-        UnregisterStateDriver(f, "visibility")
-    end
+	-- Apply Anchor (only for fixed mode or initial positioning)
+	-- Mouse mode will reposition via OnUpdate
+	-- Determine if this is the "Always Visible + Mouse" mode
+	-- Determine if this is the "Always Visible + Mouse" mode
+	local displayType = group.type or "circle"
+	if overrideOpts and overrideOpts.nestedInterfaceType and overrideOpts.nestedInterfaceType ~= "default" then
+		displayType = overrideOpts.nestedInterfaceType
+	end
+	f.effectiveDisplayType = displayType
 
-    -- Migration: Ensure baseVisibility is set if missing
-    if not group.visibilitySettings then group.visibilitySettings = {} end
-    if not group.visibilitySettings.baseVisibility then
-        if group.visibilitySettings.always then group.visibilitySettings.baseVisibility = "ALWAYS_VISIBLE"
-        elseif group.visibilitySettings.combat then group.visibilitySettings.baseVisibility = "COMBAT_ONLY"
-        elseif group.visibilitySettings.nocombat then group.visibilitySettings.baseVisibility = "NO_COMBAT_ONLY"
-        else group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN" end
-    end
-    
-    -- Ensure defaults
-    group.keybindSettings = group.keybindSettings or { trigger = "press" }
+	-- Allow nesting options to override the child's dynamic/static style
+	local isDynamic = group.dynamic
+	if overrideOpts and overrideOpts.nestedInterfaceStyle and overrideOpts.nestedInterfaceStyle ~= "default" then
+		isDynamic = (overrideOpts.nestedInterfaceStyle == "dynamic")
+	end
 
-    -- Nested Interface Detection (used for strata, toggleOnPress, visibility)
-    local parentName, parentGroup = Wise:GetParentInfo(name)
+	local mode = group.interaction or "toggle"
 
-    -- Determine if THIS invocation is for a nested instance (has instanceId from parent)
-    -- vs the base/standalone instance. A group can be both standalone (own keybind)
-    -- AND nested (referenced as interface action in another group). Only the nested
-    -- instance should be forced to toggleOnPress/ALWAYS_HIDDEN.
-    local isNestedInstance = (instanceId ~= nil) and parentName and not group.isWiser
+	-- Check Availability override (Wiser interfaces)
+	if not Wise:IsGroupAvailable(name) then
+		RegisterStateDriver(f, "visibility", "hide")
+		f:Hide()
+		return
+	else
+		-- Clear any previous "visibility" hide driver that may have been registered
+		-- when the group was unavailable. Without this, the "visibility" state driver
+		-- permanently overrides all other visibility logic (game, manual, custom, etc.).
+		UnregisterStateDriver(f, "visibility")
+	end
 
-    -- Effective visibility overrides for nested instances only (never mutate saved data)
-    local effectiveToggleOnPress = group.visibilitySettings.toggleOnPress
-    local effectiveBaseVisibility = group.visibilitySettings.baseVisibility
-    local effectiveHideOnUse = group.visibilitySettings.hideOnUse
+	-- Migration: Ensure baseVisibility is set if missing
+	if not group.visibilitySettings then
+		group.visibilitySettings = {}
+	end
+	if not group.visibilitySettings.baseVisibility then
+		if group.visibilitySettings.always then
+			group.visibilitySettings.baseVisibility = "ALWAYS_VISIBLE"
+		elseif group.visibilitySettings.combat then
+			group.visibilitySettings.baseVisibility = "COMBAT_ONLY"
+		elseif group.visibilitySettings.nocombat then
+			group.visibilitySettings.baseVisibility = "NO_COMBAT_ONLY"
+		else
+			group.visibilitySettings.baseVisibility = "ALWAYS_HIDDEN"
+		end
+	end
 
-    if isNestedInstance then
-        effectiveToggleOnPress = true
-        effectiveBaseVisibility = "ALWAYS_HIDDEN"
-        if effectiveHideOnUse == nil then
-            effectiveHideOnUse = true
-        end
-    end
+	-- Ensure defaults
+	group.keybindSettings = group.keybindSettings or { trigger = "press" }
 
-    -- Store effective values on frame for BuildVisibilityDriver and toggleBtn setup
-    f.effectiveToggleOnPress = effectiveToggleOnPress
-    f.effectiveBaseVisibility = effectiveBaseVisibility
-    f.effectiveHideOnUse = effectiveHideOnUse
+	-- Nested Interface Detection (used for strata, toggleOnPress, visibility)
+	local parentName, parentGroup = Wise:GetParentInfo(name)
 
-    -- Nested instances inherit animation from parent
-    if isNestedInstance and overrideOpts then
-        f.parentAnimation = overrideOpts._parentAnimation or false
-    end
+	-- Determine if THIS invocation is for a nested instance (has instanceId from parent)
+	-- vs the base/standalone instance. A group can be both standalone (own keybind)
+	-- AND nested (referenced as interface action in another group). Only the nested
+	-- instance should be forced to toggleOnPress/ALWAYS_HIDDEN.
+	local isNestedInstance = (instanceId ~= nil) and parentName and not group.isWiser
 
-    -- Module 1: Apply Visibility Engine
-    local driverString = Wise:BuildVisibilityDriver(f, group)
+	-- Effective visibility overrides for nested instances only (never mutate saved data)
+	local effectiveToggleOnPress = group.visibilitySettings.toggleOnPress
+	local effectiveBaseVisibility = group.visibilitySettings.baseVisibility
+	local effectiveHideOnUse = group.visibilitySettings.hideOnUse
 
-    -- Apply Strata based on anchor mode and nesting depth
-    local baseStrata = (group.anchorMode == "mouse") and "TOOLTIP" or "MEDIUM"
-    -- Nested interfaces must render above their parent so their buttons are clickable
-    if parentName then
-        if baseStrata == "MEDIUM" then
-            baseStrata = "HIGH"
-        end
-    end
-    if Wise.editMode then
-        f.originalStrata = baseStrata
-    else
-        f:SetFrameStrata(baseStrata)
-    end
-    
-    -- Gatekeeper Logic: Union of all visibility sources, with wise-hide override
-    local gatekeeper = [[
+	if isNestedInstance then
+		effectiveToggleOnPress = true
+		effectiveBaseVisibility = "ALWAYS_HIDDEN"
+		if effectiveHideOnUse == nil then
+			effectiveHideOnUse = true
+		end
+	end
+
+	-- Store effective values on frame for BuildVisibilityDriver and toggleBtn setup
+	f.effectiveToggleOnPress = effectiveToggleOnPress
+	f.effectiveBaseVisibility = effectiveBaseVisibility
+	f.effectiveHideOnUse = effectiveHideOnUse
+
+	-- Nested instances inherit animation from parent
+	if isNestedInstance and overrideOpts then
+		f.parentAnimation = overrideOpts._parentAnimation or false
+	end
+
+	-- Module 1: Apply Visibility Engine
+	local driverString = Wise:BuildVisibilityDriver(f, group)
+
+	-- Apply Strata based on anchor mode and nesting depth
+	local baseStrata = (group.anchorMode == "mouse") and "TOOLTIP" or "MEDIUM"
+	-- Nested interfaces must render above their parent so their buttons are clickable
+	if parentName then
+		if baseStrata == "MEDIUM" then
+			baseStrata = "HIGH"
+		end
+	end
+	if Wise.editMode then
+		f.originalStrata = baseStrata
+	else
+		f:SetFrameStrata(baseStrata)
+	end
+
+	-- Gatekeeper Logic: Union of all visibility sources, with wise-hide override
+	local gatekeeper = [[
         local editmode = self:GetAttribute("state-editmode") or "hide"
         local game = self:GetAttribute("state-game") or "hide"
         local manual = self:GetAttribute("state-manual") or "hide"
@@ -2986,824 +3329,970 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
              driver:RunAttribute("SetState", groupName, driverState)
         end
     ]]
-    f:SetAttribute("_onstate-game", gatekeeper)
-    f:SetAttribute("_onstate-manual", gatekeeper)
-    f:SetAttribute("_onstate-custom", gatekeeper)
-    f:SetAttribute("_onstate-wise-show", gatekeeper)
-    f:SetAttribute("_onstate-wise-hide", gatekeeper)
-    f:SetAttribute("_onstate-editmode", gatekeeper)
-
-    -- Set opacity attributes for gatekeeper
-    local activeOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
-    local inactiveOpacity = group.inactiveOpacity or (WiseDB.settings and WiseDB.settings.inactiveOpacity)
-    if not InCombatLockdown() then
-        f:SetAttribute("activeOpacity", activeOpacity < 1 and activeOpacity or nil)
-        f:SetAttribute("inactiveOpacity", inactiveOpacity and inactiveOpacity > 0 and inactiveOpacity or nil)
-    end
-
-    -- Initialize Manual and Wise State if missing (Prevent reset on config update)
-    if not InCombatLockdown() then
-        if not f:GetAttribute("state-manual") then f:SetAttribute("state-manual", "hide") end
-        if not f:GetAttribute("state-wise-show") then f:SetAttribute("state-wise-show", "hide") end
-        if not f:GetAttribute("state-wise-hide") then f:SetAttribute("state-wise-hide", "hide") end
-
-        if Wise.editMode and group.anchorMode ~= "mouse" then
-            f:SetAttribute("state-editmode", "show")
-        else
-            f:SetAttribute("state-editmode", "hide")
-        end
-    end
-
-    -- Custom Visibility Logic (Immediate + Ticker/OnUpdate)
-    -- Pre-cache condition flags for undermouse (these don't change until UpdateGroupDisplay is called again)
-    local cvShowStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
-    local cvHideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
-    local cvShowUnderMouse = cvShowStr:find("undermouse") and true or false
-    local cvHideUnderMouse = cvHideStr:find("undermouse") and true or false
-    local hasUnderMouse = cvShowUnderMouse or cvHideUnderMouse
-    -- Check if any non-mouse custom conditionals are present (bank, mailbox, zoneability, etc.)
-    local hasNonMouseConditions = false
-    for keyword in pairs(CUSTOM_VIS_CONDITIONALS) do
-        if keyword ~= "undermouse" then
-            if cvShowStr:find(keyword) or cvHideStr:find(keyword) then
-                hasNonMouseConditions = true
-                break
-            end
-        end
-    end
-
-    -- Detect combat modifier paired with undermouse (e.g. "[combat,undermouse]" or "[nocombat,undermouse]")
-    local undermouseNoCombat = cvShowStr:find("nocombat") and cvShowUnderMouse and true or false
-    local undermouseCombatOnly = cvShowStr:find("combat") and not cvShowStr:find("nocombat") and cvShowUnderMouse and true or false
-    if cvShowUnderMouse and not undermouseCombatOnly and not undermouseNoCombat then
-        undermouseNoCombat = true
-    end
-
-    -- Bounding box offsets for undermouse hit testing (populated after ApplyLayout)
-    local cachedMinX, cachedMaxX, cachedMinY, cachedMaxY = -35, 35, -35, 35
-
-    -- Fast undermouse check (no string ops, no iteration — just cursor vs cached bounds)
-    local function IsMouseOverInterface()
-        local anchorFrame = f.Anchor
-        if not anchorFrame then return false end
-        local aLeft, aBottom, aWidth, aHeight = anchorFrame:GetRect()
-        if not aLeft then return false end
-        local scale = anchorFrame:GetEffectiveScale()
-        local cx, cy = GetCursorPosition()
-        cx = cx / scale
-        cy = cy / scale
-        local centerX = aLeft + aWidth / 2
-        local centerY = aBottom + aHeight / 2
-        return cx >= centerX + cachedMinX and cx <= centerX + cachedMaxX
-           and cy >= centerY + cachedMinY and cy <= centerY + cachedMaxY
-    end
-
-    -- Generic custom condition check using EvalConditionString (handles bank, mailbox, zoneability, etc.)
-    local function CheckCustomVisibility()
-        if InCombatLockdown() then return false end
-        local showStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
-        local hideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
-
-        local showResult = EvalConditionString(showStr)
-        local hideResult = EvalConditionString(hideStr)
-
-        -- Hide overrides show
-        if hideResult then return false end
-        return showResult
-    end
-
-    -- Initial Custom Check
-    local initialCustomState = "hide"
-    if CheckCustomVisibility() then
-        initialCustomState = "show"
-        if not InCombatLockdown() then f:SetAttribute("state-custom", "show") end
-    else
-        if not InCombatLockdown() then f:SetAttribute("state-custom", "hide") end
-    end
-
-    -- Clean up previous custom visibility handlers
-    if f.customVisTicker then
-        f.customVisTicker:Cancel()
-        f.customVisTicker = nil
-    end
-    if f.undermouseFrame then
-        f.undermouseFrame:SetScript("OnUpdate", nil)
-        f.undermouseFrame:Hide()
-    end
-
-    if hasUnderMouse then
-        -- Use a dedicated hidden frame with OnUpdate for frame-rate mouse tracking.
-        -- OnUpdate fires every render frame (~16ms @ 60fps) for near-instant response.
-        -- We use a separate frame to avoid conflicting with f.Anchor's OnUpdate (mouse-follow mode).
-        if not f.undermouseFrame then
-            f.undermouseFrame = CreateFrame("Frame")
-        end
-        local nonMouseElapsed = 0
-        local wasShowingInCombat = false
-        f.undermouseFrame:Show()
-        f.undermouseFrame:SetScript("OnUpdate", function(self, elapsed)
-            local inCombat = InCombatLockdown()
-
-            -- Respect combat modifiers: [combat][undermouse] vs [nocombat][undermouse]
-            -- If undermouseNoCombat and in combat → undermouse should not trigger
-            -- If undermouseCombatOnly and not in combat → undermouse should not trigger
-            local undermouseActive = true
-            if undermouseNoCombat and inCombat then undermouseActive = false end
-            if undermouseCombatOnly and not inCombat then undermouseActive = false end
-
-            local isOver = undermouseActive and IsMouseOverInterface() or false
-            local customShow = false
-
-            -- Check non-mouse conditions at reduced rate (every 0.5s) using generic evaluator
-            if hasNonMouseConditions then
-                nonMouseElapsed = nonMouseElapsed + elapsed
-                if nonMouseElapsed >= 0.5 then
-                    nonMouseElapsed = 0
-                    f._lastNonMouseResult = CheckCustomVisibility()
-                end
-                if f._lastNonMouseResult then customShow = true end
-            end
-
-            if cvShowUnderMouse and isOver then customShow = true end
-            if cvHideUnderMouse and isOver then customShow = false end
-
-            if inCombat then
-                -- In combat: can't touch secure frame attributes.
-                -- Use f.visualDisplay (insecure mirror) for show/hide instead.
-                if f.visualDisplay then
-                    if customShow then
-                        if not wasShowingInCombat then
-                            f.visualDisplay:Show()
-                            f:SetAlpha(0) -- Hide secure frame visually (keeps keybinds active)
-                            wasShowingInCombat = true
-                        end
-                    else
-                        if wasShowingInCombat then
-                            f.visualDisplay:Hide()
-                            wasShowingInCombat = false
-                        end
-                    end
-                end
-            else
-                -- Out of combat: use secure attribute path
-                -- If we were showing via visualDisplay in combat, clean up on transition
-                if wasShowingInCombat then
-                    f.visualDisplay:Hide()
-                    f:SetAlpha(activeOpacity)
-                    wasShowingInCombat = false
-                end
-                local target = customShow and "show" or "hide"
-                if f:GetAttribute("state-custom") ~= target then
-                    f:SetAttribute("state-custom", target)
-                end
-            end
-        end)
-    elseif hasNonMouseConditions then
-        -- No undermouse: use slower ticker for bank/mailbox/etc (0.5s is fine)
-        f.customVisTicker = C_Timer.NewTicker(0.5, function()
-            local isShow = CheckCustomVisibility()
-            local target = isShow and "show" or "hide"
-            if f:GetAttribute("state-custom") ~= target and not InCombatLockdown() then
-                f:SetAttribute("state-custom", target)
-            end
-        end)
-    end
-
-    -- Check if combat visible for mouse tracking
-    -- Use raw strings to determine intent
-    local rawShow = group.visibilitySettings.customShow or ""
-    local rawHide = group.visibilitySettings.customHide or ""
-    
-    local showInCombat = rawShow:find("%[%]") or rawShow:find("%[always%]") or rawShow:find("%[combat%]")
-    local hideInCombat = rawHide:find("%[%]") or rawHide:find("%[always%]") or rawHide:find("%[combat%]")
-    
-    local isCombatVisible = (showInCombat and not hideInCombat)
-    local isAlwaysVisibleMouse = isCombatVisible and (group.anchorMode == "mouse")
-
-    local rawShowStr = group.visibilitySettings.customShow or ""
-    local groupToken = "wise:" .. name
-    local autoHeld = rawShowStr:find(groupToken, 1, true)
-    
-    if not InCombatLockdown() then
-        -- Force correct visibility synchronously
-        -- Don't trust f:GetAttribute("state-game") immediately after RegisterStateDriver as it may be stale.
-        -- We calculate what it SHOULD be using the driver string we just built.
-        local gameResult = SecureCmdOptionParse_Internal and SecureCmdOptionParse_Internal(driverString) or SecureCmdOptionParse(driverString)
-        -- Note: driverString is formatted as "cond show; hide". SecureCmdOptionParse returns "show" or "hide" (or nil->hide).
-        
-        local gameState = (gameResult == "show") and "show" or "hide"
-        local manualState = f:GetAttribute("state-manual") or "hide"
-        local customState = initialCustomState
-        
-        local base = effectiveBaseVisibility
-
-        -- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
-        local wiseShowState = f:GetAttribute("state-wise-show") or "hide"
-        local wiseHideState = f:GetAttribute("state-wise-hide") or "hide"
-        local editmodeState = f:GetAttribute("state-editmode") or "hide"
-
-        local shouldShow = false
-        if editmodeState == "show" then
-            shouldShow = true
-        else
-            if manualState == "show" then shouldShow = true end
-            if customState == "show" then shouldShow = true end
-            if gameState == "show" then shouldShow = true end
-            if wiseShowState == "show" then shouldShow = true end
-
-            if wiseHideState == "show" then shouldShow = false end
-        end
-
-        if shouldShow then
-            f:Show()
-            f:SetAlpha(activeOpacity)
-        elseif inactiveOpacity and inactiveOpacity > 0 then
-            f:Show()
-            f:SetAlpha(inactiveOpacity)
-        else
-            f:Hide()
-        end
-    end
-    
-    -- Setup Visual Mirror (Insecure frame for combat display)
-    if not f.visualDisplay then
-         f.visualDisplay = CreateFrame("Frame", nil, UIParent)
-         f.visualDisplay:SetSize(50, 50) -- Match group size
-         f.visualDisplay.buttons = {}
-    end
-    
-    -- Anchor Visual Display to Proxy (so it follows mouse in combat)
-    f.visualDisplay:ClearAllPoints()
-    f.visualDisplay:SetPoint("CENTER", f.Anchor, "CENTER")
-    f.visualDisplay:SetScale(f:GetScale()) -- Sync scale
-    f.visualDisplay:SetFrameStrata(f:GetFrameStrata()) -- Sync strata
-    
-    -- Event Handler to toggle visual display in combat
-    -- When [undermouse] is active, the OnUpdate handler manages visualDisplay directly.
-    f.visualDisplay:SetScript("OnEvent", function(self, event)
-        if hasUnderMouse then
-            -- Undermouse OnUpdate handles combat show/hide — don't interfere.
-            -- Only restore alpha when leaving combat (OnUpdate handles the rest).
-            if event == "PLAYER_REGEN_ENABLED" then
-                f:SetAlpha(activeOpacity)
-            end
-        elseif isAlwaysVisibleMouse then
-            if event == "PLAYER_REGEN_DISABLED" then
-                self:Show()
-                f:SetAlpha(0)
-            elseif event == "PLAYER_REGEN_ENABLED" then
-                self:Hide()
-                f:SetAlpha(activeOpacity)
-            end
-        else
-            self:Hide()
-            f:SetAlpha(activeOpacity)
-        end
-    end)
-    f.visualDisplay:RegisterEvent("PLAYER_REGEN_DISABLED")
-    f.visualDisplay:RegisterEvent("PLAYER_REGEN_ENABLED")
-
-    -- Initial State
-    if InCombatLockdown() and isAlwaysVisibleMouse then
-        f.visualDisplay:Show()
-        f:SetAlpha(0)
-    else
-        f.visualDisplay:Hide()
-        f:SetAlpha(activeOpacity)
-    end
-    
-    -- ... (Positioning Logic for Proxy Anchor) ...
-
-    -- Apply Anchor (only for fixed mode or initial positioning)
-    -- Mouse mode will reposition via OnUpdate
-    -- Nested instances always use static positioning (PositionNestedChild handles them)
-    if isNestedInstance or group.anchorMode ~= "mouse" then
-        -- Static Mode: Restore anchor to f.Anchor
-        if not InCombatLockdown() then
-             -- Ensure f is anchored to f.Anchor using the group's point
-             -- (We might have detached it in Mouse mode)
-             f:ClearAllPoints()
-             local point = (group.anchor and group.anchor.point) or "CENTER"
-             f:SetPoint(point, f.Anchor, point)
-        end
-    
-        -- Position f.Anchor acting as the actual position holder
-        -- Use full 5-parameter SetPoint to preserve the exact coordinate system from edit mode.
-        -- After dragging, WoW anchors as TOPLEFT→BOTTOMLEFT (absolute screen coords), so we
-        -- must restore with the same relativePoint to avoid position shifts on edit mode exit.
-        f.Anchor:ClearAllPoints()
-        if group.anchor then
-            local point = group.anchor.point or "CENTER"
-            local relPoint = group.anchor.relativePoint or point
-            f.Anchor:SetPoint(point, UIParent, relPoint, group.anchor.x or 0, group.anchor.y or 0)
-        else
-            f.Anchor:SetPoint("CENTER")
-        end
-        f.Anchor:SetScript("OnUpdate", nil)
-        f:SetScript("OnUpdate", nil)
-    else
-        -- Mouse anchor mode: set up continuous mouse tracking
-        
-        -- Break dependency on f.Anchor so we can move it (and visualDisplay) in combat
-        if not InCombatLockdown() then
-            f:ClearAllPoints()
-             -- Set initial point to prevent jumping
-            local cursorX, cursorY = GetCursorPosition()
-            local uiScale = UIParent:GetScale() or 1
-            local frameScale = f:GetScale() or 1
-            local correctedX = (cursorX / uiScale) / frameScale
-            local correctedY = (cursorY / uiScale) / frameScale
-            f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
-        end
-        
-        -- Attach to ANCHOR frame so it runs even if secure frame is hidden (combat)
-        local function MouseFollowUpdate()
-            -- Closure captures 'f' and 'group'
-            if f.mouseAnchorLocked then return end
-            
-            -- Get cursor position and correct for UI scale (like UltimateMouseCursor)
-            local cursorX, cursorY = GetCursorPosition()
-            local uiScale = UIParent:GetScale() or 1
-            local frameScale = f:GetScale() or 1
-            
-            -- Apply scale correction and offsets
-            local correctedX = (cursorX / uiScale) / frameScale
-            local correctedY = (cursorY / uiScale) / frameScale
-            local offsetX = (group.mouseOffsetX or 0) / frameScale
-            local offsetY = (group.mouseOffsetY or 0) / frameScale
-            
-            -- Move the PROXY ANCHOR (Insecure, safe to move in combat NOW that f is detached)
-            if f.Anchor then
-                f.Anchor:ClearAllPoints()
-                f.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
-            end
-            
-            -- Move the SECURE FRAME (Only safe out of combat)
-            if not InCombatLockdown() then
-                 f:ClearAllPoints()
-                 f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
-            end
-        end
-        
-        -- Determine if should lock or follow continuously
-        if isAlwaysVisibleMouse then
-            -- Always visible: continuously follow mouse
-            f.mouseAnchorLocked = false
-        else
-            -- Hold/toggle modes: will lock when shown
-            -- If currently hidden (startup), allow tracking (unlocked) so it's ready at cursor
-            if f:IsShown() then
-                f.mouseAnchorLocked = true
-            else
-                f.mouseAnchorLocked = false
-            end
-        end
-        
-        f.Anchor:SetScript("OnUpdate", MouseFollowUpdate)
-        f:SetScript("OnUpdate", nil) -- Ensure secure frame doesn't run it
-    end
-    
-    if f.toggleBtn then
-        -- Default trigger: release_mouseover (standard ring behavior)
-        -- We will support explicit selection in options later, but for now map 'press' correctly.
-        local derivedTrigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
-        -- Legacy support: if repeatPrevious is explicitly true, upgrade to release_repeat
-        if derivedTrigger == "release_mouseover" and group.keybindSettings and group.keybindSettings.repeatPrevious then
-             derivedTrigger = "release_repeat"
-        end
-
-        f.toggleBtn:SetAttribute("trigger", derivedTrigger)
-        f.toggleBtn:SetAttribute("repeatPrevious", (group.keybindSettings and group.keybindSettings.repeatPrevious))
-
-        -- Set visibleWhenHeld if explicit OR auto-detected from [wise:Name]
-        -- CRITICAL: If Toggle On Press is enabled, we MUST NOT enable visibleWhenHeld,
-        -- because visibleWhenHeld causes the frame to hide on release.
-        local isHeld = group.visibilitySettings.held or autoHeld
-        if effectiveToggleOnPress then isHeld = false end
-
-        f.toggleBtn:SetAttribute("visibleWhenHeld", isHeld)
-
-        f.toggleBtn:SetAttribute("toggleOnPress", effectiveToggleOnPress)
-        f.toggleBtn:SetAttribute("hideOnUse", effectiveHideOnUse)
-        f.toggleBtn:SetAttribute("layoutType", displayType)
-
-        Wise:DebugPrint(string.format("Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'", 
-            name, 
-            derivedTrigger, 
-            tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")), 
-            tostring(effectiveToggleOnPress),
-            tostring(group.keybindSettings and group.keybindSettings.repeatPrevious)
-        ))
-    end
-
-    -- Build list of actions to display (Slots -> Active State)
-    
-    -- Ensure data migration (Transform legacy .buttons to .actions if needed)
-    if Wise.MigrateGroupToActions then Wise:MigrateGroupToActions(group) end
-
-    local actionsToShow = {}
-    
-    if group.actions then
-        -- Gather sorted slots
-        local slots = {}
-        for slotIdx, states in pairs(group.actions) do
-            table.insert(slots, {index = slotIdx, states = states})
-        end
-        table.sort(slots, function(a,b) return a.index < b.index end)
-
-        for _, slotInfo in ipairs(slots) do
-            local slotIdx = slotInfo.index
-            local states = slotInfo.states
-
-            -- Filter states based on Visibility Logic (Class/Spec/etc) AND spell availability.
-            -- This ensures we only generate secure attributes for actions that are valid for this character.
-            local validStates = {}
-            -- Copy conflictStrategy if present (though usually passed separately)
-            validStates.conflictStrategy = states.conflictStrategy
-            validStates.resetOnCombat = states.resetOnCombat
-            validStates.suppressErrors = states.suppressErrors
-            validStates.pressAndHold = states.pressAndHold
-            for _, state in ipairs(states) do
-                if Wise:IsActionAllowed(state) then
-                    -- Also filter out spells/items that aren't known to the current character.
-                    -- This prevents unknown off-spec talents from winning over valid same-spec spells
-                    -- during condition evaluation.  Only apply to types with meaningful "known" checks.
-                    -- Skip the filter for states with conditions (e.g. [overridebar]) — those are
-                    -- temporary/encounter spells whose availability is gated by the condition itself.
-                    local sType = state.type
-                    local hasCond = state.conditions and state.conditions ~= ""
-                    if not hasCond and (sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet") then
-                        if Wise:IsActionKnown(sType, state.value) then
-                            table.insert(validStates, state)
-                        end
-                    else
-                        table.insert(validStates, state)
-                    end
-                end
-            end
-
-            if #validStates > 0 then
-                -- Evaluate conditions to pick the active state from VALID states
-                local conflictStrategy = validStates.conflictStrategy or "priority"
-                local chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
-                local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
-
-                if actionData then
-                    -- Check category metadata filter ONLY for the options UI, not the bar renderer itself.
-                    local shouldShow = true
-                    -- Check if spell/item is known
-                    local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-
-                    if isDynamic then
-                        -- For dynamic groups, collapse "Spacer" actions (empty custom macros)
-                        -- A spacer is misc/custom_macro with either no name/macrotext or explicitly named "Empty"
-                        local isSpacer = (actionData.type == "misc" and actionData.value == "custom_macro") and
-                                         (actionData.name == "Empty" or (not actionData.macroText or actionData.macroText == ""))
-
-                        -- Also check cooldowns for dynamic mode: hide on-cooldown actions
-                        -- Skip for CooldownWiser — those interfaces exist to SHOW cooldowns
-                        local isOnCooldown = false
-                        if group.propertyType ~= "CooldownWiser" then
-                            isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
-                        end
-
-                        -- For dynamic groups, evaluate per-slot conditions (e.g. [extrabar], [zoneability])
-                        -- to hide slots whose conditions are not currently met.
-                        local conditionMet = true
-                        if actionData.conditions and actionData.conditions ~= "" then
-                            conditionMet = EvalFullConditionString(actionData.conditions)
-                        end
-
-                        if shouldShow and isKnown and not isSpacer and not isOnCooldown and conditionMet then
-                            table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
-                        end
-                    else
-                        -- Static interfaces: preserve slot positions to prevent collapsing.
-                        -- If the chosen state is not known, try to find another valid state that IS known
-                        -- (e.g. conditional override bar won priority but isn't available — fall back to a real spell)
-                        if not isKnown and not Wise.editMode and #validStates > 1 then
-                            for fallbackIdx, fallbackState in ipairs(validStates) do
-                                if fallbackIdx ~= chosenIdx and Wise:IsActionKnown(fallbackState.type, fallbackState.value) then
-                                    chosenIdx = fallbackIdx
-                                    actionData = fallbackState
-                                    isKnown = true
-                                    break
-                                end
-                            end
-                        end
-                        -- Always preserve the slot with its actual data (known actions render normally,
-                        -- unknown ones render desaturated). Only user-placed "empty" type slots go invisible.
-                        table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = true, slot = slotIdx, states = validStates, conflictStrategy = conflictStrategy, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx})
-                    end
-                end
-            elseif not isDynamic then
-                -- Static interfaces: always preserve empty slots (no collapsing)
-                table.insert(actionsToShow, {data = {type="empty", value=nil}, known = true, categoryMatch = true, slot = slotIdx})
-            end
-        end
-    end
-    -- Fallback for legacy if not migrated (safety)
-    if not group.actions and group.buttons then
-         for i, actionData in ipairs(group.buttons) do
-            local shouldShow = Wise:ShouldShowAction(actionData)
-            local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
-            if isDynamic then
-                local isOnCooldown = false
-                if group.propertyType ~= "CooldownWiser" then
-                    isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
-                end
-                if shouldShow and isKnown and not isOnCooldown then table.insert(actionsToShow, {data = actionData, known = true, categoryMatch = true, slot = i}) end
-            else
-                table.insert(actionsToShow, {data = actionData, known = isKnown, categoryMatch = shouldShow, slot = i})
-            end
-         end
-    end
-    
-    -- Expand embedded interface actions: replace interface slots with child's resolved actions
-    -- Clear stale embedded parent mappings for this group
-    if Wise._embeddedParents then
-        for childName, parentName in pairs(Wise._embeddedParents) do
-            if parentName == name then
-                Wise._embeddedParents[childName] = nil
-            end
-        end
-    end
-    local expanded = {}
-    for _, actionInfo in ipairs(actionsToShow) do
-        local ad = actionInfo.data
-        if ad and ad.type == "interface" and ad.value then
-            local nestOpts = Wise:GetNestingOptions(ad)
-            -- Box parents don't support embedded mode; skip expansion
-            local pType = group and group.type or "circle"
-            if nestOpts and nestOpts.rotationMode == "embedded" and pType ~= "box" then
-                local childGroupName = ad.value
-                local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
-                if childGroup then
-                    -- Resolve child actions the same way the main loop does
-                    local childActions = childGroup.actions
-                    local childButtons = not childActions and childGroup.buttons
-                    local childSlots = {}
-                    if childActions then
-                        for slotIdx, states in pairs(childActions) do
-                            if type(slotIdx) == "number" and type(states) == "table" then
-                                table.insert(childSlots, {index = slotIdx, states = states})
-                            end
-                        end
-                        table.sort(childSlots, function(a, b) return a.index < b.index end)
-                    elseif childButtons then
-                        for ci, cAction in ipairs(childButtons) do
-                            table.insert(childSlots, {index = ci, states = {cAction}})
-                        end
-                    end
-
-                    local childIsDynamic = childGroup.dynamic
-                    for _, cSlot in ipairs(childSlots) do
-                        local cStates = cSlot.states
-                        local validStates = {}
-                        validStates.conflictStrategy = cStates.conflictStrategy
-                        validStates.resetOnCombat = cStates.resetOnCombat
-                        validStates.suppressErrors = cStates.suppressErrors
-                        validStates.pressAndHold = cStates.pressAndHold
-                        for _, st in ipairs(cStates) do
-                            if Wise:IsActionAllowed(st) then
-                                local sType = st.type
-                                local hasCond = st.conditions and st.conditions ~= ""
-                                if not hasCond and (sType == "spell" or sType == "item" or sType == "toy" or sType == "mount" or sType == "battlepet") then
-                                    if Wise:IsActionKnown(sType, st.value) then
-                                        table.insert(validStates, st)
-                                    end
-                                else
-                                    table.insert(validStates, st)
-                                end
-                            end
-                        end
-                        if #validStates > 0 then
-                            local cs = validStates.conflictStrategy or "priority"
-                            local chosenIdx = Wise:EvaluateSlotConditions(validStates, cs, nil)
-                            local cData = chosenIdx and validStates[chosenIdx] or validStates[1]
-                            if cData and cData.type ~= "interface" then
-                                local cKnown = Wise:IsActionKnown(cData.type, cData.value)
-                                if childIsDynamic or isDynamic then
-                                    local isSpacer = (cData.type == "misc" and cData.value == "custom_macro") and
-                                        (cData.name == "Empty" or (not cData.macroText or cData.macroText == ""))
-                                    local isOnCD = false
-                                    if (childGroup.propertyType ~= "CooldownWiser") and (group.propertyType ~= "CooldownWiser") then
-                                        isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
-                                    end
-                                    if cKnown and not isSpacer and not isOnCD then
-                                        table.insert(expanded, {data = cData, known = true, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx, embeddedFrom = childGroupName})
-                                    end
-                                else
-                                    if Wise.editMode or cKnown then
-                                        table.insert(expanded, {data = cData, known = cKnown, categoryMatch = true, slot = cSlot.index, states = validStates, conflictStrategy = cs, resetOnCombat = validStates.resetOnCombat, suppressErrors = validStates.suppressErrors, pressAndHold = validStates.pressAndHold, activeState = chosenIdx, embeddedFrom = childGroupName})
-                                    end
-                                end
-                            end
-                        end
-                    end
-
-                    -- Track this parent so child updates can propagate
-                    if not Wise._embeddedParents then Wise._embeddedParents = {} end
-                    Wise._embeddedParents[childGroupName] = name
-                else
-                    -- Child group not found, skip
-                end
-            else
-                table.insert(expanded, actionInfo)
-            end
-        else
-            table.insert(expanded, actionInfo)
-        end
-    end
-    actionsToShow = expanded
-
-    Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
-
-    -- Create/Update Buttons
-    local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots = Wise:GetGroupDisplaySettings(name)
-
-    -- Nested instances inherit icon size from parent
-    if isNestedInstance and overrideOpts and overrideOpts._parentIconSize then
-        iconSize = overrideOpts._parentIconSize
-        f.inheritedIconSize = iconSize
-    end
-
-    -- Nested line children: inherit orientation/anchor overrides from nesting logic
-    if isNestedInstance and overrideOpts then
-        f.nestedLineOrientation = overrideOpts._nestedLineOrientation or nil
-        f.nestedLineAnchor = overrideOpts._nestedLineAnchor or nil
-        f.nestedListAnchor = overrideOpts._nestedListAnchor or nil
-        f.nestedTextAlign = overrideOpts._nestedTextAlign or nil
-    end
-
-    for i, actionInfo in ipairs(actionsToShow) do
-        local actionData = actionInfo.data
-        local isKnown = actionInfo.known
-        
-        local btn = f.buttons[i]
-        if not btn then
-            btn = CreateFrame("Button", "WiseGroup_"..name.."_Btn"..i, f, "SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate")
-            btn:SetSize(iconSize, iconSize)
-            btn:RegisterForClicks("AnyUp", "AnyDown")
-
-            -- Icon
-            btn.icon = btn:CreateTexture(nil, "ARTWORK")
-            btn.icon:SetAllPoints()
-
-            -- Active state highlight (manually managed, not CheckButton)
-            btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
-            btn.activeHighlight:SetAllPoints(btn.icon)
-            btn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-            btn.activeHighlight:SetBlendMode("ADD")
-            btn.activeHighlight:Hide()
-            
-            -- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
-            btn.cooldown = CreateFrame("Cooldown", nil, btn)
-            btn.cooldown:SetAllPoints(btn.icon)
-            btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
-            btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
-            btn.cooldown:SetDrawEdge(true)
-            btn.cooldown:SetDrawSwipe(true)
-            btn.cooldown:SetHideCountdownNumbers(false)
-            
-            -- Text layers (count, keybind, customText) via Text module
-            Wise:Text_CreateFontStrings(btn)
-            
-            tinsert(f.buttons, btn)
-
-            -- Masque Support
-            -- Note: HotKey (btn.keybind) is intentionally excluded.
-            -- Wise manages its own keybind text via core/Text.lua.
-            -- Passing it to Masque causes Masque's Skin_Text to call
-            -- SetSize(36,0) which clips/hides wider strings like MWU, MWD, M3.
-            if Wise.MasqueGroup then
-                Wise.MasqueGroup:AddButton(btn, {
-                    Icon = btn.icon,
-                    Cooldown = btn.cooldown,
-                    Count = btn.count,
-                })
-            end
-
-            -- Tooltip support
-            Wise:AddInterfaceTooltip(btn)
-
-            -- Hover indication (5% scale + dim glow)
-            Wise:AddHoverIndication(btn)
-
-            -- Mousewheel: propagate to parent group frame for scroll navigation
-            btn:EnableMouseWheel(true)
-            btn:SetScript("OnMouseWheel", function(self, delta)
-                local parent = self:GetParent()
-                if parent and parent:GetScript("OnMouseWheel") then
-                    parent:GetScript("OnMouseWheel")(parent, delta)
-                end
-            end)
-
-            -- Secure hover tracking
-            SecureHandlerWrapScript(btn, "OnEnter", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", self:GetName()) ]])
-            SecureHandlerWrapScript(btn, "OnLeave", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", nil) ]])
-            
-
-            -- Debug hooks removed to prevent secret value errors
-
-
-
-
-            -- Drag and Drop Support
-            Wise:DebugPrint("Registering OnReceiveDrag for " .. btn:GetName())
-            
-            -- Ensure button can receive mouse events 
-            btn:EnableMouse(true)
-            btn:RegisterForClicks("AnyUp", "AnyDown")
-            
-            -- Register for drag to be safe
-            btn:RegisterForDrag("LeftButton") 
-            
-            btn:SetScript("OnReceiveDrag", function(self)
-                Wise:OnDragReceive(name, self.slot)
-            end)
-
-            btn:SetScript("OnMouseUp", function(self, button)
-                 -- Check if cursor has item; if so, OnReceiveDrag SHOULD have fired.
-                 local type = GetCursorInfo()
-                 if type then
-                     -- Fallback?
-                     Wise:OnDragReceive(name, self.slot)
-                 else
-                     -- Normal click
-                     -- print("Wise Debug: OnMouseUp fired (No Cursor)")
-                 end
-            end)
-            
-            f.toggleBtn:SetFrameRef(btn:GetName(), btn)
-            f.toggleBtn:SetFrameRef("btn" .. i, btn)
-        end
-        
-        -- Explicitly clear btn2 ref if we only have 1 button (to avoid stale refs from recycled frames)
-        -- MOVED outside loop for clarity
-        -- if #actionsToShow == 1 then
-        --      f.toggleBtn:SetAttribute("frameref-btn2", nil)
-        -- end
-        
-        btn:Show()
-        btn.slot = actionInfo.slot -- Store slot for binding reference
-        -- Always apply current global icon size (for existing buttons too)
-        btn:SetSize(iconSize, iconSize)
-        
-        -- Compute secure attributes via helper
-        local aType = actionData.type
-        local aValue = actionData.value
-        local secureType, secureAttr, secureValue = Wise:GetSecureAttributes(actionData, actionData.conditions)
-
-        -- Reset Attributes
-        btn:SetAttribute("type", nil)
-        btn:SetAttribute("spell", nil)
-        btn:SetAttribute("item", nil)
-        btn:SetAttribute("macro", nil)
-        btn:SetAttribute("macrotext", nil)
-        btn:SetAttribute("clickbutton", nil)
-
-        btn:SetAttribute("type", secureType)
-        if secureType then
-            btn:SetAttribute(secureAttr, secureValue)
-        end
-
-        -- Press-and-hold: disabled by default, opt-in per-slot
-        if actionInfo.pressAndHold then
-            btn:SetAttribute("pressAndHoldAction", 1)
-        else
-            btn:SetAttribute("pressAndHoldAction", nil)
-        end
-
-        -- Mark interface buttons with nesting attributes
-        if aType == "interface" then
-            local frameKey = instanceId or name
-            local childInstanceId = frameKey .. "_" .. tostring(i) .. "_" .. aValue
-            btn:SetAttribute("isa_is_interface", true)
-            btn:SetAttribute("isa_interface_target", childInstanceId)
-
-            local nestOpts = Wise:GetNestingOptions(actionData)
-            local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
-            -- Box parents only support button nesting (jump/embedded too complex for grid)
-            local parentType = group and group.type or "circle"
-            if parentType == "box" then
-                nestMode = "button"
-            end
-            -- For button mode, pass the buttonMode to the secure handler
-            -- (secure handler uses cycle/random/priority directly)
-            local secureNestMode = nestMode
-            if nestMode == "button" then
-                secureNestMode = (nestOpts and nestOpts.buttonMode) or "cycle"
-            end
-            btn:SetAttribute("isa_nest_mode", secureNestMode)
-
-            if nestMode == "jump" then
-                -- Jump mode: create child frame and set up hover-to-open
-                if nestOpts then
-                    btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
-
-                    -- Always open on hover (the only open method for nested interfaces)
-                    btn:SetAttribute("_onenter", [[
+	f:SetAttribute("_onstate-game", gatekeeper)
+	f:SetAttribute("_onstate-manual", gatekeeper)
+	f:SetAttribute("_onstate-custom", gatekeeper)
+	f:SetAttribute("_onstate-wise-show", gatekeeper)
+	f:SetAttribute("_onstate-wise-hide", gatekeeper)
+	f:SetAttribute("_onstate-editmode", gatekeeper)
+
+	-- Set opacity attributes for gatekeeper
+	local activeOpacity = group.activeOpacity or (WiseDB.settings and WiseDB.settings.activeOpacity) or 1
+	local inactiveOpacity = group.inactiveOpacity or (WiseDB.settings and WiseDB.settings.inactiveOpacity)
+	if not InCombatLockdown() then
+		f:SetAttribute("activeOpacity", activeOpacity < 1 and activeOpacity or nil)
+		f:SetAttribute("inactiveOpacity", inactiveOpacity and inactiveOpacity > 0 and inactiveOpacity or nil)
+	end
+
+	-- Initialize Manual and Wise State if missing (Prevent reset on config update)
+	if not InCombatLockdown() then
+		if not f:GetAttribute("state-manual") then
+			f:SetAttribute("state-manual", "hide")
+		end
+		if not f:GetAttribute("state-wise-show") then
+			f:SetAttribute("state-wise-show", "hide")
+		end
+		if not f:GetAttribute("state-wise-hide") then
+			f:SetAttribute("state-wise-hide", "hide")
+		end
+
+		if Wise.editMode and group.anchorMode ~= "mouse" then
+			f:SetAttribute("state-editmode", "show")
+		else
+			f:SetAttribute("state-editmode", "hide")
+		end
+	end
+
+	-- Custom Visibility Logic (Immediate + Ticker/OnUpdate)
+	-- Pre-cache condition flags for undermouse (these don't change until UpdateGroupDisplay is called again)
+	local cvShowStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
+	local cvHideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
+	local cvShowUnderMouse = cvShowStr:find("undermouse") and true or false
+	local cvHideUnderMouse = cvHideStr:find("undermouse") and true or false
+	local hasUnderMouse = cvShowUnderMouse or cvHideUnderMouse
+	-- Check if any non-mouse custom conditionals are present (bank, mailbox, zoneability, etc.)
+	local hasNonMouseConditions = false
+	for keyword in pairs(CUSTOM_VIS_CONDITIONALS) do
+		if keyword ~= "undermouse" then
+			if cvShowStr:find(keyword) or cvHideStr:find(keyword) then
+				hasNonMouseConditions = true
+				break
+			end
+		end
+	end
+
+	-- Detect combat modifier paired with undermouse (e.g. "[combat,undermouse]" or "[nocombat,undermouse]")
+	local undermouseNoCombat = cvShowStr:find("nocombat") and cvShowUnderMouse and true or false
+	local undermouseCombatOnly = cvShowStr:find("combat")
+			and not cvShowStr:find("nocombat")
+			and cvShowUnderMouse
+			and true
+		or false
+	if cvShowUnderMouse and not undermouseCombatOnly and not undermouseNoCombat then
+		undermouseNoCombat = true
+	end
+
+	-- Bounding box offsets for undermouse hit testing (populated after ApplyLayout)
+	local cachedMinX, cachedMaxX, cachedMinY, cachedMaxY = -35, 35, -35, 35
+
+	-- Fast undermouse check (no string ops, no iteration — just cursor vs cached bounds)
+	local function IsMouseOverInterface()
+		local anchorFrame = f.Anchor
+		if not anchorFrame then
+			return false
+		end
+		local aLeft, aBottom, aWidth, aHeight = anchorFrame:GetRect()
+		if not aLeft then
+			return false
+		end
+		local scale = anchorFrame:GetEffectiveScale()
+		local cx, cy = GetCursorPosition()
+		cx = cx / scale
+		cy = cy / scale
+		local centerX = aLeft + aWidth / 2
+		local centerY = aBottom + aHeight / 2
+		return cx >= centerX + cachedMinX
+			and cx <= centerX + cachedMaxX
+			and cy >= centerY + cachedMinY
+			and cy <= centerY + cachedMaxY
+	end
+
+	-- Generic custom condition check using EvalConditionString (handles bank, mailbox, zoneability, etc.)
+	local function CheckCustomVisibility()
+		if InCombatLockdown() then
+			return false
+		end
+		local showStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
+		local hideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
+
+		local showResult = EvalConditionString(showStr)
+		local hideResult = EvalConditionString(hideStr)
+
+		-- Hide overrides show
+		if hideResult then
+			return false
+		end
+		return showResult
+	end
+
+	-- Initial Custom Check
+	local initialCustomState = "hide"
+	if CheckCustomVisibility() then
+		initialCustomState = "show"
+		if not InCombatLockdown() then
+			f:SetAttribute("state-custom", "show")
+		end
+	else
+		if not InCombatLockdown() then
+			f:SetAttribute("state-custom", "hide")
+		end
+	end
+
+	-- Clean up previous custom visibility handlers
+	if f.customVisTicker then
+		f.customVisTicker:Cancel()
+		f.customVisTicker = nil
+	end
+	if f.undermouseFrame then
+		f.undermouseFrame:SetScript("OnUpdate", nil)
+		f.undermouseFrame:Hide()
+	end
+
+	if hasUnderMouse then
+		-- Use a dedicated hidden frame with OnUpdate for frame-rate mouse tracking.
+		-- OnUpdate fires every render frame (~16ms @ 60fps) for near-instant response.
+		-- We use a separate frame to avoid conflicting with f.Anchor's OnUpdate (mouse-follow mode).
+		if not f.undermouseFrame then
+			f.undermouseFrame = CreateFrame("Frame")
+		end
+		local nonMouseElapsed = 0
+		local wasShowingInCombat = false
+		f.undermouseFrame:Show()
+		f.undermouseFrame:SetScript("OnUpdate", function(self, elapsed)
+			local inCombat = InCombatLockdown()
+
+			-- Respect combat modifiers: [combat][undermouse] vs [nocombat][undermouse]
+			-- If undermouseNoCombat and in combat → undermouse should not trigger
+			-- If undermouseCombatOnly and not in combat → undermouse should not trigger
+			local undermouseActive = true
+			if undermouseNoCombat and inCombat then
+				undermouseActive = false
+			end
+			if undermouseCombatOnly and not inCombat then
+				undermouseActive = false
+			end
+
+			local isOver = undermouseActive and IsMouseOverInterface() or false
+			local customShow = false
+
+			-- Check non-mouse conditions at reduced rate (every 0.5s) using generic evaluator
+			if hasNonMouseConditions then
+				nonMouseElapsed = nonMouseElapsed + elapsed
+				if nonMouseElapsed >= 0.5 then
+					nonMouseElapsed = 0
+					f._lastNonMouseResult = CheckCustomVisibility()
+				end
+				if f._lastNonMouseResult then
+					customShow = true
+				end
+			end
+
+			if cvShowUnderMouse and isOver then
+				customShow = true
+			end
+			if cvHideUnderMouse and isOver then
+				customShow = false
+			end
+
+			if inCombat then
+				-- In combat: can't touch secure frame attributes.
+				-- Use f.visualDisplay (insecure mirror) for show/hide instead.
+				if f.visualDisplay then
+					if customShow then
+						if not wasShowingInCombat then
+							f.visualDisplay:Show()
+							f:SetAlpha(0) -- Hide secure frame visually (keeps keybinds active)
+							wasShowingInCombat = true
+						end
+					else
+						if wasShowingInCombat then
+							f.visualDisplay:Hide()
+							wasShowingInCombat = false
+						end
+					end
+				end
+			else
+				-- Out of combat: use secure attribute path
+				-- If we were showing via visualDisplay in combat, clean up on transition
+				if wasShowingInCombat then
+					f.visualDisplay:Hide()
+					f:SetAlpha(activeOpacity)
+					wasShowingInCombat = false
+				end
+				local target = customShow and "show" or "hide"
+				if f:GetAttribute("state-custom") ~= target then
+					f:SetAttribute("state-custom", target)
+				end
+			end
+		end)
+	elseif hasNonMouseConditions then
+		-- No undermouse: use slower ticker for bank/mailbox/etc (0.5s is fine)
+		f.customVisTicker = C_Timer.NewTicker(0.5, function()
+			local isShow = CheckCustomVisibility()
+			local target = isShow and "show" or "hide"
+			if f:GetAttribute("state-custom") ~= target and not InCombatLockdown() then
+				f:SetAttribute("state-custom", target)
+			end
+		end)
+	end
+
+	-- Check if combat visible for mouse tracking
+	-- Use raw strings to determine intent
+	local rawShow = group.visibilitySettings.customShow or ""
+	local rawHide = group.visibilitySettings.customHide or ""
+
+	local showInCombat = rawShow:find("%[%]") or rawShow:find("%[always%]") or rawShow:find("%[combat%]")
+	local hideInCombat = rawHide:find("%[%]") or rawHide:find("%[always%]") or rawHide:find("%[combat%]")
+
+	local isCombatVisible = (showInCombat and not hideInCombat)
+	local isAlwaysVisibleMouse = isCombatVisible and (group.anchorMode == "mouse")
+
+	local rawShowStr = group.visibilitySettings.customShow or ""
+	local groupToken = "wise:" .. name
+	local autoHeld = rawShowStr:find(groupToken, 1, true)
+
+	if not InCombatLockdown() then
+		-- Force correct visibility synchronously
+		-- Don't trust f:GetAttribute("state-game") immediately after RegisterStateDriver as it may be stale.
+		-- We calculate what it SHOULD be using the driver string we just built.
+		local gameResult = SecureCmdOptionParse_Internal and SecureCmdOptionParse_Internal(driverString)
+			or SecureCmdOptionParse(driverString)
+		-- Note: driverString is formatted as "cond show; hide". SecureCmdOptionParse returns "show" or "hide" (or nil->hide).
+
+		local gameState = (gameResult == "show") and "show" or "hide"
+		local manualState = f:GetAttribute("state-manual") or "hide"
+		local customState = initialCustomState
+
+		local base = effectiveBaseVisibility
+
+		-- Mirror Gatekeeper Logic: Union (OR) with wise-hide override
+		local wiseShowState = f:GetAttribute("state-wise-show") or "hide"
+		local wiseHideState = f:GetAttribute("state-wise-hide") or "hide"
+		local editmodeState = f:GetAttribute("state-editmode") or "hide"
+
+		local shouldShow = false
+		if editmodeState == "show" then
+			shouldShow = true
+		else
+			if manualState == "show" then
+				shouldShow = true
+			end
+			if customState == "show" then
+				shouldShow = true
+			end
+			if gameState == "show" then
+				shouldShow = true
+			end
+			if wiseShowState == "show" then
+				shouldShow = true
+			end
+
+			if wiseHideState == "show" then
+				shouldShow = false
+			end
+		end
+
+		if shouldShow then
+			f:Show()
+			f:SetAlpha(activeOpacity)
+		elseif inactiveOpacity and inactiveOpacity > 0 then
+			f:Show()
+			f:SetAlpha(inactiveOpacity)
+		else
+			f:Hide()
+		end
+	end
+
+	-- Setup Visual Mirror (Insecure frame for combat display)
+	if not f.visualDisplay then
+		f.visualDisplay = CreateFrame("Frame", nil, UIParent)
+		f.visualDisplay:SetSize(50, 50) -- Match group size
+		f.visualDisplay.buttons = {}
+	end
+
+	-- Anchor Visual Display to Proxy (so it follows mouse in combat)
+	f.visualDisplay:ClearAllPoints()
+	f.visualDisplay:SetPoint("CENTER", f.Anchor, "CENTER")
+	f.visualDisplay:SetScale(f:GetScale()) -- Sync scale
+	f.visualDisplay:SetFrameStrata(f:GetFrameStrata()) -- Sync strata
+
+	-- Event Handler to toggle visual display in combat
+	-- When [undermouse] is active, the OnUpdate handler manages visualDisplay directly.
+	f.visualDisplay:SetScript("OnEvent", function(self, event)
+		if hasUnderMouse then
+			-- Undermouse OnUpdate handles combat show/hide — don't interfere.
+			-- Only restore alpha when leaving combat (OnUpdate handles the rest).
+			if event == "PLAYER_REGEN_ENABLED" then
+				f:SetAlpha(activeOpacity)
+			end
+		elseif isAlwaysVisibleMouse then
+			if event == "PLAYER_REGEN_DISABLED" then
+				self:Show()
+				f:SetAlpha(0)
+			elseif event == "PLAYER_REGEN_ENABLED" then
+				self:Hide()
+				f:SetAlpha(activeOpacity)
+			end
+		else
+			self:Hide()
+			f:SetAlpha(activeOpacity)
+		end
+	end)
+	f.visualDisplay:RegisterEvent("PLAYER_REGEN_DISABLED")
+	f.visualDisplay:RegisterEvent("PLAYER_REGEN_ENABLED")
+
+	-- Initial State
+	if InCombatLockdown() and isAlwaysVisibleMouse then
+		f.visualDisplay:Show()
+		f:SetAlpha(0)
+	else
+		f.visualDisplay:Hide()
+		f:SetAlpha(activeOpacity)
+	end
+
+	-- ... (Positioning Logic for Proxy Anchor) ...
+
+	-- Apply Anchor (only for fixed mode or initial positioning)
+	-- Mouse mode will reposition via OnUpdate
+	-- Nested instances always use static positioning (PositionNestedChild handles them)
+	if isNestedInstance or group.anchorMode ~= "mouse" then
+		-- Static Mode: Restore anchor to f.Anchor
+		if not InCombatLockdown() then
+			-- Ensure f is anchored to f.Anchor using the group's point
+			-- (We might have detached it in Mouse mode)
+			f:ClearAllPoints()
+			local point = (group.anchor and group.anchor.point) or "CENTER"
+			f:SetPoint(point, f.Anchor, point)
+		end
+
+		-- Position f.Anchor acting as the actual position holder
+		-- Use full 5-parameter SetPoint to preserve the exact coordinate system from edit mode.
+		-- After dragging, WoW anchors as TOPLEFT→BOTTOMLEFT (absolute screen coords), so we
+		-- must restore with the same relativePoint to avoid position shifts on edit mode exit.
+		f.Anchor:ClearAllPoints()
+		if group.anchor then
+			local point = group.anchor.point or "CENTER"
+			local relPoint = group.anchor.relativePoint or point
+			f.Anchor:SetPoint(point, UIParent, relPoint, group.anchor.x or 0, group.anchor.y or 0)
+		else
+			f.Anchor:SetPoint("CENTER")
+		end
+		f.Anchor:SetScript("OnUpdate", nil)
+		f:SetScript("OnUpdate", nil)
+	else
+		-- Mouse anchor mode: set up continuous mouse tracking
+
+		-- Break dependency on f.Anchor so we can move it (and visualDisplay) in combat
+		if not InCombatLockdown() then
+			f:ClearAllPoints()
+			-- Set initial point to prevent jumping
+			local cursorX, cursorY = GetCursorPosition()
+			local uiScale = UIParent:GetScale() or 1
+			local frameScale = f:GetScale() or 1
+			local correctedX = (cursorX / uiScale) / frameScale
+			local correctedY = (cursorY / uiScale) / frameScale
+			f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+		end
+
+		-- Attach to ANCHOR frame so it runs even if secure frame is hidden (combat)
+		local function MouseFollowUpdate()
+			-- Closure captures 'f' and 'group'
+			if f.mouseAnchorLocked then
+				return
+			end
+
+			-- Get cursor position and correct for UI scale (like UltimateMouseCursor)
+			local cursorX, cursorY = GetCursorPosition()
+			local uiScale = UIParent:GetScale() or 1
+			local frameScale = f:GetScale() or 1
+
+			-- Apply scale correction and offsets
+			local correctedX = (cursorX / uiScale) / frameScale
+			local correctedY = (cursorY / uiScale) / frameScale
+			local offsetX = (group.mouseOffsetX or 0) / frameScale
+			local offsetY = (group.mouseOffsetY or 0) / frameScale
+
+			-- Move the PROXY ANCHOR (Insecure, safe to move in combat NOW that f is detached)
+			if f.Anchor then
+				f.Anchor:ClearAllPoints()
+				f.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
+			end
+
+			-- Move the SECURE FRAME (Only safe out of combat)
+			if not InCombatLockdown() then
+				f:ClearAllPoints()
+				f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
+			end
+		end
+
+		-- Determine if should lock or follow continuously
+		if isAlwaysVisibleMouse then
+			-- Always visible: continuously follow mouse
+			f.mouseAnchorLocked = false
+		else
+			-- Hold/toggle modes: will lock when shown
+			-- If currently hidden (startup), allow tracking (unlocked) so it's ready at cursor
+			if f:IsShown() then
+				f.mouseAnchorLocked = true
+			else
+				f.mouseAnchorLocked = false
+			end
+		end
+
+		f.Anchor:SetScript("OnUpdate", MouseFollowUpdate)
+		f:SetScript("OnUpdate", nil) -- Ensure secure frame doesn't run it
+	end
+
+	if f.toggleBtn then
+		-- Default trigger: release_mouseover (standard ring behavior)
+		-- We will support explicit selection in options later, but for now map 'press' correctly.
+		local derivedTrigger = (group.keybindSettings and group.keybindSettings.trigger) or "release_mouseover"
+		-- Legacy support: if repeatPrevious is explicitly true, upgrade to release_repeat
+		if derivedTrigger == "release_mouseover" and group.keybindSettings and group.keybindSettings.repeatPrevious then
+			derivedTrigger = "release_repeat"
+		end
+
+		f.toggleBtn:SetAttribute("trigger", derivedTrigger)
+		f.toggleBtn:SetAttribute("repeatPrevious", (group.keybindSettings and group.keybindSettings.repeatPrevious))
+
+		-- Set visibleWhenHeld if explicit OR auto-detected from [wise:Name]
+		-- CRITICAL: If Toggle On Press is enabled, we MUST NOT enable visibleWhenHeld,
+		-- because visibleWhenHeld causes the frame to hide on release.
+		local isHeld = group.visibilitySettings.held or autoHeld
+		if effectiveToggleOnPress then
+			isHeld = false
+		end
+
+		f.toggleBtn:SetAttribute("visibleWhenHeld", isHeld)
+
+		f.toggleBtn:SetAttribute("toggleOnPress", effectiveToggleOnPress)
+		f.toggleBtn:SetAttribute("hideOnUse", effectiveHideOnUse)
+		f.toggleBtn:SetAttribute("layoutType", displayType)
+
+		Wise:DebugPrint(
+			string.format(
+				"Group '%s' Config: trigger='%s', held='%s', toggle='%s', repeat='%s'",
+				name,
+				derivedTrigger,
+				tostring(f.toggleBtn:GetAttribute("visibleWhenHeld")),
+				tostring(effectiveToggleOnPress),
+				tostring(group.keybindSettings and group.keybindSettings.repeatPrevious)
+			)
+		)
+	end
+
+	-- Build list of actions to display (Slots -> Active State)
+
+	-- Ensure data migration (Transform legacy .buttons to .actions if needed)
+	if Wise.MigrateGroupToActions then
+		Wise:MigrateGroupToActions(group)
+	end
+
+	local actionsToShow = {}
+
+	if group.actions then
+		-- Gather sorted slots
+		local slots = {}
+		for slotIdx, states in pairs(group.actions) do
+			table.insert(slots, { index = slotIdx, states = states })
+		end
+		table.sort(slots, function(a, b)
+			return a.index < b.index
+		end)
+
+		for _, slotInfo in ipairs(slots) do
+			local slotIdx = slotInfo.index
+			local states = slotInfo.states
+
+			-- Filter states based on Visibility Logic (Class/Spec/etc) AND spell availability.
+			-- This ensures we only generate secure attributes for actions that are valid for this character.
+			local validStates = {}
+			-- Copy conflictStrategy if present (though usually passed separately)
+			validStates.conflictStrategy = states.conflictStrategy
+			validStates.resetOnCombat = states.resetOnCombat
+			validStates.suppressErrors = states.suppressErrors
+			validStates.pressAndHold = states.pressAndHold
+			for _, state in ipairs(states) do
+				if Wise:IsActionAllowed(state) then
+					-- Also filter out spells/items that aren't known to the current character.
+					-- This prevents unknown off-spec talents from winning over valid same-spec spells
+					-- during condition evaluation.  Only apply to types with meaningful "known" checks.
+					-- Skip the filter for states with conditions (e.g. [overridebar]) — those are
+					-- temporary/encounter spells whose availability is gated by the condition itself.
+					local sType = state.type
+					local hasCond = state.conditions and state.conditions ~= ""
+					if
+						not hasCond
+						and (
+							sType == "spell"
+							or sType == "item"
+							or sType == "toy"
+							or sType == "mount"
+							or sType == "battlepet"
+						)
+					then
+						if Wise:IsActionKnown(sType, state.value) then
+							table.insert(validStates, state)
+						end
+					else
+						table.insert(validStates, state)
+					end
+				end
+			end
+
+			if #validStates > 0 then
+				-- Evaluate conditions to pick the active state from VALID states
+				local conflictStrategy = validStates.conflictStrategy or "priority"
+				local chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
+				local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
+
+				if actionData then
+					-- Check category metadata filter ONLY for the options UI, not the bar renderer itself.
+					local shouldShow = true
+					-- Check if spell/item is known
+					local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
+
+					if isDynamic then
+						-- For dynamic groups, collapse "Spacer" actions (empty custom macros)
+						-- A spacer is misc/custom_macro with either no name/macrotext or explicitly named "Empty"
+						local isSpacer = (actionData.type == "misc" and actionData.value == "custom_macro")
+							and (actionData.name == "Empty" or (not actionData.macroText or actionData.macroText == ""))
+
+						-- Also check cooldowns for dynamic mode: hide on-cooldown actions
+						-- Skip for CooldownWiser — those interfaces exist to SHOW cooldowns
+						local isOnCooldown = false
+						if group.propertyType ~= "CooldownWiser" then
+							isOnCooldown = isKnown
+								and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+						end
+
+						-- For dynamic groups, evaluate per-slot conditions (e.g. [extrabar], [zoneability])
+						-- to hide slots whose conditions are not currently met.
+						local conditionMet = true
+						if actionData.conditions and actionData.conditions ~= "" then
+							conditionMet = EvalFullConditionString(actionData.conditions)
+						end
+
+						if shouldShow and isKnown and not isSpacer and not isOnCooldown and conditionMet then
+							table.insert(actionsToShow, {
+								data = actionData,
+								known = true,
+								categoryMatch = true,
+								slot = slotIdx,
+								states = validStates,
+								conflictStrategy = conflictStrategy,
+								suppressErrors = validStates.suppressErrors,
+								pressAndHold = validStates.pressAndHold,
+								activeState = chosenIdx,
+							})
+						end
+					else
+						-- Static interfaces: preserve slot positions to prevent collapsing.
+						-- If the chosen state is not known, try to find another valid state that IS known
+						-- (e.g. conditional override bar won priority but isn't available — fall back to a real spell)
+						if not isKnown and not Wise.editMode and #validStates > 1 then
+							for fallbackIdx, fallbackState in ipairs(validStates) do
+								if
+									fallbackIdx ~= chosenIdx
+									and Wise:IsActionKnown(fallbackState.type, fallbackState.value)
+								then
+									chosenIdx = fallbackIdx
+									actionData = fallbackState
+									isKnown = true
+									break
+								end
+							end
+						end
+						-- Always preserve the slot with its actual data (known actions render normally,
+						-- unknown ones render desaturated). Only user-placed "empty" type slots go invisible.
+						table.insert(actionsToShow, {
+							data = actionData,
+							known = isKnown,
+							categoryMatch = true,
+							slot = slotIdx,
+							states = validStates,
+							conflictStrategy = conflictStrategy,
+							resetOnCombat = validStates.resetOnCombat,
+							suppressErrors = validStates.suppressErrors,
+							pressAndHold = validStates.pressAndHold,
+							activeState = chosenIdx,
+						})
+					end
+				end
+			elseif not isDynamic then
+				-- Static interfaces: always preserve empty slots (no collapsing)
+				table.insert(
+					actionsToShow,
+					{ data = { type = "empty", value = nil }, known = true, categoryMatch = true, slot = slotIdx }
+				)
+			end
+		end
+	end
+	-- Fallback for legacy if not migrated (safety)
+	if not group.actions and group.buttons then
+		for i, actionData in ipairs(group.buttons) do
+			local shouldShow = Wise:ShouldShowAction(actionData)
+			local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
+			if isDynamic then
+				local isOnCooldown = false
+				if group.propertyType ~= "CooldownWiser" then
+					isOnCooldown = isKnown and Wise:IsActionOnCooldown(actionData.type, actionData.value, actionData)
+				end
+				if shouldShow and isKnown and not isOnCooldown then
+					table.insert(actionsToShow, { data = actionData, known = true, categoryMatch = true, slot = i })
+				end
+			else
+				table.insert(
+					actionsToShow,
+					{ data = actionData, known = isKnown, categoryMatch = shouldShow, slot = i }
+				)
+			end
+		end
+	end
+
+	-- Expand embedded interface actions: replace interface slots with child's resolved actions
+	-- Clear stale embedded parent mappings for this group
+	if Wise._embeddedParents then
+		for childName, parentName in pairs(Wise._embeddedParents) do
+			if parentName == name then
+				Wise._embeddedParents[childName] = nil
+			end
+		end
+	end
+	local expanded = {}
+	for _, actionInfo in ipairs(actionsToShow) do
+		local ad = actionInfo.data
+		if ad and ad.type == "interface" and ad.value then
+			local nestOpts = Wise:GetNestingOptions(ad)
+			-- Box parents don't support embedded mode; skip expansion
+			local pType = group and group.type or "circle"
+			if nestOpts and nestOpts.rotationMode == "embedded" and pType ~= "box" then
+				local childGroupName = ad.value
+				local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[childGroupName]
+				if childGroup then
+					-- Resolve child actions the same way the main loop does
+					local childActions = childGroup.actions
+					local childButtons = not childActions and childGroup.buttons
+					local childSlots = {}
+					if childActions then
+						for slotIdx, states in pairs(childActions) do
+							if type(slotIdx) == "number" and type(states) == "table" then
+								table.insert(childSlots, { index = slotIdx, states = states })
+							end
+						end
+						table.sort(childSlots, function(a, b)
+							return a.index < b.index
+						end)
+					elseif childButtons then
+						for ci, cAction in ipairs(childButtons) do
+							table.insert(childSlots, { index = ci, states = { cAction } })
+						end
+					end
+
+					local childIsDynamic = childGroup.dynamic
+					for _, cSlot in ipairs(childSlots) do
+						local cStates = cSlot.states
+						local validStates = {}
+						validStates.conflictStrategy = cStates.conflictStrategy
+						validStates.resetOnCombat = cStates.resetOnCombat
+						validStates.suppressErrors = cStates.suppressErrors
+						validStates.pressAndHold = cStates.pressAndHold
+						for _, st in ipairs(cStates) do
+							if Wise:IsActionAllowed(st) then
+								local sType = st.type
+								local hasCond = st.conditions and st.conditions ~= ""
+								if
+									not hasCond
+									and (
+										sType == "spell"
+										or sType == "item"
+										or sType == "toy"
+										or sType == "mount"
+										or sType == "battlepet"
+									)
+								then
+									if Wise:IsActionKnown(sType, st.value) then
+										table.insert(validStates, st)
+									end
+								else
+									table.insert(validStates, st)
+								end
+							end
+						end
+						if #validStates > 0 then
+							local cs = validStates.conflictStrategy or "priority"
+							local chosenIdx = Wise:EvaluateSlotConditions(validStates, cs, nil)
+							local cData = chosenIdx and validStates[chosenIdx] or validStates[1]
+							if cData and cData.type ~= "interface" then
+								local cKnown = Wise:IsActionKnown(cData.type, cData.value)
+								if childIsDynamic or isDynamic then
+									local isSpacer = (cData.type == "misc" and cData.value == "custom_macro")
+										and (cData.name == "Empty" or (not cData.macroText or cData.macroText == ""))
+									local isOnCD = false
+									if
+										(childGroup.propertyType ~= "CooldownWiser")
+										and (group.propertyType ~= "CooldownWiser")
+									then
+										isOnCD = cKnown and Wise:IsActionOnCooldown(cData.type, cData.value, cData)
+									end
+									if cKnown and not isSpacer and not isOnCD then
+										table.insert(expanded, {
+											data = cData,
+											known = true,
+											categoryMatch = true,
+											slot = cSlot.index,
+											states = validStates,
+											conflictStrategy = cs,
+											suppressErrors = validStates.suppressErrors,
+											pressAndHold = validStates.pressAndHold,
+											activeState = chosenIdx,
+											embeddedFrom = childGroupName,
+										})
+									end
+								else
+									if Wise.editMode or cKnown then
+										table.insert(expanded, {
+											data = cData,
+											known = cKnown,
+											categoryMatch = true,
+											slot = cSlot.index,
+											states = validStates,
+											conflictStrategy = cs,
+											resetOnCombat = validStates.resetOnCombat,
+											suppressErrors = validStates.suppressErrors,
+											pressAndHold = validStates.pressAndHold,
+											activeState = chosenIdx,
+											embeddedFrom = childGroupName,
+										})
+									end
+								end
+							end
+						end
+					end
+
+					-- Track this parent so child updates can propagate
+					if not Wise._embeddedParents then
+						Wise._embeddedParents = {}
+					end
+					Wise._embeddedParents[childGroupName] = name
+				else
+					-- Child group not found, skip
+				end
+			else
+				table.insert(expanded, actionInfo)
+			end
+		else
+			table.insert(expanded, actionInfo)
+		end
+	end
+	actionsToShow = expanded
+
+	Wise:DebugPrint(string.format("Group '%s': actionsToShow count = %d", name, #actionsToShow))
+
+	-- Create/Update Buttons
+	local iconSize, _, _, _, _, _, _, _, _, _, _, _, iconStyle, _, _, _, hideEmptySlots =
+		Wise:GetGroupDisplaySettings(name)
+
+	-- Nested instances inherit icon size from parent
+	if isNestedInstance and overrideOpts and overrideOpts._parentIconSize then
+		iconSize = overrideOpts._parentIconSize
+		f.inheritedIconSize = iconSize
+	end
+
+	-- Nested line children: inherit orientation/anchor overrides from nesting logic
+	if isNestedInstance and overrideOpts then
+		f.nestedLineOrientation = overrideOpts._nestedLineOrientation or nil
+		f.nestedLineAnchor = overrideOpts._nestedLineAnchor or nil
+		f.nestedListAnchor = overrideOpts._nestedListAnchor or nil
+		f.nestedTextAlign = overrideOpts._nestedTextAlign or nil
+	end
+
+	for i, actionInfo in ipairs(actionsToShow) do
+		local actionData = actionInfo.data
+		local isKnown = actionInfo.known
+
+		local btn = f.buttons[i]
+		if not btn then
+			btn = CreateFrame(
+				"Button",
+				"WiseGroup_" .. name .. "_Btn" .. i,
+				f,
+				"SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate"
+			)
+			btn:SetSize(iconSize, iconSize)
+			btn:RegisterForClicks("AnyUp", "AnyDown")
+
+			-- Icon
+			btn.icon = btn:CreateTexture(nil, "ARTWORK")
+			btn.icon:SetAllPoints()
+
+			-- Active state highlight (manually managed, not CheckButton)
+			btn.activeHighlight = btn:CreateTexture(nil, "OVERLAY")
+			btn.activeHighlight:SetAllPoints(btn.icon)
+			btn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+			btn.activeHighlight:SetBlendMode("ADD")
+			btn.activeHighlight:Hide()
+
+			-- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
+			btn.cooldown = CreateFrame("Cooldown", nil, btn)
+			btn.cooldown:SetAllPoints(btn.icon)
+			btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+			btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+			btn.cooldown:SetDrawEdge(true)
+			btn.cooldown:SetDrawSwipe(true)
+			btn.cooldown:SetHideCountdownNumbers(false)
+
+			-- Text layers (count, keybind, customText) via Text module
+			Wise:Text_CreateFontStrings(btn)
+
+			tinsert(f.buttons, btn)
+
+			-- Masque Support
+			-- Note: HotKey (btn.keybind) is intentionally excluded.
+			-- Wise manages its own keybind text via core/Text.lua.
+			-- Passing it to Masque causes Masque's Skin_Text to call
+			-- SetSize(36,0) which clips/hides wider strings like MWU, MWD, M3.
+			if Wise.MasqueGroup then
+				Wise.MasqueGroup:AddButton(btn, {
+					Icon = btn.icon,
+					Cooldown = btn.cooldown,
+					Count = btn.count,
+				})
+			end
+
+			-- Tooltip support
+			Wise:AddInterfaceTooltip(btn)
+
+			-- Hover indication (5% scale + dim glow)
+			Wise:AddHoverIndication(btn)
+
+			-- Mousewheel: propagate to parent group frame for scroll navigation
+			btn:EnableMouseWheel(true)
+			btn:SetScript("OnMouseWheel", function(self, delta)
+				local parent = self:GetParent()
+				if parent and parent:GetScript("OnMouseWheel") then
+					parent:GetScript("OnMouseWheel")(parent, delta)
+				end
+			end)
+
+			-- Secure hover tracking
+			SecureHandlerWrapScript(
+				btn,
+				"OnEnter",
+				f.toggleBtn,
+				[[ owner:SetAttribute("hoveredButton", self:GetName()) ]]
+			)
+			SecureHandlerWrapScript(btn, "OnLeave", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", nil) ]])
+
+			-- Debug hooks removed to prevent secret value errors
+
+			-- Drag and Drop Support
+			Wise:DebugPrint("Registering OnReceiveDrag for " .. btn:GetName())
+
+			-- Ensure button can receive mouse events
+			btn:EnableMouse(true)
+			btn:RegisterForClicks("AnyUp", "AnyDown")
+
+			-- Register for drag to be safe
+			btn:RegisterForDrag("LeftButton")
+
+			btn:SetScript("OnReceiveDrag", function(self)
+				Wise:OnDragReceive(name, self.slot)
+			end)
+
+			btn:SetScript("OnMouseUp", function(self, button)
+				-- Check if cursor has item; if so, OnReceiveDrag SHOULD have fired.
+				local type = GetCursorInfo()
+				if type then
+					-- Fallback?
+					Wise:OnDragReceive(name, self.slot)
+				else
+					-- Normal click
+					-- print("Wise Debug: OnMouseUp fired (No Cursor)")
+				end
+			end)
+
+			f.toggleBtn:SetFrameRef(btn:GetName(), btn)
+			f.toggleBtn:SetFrameRef("btn" .. i, btn)
+		end
+
+		-- Explicitly clear btn2 ref if we only have 1 button (to avoid stale refs from recycled frames)
+		-- MOVED outside loop for clarity
+		-- if #actionsToShow == 1 then
+		--      f.toggleBtn:SetAttribute("frameref-btn2", nil)
+		-- end
+
+		btn:Show()
+		btn.slot = actionInfo.slot -- Store slot for binding reference
+		-- Always apply current global icon size (for existing buttons too)
+		btn:SetSize(iconSize, iconSize)
+
+		-- Compute secure attributes via helper
+		local aType = actionData.type
+		local aValue = actionData.value
+		local secureType, secureAttr, secureValue = Wise:GetSecureAttributes(actionData, actionData.conditions)
+
+		-- Reset Attributes
+		btn:SetAttribute("type", nil)
+		btn:SetAttribute("spell", nil)
+		btn:SetAttribute("item", nil)
+		btn:SetAttribute("macro", nil)
+		btn:SetAttribute("macrotext", nil)
+		btn:SetAttribute("clickbutton", nil)
+
+		btn:SetAttribute("type", secureType)
+		if secureType then
+			btn:SetAttribute(secureAttr, secureValue)
+		end
+
+		-- Press-and-hold: disabled by default, opt-in per-slot
+		if actionInfo.pressAndHold then
+			btn:SetAttribute("pressAndHoldAction", 1)
+		else
+			btn:SetAttribute("pressAndHoldAction", nil)
+		end
+
+		-- Mark interface buttons with nesting attributes
+		if aType == "interface" then
+			local frameKey = instanceId or name
+			local childInstanceId = frameKey .. "_" .. tostring(i) .. "_" .. aValue
+			btn:SetAttribute("isa_is_interface", true)
+			btn:SetAttribute("isa_interface_target", childInstanceId)
+
+			local nestOpts = Wise:GetNestingOptions(actionData)
+			local nestMode = (nestOpts and nestOpts.rotationMode) or "jump"
+			-- Box parents only support button nesting (jump/embedded too complex for grid)
+			local parentType = group and group.type or "circle"
+			if parentType == "box" then
+				nestMode = "button"
+			end
+			-- For button mode, pass the buttonMode to the secure handler
+			-- (secure handler uses cycle/random/priority directly)
+			local secureNestMode = nestMode
+			if nestMode == "button" then
+				secureNestMode = (nestOpts and nestOpts.buttonMode) or "cycle"
+			end
+			btn:SetAttribute("isa_nest_mode", secureNestMode)
+
+			if nestMode == "jump" then
+				-- Jump mode: create child frame and set up hover-to-open
+				if nestOpts then
+					btn:SetAttribute("isa_open_direction", nestOpts.openDirection or "auto")
+
+					-- Always open on hover (the only open method for nested interfaces)
+					btn:SetAttribute(
+						"_onenter",
+						[[
                         local target = self:GetAttribute("isa_interface_target")
                         if target then
                             local childGroup = self:GetFrameRef("child_group")
@@ -3818,221 +4307,228 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                                 end
                             end
                         end
-                    ]])
-                    btn:SetAttribute("_onclick", nil)
-                end
+                    ]]
+					)
+					btn:SetAttribute("_onclick", nil)
+				end
 
-                -- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
-                local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
-                if childGroup then
-                    local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
-                    if childFrame then
-                        f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
-                        btn:SetFrameRef("child_group", childFrame)
-                        if Wise.WiseStateDriver then
-                            btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
-                        end
-                        -- Store ref to child's toggleBtn so parent can check child hover state
-                        if childFrame.toggleBtn then
-                            f.toggleBtn:SetFrameRef("childToggle_" .. childInstanceId, childFrame.toggleBtn)
-                        end
-                    end
+				-- Set frame ref from parent toggleBtn to child group frame (for direct toggle in secure snippet)
+				local childGroup = WiseDB and WiseDB.groups and WiseDB.groups[aValue]
+				if childGroup then
+					local childFrame = Wise:CreateGroupFrame(aValue, childInstanceId)
+					if childFrame then
+						f.toggleBtn:SetFrameRef("nested_" .. childInstanceId, childFrame)
+						btn:SetFrameRef("child_group", childFrame)
+						if Wise.WiseStateDriver then
+							btn:SetFrameRef("WiseStateDriver", Wise.WiseStateDriver)
+						end
+						-- Store ref to child's toggleBtn so parent can check child hover state
+						if childFrame.toggleBtn then
+							f.toggleBtn:SetFrameRef("childToggle_" .. childInstanceId, childFrame.toggleBtn)
+						end
+					end
 
-                    -- Store owning button name and parent toggleBtn on child frame
-                    -- so the close ticker knows when the parent moved to a different slot
-                    if childFrame then
-                        childFrame.ownerButtonName = btn:GetName()
-                        childFrame.parentToggleBtn = f.toggleBtn
-                        if not InCombatLockdown() then
-                            childFrame:SetAttribute("keepOpenAfterUse", nestOpts.keepOpenAfterUse or false)
-                        end
-                    end
+					-- Store owning button name and parent toggleBtn on child frame
+					-- so the close ticker knows when the parent moved to a different slot
+					if childFrame then
+						childFrame.ownerButtonName = btn:GetName()
+						childFrame.parentToggleBtn = f.toggleBtn
+						if not InCombatLockdown() then
+							childFrame:SetAttribute("keepOpenAfterUse", nestOpts.keepOpenAfterUse or false)
+						end
+					end
 
-                    -- Recursive update to prepare child layout with overrides
-                    if not nestOpts then nestOpts = {} end
-                    nestOpts._parentInstanceId = frameKey
+					-- Recursive update to prepare child layout with overrides
+					if not nestOpts then
+						nestOpts = {}
+					end
+					nestOpts._parentInstanceId = frameKey
 
-                    -- Inherit icon size from parent so nested children match
-                    nestOpts._parentIconSize = iconSize
-                    nestOpts._parentAnimation = group.animation or false
+					-- Inherit icon size from parent so nested children match
+					nestOpts._parentIconSize = iconSize
+					nestOpts._parentAnimation = group.animation or false
 
-                    -- Compute line orientation/anchor overrides for line children
-                    local effectiveChildType = nestOpts.nestedInterfaceType or "default"
-                    if effectiveChildType == "default" then
-                        local childGroup = WiseDB.groups[aValue]
-                        effectiveChildType = (childGroup and childGroup.type) or "circle"
-                    end
-                    local parentType = group.type or "circle"
-                    local openDir = nestOpts.openDirection or "auto"
+					-- Compute line orientation/anchor overrides for line children
+					local effectiveChildType = nestOpts.nestedInterfaceType or "default"
+					if effectiveChildType == "default" then
+						local childGroup = WiseDB.groups[aValue]
+						effectiveChildType = (childGroup and childGroup.type) or "circle"
+					end
+					local parentType = group.type or "circle"
+					local openDir = nestOpts.openDirection or "auto"
 
-                    if effectiveChildType == "line" then
-                        if parentType == "circle" then
-                            -- Circle/Line: child line always points away from circle center
-                            local bx = btn.targetX or 0
-                            local by = btn.targetY or 0
-                            local dist = math.sqrt(bx * bx + by * by)
-                            if dist > 0.1 then
-                                local absX = math.abs(bx)
-                                local absY = math.abs(by)
-                                if absX >= absY then
-                                    nestOpts._nestedLineOrientation = "horizontal"
-                                    nestOpts._nestedLineAnchor = (bx > 0) and "LEFT" or "RIGHT"
-                                else
-                                    nestOpts._nestedLineOrientation = "vertical"
-                                    nestOpts._nestedLineAnchor = (by > 0) and "BOTTOM" or "TOP"
-                                end
-                            end
-                        elseif parentType == "line" or parentType == "list" then
-                            -- Line/Line or List/Line: child line opens perpendicular to parent
-                            local parentOrientation = group.lineOrientation or "horizontal"
-                            if parentType == "list" then parentOrientation = "vertical" end
+					if effectiveChildType == "line" then
+						if parentType == "circle" then
+							-- Circle/Line: child line always points away from circle center
+							local bx = btn.targetX or 0
+							local by = btn.targetY or 0
+							local dist = math.sqrt(bx * bx + by * by)
+							if dist > 0.1 then
+								local absX = math.abs(bx)
+								local absY = math.abs(by)
+								if absX >= absY then
+									nestOpts._nestedLineOrientation = "horizontal"
+									nestOpts._nestedLineAnchor = (bx > 0) and "LEFT" or "RIGHT"
+								else
+									nestOpts._nestedLineOrientation = "vertical"
+									nestOpts._nestedLineAnchor = (by > 0) and "BOTTOM" or "TOP"
+								end
+							end
+						elseif parentType == "line" or parentType == "list" then
+							-- Line/Line or List/Line: child line opens perpendicular to parent
+							local parentOrientation = group.lineOrientation or "horizontal"
+							if parentType == "list" then
+								parentOrientation = "vertical"
+							end
 
-                            if parentOrientation == "horizontal" then
-                                nestOpts._nestedLineOrientation = "vertical"
-                                if openDir == "up" then
-                                    nestOpts._nestedLineAnchor = "BOTTOM"
-                                elseif openDir == "down" then
-                                    nestOpts._nestedLineAnchor = "TOP"
-                                else
-                                    nestOpts._nestedLineAnchor = "TOP"
-                                end
-                            else
-                                nestOpts._nestedLineOrientation = "horizontal"
-                                if openDir == "right" then
-                                    nestOpts._nestedLineAnchor = "LEFT"
-                                elseif openDir == "left" then
-                                    nestOpts._nestedLineAnchor = "RIGHT"
-                                else
-                                    nestOpts._nestedLineAnchor = "LEFT"
-                                end
-                            end
-                        end
-                    elseif effectiveChildType == "list" then
-                        if parentType == "line" or parentType == "list" then
-                            -- Line/List or List/List: child list opens perpendicular to parent
-                            local parentOrientation = group.lineOrientation or "horizontal"
-                            if parentType == "list" then parentOrientation = "vertical" end
+							if parentOrientation == "horizontal" then
+								nestOpts._nestedLineOrientation = "vertical"
+								if openDir == "up" then
+									nestOpts._nestedLineAnchor = "BOTTOM"
+								elseif openDir == "down" then
+									nestOpts._nestedLineAnchor = "TOP"
+								else
+									nestOpts._nestedLineAnchor = "TOP"
+								end
+							else
+								nestOpts._nestedLineOrientation = "horizontal"
+								if openDir == "right" then
+									nestOpts._nestedLineAnchor = "LEFT"
+								elseif openDir == "left" then
+									nestOpts._nestedLineAnchor = "RIGHT"
+								else
+									nestOpts._nestedLineAnchor = "LEFT"
+								end
+							end
+						end
+					elseif effectiveChildType == "list" then
+						if parentType == "line" or parentType == "list" then
+							-- Line/List or List/List: child list opens perpendicular to parent
+							local parentOrientation = group.lineOrientation or "horizontal"
+							if parentType == "list" then
+								parentOrientation = "vertical"
+							end
 
-                            if parentOrientation == "horizontal" then
-                                -- Parent horizontal → child list opens up or down
-                                if openDir == "up" then
-                                    nestOpts._nestedListAnchor = "BOTTOM"
-                                elseif openDir == "down" then
-                                    nestOpts._nestedListAnchor = "TOP"
-                                else
-                                    nestOpts._nestedListAnchor = "TOP"
-                                end
-                            else
-                                -- Parent vertical → child list opens left or right
-                                if openDir == "right" then
-                                    nestOpts._nestedListAnchor = "LEFT"
-                                elseif openDir == "left" then
-                                    nestOpts._nestedListAnchor = "RIGHT"
-                                else
-                                    nestOpts._nestedListAnchor = "LEFT"
-                                end
-                            end
+							if parentOrientation == "horizontal" then
+								-- Parent horizontal → child list opens up or down
+								if openDir == "up" then
+									nestOpts._nestedListAnchor = "BOTTOM"
+								elseif openDir == "down" then
+									nestOpts._nestedListAnchor = "TOP"
+								else
+									nestOpts._nestedListAnchor = "TOP"
+								end
+							else
+								-- Parent vertical → child list opens left or right
+								if openDir == "right" then
+									nestOpts._nestedListAnchor = "LEFT"
+								elseif openDir == "left" then
+									nestOpts._nestedListAnchor = "RIGHT"
+								else
+									nestOpts._nestedListAnchor = "LEFT"
+								end
+							end
 
-                            -- Text align override
-                            local nta = nestOpts.nestedTextAlign or "auto"
-                            if nta ~= "auto" then
-                                nestOpts._nestedTextAlign = nta
-                            else
-                                -- Auto: place text away from parent
-                                -- If opening right/down, text goes right; if left/up, text goes left
-                                local anchor = nestOpts._nestedListAnchor or "TOP"
-                                if anchor == "LEFT" or anchor == "TOP" then
-                                    nestOpts._nestedTextAlign = "right"
-                                else
-                                    nestOpts._nestedTextAlign = "left"
-                                end
-                            end
-                        end
-                    end
+							-- Text align override
+							local nta = nestOpts.nestedTextAlign or "auto"
+							if nta ~= "auto" then
+								nestOpts._nestedTextAlign = nta
+							else
+								-- Auto: place text away from parent
+								-- If opening right/down, text goes right; if left/up, text goes left
+								local anchor = nestOpts._nestedListAnchor or "TOP"
+								if anchor == "LEFT" or anchor == "TOP" then
+									nestOpts._nestedTextAlign = "right"
+								else
+									nestOpts._nestedTextAlign = "left"
+								end
+							end
+						end
+					end
 
-                    local currentDepth = (overrideOpts and overrideOpts._depth) or 0
-                    if currentDepth < 3 then
-                        nestOpts._depth = currentDepth + 1
-                        Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
-                    else
-                        Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
-                    end
-                end
-            else
-                -- Button modes (cycle/random/priority): no child frame needed.
-                -- The RESOLVE_BLOCK resolves child actions via isa_nest_* attributes.
-                btn:SetAttribute("_onenter", nil)
-                btn:SetAttribute("_onclick", nil)
-                btn:SetAttribute("isa_open_button", nil)
-                btn:SetAttribute("isa_open_direction", nil)
-            end
+					local currentDepth = (overrideOpts and overrideOpts._depth) or 0
+					if currentDepth < 3 then
+						nestOpts._depth = currentDepth + 1
+						Wise:UpdateGroupDisplay(aValue, childInstanceId, nestOpts)
+					else
+						Wise:DebugPrint("Max nesting depth reached, aborting recursive instantiation for " .. aValue)
+					end
+				end
+			else
+				-- Button modes (cycle/random/priority): no child frame needed.
+				-- The RESOLVE_BLOCK resolves child actions via isa_nest_* attributes.
+				btn:SetAttribute("_onenter", nil)
+				btn:SetAttribute("_onclick", nil)
+				btn:SetAttribute("isa_open_button", nil)
+				btn:SetAttribute("isa_open_direction", nil)
+			end
 
-            -- Store child group's actions for rotation modes
-            Wise:StoreChildActionsOnButton(btn, aValue, nestMode)
-        else
-            btn:SetAttribute("isa_is_interface", nil)
-            btn:SetAttribute("isa_interface_target", nil)
-            btn:SetAttribute("isa_open_button", nil)
-            btn:SetAttribute("isa_open_direction", nil)
-            btn:SetAttribute("isa_nest_mode", nil)
-            btn:SetAttribute("isa_nest_count", nil)
-            btn:SetAttribute("_onenter", nil)
-            btn:SetAttribute("_onclick", nil)
-        end
+			-- Store child group's actions for rotation modes
+			Wise:StoreChildActionsOnButton(btn, aValue, nestMode)
+		else
+			btn:SetAttribute("isa_is_interface", nil)
+			btn:SetAttribute("isa_interface_target", nil)
+			btn:SetAttribute("isa_open_button", nil)
+			btn:SetAttribute("isa_open_direction", nil)
+			btn:SetAttribute("isa_nest_mode", nil)
+			btn:SetAttribute("isa_nest_count", nil)
+			btn:SetAttribute("_onenter", nil)
+			btn:SetAttribute("_onclick", nil)
+		end
 
-        -- Store all states as secure attributes for condition evaluation
-        local allStates = actionInfo.states
-        local stateCount = allStates and #allStates or 1
-        if stateCount > 1 then
-            for sIdx = 1, stateCount do
-                local stateAction = allStates[sIdx]
-                if stateAction then
-                    local computedCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
-                    local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond)
-                    -- Only store string-safe values for secure snippets (clickbutton is a frame ref)
-                    -- For spell type, build subtext-qualified name for /cast in RESOLVE_BLOCK
-                    -- (e.g. "Whirling Surge(Skyriding)") so skyriding abilities resolve correctly.
-                    local spellVal = ""
-                    if sAttr == "spell" then
-                        local rawName = tostring(sValue)
-                        local sid = tonumber(stateAction.value)
-                        if sid and C_Spell.GetSpellSubtext then
-                            local castID = Wise:GetOverrideSpellID(sid) or sid
-                            local subtext = C_Spell.GetSpellSubtext(castID) or C_Spell.GetSpellSubtext(sid)
-                            if subtext and subtext == "Skyriding" then
-                                rawName = rawName .. "(" .. subtext .. ")"
-                            end
-                        end
-                        spellVal = rawName
-                    end
-                    local itemVal = (sAttr == "item") and tostring(sValue) or ""
-                    local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
-                    local cbName = ""
-                    if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
-                        cbName = sValue:GetName() or ""
-                    elseif sType == "click" and type(sValue) == "string" then
-                        cbName = sValue
-                    end
-                    local _, _, isOffGcd = Wise:GetCastTimeText(stateAction.type, stateAction.value)
-                    btn:SetAttribute("isa_type_" .. sIdx, sType)
-                    btn:SetAttribute("isa_spell_" .. sIdx, spellVal)
-                    btn:SetAttribute("isa_item_" .. sIdx, itemVal)
-                    btn:SetAttribute("isa_macrotext_" .. sIdx, macroVal)
-                    btn:SetAttribute("isa_clickbutton_name_" .. sIdx, cbName)
-                    btn:SetAttribute("isa_cond_" .. sIdx, computedCond)
-                    btn:SetAttribute("isa_offgcd_" .. sIdx, isOffGcd and 1 or 0)
-                end
-            end
-            btn:SetAttribute("isa_count", stateCount)
-            btn:SetAttribute("isa_conflict", actionInfo.conflictStrategy or "priority")
-            btn:SetAttribute("isa_suppress", actionInfo.suppressErrors and 1 or 0)
-            btn:SetAttribute("isa_action_on_down", GetCVarBool("ActionButtonUseKeyDown"))
-            btn:SetAttribute("isa_seq", 1)
+		-- Store all states as secure attributes for condition evaluation
+		local allStates = actionInfo.states
+		local stateCount = allStates and #allStates or 1
+		if stateCount > 1 then
+			for sIdx = 1, stateCount do
+				local stateAction = allStates[sIdx]
+				if stateAction then
+					local computedCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
+					local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond)
+					-- Only store string-safe values for secure snippets (clickbutton is a frame ref)
+					-- For spell type, build subtext-qualified name for /cast in RESOLVE_BLOCK
+					-- (e.g. "Whirling Surge(Skyriding)") so skyriding abilities resolve correctly.
+					local spellVal = ""
+					if sAttr == "spell" then
+						local rawName = tostring(sValue)
+						local sid = tonumber(stateAction.value)
+						if sid and C_Spell.GetSpellSubtext then
+							local castID = Wise:GetOverrideSpellID(sid) or sid
+							local subtext = C_Spell.GetSpellSubtext(castID) or C_Spell.GetSpellSubtext(sid)
+							if subtext and subtext == "Skyriding" then
+								rawName = rawName .. "(" .. subtext .. ")"
+							end
+						end
+						spellVal = rawName
+					end
+					local itemVal = (sAttr == "item") and tostring(sValue) or ""
+					local macroVal = (sAttr == "macrotext" or sAttr == "macro") and tostring(sValue) or ""
+					local cbName = ""
+					if sType == "click" and sValue and type(sValue) == "table" and sValue.GetName then
+						cbName = sValue:GetName() or ""
+					elseif sType == "click" and type(sValue) == "string" then
+						cbName = sValue
+					end
+					local _, _, isOffGcd = Wise:GetCastTimeText(stateAction.type, stateAction.value)
+					btn:SetAttribute("isa_type_" .. sIdx, sType)
+					btn:SetAttribute("isa_spell_" .. sIdx, spellVal)
+					btn:SetAttribute("isa_item_" .. sIdx, itemVal)
+					btn:SetAttribute("isa_macrotext_" .. sIdx, macroVal)
+					btn:SetAttribute("isa_clickbutton_name_" .. sIdx, cbName)
+					btn:SetAttribute("isa_cond_" .. sIdx, computedCond)
+					btn:SetAttribute("isa_offgcd_" .. sIdx, isOffGcd and 1 or 0)
+				end
+			end
+			btn:SetAttribute("isa_count", stateCount)
+			btn:SetAttribute("isa_conflict", actionInfo.conflictStrategy or "priority")
+			btn:SetAttribute("isa_suppress", actionInfo.suppressErrors and 1 or 0)
+			btn:SetAttribute("isa_action_on_down", GetCVarBool("ActionButtonUseKeyDown"))
+			btn:SetAttribute("isa_seq", 1)
 
-            -- PreClick secure snippet: uses the SAME RESOLVE_BLOCK as the keybind path
-            -- to guarantee identical condition evaluation, sequencing, and macro generation.
-            if not btn.isaConditionWrapped then
-                local condSnippet = [[
+			-- PreClick secure snippet: uses the SAME RESOLVE_BLOCK as the keybind path
+			-- to guarantee identical condition evaluation, sequencing, and macro generation.
+			if not btn.isaConditionWrapped then
+				local condSnippet = [[
                     local downOnly = self:GetAttribute("isa_action_on_down")
                     if (down and not downOnly) or (not down and downOnly) then return end
                     
@@ -4046,2402 +4542,2661 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
                         self:SetAttribute("macrotext", _rv_m)
                     end
                 ]]
-                SecureHandlerWrapScript(btn, "PreClick", btn, condSnippet)
-                btn.isaConditionWrapped = true
+				SecureHandlerWrapScript(btn, "PreClick", btn, condSnippet)
+				btn.isaConditionWrapped = true
 
-                -- Error suppression hook (insecure, once per button)
-                btn:HookScript("PreClick", function(self, mouseButton, isDown)
-                    if self:GetAttribute("isa_suppress") == 1 then
-                        Wise:BeginErrorSuppression()
-                    end
-                    -- Debug: log resolved action after secure PreClick (/wise resolve)
-                    if Wise.debugResolve then
-                        local t = self:GetAttribute("type") or "nil"
-                        -- Only log the phase that actually fires (secure guard filters the other)
-                        local downOnly = self:GetAttribute("isa_action_on_down")
-                        local willFire = (isDown and downOnly) or (not isDown and not downOnly)
-                        if willFire and t ~= "nil" then
-                            local s = self:GetAttribute("spell") or ""
-                            local m = self:GetAttribute("macrotext") or ""
-                            local seq = self:GetAttribute("isa_seq") or "?"
-                            local conflict = self:GetAttribute("isa_conflict") or "?"
-                            local preview = m ~= "" and m:gsub("\n", "\\n") or s
-                            print(string.format("|cffFFD700[Wise Resolve]|r %s seq=%s %s type=%s",
-                                self:GetName() or "?", tostring(seq), conflict, t))
-                            print(string.format("|cffFFD700  →|r %s", preview))
-                            self._resolveTime = debugprofilestop()
-                        end
-                    end
-                end)
-                btn:HookScript("PostClick", function(self)
-                    if Wise.debugResolve and self._resolveTime then
-                        local elapsed = debugprofilestop() - self._resolveTime
-                        print(string.format("|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r", self:GetName() or "?", elapsed))
-                        self._resolveTime = nil
-                    end
-                end)
-            end
-        else
-            -- Single state: clear multi-state attributes
-            btn:SetAttribute("isa_count", 0)
-        end
+				-- Error suppression hook (insecure, once per button)
+				btn:HookScript("PreClick", function(self, mouseButton, isDown)
+					if self:GetAttribute("isa_suppress") == 1 then
+						Wise:BeginErrorSuppression()
+					end
+					-- Debug: log resolved action after secure PreClick (/wise resolve)
+					if Wise.debugResolve then
+						local t = self:GetAttribute("type") or "nil"
+						-- Only log the phase that actually fires (secure guard filters the other)
+						local downOnly = self:GetAttribute("isa_action_on_down")
+						local willFire = (isDown and downOnly) or (not isDown and not downOnly)
+						if willFire and t ~= "nil" then
+							local s = self:GetAttribute("spell") or ""
+							local m = self:GetAttribute("macrotext") or ""
+							local seq = self:GetAttribute("isa_seq") or "?"
+							local conflict = self:GetAttribute("isa_conflict") or "?"
+							local preview = m ~= "" and m:gsub("\n", "\\n") or s
+							print(
+								string.format(
+									"|cffFFD700[Wise Resolve]|r %s seq=%s %s type=%s",
+									self:GetName() or "?",
+									tostring(seq),
+									conflict,
+									t
+								)
+							)
+							print(string.format("|cffFFD700  →|r %s", preview))
+							self._resolveTime = debugprofilestop()
+						end
+					end
+				end)
+				btn:HookScript("PostClick", function(self)
+					if Wise.debugResolve and self._resolveTime then
+						local elapsed = debugprofilestop() - self._resolveTime
+						print(
+							string.format(
+								"|cffFFD700[Wise Resolve]|r PostClick %s: |cff00ff00%.2fms|r",
+								self:GetName() or "?",
+								elapsed
+							)
+						)
+						self._resolveTime = nil
+					end
+				end)
+			end
+		else
+			-- Single state: clear multi-state attributes
+			btn:SetAttribute("isa_count", 0)
+		end
 
-        Wise:DebugPrint(string.format("  Btn%d: SecureType='%s' Attr='%s' Value='%s' States=%d",
-            i,
-            tostring(secureType),
-            tostring(secureAttr),
-            tostring(secureValue):gsub("\n", "\\n"):sub(1, 50),
-            stateCount
-        ))
-        
-        -- Update Icon
-        local texture = Wise:GetActionIcon(aType, aValue, actionData)
+		Wise:DebugPrint(
+			string.format(
+				"  Btn%d: SecureType='%s' Attr='%s' Value='%s' States=%d",
+				i,
+				tostring(secureType),
+				tostring(secureAttr),
+				tostring(secureValue):gsub("\n", "\\n"):sub(1, 50),
+				stateCount
+			)
+		)
 
-        -- Custom Macro Dynamic Resolution (Initial)
-        local resolvedType, resolvedValue, resolvedIcon
-        if aType == "misc" and aValue == "custom_macro" then
-             resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
-             -- Priority: Only use dynamic resolved icon if no manual icon override is present
-             if resolvedIcon and not actionData.icon then texture = resolvedIcon end
-        end
+		-- Update Icon
+		local texture = Wise:GetActionIcon(aType, aValue, actionData)
 
-        if texture then
-            btn.icon:SetTexture(texture)
-            btn.icon:Show()
-        else
-            btn.icon:Hide()
-        end
+		-- Custom Macro Dynamic Resolution (Initial)
+		local resolvedType, resolvedValue, resolvedIcon
+		if aType == "misc" and aValue == "custom_macro" then
+			resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
+			-- Priority: Only use dynamic resolved icon if no manual icon override is present
+			if resolvedIcon and not actionData.icon then
+				texture = resolvedIcon
+			end
+		end
 
-        Wise:ApplyIconStyle(btn, iconStyle)
+		if texture then
+			btn.icon:SetTexture(texture)
+			btn.icon:Show()
+		else
+			btn.icon:Hide()
+		end
 
-        -- Store action info for cooldown tracking
-        btn.actionType = aType
-        btn.actionValue = aValue
-        btn.actionData = actionData -- needed for ApplyLayout text
-        
-        -- Calculate spellID for cooldown tracking
-        local spellID, itemID
-        if aType == "spell" then
-            local n = tonumber(aValue)
-            if n then
-                spellID = n
-            else
-                local spellInfo = C_Spell.GetSpellInfo(aValue)
-                if spellInfo then
-                    spellID = spellInfo.spellID
-                end
-            end
-        elseif aType == "item" or aType == "toy" then
-            itemID = aValue
-        elseif aType == "mount" and C_MountJournal then
-            local _, mSpellID = C_MountJournal.GetMountInfoByID(aValue)
-            spellID = mSpellID
-        elseif aType == "misc" and aValue == "custom_macro" and resolvedType then
-             if resolvedType == "spell" then
-                 local info = C_Spell.GetSpellInfo(resolvedValue)
-                 if info then spellID = info.spellID end
-             elseif resolvedType == "item" then
-                 itemID = resolvedValue
-             end
-        elseif aType == "misc" and type(aValue) == "string" and aValue:match("^form_") then
-            local formIndex = tonumber(aValue:match("^form_(%d+)"))
-            if formIndex then
-                local _, _, _, formSpellID = GetShapeshiftFormInfo(formIndex)
-                if formSpellID then
-                    local info = C_Spell.GetSpellInfo(formSpellID)
-                    if info then spellID = info.spellID end
-                end
-            end
-        end
-        
-        -- Store in metadata (safe for combat)
-        Wise.buttonMeta = Wise.buttonMeta or {}
-        Wise.buttonMeta[btn] = {
-            baseSpellID = spellID,
-            spellID = Wise:GetOverrideSpellID(spellID),
-            itemID = itemID,
-            actionType = aType,
-            actionValue = aValue,
-            actionData = actionData,
-            states = allStates,
-            conflictStrategy = actionInfo.conflictStrategy,
-            resetOnCombat = actionInfo.resetOnCombat,
-            activeState = actionInfo.activeState or 1,
-        }
-        btn.groupName = name -- Store for Text lookups
+		Wise:ApplyIconStyle(btn, iconStyle)
 
-        -- Update cooldown and active state immediately
-        Wise:UpdateButtonCooldown(btn)
-        Wise:UpdateButtonState(btn)
+		-- Store action info for cooldown tracking
+		btn.actionType = aType
+		btn.actionValue = aValue
+		btn.actionData = actionData -- needed for ApplyLayout text
 
-        -- Apply visual state for known/unknown and category match
-        local categoryMatch = actionInfo.categoryMatch
-        local isValid = isKnown and categoryMatch
-        btn.isValid = isValid
-        
-        local isEmptySlot = (aType == "empty")
-        if isEmptySlot then
-            -- Empty slots are pure space maintainers — completely invisible
-            btn:SetAlpha(0)
-            btn:EnableMouse(false)
-            if btn._textOverlay then btn._textOverlay:Hide() end
-        else
-            btn:SetAlpha(1)
-            btn:EnableMouse(true)
-            if btn.activeHighlight then btn.activeHighlight:Hide() end
+		-- Calculate spellID for cooldown tracking
+		local spellID, itemID
+		if aType == "spell" then
+			local n = tonumber(aValue)
+			if n then
+				spellID = n
+			else
+				local spellInfo = C_Spell.GetSpellInfo(aValue)
+				if spellInfo then
+					spellID = spellInfo.spellID
+				end
+			end
+		elseif aType == "item" or aType == "toy" then
+			itemID = aValue
+		elseif aType == "mount" and C_MountJournal then
+			local _, mSpellID = C_MountJournal.GetMountInfoByID(aValue)
+			spellID = mSpellID
+		elseif aType == "misc" and aValue == "custom_macro" and resolvedType then
+			if resolvedType == "spell" then
+				local info = C_Spell.GetSpellInfo(resolvedValue)
+				if info then
+					spellID = info.spellID
+				end
+			elseif resolvedType == "item" then
+				itemID = resolvedValue
+			end
+		elseif aType == "misc" and type(aValue) == "string" and aValue:match("^form_") then
+			local formIndex = tonumber(aValue:match("^form_(%d+)"))
+			if formIndex then
+				local _, _, _, formSpellID = GetShapeshiftFormInfo(formIndex)
+				if formSpellID then
+					local info = C_Spell.GetSpellInfo(formSpellID)
+					if info then
+						spellID = info.spellID
+					end
+				end
+			end
+		end
 
-            if isValid then
-                -- Initial state saturated; Usability check will refine this later
-                btn.icon:SetDesaturated(false)
-                btn.icon:SetAlpha(1)
-            else
-                btn.icon:SetDesaturated(true)
-                btn.icon:SetAlpha(0.5)
-            end
-        end
-        
-        -- Update count (items, consumable spells, and spell charges)
-        local count = 0
-        local isChargeSpell = false
-        if aType == "item" or aType == "toy" then
-            -- Smart Item Source Check
-            -- Parse ID if "item:123"
-            local itemVal = aValue
-             if type(itemVal) == "string" and itemVal:match("^item:(%d+)") then
-                 itemVal = tonumber(itemVal:match("^%a+:(%d+)"))
-            end
-            
-            if group.smartSources then
-                 local bagCount = GetItemCount(itemVal, false)
-                 local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
-                 if bankCount < 0 then bankCount = 0 end
-                 
-                 if group.smartSources.bags then
-                     count = count + bagCount
-                 end
-                 if group.smartSources.bank then
-                     count = count + bankCount
-                 end
-                 -- Warband/Guild counts not generically available via synchronous API yet
-            else
-                 count = GetItemCount(itemVal, true) 
-            end
-        elseif aType == "spell" then
-            -- Check for spell charges first
-            if spellID then
-                local chargeInfo = C_Spell.GetSpellCharges(spellID)
-                if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) > 1 then
-                    count = chargeInfo.currentCharges
-                    isChargeSpell = true
-                end
-            end
-            -- Fallback to consumable spell count if not a charge spell
-            if not isChargeSpell and IsConsumableSpell and IsConsumableSpell(aValue) then
-                count = GetSpellCount(aValue)
-            end
-        elseif aType == "action" and tonumber(aValue) then
-            if IsConsumableAction(tonumber(aValue)) then
-                count = GetActionCount(tonumber(aValue))
-            end
-            local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
-            if maxCharges and (tonumber(maxCharges) or 0) > 1 then
-                count = charges
-                isChargeSpell = true
-            end
-        end
-        
-        -- Apply charge/count text via Text
-        Wise:Text_UpdateCharges(btn, name, count, isChargeSpell)
-    end
-    
-    -- Sync Visual Display Buttons
-    if f.visualDisplay then
-        local visualIconSize, _, visualFontPath, visualShowKB, visualKBPos, visualKBSize, visualChargeSize, visualChargePos, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty = Wise:GetGroupDisplaySettings(name)
-        -- Nested instances inherit icon size from parent
-        if f.inheritedIconSize then
-            visualIconSize = f.inheritedIconSize
-        end
-        for i, actionInfo in ipairs(actionsToShow) do
-             local actionData = actionInfo.data
-             local isKnown = actionInfo.known
-             local categoryMatch = actionInfo.categoryMatch
-             
-             local vBtn = f.visualDisplay.buttons[i]
-             if not vBtn then
-                 vBtn = CreateFrame("Button", nil, f.visualDisplay)
-                 vBtn:SetSize(visualIconSize, visualIconSize)
-                 vBtn:EnableMouse(false) -- Not clickable
+		-- Store in metadata (safe for combat)
+		Wise.buttonMeta = Wise.buttonMeta or {}
+		Wise.buttonMeta[btn] = {
+			baseSpellID = spellID,
+			spellID = Wise:GetOverrideSpellID(spellID),
+			itemID = itemID,
+			actionType = aType,
+			actionValue = aValue,
+			actionData = actionData,
+			states = allStates,
+			conflictStrategy = actionInfo.conflictStrategy,
+			resetOnCombat = actionInfo.resetOnCombat,
+			activeState = actionInfo.activeState or 1,
+		}
+		btn.groupName = name -- Store for Text lookups
 
-                 vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
-                 vBtn.icon:SetAllPoints()
+		-- Update cooldown and active state immediately
+		Wise:UpdateButtonCooldown(btn)
+		Wise:UpdateButtonState(btn)
 
-                 -- Active state highlight (manually managed)
-                 vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
-                 vBtn.activeHighlight:SetAllPoints(vBtn.icon)
-                 vBtn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-                 vBtn.activeHighlight:SetBlendMode("ADD")
-                 vBtn.activeHighlight:Hide()
-                 -- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
-                 vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn)
-                 vBtn.cooldown:SetAllPoints(vBtn.icon)
-                 vBtn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
-                 vBtn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
-                 vBtn.cooldown:SetDrawEdge(true)
-                 vBtn.cooldown:SetDrawSwipe(true)
-                 vBtn.cooldown:SetHideCountdownNumbers(false)
-                 
-                 -- Text layers via Text module
-                 Wise:Text_CreateFontStrings(vBtn)
-                 
-                 tinsert(f.visualDisplay.buttons, vBtn)
+		-- Apply visual state for known/unknown and category match
+		local categoryMatch = actionInfo.categoryMatch
+		local isValid = isKnown and categoryMatch
+		btn.isValid = isValid
 
-                 -- Masque Support (HotKey excluded — managed by Wise's Text layer)
-                 if Wise.MasqueGroup then
-                     Wise.MasqueGroup:AddButton(vBtn, {
-                         Icon = vBtn.icon,
-                         Cooldown = vBtn.cooldown,
-                         Count = vBtn.count,
-                     })
-                 end
+		local isEmptySlot = (aType == "empty")
+		if isEmptySlot then
+			-- Empty slots are pure space maintainers — completely invisible
+			btn:SetAlpha(0)
+			btn:EnableMouse(false)
+			if btn._textOverlay then
+				btn._textOverlay:Hide()
+			end
+		else
+			btn:SetAlpha(1)
+			btn:EnableMouse(true)
+			if btn.activeHighlight then
+				btn.activeHighlight:Hide()
+			end
 
-                 -- Tooltip support
-                 Wise:AddInterfaceTooltip(vBtn)
-             end
-             vBtn:Show()
-             -- Always apply current global icon size
-             vBtn:SetSize(visualIconSize, visualIconSize)
-             
-             -- Apply visuals
-             local texture = Wise:GetActionIcon(actionData.type, actionData.value, actionData)
-             vBtn.icon:SetTexture(texture)
-             
-             -- Update action data for tooltips
-             vBtn.actionType = actionData.type
-             vBtn.actionValue = actionData.value
-             vBtn.actionData = actionData
-             vBtn.slot = actionInfo.slot -- Required for keybind lookups
+			if isValid then
+				-- Initial state saturated; Usability check will refine this later
+				btn.icon:SetDesaturated(false)
+				btn.icon:SetAlpha(1)
+			else
+				btn.icon:SetDesaturated(true)
+				btn.icon:SetAlpha(0.5)
+			end
+		end
 
-             Wise:ApplyIconStyle(vBtn, visualIconStyle)
+		-- Update count (items, consumable spells, and spell charges)
+		local count = 0
+		local isChargeSpell = false
+		if aType == "item" or aType == "toy" then
+			-- Smart Item Source Check
+			-- Parse ID if "item:123"
+			local itemVal = aValue
+			if type(itemVal) == "string" and itemVal:match("^item:(%d+)") then
+				itemVal = tonumber(itemVal:match("^%a+:(%d+)"))
+			end
 
-             -- Link to real button for cooldown sync
-             local realBtn = f.buttons[i]
-             if realBtn then
-                 realBtn.visualClone = vBtn -- Soft deprecated, keeping for now
-                 if Wise.buttonMeta and Wise.buttonMeta[realBtn] then
-                     Wise.buttonMeta[realBtn].visualClone = vBtn
-                 end
-             end
-             
-             -- Empty slots are pure space maintainers — completely invisible
-             local vIsEmpty = (actionData.type == "empty")
-             if vIsEmpty then
-                 vBtn:SetAlpha(0)
-             else
-                 vBtn:SetAlpha(1)
-                 if vBtn.activeHighlight then vBtn.activeHighlight:Hide() end
-                 if isKnown and categoryMatch then
-                    vBtn.icon:SetDesaturated(false)
-                    vBtn.icon:SetAlpha(1)
-                 else
-                    vBtn.icon:SetDesaturated(true)
-                    vBtn.icon:SetAlpha(0.5)
-                 end
-             end
-             
-             -- Sync count (apply position from settings, copy text from real button)
-             local realBtn = f.buttons[i]
-             if realBtn and realBtn.count and realBtn.count:IsShown() then
-                 vBtn.count:SetText(realBtn.count:GetText())
-                 vBtn.count:SetFont(visualFontPath, visualChargeSize, "OUTLINE")
-                 Wise:Text_ApplyPosition(vBtn.count, visualChargePos or "TOP")
-                 vBtn.count:Show()
-             else
-                 vBtn.count:Hide()
-             end
+			if group.smartSources then
+				local bagCount = GetItemCount(itemVal, false)
+				local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
+				if bankCount < 0 then
+					bankCount = 0
+				end
 
-             -- Sync keybind
-             if realBtn and realBtn.keybind and realBtn.keybind:IsShown() then
-                 vBtn.keybind:SetText(realBtn.keybind:GetText())
-                 vBtn.keybind:SetFont(visualFontPath, visualKBSize, "OUTLINE")
-                 Wise:Text_ApplyPosition(vBtn.keybind, visualKBPos or "BOTTOM")
-                 vBtn.keybind:Show()
-             else
-                 vBtn.keybind:Hide()
-             end
-        end
-        -- Hide unused
-        for i = #actionsToShow + 1, #f.visualDisplay.buttons do
-             f.visualDisplay.buttons[i]:Hide()
-        end
-        
-        -- Propagate inherited display settings to visual display
-        f.visualDisplay.inheritedIconSize = f.inheritedIconSize
-        f.visualDisplay.nestedCircleRotation = f.nestedCircleRotation
-        f.visualDisplay.nestedLineOrientation = f.nestedLineOrientation
-        f.visualDisplay.nestedLineAnchor = f.nestedLineAnchor
-        f.visualDisplay.nestedListAnchor = f.nestedListAnchor
-        f.visualDisplay.nestedTextAlign = f.nestedTextAlign
-        -- Apply Layout to Visual Display
-        Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
-    end
-    
-    -- Hide unused buttons
-    for i = #actionsToShow + 1, #f.buttons do
-        f.buttons[i]:Hide()
-    end
+				if group.smartSources.bags then
+					count = count + bagCount
+				end
+				if group.smartSources.bank then
+					count = count + bankCount
+				end
+				-- Warband/Guild counts not generically available via synchronous API yet
+			else
+				count = GetItemCount(itemVal, true)
+			end
+		elseif aType == "spell" then
+			-- Check for spell charges first
+			if spellID then
+				local chargeInfo = C_Spell.GetSpellCharges(spellID)
+				if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) > 1 then
+					count = chargeInfo.currentCharges
+					isChargeSpell = true
+				end
+			end
+			-- Fallback to consumable spell count if not a charge spell
+			if not isChargeSpell and IsConsumableSpell and IsConsumableSpell(aValue) then
+				count = GetSpellCount(aValue)
+			end
+		elseif aType == "action" and tonumber(aValue) then
+			if IsConsumableAction(tonumber(aValue)) then
+				count = GetActionCount(tonumber(aValue))
+			end
+			local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
+			if maxCharges and (tonumber(maxCharges) or 0) > 1 then
+				count = charges
+				isChargeSpell = true
+			end
+		end
 
-    -- Cleanup Stale Refs (Critical for Single Button Fallback)
-    -- Set the total count so the snippet knows how far to check
-    f.toggleBtn:SetAttribute("buttonCount", #actionsToShow)
+		-- Apply charge/count text via Text
+		Wise:Text_UpdateCharges(btn, name, count, isChargeSpell)
+	end
 
-    -- IMPORTANT: Clear old references if the list got shorter
-    local maxExisting = f.toggleBtn:GetAttribute("maxButtonRefs") or 0
-    if maxExisting > #actionsToShow then
-        for i = #actionsToShow + 1, maxExisting do
-            Wise:DebugPrint("Cleanup: Clearing frameref-btn"..i)
-            f.toggleBtn:SetAttribute("frameref-btn" .. i, nil)
-        end
-    end
-    f.toggleBtn:SetAttribute("maxButtonRefs", #actionsToShow)
-    
-    -- Setup Nested Keybind Attributes (on 'f' - the Show/Hide frame)
-    local nested = (group.keybindSettings and group.keybindSettings.nested)
-    f:SetAttribute("nestedKeybinds", nested)
-    
-    -- Always update attributes to keep them in sync
-    if nested then
-        for i, actionInfo in ipairs(actionsToShow) do
-            local btn = f.buttons[i]
-            local slotKey = group.actions[actionInfo.slot] and group.actions[actionInfo.slot].keybind
+	-- Sync Visual Display Buttons
+	if f.visualDisplay then
+		local visualIconSize, _, visualFontPath, visualShowKB, visualKBPos, visualKBSize, visualChargeSize, visualChargePos, _, _, _, _, visualIconStyle, _, _, _, visualHideEmpty =
+			Wise:GetGroupDisplaySettings(name)
+		-- Nested instances inherit icon size from parent
+		if f.inheritedIconSize then
+			visualIconSize = f.inheritedIconSize
+		end
+		for i, actionInfo in ipairs(actionsToShow) do
+			local actionData = actionInfo.data
+			local isKnown = actionInfo.known
+			local categoryMatch = actionInfo.categoryMatch
 
-            f:SetAttribute("nested_key_"..i, slotKey) -- Set or Clear (if nil)
-            f:SetAttribute("nested_btn_name_"..i, btn:GetName())
-            f:SetAttribute("nested_mouse_"..i, slotKey and GetMouseClickName(slotKey) or nil)
-        end
-    end
+			local vBtn = f.visualDisplay.buttons[i]
+			if not vBtn then
+				vBtn = CreateFrame("Button", nil, f.visualDisplay)
+				vBtn:SetSize(visualIconSize, visualIconSize)
+				vBtn:EnableMouse(false) -- Not clickable
 
-    -- Cleanup Stale Keys
-    local maxKeys = f:GetAttribute("nested_max_keys") or 0
-    if maxKeys > #actionsToShow then
-         for i = #actionsToShow + 1, maxKeys do
-             f:SetAttribute("nested_key_"..i, nil)
-             f:SetAttribute("nested_btn_name_"..i, nil)
-             f:SetAttribute("nested_mouse_"..i, nil)
-         end
-    end
-    f:SetAttribute("nested_max_keys", #actionsToShow)
-    
-    Wise:ApplyLayout(f, displayType, #actionsToShow, name)
+				vBtn.icon = vBtn:CreateTexture(nil, "ARTWORK")
+				vBtn.icon:SetAllPoints()
 
-    -- Compute undermouse bounding box from button layout (must be after ApplyLayout sets targetX/targetY)
-    if hasUnderMouse and f.buttons and #f.buttons > 0 then
-        local first = true
-        for _, btn in ipairs(f.buttons) do
-            local tx = btn.targetX or 0
-            local ty = btn.targetY or 0
-            local bw, bh = btn:GetSize()
-            local halfW = (bw or 40) / 2
-            local halfH = (bh or 40) / 2
-            if first then
-                cachedMinX = tx - halfW
-                cachedMaxX = tx + halfW
-                cachedMinY = ty - halfH
-                cachedMaxY = ty + halfH
-                first = false
-            else
-                if tx - halfW < cachedMinX then cachedMinX = tx - halfW end
-                if tx + halfW > cachedMaxX then cachedMaxX = tx + halfW end
-                if ty - halfH < cachedMinY then cachedMinY = ty - halfH end
-                if ty + halfH > cachedMaxY then cachedMaxY = ty + halfH end
-            end
-        end
-        -- Bake in padding
-        cachedMinX = cachedMinX - 10
-        cachedMaxX = cachedMaxX + 10
-        cachedMinY = cachedMinY - 10
-        cachedMaxY = cachedMaxY + 10
-    end
+				-- Active state highlight (manually managed)
+				vBtn.activeHighlight = vBtn:CreateTexture(nil, "OVERLAY")
+				vBtn.activeHighlight:SetAllPoints(vBtn.icon)
+				vBtn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+				vBtn.activeHighlight:SetBlendMode("ADD")
+				vBtn.activeHighlight:Hide()
+				-- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
+				vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn)
+				vBtn.cooldown:SetAllPoints(vBtn.icon)
+				vBtn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+				vBtn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+				vBtn.cooldown:SetDrawEdge(true)
+				vBtn.cooldown:SetDrawSwipe(true)
+				vBtn.cooldown:SetHideCountdownNumbers(false)
 
-    -- Sync Edit Mode state (skip for mouse-anchored)
-    if Wise.editMode and group.anchorMode ~= "mouse" then
-        Wise:SetFrameEditMode(f, name, true)
-        f:Show()
-    else
-        Wise:SetFrameEditMode(f, name, false)
-    end
-    
-    -- Sync Cooldowns, Usability, and Active State once after setup
-    for _, btn in ipairs(f.buttons) do
-        Wise:UpdateButtonCooldown(btn)
-        Wise:UpdateButtonUsability(btn)
-        Wise:UpdateButtonState(btn)
-    end
-    
-    -- Condition evaluation ticker for multi-state and interface icon updates
-    if f.conditionTicker then f.conditionTicker:Cancel() end
-    local needsTicker = false
-    -- For dynamic groups, check if any slot has per-action conditions or availability-dependent
-    -- misc types (extrabutton, zoneability, overridebar, possessbar). These slots may not have
-    -- visible buttons yet, but the ticker must run to detect when they become available.
-    local AVAILABILITY_MISC = {extrabutton=true, zoneability=true, overridebar=true, possessbar=true}
-    local hasDynamicConditions = false
-    local hasDynamicCooldowns = false
-    if isDynamic and group.actions then
-        for _, states in pairs(group.actions) do
-            if type(states) == "table" then
-                for _, state in ipairs(states) do
-                    if (state.conditions and state.conditions ~= "") or
-                       (state.type == "misc" and AVAILABILITY_MISC[state.value]) then
-                        hasDynamicConditions = true
-                    end
-                    -- Track cooldown-filterable action types for dynamic groups
-                    if group.propertyType ~= "CooldownWiser" and
-                       (state.type == "spell" or state.type == "item" or state.type == "toy") then
-                        hasDynamicCooldowns = true
-                    end
-                end
-            end
-        end
-    end
-    if hasDynamicConditions or hasDynamicCooldowns then needsTicker = true end
-    for _, btn in ipairs(f.buttons) do
-        if btn:IsShown() then
-            local meta = Wise.buttonMeta[btn]
-            if meta then
-                if (meta.states and #meta.states > 1) or meta.actionType == "interface" then
-                    needsTicker = true
-                    break
-                end
-                if (meta.actionType == "misc" and (meta.actionValue == "custom_macro" or meta.actionValue == "extrabutton" or meta.actionValue == "zoneability" or meta.actionValue == "overridebar" or meta.actionValue == "possessbar")) or meta.actionType == "action" then
-                    needsTicker = true
-                    break
-                end
-            end
-        end
-    end
-    -- Track which conditional/availability slots are currently visible, so we can detect changes
-    if hasDynamicConditions then
-        local condSnapshot = {}
-        if group.actions then
-            for slotIdx, states in pairs(group.actions) do
-                if type(states) == "table" then
-                    for _, state in ipairs(states) do
-                        if state.conditions and state.conditions ~= "" then
-                            condSnapshot[slotIdx] = EvalFullConditionString(state.conditions)
-                        elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
-                            condSnapshot[slotIdx] = Wise:IsActionKnown(state.type, state.value)
-                        end
-                    end
-                end
-            end
-        end
-        f._dynamicCondSnapshot = condSnapshot
-    end
-    -- Track cooldown state for dynamic groups so slot add/remove happens promptly
-    if hasDynamicCooldowns then
-        local cdSnapshot = {}
-        if group.actions then
-            for slotIdx, states in pairs(group.actions) do
-                if type(states) == "table" then
-                    for _, state in ipairs(states) do
-                        if state.type == "spell" or state.type == "item" or state.type == "toy" then
-                            local isKnown = Wise:IsActionKnown(state.type, state.value)
-                            cdSnapshot[slotIdx] = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state) or false
-                        end
-                    end
-                end
-            end
-        end
-        f._dynamicCDSnapshot = cdSnapshot
-    end
-    if needsTicker then
-        f.conditionTicker = C_Timer.NewTicker(0.2, function()
-            -- For dynamic groups with conditional/availability slots, check if state changed
-            -- and trigger a full rebuild when it does (e.g. [extrabar] or [zoneability] toggled)
-            if hasDynamicConditions and f._dynamicCondSnapshot and not InCombatLockdown() then
-                local changed = false
-                if group.actions then
-                    for slotIdx, states in pairs(group.actions) do
-                        if type(states) == "table" then
-                            for _, state in ipairs(states) do
-                                local now
-                                if state.conditions and state.conditions ~= "" then
-                                    now = EvalFullConditionString(state.conditions)
-                                elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
-                                    now = Wise:IsActionKnown(state.type, state.value)
-                                end
-                                if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx] then
-                                    changed = true
-                                    break
-                                end
-                            end
-                        end
-                        if changed then break end
-                    end
-                end
-                if changed then
-                    Wise:UpdateGroupDisplay(name)
-                    return
-                end
-            end
-            -- For dynamic groups with cooldown-filterable slots, detect CD state changes
-            if hasDynamicCooldowns and f._dynamicCDSnapshot and not InCombatLockdown() then
-                local changed = false
-                if group.actions then
-                    for slotIdx, states in pairs(group.actions) do
-                        if type(states) == "table" then
-                            for _, state in ipairs(states) do
-                                if state.type == "spell" or state.type == "item" or state.type == "toy" then
-                                    local isKnown = Wise:IsActionKnown(state.type, state.value)
-                                    local nowOnCD = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state) or false
-                                    if nowOnCD ~= f._dynamicCDSnapshot[slotIdx] then
-                                        changed = true
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                        if changed then break end
-                    end
-                end
-                if changed then
-                    Wise:UpdateGroupDisplay(name)
-                    return
-                end
-            end
-            local canSetAttrs = not InCombatLockdown()
-            for _, btn in ipairs(f.buttons) do
-                if btn:IsShown() then
-                    local meta = Wise.buttonMeta[btn]
-                    if not meta then -- skip
-                    elseif meta.actionType == "action" then
-                         local aID = tonumber(meta.actionValue)
-                         if aID then
-                             local realID = Wise:ResolveBarActionID(aID)
-                             local tex = GetActionTexture(realID)
-                             local isBarSlot = (aID >= 121 and aID <= 144)
-                             if tex then
-                                 btn.icon:SetTexture(tex)
-                                 btn.icon:Show()
-                                 local vClone = meta.visualClone or btn.visualClone
-                                 if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
-                             elseif isBarSlot then
-                                 btn.icon:Hide()
-                                 local vClone = meta.visualClone or btn.visualClone
-                                 if vClone and vClone.icon then vClone.icon:Hide() end
-                             else
-                                 btn.icon:SetTexture(134400)
-                                 btn.icon:Show()
-                                 local vClone = meta.visualClone or btn.visualClone
-                                 if vClone and vClone.icon then vClone.icon:SetTexture(134400); vClone.icon:Show() end
-                             end
-                             Wise:UpdateButtonCooldown(btn)
-                             Wise:UpdateButtonUsability(btn)
-                         end
-                    elseif meta.actionType == "misc" and meta.actionValue == "custom_macro" then
-                         -- Update Custom Macro
-                         local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
-                         
-                         -- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark
-                         local displayIcon = meta.actionData.icon or mIcon or 134400
-                         btn.icon:SetTexture(displayIcon)
-                         local vClone = meta.visualClone or btn.visualClone
-                         if vClone and vClone.icon then vClone.icon:SetTexture(displayIcon) end
+				-- Text layers via Text module
+				Wise:Text_CreateFontStrings(vBtn)
 
-                         if mType then
-                             local spellID, itemID
-                             if mType == "spell" then
-                                 local n = tonumber(mVal)
-                                 if n then
-                                     spellID = n
-                                 else
-                                     local info = C_Spell.GetSpellInfo(mVal)
-                                     if info then spellID = info.spellID end
-                                 end
-                             elseif mType == "item" then
-                                 itemID = mVal
-                             end
-                             meta.baseSpellID = spellID
-                             meta.spellID = Wise:GetOverrideSpellID(spellID)
-                             meta.itemID = itemID
+				tinsert(f.visualDisplay.buttons, vBtn)
 
-                             Wise:UpdateButtonCooldown(btn)
-                             Wise:UpdateButtonUsability(btn)
-                         else
-                             -- Reset dynamic metadata (base icon handled above via displayIcon)
-                             meta.baseSpellID = nil
-                             meta.spellID = nil
-                             meta.itemID = nil
+				-- Masque Support (HotKey excluded — managed by Wise's Text layer)
+				if Wise.MasqueGroup then
+					Wise.MasqueGroup:AddButton(vBtn, {
+						Icon = vBtn.icon,
+						Cooldown = vBtn.cooldown,
+						Count = vBtn.count,
+					})
+				end
 
-                             Wise:UpdateButtonCooldown(btn)
-                             Wise:UpdateButtonUsability(btn)
-                         end
-                    elseif meta.actionType == "misc" and meta.actionValue == "extrabutton" then
-                         -- Update Extra Action Button icon dynamically
-                         -- Use derived slot constant instead of reading .action from Blizzard frame to avoid taint
-                         -- GetActionTexture returns nil when no action is in the slot, so no gate needed
-                         local tex = GetActionTexture(EXTRA_ACTION_BUTTON_SLOT)
-                         tex = tex or "Interface\\Icons\\Temp"
-                         btn.icon:SetTexture(tex)
-                         local vClone = meta.visualClone or btn.visualClone
-                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
-                         Wise:UpdateButtonCooldown(btn)
-                         Wise:UpdateButtonUsability(btn)
-                    elseif meta.actionType == "misc" and meta.actionValue == "zoneability" then
-                         -- Update Zone Ability icon dynamically
-                         local zoneBtn = GetZoneAbilitySpellButton()
-                         local tex
-                         if zoneBtn and zoneBtn.spellID then
-                             local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
-                             if info then tex = info.iconID end
-                         end
-                         tex = tex or "Interface\\Icons\\Temp"
-                         btn.icon:SetTexture(tex)
-                         local vClone = meta.visualClone or btn.visualClone
-                         if vClone and vClone.icon then vClone.icon:SetTexture(tex) end
-                         -- Rebind clickbutton when the spell button changes (e.g. entering garrison)
-                         if canSetAttrs and zoneBtn then
-                             if zoneBtn.GetName and zoneBtn:GetName() then
-                                 btn:SetAttribute("type", "macro")
-                                 btn:SetAttribute("macrotext", "/click " .. zoneBtn:GetName())
-                             elseif zoneBtn.spellID then
-                                 btn:SetAttribute("type", "spell")
-                                 btn:SetAttribute("spell", zoneBtn.spellID)
-                             else
-                                 btn:SetAttribute("type", "click")
-                                 btn:SetAttribute("clickbutton", zoneBtn)
-                             end
-                         end
-                         Wise:UpdateButtonCooldown(btn)
-                         Wise:UpdateButtonUsability(btn)
-                    elseif meta.actionType == "misc" and meta.actionValue == "overridebar" then
-                         -- Update Override Bar icon dynamically
-                         local realID = Wise:ResolveBarActionID(133)
-                         local tex = GetActionTexture(realID)
-                         if tex then
-                             btn.icon:SetTexture(tex)
-                             btn.icon:Show()
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
-                         else
-                             btn.icon:Hide()
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:Hide() end
-                         end
-                         -- Rebind clickbutton in case override bar appeared
-                         local overrideBtn = _G["OverrideActionBarButton1"]
-                         if canSetAttrs and overrideBtn then
-                             if overrideBtn.GetName and overrideBtn:GetName() then
-                                 btn:SetAttribute("type", "macro")
-                                 btn:SetAttribute("macrotext", "/click " .. overrideBtn:GetName())
-                             else
-                                 btn:SetAttribute("type", "click")
-                                 btn:SetAttribute("clickbutton", overrideBtn)
-                             end
-                         end
-                         Wise:UpdateButtonCooldown(btn)
-                         Wise:UpdateButtonUsability(btn)
-                    elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
-                         -- Update Possess Bar icon dynamically
-                         local realID = Wise:ResolveBarActionID(121)
-                         local tex = GetActionTexture(realID)
-                         if tex then
-                             btn.icon:SetTexture(tex)
-                             btn.icon:Show()
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:SetTexture(tex); vClone.icon:Show() end
-                         else
-                             btn.icon:Hide()
-                             local vClone = meta.visualClone or btn.visualClone
-                             if vClone and vClone.icon then vClone.icon:Hide() end
-                         end
-                         -- Rebind clickbutton in case possess bar appeared
-                         local possessBtn = _G["ActionButton1"]
-                         if canSetAttrs and possessBtn then
-                             if possessBtn.GetName and possessBtn:GetName() then
-                                 btn:SetAttribute("type", "macro")
-                                 btn:SetAttribute("macrotext", "/click " .. possessBtn:GetName())
-                             else
-                                 btn:SetAttribute("type", "click")
-                                 btn:SetAttribute("clickbutton", possessBtn)
-                             end
-                         end
-                         Wise:UpdateButtonCooldown(btn)
-                         Wise:UpdateButtonUsability(btn)
-                    elseif meta.actionType == "interface" then
-                        -- Update interface icon dynamically (reflects child's current active action)
-                        local nestMode = btn:GetAttribute("isa_nest_mode") or "jump"
-                        if nestMode ~= "jump" then
-                            -- For rotation modes, show the NEXT action that would fire
-                            local rotIcon = Wise:GetRotationIcon(btn, meta.actionValue, nestMode)
-                            if rotIcon then
-                                btn.icon:SetTexture(rotIcon)
-                                local vClone = meta.visualClone or btn.visualClone
-                                if vClone and vClone.icon then
-                                    vClone.icon:SetTexture(rotIcon)
-                                end
-                            end
-                        else
-                            local newIcon = Wise:GetActionIcon("interface", meta.actionValue)
-                            if newIcon then
-                                btn.icon:SetTexture(newIcon)
-                                local vClone = meta.visualClone or btn.visualClone
-                                if vClone and vClone.icon then
-                                    vClone.icon:SetTexture(newIcon)
-                                end
-                            end
-                        end
-                        -- Refresh child action attributes when not in combat
-                        if canSetAttrs and nestMode ~= "jump" then
-                            Wise:StoreChildActionsOnButton(btn, meta.actionValue, nestMode)
-                        end
-                    elseif meta.states and #meta.states > 1 then
-                        local chosen = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
-                        if chosen and chosen ~= meta.activeState then
-                            meta.activeState = chosen
-                            local state = meta.states[chosen]
-                            if state then
-                                btn.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
-                                btn.actionType = state.type
-                                btn.actionValue = state.value
-                                btn.actionData = state
+				-- Tooltip support
+				Wise:AddInterfaceTooltip(vBtn)
+			end
+			vBtn:Show()
+			-- Always apply current global icon size
+			vBtn:SetSize(visualIconSize, visualIconSize)
 
-                                -- Apply/remove empty slot visual treatment (alpha is safe in combat, EnableMouse is not)
-                                if state.type == "empty" then
-                                    btn:SetAlpha(0)
-                                    if canSetAttrs then btn:EnableMouse(false) end
-                                else
-                                    btn:SetAlpha(1)
-                                    if canSetAttrs then btn:EnableMouse(true) end
-                                    -- Restore keybinds when switching away from empty
-                                    local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(f.groupName or name)
-                                    Wise:Text_UpdateKeybind(btn, f.groupName or name, showKeybinds)
-                                    Wise:Text_UpdateInterfaceKeybind(btn, f.groupName or name, showInterfaceKeybind)
-                                    local vClone = meta.visualClone or btn.visualClone
-                                    if vClone then
-                                        Wise:Text_UpdateKeybind(vClone, f.groupName or name, showKeybinds)
-                                        Wise:Text_UpdateInterfaceKeybind(vClone, f.groupName or name, showInterfaceKeybind)
-                                    end
-                                end
+			-- Apply visuals
+			local texture = Wise:GetActionIcon(actionData.type, actionData.value, actionData)
+			vBtn.icon:SetTexture(texture)
 
-                                -- Update secure attributes when not in combat
-                                -- BUT NOT for sequence/waterfall with >1 state: the PreClick
-                                -- secure snippet builds the firing macrotext at press time, so
-                                -- writing a single-state macro here would clobber the stacked
-                                -- waterfall macro (or the sequence pointer) on the next press.
-                                -- Single-state slots fall through and get normal attributes.
-                                local snippetManagesAttrs = (meta.conflictStrategy == "sequence" or meta.conflictStrategy == "waterfall")
-                                    and meta.states and #meta.states > 1
-                                if canSetAttrs and not snippetManagesAttrs then
-                                    local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
-                                    btn:SetAttribute("type", nil)
-                                    btn:SetAttribute("spell", nil)
-                                    btn:SetAttribute("item", nil)
-                                    btn:SetAttribute("macro", nil)
-                                    btn:SetAttribute("macrotext", nil)
-                                    btn:SetAttribute("clickbutton", nil)
-                                    btn:SetAttribute("type", sType)
-                                    if sAttr then
-                                        btn:SetAttribute(sAttr, sValue)
-                                    end
-                                end
+			-- Update action data for tooltips
+			vBtn.actionType = actionData.type
+			vBtn.actionValue = actionData.value
+			vBtn.actionData = actionData
+			vBtn.slot = actionInfo.slot -- Required for keybind lookups
 
-                                -- Update cooldown tracking for new active state
-                                local spellID, itemID
-                                if state.type == "spell" then
-                                    local n = tonumber(state.value)
-                                    if n then
-                                        spellID = n
-                                    else
-                                        local info = C_Spell.GetSpellInfo(state.value)
-                                        if info then spellID = info.spellID end
-                                    end
-                                elseif state.type == "item" or state.type == "toy" then
-                                    itemID = state.value
-                                elseif state.type == "mount" and C_MountJournal then
-                                    local _, mSpellID = C_MountJournal.GetMountInfoByID(state.value)
-                                    spellID = mSpellID
-                                end
-                                meta.baseSpellID = spellID
-                                meta.spellID = Wise:GetOverrideSpellID(spellID)
-                                meta.itemID = itemID
-                                meta.actionType = state.type
-                                meta.actionValue = state.value
-                                meta.actionData = state
-                                Wise:UpdateButtonCooldown(btn)
+			Wise:ApplyIconStyle(vBtn, visualIconStyle)
 
-                                -- Sync visual clone
-                                local vClone = meta.visualClone or btn.visualClone
-                                if vClone then
-                                    if state.type == "empty" then
-                                        vClone:SetAlpha(0)
-                                    else
-                                        vClone:SetAlpha(1)
-                                        if vClone.icon then
-                                            vClone.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+			-- Link to real button for cooldown sync
+			local realBtn = f.buttons[i]
+			if realBtn then
+				realBtn.visualClone = vBtn -- Soft deprecated, keeping for now
+				if Wise.buttonMeta and Wise.buttonMeta[realBtn] then
+					Wise.buttonMeta[realBtn].visualClone = vBtn
+				end
+			end
 
-        end)
-    end
+			-- Empty slots are pure space maintainers — completely invisible
+			local vIsEmpty = (actionData.type == "empty")
+			if vIsEmpty then
+				vBtn:SetAlpha(0)
+			else
+				vBtn:SetAlpha(1)
+				if vBtn.activeHighlight then
+					vBtn.activeHighlight:Hide()
+				end
+				if isKnown and categoryMatch then
+					vBtn.icon:SetDesaturated(false)
+					vBtn.icon:SetAlpha(1)
+				else
+					vBtn.icon:SetDesaturated(true)
+					vBtn.icon:SetAlpha(0.5)
+				end
+			end
 
-    -- Ensure bindings are active (fixes potential staleness on new groups)
-    if Wise.UpdateBindings then Wise:UpdateBindings() end
+			-- Sync count (apply position from settings, copy text from real button)
+			local realBtn = f.buttons[i]
+			if realBtn and realBtn.count and realBtn.count:IsShown() then
+				vBtn.count:SetText(realBtn.count:GetText())
+				vBtn.count:SetFont(visualFontPath, visualChargeSize, "OUTLINE")
+				Wise:Text_ApplyPosition(vBtn.count, visualChargePos or "TOP")
+				vBtn.count:Show()
+			else
+				vBtn.count:Hide()
+			end
 
-    -- Propagate to parents that embed this group
-    if Wise._embeddedParents and Wise._embeddedParents[name] then
-        local parentName = Wise._embeddedParents[name]
-        -- Guard against re-entrancy: only propagate if not already updating this parent
-        if not Wise._embeddedUpdating then
-            Wise._embeddedUpdating = true
-            if not InCombatLockdown() then
-                Wise:UpdateGroupDisplay(parentName)
-            end
-            Wise._embeddedUpdating = nil
-        end
-    end
+			-- Sync keybind
+			if realBtn and realBtn.keybind and realBtn.keybind:IsShown() then
+				vBtn.keybind:SetText(realBtn.keybind:GetText())
+				vBtn.keybind:SetFont(visualFontPath, visualKBSize, "OUTLINE")
+				Wise:Text_ApplyPosition(vBtn.keybind, visualKBPos or "BOTTOM")
+				vBtn.keybind:Show()
+			else
+				vBtn.keybind:Hide()
+			end
+		end
+		-- Hide unused
+		for i = #actionsToShow + 1, #f.visualDisplay.buttons do
+			f.visualDisplay.buttons[i]:Hide()
+		end
+
+		-- Propagate inherited display settings to visual display
+		f.visualDisplay.inheritedIconSize = f.inheritedIconSize
+		f.visualDisplay.nestedCircleRotation = f.nestedCircleRotation
+		f.visualDisplay.nestedLineOrientation = f.nestedLineOrientation
+		f.visualDisplay.nestedLineAnchor = f.nestedLineAnchor
+		f.visualDisplay.nestedListAnchor = f.nestedListAnchor
+		f.visualDisplay.nestedTextAlign = f.nestedTextAlign
+		-- Apply Layout to Visual Display
+		Wise:ApplyLayout(f.visualDisplay, displayType, #actionsToShow, name)
+	end
+
+	-- Hide unused buttons
+	for i = #actionsToShow + 1, #f.buttons do
+		f.buttons[i]:Hide()
+	end
+
+	-- Cleanup Stale Refs (Critical for Single Button Fallback)
+	-- Set the total count so the snippet knows how far to check
+	f.toggleBtn:SetAttribute("buttonCount", #actionsToShow)
+
+	-- IMPORTANT: Clear old references if the list got shorter
+	local maxExisting = f.toggleBtn:GetAttribute("maxButtonRefs") or 0
+	if maxExisting > #actionsToShow then
+		for i = #actionsToShow + 1, maxExisting do
+			Wise:DebugPrint("Cleanup: Clearing frameref-btn" .. i)
+			f.toggleBtn:SetAttribute("frameref-btn" .. i, nil)
+		end
+	end
+	f.toggleBtn:SetAttribute("maxButtonRefs", #actionsToShow)
+
+	-- Setup Nested Keybind Attributes (on 'f' - the Show/Hide frame)
+	local nested = (group.keybindSettings and group.keybindSettings.nested)
+	f:SetAttribute("nestedKeybinds", nested)
+
+	-- Always update attributes to keep them in sync
+	if nested then
+		for i, actionInfo in ipairs(actionsToShow) do
+			local btn = f.buttons[i]
+			local slotKey = group.actions[actionInfo.slot] and group.actions[actionInfo.slot].keybind
+
+			f:SetAttribute("nested_key_" .. i, slotKey) -- Set or Clear (if nil)
+			f:SetAttribute("nested_btn_name_" .. i, btn:GetName())
+			f:SetAttribute("nested_mouse_" .. i, slotKey and GetMouseClickName(slotKey) or nil)
+		end
+	end
+
+	-- Cleanup Stale Keys
+	local maxKeys = f:GetAttribute("nested_max_keys") or 0
+	if maxKeys > #actionsToShow then
+		for i = #actionsToShow + 1, maxKeys do
+			f:SetAttribute("nested_key_" .. i, nil)
+			f:SetAttribute("nested_btn_name_" .. i, nil)
+			f:SetAttribute("nested_mouse_" .. i, nil)
+		end
+	end
+	f:SetAttribute("nested_max_keys", #actionsToShow)
+
+	Wise:ApplyLayout(f, displayType, #actionsToShow, name)
+
+	-- Compute undermouse bounding box from button layout (must be after ApplyLayout sets targetX/targetY)
+	if hasUnderMouse and f.buttons and #f.buttons > 0 then
+		local first = true
+		for _, btn in ipairs(f.buttons) do
+			local tx = btn.targetX or 0
+			local ty = btn.targetY or 0
+			local bw, bh = btn:GetSize()
+			local halfW = (bw or 40) / 2
+			local halfH = (bh or 40) / 2
+			if first then
+				cachedMinX = tx - halfW
+				cachedMaxX = tx + halfW
+				cachedMinY = ty - halfH
+				cachedMaxY = ty + halfH
+				first = false
+			else
+				if tx - halfW < cachedMinX then
+					cachedMinX = tx - halfW
+				end
+				if tx + halfW > cachedMaxX then
+					cachedMaxX = tx + halfW
+				end
+				if ty - halfH < cachedMinY then
+					cachedMinY = ty - halfH
+				end
+				if ty + halfH > cachedMaxY then
+					cachedMaxY = ty + halfH
+				end
+			end
+		end
+		-- Bake in padding
+		cachedMinX = cachedMinX - 10
+		cachedMaxX = cachedMaxX + 10
+		cachedMinY = cachedMinY - 10
+		cachedMaxY = cachedMaxY + 10
+	end
+
+	-- Sync Edit Mode state (skip for mouse-anchored)
+	if Wise.editMode and group.anchorMode ~= "mouse" then
+		Wise:SetFrameEditMode(f, name, true)
+		f:Show()
+	else
+		Wise:SetFrameEditMode(f, name, false)
+	end
+
+	-- Sync Cooldowns, Usability, and Active State once after setup
+	for _, btn in ipairs(f.buttons) do
+		Wise:UpdateButtonCooldown(btn)
+		Wise:UpdateButtonUsability(btn)
+		Wise:UpdateButtonState(btn)
+	end
+
+	-- Condition evaluation ticker for multi-state and interface icon updates
+	if f.conditionTicker then
+		f.conditionTicker:Cancel()
+	end
+	local needsTicker = false
+	-- For dynamic groups, check if any slot has per-action conditions or availability-dependent
+	-- misc types (extrabutton, zoneability, overridebar, possessbar). These slots may not have
+	-- visible buttons yet, but the ticker must run to detect when they become available.
+	local AVAILABILITY_MISC = { extrabutton = true, zoneability = true, overridebar = true, possessbar = true }
+	local hasDynamicConditions = false
+	local hasDynamicCooldowns = false
+	if isDynamic and group.actions then
+		for _, states in pairs(group.actions) do
+			if type(states) == "table" then
+				for _, state in ipairs(states) do
+					if
+						(state.conditions and state.conditions ~= "")
+						or (state.type == "misc" and AVAILABILITY_MISC[state.value])
+					then
+						hasDynamicConditions = true
+					end
+					-- Track cooldown-filterable action types for dynamic groups
+					if
+						group.propertyType ~= "CooldownWiser"
+						and (state.type == "spell" or state.type == "item" or state.type == "toy")
+					then
+						hasDynamicCooldowns = true
+					end
+				end
+			end
+		end
+	end
+	if hasDynamicConditions or hasDynamicCooldowns then
+		needsTicker = true
+	end
+	for _, btn in ipairs(f.buttons) do
+		if btn:IsShown() then
+			local meta = Wise.buttonMeta[btn]
+			if meta then
+				if (meta.states and #meta.states > 1) or meta.actionType == "interface" then
+					needsTicker = true
+					break
+				end
+				if
+					(
+						meta.actionType == "misc"
+						and (
+							meta.actionValue == "custom_macro"
+							or meta.actionValue == "extrabutton"
+							or meta.actionValue == "zoneability"
+							or meta.actionValue == "overridebar"
+							or meta.actionValue == "possessbar"
+						)
+					) or meta.actionType == "action"
+				then
+					needsTicker = true
+					break
+				end
+			end
+		end
+	end
+	-- Track which conditional/availability slots are currently visible, so we can detect changes
+	if hasDynamicConditions then
+		local condSnapshot = {}
+		if group.actions then
+			for slotIdx, states in pairs(group.actions) do
+				if type(states) == "table" then
+					for _, state in ipairs(states) do
+						if state.conditions and state.conditions ~= "" then
+							condSnapshot[slotIdx] = EvalFullConditionString(state.conditions)
+						elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
+							condSnapshot[slotIdx] = Wise:IsActionKnown(state.type, state.value)
+						end
+					end
+				end
+			end
+		end
+		f._dynamicCondSnapshot = condSnapshot
+	end
+	-- Track cooldown state for dynamic groups so slot add/remove happens promptly
+	if hasDynamicCooldowns then
+		local cdSnapshot = {}
+		if group.actions then
+			for slotIdx, states in pairs(group.actions) do
+				if type(states) == "table" then
+					for _, state in ipairs(states) do
+						if state.type == "spell" or state.type == "item" or state.type == "toy" then
+							local isKnown = Wise:IsActionKnown(state.type, state.value)
+							cdSnapshot[slotIdx] = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state)
+								or false
+						end
+					end
+				end
+			end
+		end
+		f._dynamicCDSnapshot = cdSnapshot
+	end
+	if needsTicker then
+		f.conditionTicker = C_Timer.NewTicker(0.2, function()
+			-- For dynamic groups with conditional/availability slots, check if state changed
+			-- and trigger a full rebuild when it does (e.g. [extrabar] or [zoneability] toggled)
+			if hasDynamicConditions and f._dynamicCondSnapshot and not InCombatLockdown() then
+				local changed = false
+				if group.actions then
+					for slotIdx, states in pairs(group.actions) do
+						if type(states) == "table" then
+							for _, state in ipairs(states) do
+								local now
+								if state.conditions and state.conditions ~= "" then
+									now = EvalFullConditionString(state.conditions)
+								elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
+									now = Wise:IsActionKnown(state.type, state.value)
+								end
+								if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx] then
+									changed = true
+									break
+								end
+							end
+						end
+						if changed then
+							break
+						end
+					end
+				end
+				if changed then
+					Wise:UpdateGroupDisplay(name)
+					return
+				end
+			end
+			-- For dynamic groups with cooldown-filterable slots, detect CD state changes
+			if hasDynamicCooldowns and f._dynamicCDSnapshot and not InCombatLockdown() then
+				local changed = false
+				if group.actions then
+					for slotIdx, states in pairs(group.actions) do
+						if type(states) == "table" then
+							for _, state in ipairs(states) do
+								if state.type == "spell" or state.type == "item" or state.type == "toy" then
+									local isKnown = Wise:IsActionKnown(state.type, state.value)
+									local nowOnCD = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state)
+										or false
+									if nowOnCD ~= f._dynamicCDSnapshot[slotIdx] then
+										changed = true
+										break
+									end
+								end
+							end
+						end
+						if changed then
+							break
+						end
+					end
+				end
+				if changed then
+					Wise:UpdateGroupDisplay(name)
+					return
+				end
+			end
+			local canSetAttrs = not InCombatLockdown()
+			for _, btn in ipairs(f.buttons) do
+				if btn:IsShown() then
+					local meta = Wise.buttonMeta[btn]
+					if not meta then -- skip
+					elseif meta.actionType == "action" then
+						local aID = tonumber(meta.actionValue)
+						if aID then
+							local realID = Wise:ResolveBarActionID(aID)
+							local tex = GetActionTexture(realID)
+							local isBarSlot = (aID >= 121 and aID <= 144)
+							if tex then
+								btn.icon:SetTexture(tex)
+								btn.icon:Show()
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone and vClone.icon then
+									vClone.icon:SetTexture(tex)
+									vClone.icon:Show()
+								end
+							elseif isBarSlot then
+								btn.icon:Hide()
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone and vClone.icon then
+									vClone.icon:Hide()
+								end
+							else
+								btn.icon:SetTexture(134400)
+								btn.icon:Show()
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone and vClone.icon then
+									vClone.icon:SetTexture(134400)
+									vClone.icon:Show()
+								end
+							end
+							Wise:UpdateButtonCooldown(btn)
+							Wise:UpdateButtonUsability(btn)
+						end
+					elseif meta.actionType == "misc" and meta.actionValue == "custom_macro" then
+						-- Update Custom Macro
+						local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
+
+						-- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark
+						local displayIcon = meta.actionData.icon or mIcon or 134400
+						btn.icon:SetTexture(displayIcon)
+						local vClone = meta.visualClone or btn.visualClone
+						if vClone and vClone.icon then
+							vClone.icon:SetTexture(displayIcon)
+						end
+
+						if mType then
+							local spellID, itemID
+							if mType == "spell" then
+								local n = tonumber(mVal)
+								if n then
+									spellID = n
+								else
+									local info = C_Spell.GetSpellInfo(mVal)
+									if info then
+										spellID = info.spellID
+									end
+								end
+							elseif mType == "item" then
+								itemID = mVal
+							end
+							meta.baseSpellID = spellID
+							meta.spellID = Wise:GetOverrideSpellID(spellID)
+							meta.itemID = itemID
+
+							Wise:UpdateButtonCooldown(btn)
+							Wise:UpdateButtonUsability(btn)
+						else
+							-- Reset dynamic metadata (base icon handled above via displayIcon)
+							meta.baseSpellID = nil
+							meta.spellID = nil
+							meta.itemID = nil
+
+							Wise:UpdateButtonCooldown(btn)
+							Wise:UpdateButtonUsability(btn)
+						end
+					elseif meta.actionType == "misc" and meta.actionValue == "extrabutton" then
+						-- Update Extra Action Button icon dynamically
+						-- Use derived slot constant instead of reading .action from Blizzard frame to avoid taint
+						-- GetActionTexture returns nil when no action is in the slot, so no gate needed
+						local tex = GetActionTexture(EXTRA_ACTION_BUTTON_SLOT)
+						tex = tex or "Interface\\Icons\\Temp"
+						btn.icon:SetTexture(tex)
+						local vClone = meta.visualClone or btn.visualClone
+						if vClone and vClone.icon then
+							vClone.icon:SetTexture(tex)
+						end
+						Wise:UpdateButtonCooldown(btn)
+						Wise:UpdateButtonUsability(btn)
+					elseif meta.actionType == "misc" and meta.actionValue == "zoneability" then
+						-- Update Zone Ability icon dynamically
+						local zoneBtn = GetZoneAbilitySpellButton()
+						local tex
+						if zoneBtn and zoneBtn.spellID then
+							local info = C_Spell.GetSpellInfo(zoneBtn.spellID)
+							if info then
+								tex = info.iconID
+							end
+						end
+						tex = tex or "Interface\\Icons\\Temp"
+						btn.icon:SetTexture(tex)
+						local vClone = meta.visualClone or btn.visualClone
+						if vClone and vClone.icon then
+							vClone.icon:SetTexture(tex)
+						end
+						-- Rebind clickbutton when the spell button changes (e.g. entering garrison)
+						if canSetAttrs and zoneBtn then
+							if zoneBtn.GetName and zoneBtn:GetName() then
+								btn:SetAttribute("type", "macro")
+								btn:SetAttribute("macrotext", "/click " .. zoneBtn:GetName())
+							elseif zoneBtn.spellID then
+								btn:SetAttribute("type", "spell")
+								btn:SetAttribute("spell", zoneBtn.spellID)
+							else
+								btn:SetAttribute("type", "click")
+								btn:SetAttribute("clickbutton", zoneBtn)
+							end
+						end
+						Wise:UpdateButtonCooldown(btn)
+						Wise:UpdateButtonUsability(btn)
+					elseif meta.actionType == "misc" and meta.actionValue == "overridebar" then
+						-- Update Override Bar icon dynamically
+						local realID = Wise:ResolveBarActionID(133)
+						local tex = GetActionTexture(realID)
+						if tex then
+							btn.icon:SetTexture(tex)
+							btn.icon:Show()
+							local vClone = meta.visualClone or btn.visualClone
+							if vClone and vClone.icon then
+								vClone.icon:SetTexture(tex)
+								vClone.icon:Show()
+							end
+						else
+							btn.icon:Hide()
+							local vClone = meta.visualClone or btn.visualClone
+							if vClone and vClone.icon then
+								vClone.icon:Hide()
+							end
+						end
+						-- Rebind clickbutton in case override bar appeared
+						local overrideBtn = _G["OverrideActionBarButton1"]
+						if canSetAttrs and overrideBtn then
+							if overrideBtn.GetName and overrideBtn:GetName() then
+								btn:SetAttribute("type", "macro")
+								btn:SetAttribute("macrotext", "/click " .. overrideBtn:GetName())
+							else
+								btn:SetAttribute("type", "click")
+								btn:SetAttribute("clickbutton", overrideBtn)
+							end
+						end
+						Wise:UpdateButtonCooldown(btn)
+						Wise:UpdateButtonUsability(btn)
+					elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
+						-- Update Possess Bar icon dynamically
+						local realID = Wise:ResolveBarActionID(121)
+						local tex = GetActionTexture(realID)
+						if tex then
+							btn.icon:SetTexture(tex)
+							btn.icon:Show()
+							local vClone = meta.visualClone or btn.visualClone
+							if vClone and vClone.icon then
+								vClone.icon:SetTexture(tex)
+								vClone.icon:Show()
+							end
+						else
+							btn.icon:Hide()
+							local vClone = meta.visualClone or btn.visualClone
+							if vClone and vClone.icon then
+								vClone.icon:Hide()
+							end
+						end
+						-- Rebind clickbutton in case possess bar appeared (route to OverrideActionBarButton1 in vehicle, ActionButton1 in possess)
+						if canSetAttrs then
+							btn:SetAttribute("type", "macro")
+							btn:SetAttribute(
+								"macrotext",
+								"/click [vehicleui] OverrideActionBarButton1; [possessbar] ActionButton1"
+							)
+						end
+						Wise:UpdateButtonCooldown(btn)
+						Wise:UpdateButtonUsability(btn)
+					elseif meta.actionType == "interface" then
+						-- Update interface icon dynamically (reflects child's current active action)
+						local nestMode = btn:GetAttribute("isa_nest_mode") or "jump"
+						if nestMode ~= "jump" then
+							-- For rotation modes, show the NEXT action that would fire
+							local rotIcon = Wise:GetRotationIcon(btn, meta.actionValue, nestMode)
+							if rotIcon then
+								btn.icon:SetTexture(rotIcon)
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone and vClone.icon then
+									vClone.icon:SetTexture(rotIcon)
+								end
+							end
+						else
+							local newIcon = Wise:GetActionIcon("interface", meta.actionValue)
+							if newIcon then
+								btn.icon:SetTexture(newIcon)
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone and vClone.icon then
+									vClone.icon:SetTexture(newIcon)
+								end
+							end
+						end
+						-- Refresh child action attributes when not in combat
+						if canSetAttrs and nestMode ~= "jump" then
+							Wise:StoreChildActionsOnButton(btn, meta.actionValue, nestMode)
+						end
+					elseif meta.states and #meta.states > 1 then
+						local chosen = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
+						if chosen and chosen ~= meta.activeState then
+							meta.activeState = chosen
+							local state = meta.states[chosen]
+							if state then
+								btn.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
+								btn.actionType = state.type
+								btn.actionValue = state.value
+								btn.actionData = state
+
+								-- Apply/remove empty slot visual treatment (alpha is safe in combat, EnableMouse is not)
+								if state.type == "empty" then
+									btn:SetAlpha(0)
+									if canSetAttrs then
+										btn:EnableMouse(false)
+									end
+								else
+									btn:SetAlpha(1)
+									if canSetAttrs then
+										btn:EnableMouse(true)
+									end
+									-- Restore keybinds when switching away from empty
+									local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind =
+										Wise:GetGroupDisplaySettings(f.groupName or name)
+									Wise:Text_UpdateKeybind(btn, f.groupName or name, showKeybinds)
+									Wise:Text_UpdateInterfaceKeybind(btn, f.groupName or name, showInterfaceKeybind)
+									local vClone = meta.visualClone or btn.visualClone
+									if vClone then
+										Wise:Text_UpdateKeybind(vClone, f.groupName or name, showKeybinds)
+										Wise:Text_UpdateInterfaceKeybind(
+											vClone,
+											f.groupName or name,
+											showInterfaceKeybind
+										)
+									end
+								end
+
+								-- Update secure attributes when not in combat
+								-- BUT NOT for sequence/waterfall with >1 state: the PreClick
+								-- secure snippet builds the firing macrotext at press time, so
+								-- writing a single-state macro here would clobber the stacked
+								-- waterfall macro (or the sequence pointer) on the next press.
+								-- Single-state slots fall through and get normal attributes.
+								local snippetManagesAttrs = (
+									meta.conflictStrategy == "sequence" or meta.conflictStrategy == "waterfall"
+								)
+									and meta.states
+									and #meta.states > 1
+								if canSetAttrs and not snippetManagesAttrs then
+									local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
+									btn:SetAttribute("type", nil)
+									btn:SetAttribute("spell", nil)
+									btn:SetAttribute("item", nil)
+									btn:SetAttribute("macro", nil)
+									btn:SetAttribute("macrotext", nil)
+									btn:SetAttribute("clickbutton", nil)
+									btn:SetAttribute("type", sType)
+									if sAttr then
+										btn:SetAttribute(sAttr, sValue)
+									end
+								end
+
+								-- Update cooldown tracking for new active state
+								local spellID, itemID
+								if state.type == "spell" then
+									local n = tonumber(state.value)
+									if n then
+										spellID = n
+									else
+										local info = C_Spell.GetSpellInfo(state.value)
+										if info then
+											spellID = info.spellID
+										end
+									end
+								elseif state.type == "item" or state.type == "toy" then
+									itemID = state.value
+								elseif state.type == "mount" and C_MountJournal then
+									local _, mSpellID = C_MountJournal.GetMountInfoByID(state.value)
+									spellID = mSpellID
+								end
+								meta.baseSpellID = spellID
+								meta.spellID = Wise:GetOverrideSpellID(spellID)
+								meta.itemID = itemID
+								meta.actionType = state.type
+								meta.actionValue = state.value
+								meta.actionData = state
+								Wise:UpdateButtonCooldown(btn)
+
+								-- Sync visual clone
+								local vClone = meta.visualClone or btn.visualClone
+								if vClone then
+									if state.type == "empty" then
+										vClone:SetAlpha(0)
+									else
+										vClone:SetAlpha(1)
+										if vClone.icon then
+											vClone.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end)
+	end
+
+	-- Ensure bindings are active (fixes potential staleness on new groups)
+	if Wise.UpdateBindings then
+		Wise:UpdateBindings()
+	end
+
+	-- Propagate to parents that embed this group
+	if Wise._embeddedParents and Wise._embeddedParents[name] then
+		local parentName = Wise._embeddedParents[name]
+		-- Guard against re-entrancy: only propagate if not already updating this parent
+		if not Wise._embeddedUpdating then
+			Wise._embeddedUpdating = true
+			if not InCombatLockdown() then
+				Wise:UpdateGroupDisplay(parentName)
+			end
+			Wise._embeddedUpdating = nil
+		end
+	end
 end
 
 -- Metadata storage to avoid reading SecureFrames in combat
 Wise.buttonMeta = {}
 
 function Wise:ApplyIconStyle(btn, style)
-    if not btn or not btn.icon then return end
+	if not btn or not btn.icon then
+		return
+	end
 
-    -- Skip Wise styling if Masque is loaded and active for this group
-    if Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled) then return end
+	-- Skip Wise styling if Masque is loaded and active for this group
+	if Wise.MasqueGroup and not (Wise.MasqueGroup.db and Wise.MasqueGroup.db.Disabled) then
+		return
+	end
 
-    style = style or "rounded"
+	style = style or "rounded"
 
-    -- Clear previous mask if exists
-    if btn.styleMask then
-        btn.icon:RemoveMaskTexture(btn.styleMask)
-        if btn.activeHighlight then btn.activeHighlight:RemoveMaskTexture(btn.styleMask) end
-        btn.styleMask:Hide()
-    end
+	-- Clear previous mask if exists
+	if btn.styleMask then
+		btn.icon:RemoveMaskTexture(btn.styleMask)
+		if btn.activeHighlight then
+			btn.activeHighlight:RemoveMaskTexture(btn.styleMask)
+		end
+		btn.styleMask:Hide()
+	end
 
-    -- Reset cooldown shape to default square
-    if btn.cooldown then
-        btn.cooldown:SetUseCircularEdge(false)
-        btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
-    end
+	-- Reset cooldown shape to default square
+	if btn.cooldown then
+		btn.cooldown:SetUseCircularEdge(false)
+		btn.cooldown:SetSwipeTexture("Interface\\Buttons\\WHITE8x8")
+	end
 
-    if style == "rounded" then
-        -- Default WoW Icon (slightly rounded square)
-        btn.icon:SetTexCoord(0, 1, 0, 1)
-        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0, 1, 0, 1) end
-    elseif style == "square" then
-        -- Zoom in to remove rounded borders
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-    elseif style == "round" then
-        -- Apply circular mask
-        if not btn.styleMask then
-            btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetAllPoints(btn.icon)
-        end
-        btn.styleMask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        btn.styleMask:Show()
-        btn.icon:AddMaskTexture(btn.styleMask)
-        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        -- Circular cooldown swipe
-        if btn.cooldown then
-            btn.cooldown:SetUseCircularEdge(true)
-            btn.cooldown:SetSwipeTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
-        end
-    elseif style == "hexagon" then
-        if not btn.styleMask then
-            btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetAllPoints(btn.icon)
-        end
-        btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        btn.styleMask:Show()
-        btn.icon:AddMaskTexture(btn.styleMask)
-        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        -- Hexagon-shaped cooldown swipe
-        if btn.cooldown then
-            btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
-        end
-    elseif style == "octagon" then
-        if not btn.styleMask then
-            btn.styleMask = btn:CreateMaskTexture()
-            btn.styleMask:SetAllPoints(btn.icon)
-        end
-        btn.styleMask:SetTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        btn.styleMask:Show()
-        btn.icon:AddMaskTexture(btn.styleMask)
-        if btn.activeHighlight then btn.activeHighlight:AddMaskTexture(btn.styleMask) end
-        btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        if btn.activeHighlight then btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        -- Octagon-shaped cooldown swipe
-        if btn.cooldown then
-            btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
-        end
-    end
+	if style == "rounded" then
+		-- Default WoW Icon (slightly rounded square)
+		btn.icon:SetTexCoord(0, 1, 0, 1)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(0, 1, 0, 1)
+		end
+	elseif style == "square" then
+		-- Zoom in to remove rounded borders
+		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		end
+	elseif style == "round" then
+		-- Apply circular mask
+		if not btn.styleMask then
+			btn.styleMask = btn:CreateMaskTexture()
+			btn.styleMask:SetAllPoints(btn.icon)
+		end
+		btn.styleMask:SetTexture(
+			"Interface\\CHARACTERFRAME\\TempPortraitAlphaMask",
+			"CLAMPTOBLACKADDITIVE",
+			"CLAMPTOBLACKADDITIVE"
+		)
+		btn.styleMask:Show()
+		btn.icon:AddMaskTexture(btn.styleMask)
+		if btn.activeHighlight then
+			btn.activeHighlight:AddMaskTexture(btn.styleMask)
+		end
+		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		end
+		-- Circular cooldown swipe
+		if btn.cooldown then
+			btn.cooldown:SetUseCircularEdge(true)
+			btn.cooldown:SetSwipeTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+		end
+	elseif style == "hexagon" then
+		if not btn.styleMask then
+			btn.styleMask = btn:CreateMaskTexture()
+			btn.styleMask:SetAllPoints(btn.icon)
+		end
+		btn.styleMask:SetTexture(
+			"Interface\\AddOns\\Wise\\Media\\HexagonMask.tga",
+			"CLAMPTOBLACKADDITIVE",
+			"CLAMPTOBLACKADDITIVE"
+		)
+		btn.styleMask:Show()
+		btn.icon:AddMaskTexture(btn.styleMask)
+		if btn.activeHighlight then
+			btn.activeHighlight:AddMaskTexture(btn.styleMask)
+		end
+		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		end
+		-- Hexagon-shaped cooldown swipe
+		if btn.cooldown then
+			btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
+		end
+	elseif style == "octagon" then
+		if not btn.styleMask then
+			btn.styleMask = btn:CreateMaskTexture()
+			btn.styleMask:SetAllPoints(btn.icon)
+		end
+		btn.styleMask:SetTexture(
+			"Interface\\AddOns\\Wise\\Media\\OctagonMask.tga",
+			"CLAMPTOBLACKADDITIVE",
+			"CLAMPTOBLACKADDITIVE"
+		)
+		btn.styleMask:Show()
+		btn.icon:AddMaskTexture(btn.styleMask)
+		if btn.activeHighlight then
+			btn.activeHighlight:AddMaskTexture(btn.styleMask)
+		end
+		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		end
+		-- Octagon-shaped cooldown swipe
+		if btn.cooldown then
+			btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
+		end
+	end
 end
 
 function Wise:GetGrowthInfo(groupName)
-    local group = WiseDB.groups[groupName]
-    if not group then return 0, 0, false, false, "Unknown" end
+	local group = WiseDB.groups[groupName]
+	if not group then
+		return 0, 0, false, false, "Unknown"
+	end
 
-    local type = group.type or "circle"
-    local anchorPoint = (group.anchor and group.anchor.point) or "CENTER"
+	local type = group.type or "circle"
+	local anchorPoint = (group.anchor and group.anchor.point) or "CENTER"
 
-    if type == "circle" then
-        return 0, 0, true, true, "Radial"
-    elseif type == "button" then
-        return 0, 0, false, false, "None"
-    elseif type == "list" then
-        local dy = -1
-        local text = "Down"
-        if anchorPoint:find("BOTTOM") then
-            dy = 1
-            text = "Up"
-        elseif anchorPoint:find("TOP") then
-            dy = -1
-            text = "Down"
-        else
-            dy = 0 -- 0 means bidirectional/centered
-            text = "Centered\n(Vertical)"
-        end
-        return 0, dy, false, true, text
-    elseif type == "line" then
-        local orientation = group.lineOrientation or "horizontal"
-        if orientation == "horizontal" then
-            local dx = 1
-            local text = "Right"
-            if anchorPoint:find("RIGHT") then
-                dx = -1
-                text = "Left"
-            elseif anchorPoint:find("LEFT") then
-                dx = 1
-                text = "Right"
-            else
-                dx = 0 -- 0 means bidirectional/centered
-                text = "Centered\n(Horizontal)"
-            end
-            return dx, 0, true, false, text
-        else
-            local dy = -1
-            local text = "Down"
-            if anchorPoint:find("BOTTOM") then
-                dy = 1
-                text = "Up"
-            elseif anchorPoint:find("TOP") then
-                dy = -1
-                text = "Down"
-            else
-                dy = 0 -- 0 means bidirectional/centered
-                text = "Centered\n(Vertical)"
-            end
-            return 0, dy, false, true, text
-        end
-    elseif type == "box" then
-        local dirX = 1
-        local dirY = -1
-        local tX = "Right"
-        local tY = "Down"
+	if type == "circle" then
+		return 0, 0, true, true, "Radial"
+	elseif type == "button" then
+		return 0, 0, false, false, "None"
+	elseif type == "list" then
+		local dy = -1
+		local text = "Down"
+		if anchorPoint:find("BOTTOM") then
+			dy = 1
+			text = "Up"
+		elseif anchorPoint:find("TOP") then
+			dy = -1
+			text = "Down"
+		else
+			dy = 0 -- 0 means bidirectional/centered
+			text = "Centered\n(Vertical)"
+		end
+		return 0, dy, false, true, text
+	elseif type == "line" then
+		local orientation = group.lineOrientation or "horizontal"
+		if orientation == "horizontal" then
+			local dx = 1
+			local text = "Right"
+			if anchorPoint:find("RIGHT") then
+				dx = -1
+				text = "Left"
+			elseif anchorPoint:find("LEFT") then
+				dx = 1
+				text = "Right"
+			else
+				dx = 0 -- 0 means bidirectional/centered
+				text = "Centered\n(Horizontal)"
+			end
+			return dx, 0, true, false, text
+		else
+			local dy = -1
+			local text = "Down"
+			if anchorPoint:find("BOTTOM") then
+				dy = 1
+				text = "Up"
+			elseif anchorPoint:find("TOP") then
+				dy = -1
+				text = "Down"
+			else
+				dy = 0 -- 0 means bidirectional/centered
+				text = "Centered\n(Vertical)"
+			end
+			return 0, dy, false, true, text
+		end
+	elseif type == "box" then
+		local dirX = 1
+		local dirY = -1
+		local tX = "Right"
+		local tY = "Down"
 
-        if anchorPoint:find("RIGHT") then
-            dirX = -1
-            tX = "Left"
-        elseif not anchorPoint:find("LEFT") then
-            dirX = 0
-            tX = "Centered\n(Horizontal)"
-        end
+		if anchorPoint:find("RIGHT") then
+			dirX = -1
+			tX = "Left"
+		elseif not anchorPoint:find("LEFT") then
+			dirX = 0
+			tX = "Centered\n(Horizontal)"
+		end
 
-        if anchorPoint:find("BOTTOM") then
-            dirY = 1
-            tY = "Up"
-        elseif not anchorPoint:find("TOP") then
-            dirY = 0
-            tY = "Centered\n(Vertical)"
-        end
+		if anchorPoint:find("BOTTOM") then
+			dirY = 1
+			tY = "Up"
+		elseif not anchorPoint:find("TOP") then
+			dirY = 0
+			tY = "Centered\n(Vertical)"
+		end
 
-        local text = ""
-        local primaryAxis = group.fixedAxis or "x"
-        if anchorPoint == "CENTER" then
-            text = "Centered\n(Both)"
-        else
-            if primaryAxis == "x" then
-                 text = tY .. " & " .. tX .. " (Row-First)"
-            else
-                 text = tX .. " & " .. tY .. " (Column-First)"
-            end
-        end
+		local text = ""
+		local primaryAxis = group.fixedAxis or "x"
+		if anchorPoint == "CENTER" then
+			text = "Centered\n(Both)"
+		else
+			if primaryAxis == "x" then
+				text = tY .. " & " .. tX .. " (Row-First)"
+			else
+				text = tX .. " & " .. tY .. " (Column-First)"
+			end
+		end
 
-        return dirX, dirY, true, true, text
-    end
+		return dirX, dirY, true, true, text
+	end
 
-    return 0, 0, false, false, "Unknown"
+	return 0, 0, false, false, "Unknown"
 end
 
 function Wise:ApplyLayout(frame, type, count, groupName)
-    frame.buttons = frame.buttons or {}
-    local buttons = frame.buttons
-    local iconSize, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(groupName)
+	frame.buttons = frame.buttons or {}
+	local buttons = frame.buttons
+	local iconSize, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind =
+		Wise:GetGroupDisplaySettings(groupName)
 
-    -- Nested instances inherit icon size from their nesting parent
-    if frame.inheritedIconSize then
-        iconSize = frame.inheritedIconSize
-    end
+	-- Nested instances inherit icon size from their nesting parent
+	if frame.inheritedIconSize then
+		iconSize = frame.inheritedIconSize
+	end
 
-    -- Try to extract group name if not provided (fallback for legacy/secure frames)
-    if not groupName and frame:GetName() then
-        groupName = frame:GetName():match("WiseGroup_(.+)")
-        -- Handle _Visual suffix if present (though we should pass explicit name)
-        if groupName and groupName:match("_Visual$") then
-            groupName = groupName:gsub("_Visual$", "")
-        end
-    end
+	-- Try to extract group name if not provided (fallback for legacy/secure frames)
+	if not groupName and frame:GetName() then
+		groupName = frame:GetName():match("WiseGroup_(.+)")
+		-- Handle _Visual suffix if present (though we should pass explicit name)
+		if groupName and groupName:match("_Visual$") then
+			groupName = groupName:gsub("_Visual$", "")
+		end
+	end
 
-    local invertOrder = false
-    if groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].invertOrder then
-        invertOrder = true
-    end
-    
-    -- Ensure all buttons are shown initially
-    for i=1, count do
-        local btn = buttons[i]
-        btn:Show()
+	local invertOrder = false
+	if groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].invertOrder then
+		invertOrder = true
+	end
 
-        -- Skip keybind display for empty slots (they are invisible space maintainers)
-        local btnIsEmpty = btn.actionType == "empty"
-        if not btnIsEmpty then
-            -- Update Keybind Display via Text
-            Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
-            Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
-        else
-            if btn.keybind then btn.keybind:Hide() end
-            if btn.interfaceKeybind then btn.interfaceKeybind:Hide() end
-        end
+	-- Ensure all buttons are shown initially
+	for i = 1, count do
+		local btn = buttons[i]
+		btn:Show()
 
-        -- Sync keybind and interface keybind to visual clone via Text module
-        if btn.visualClone then
-            if not btnIsEmpty then
-                Wise:Text_UpdateKeybind(btn.visualClone, groupName, showKeybinds)
-                Wise:Text_UpdateInterfaceKeybind(btn.visualClone, groupName, showInterfaceKeybind)
-            else
-                if btn.visualClone.keybind then btn.visualClone.keybind:Hide() end
-                if btn.visualClone.interfaceKeybind then btn.visualClone.interfaceKeybind:Hide() end
-            end
-        end
-    end
+		-- Skip keybind display for empty slots (they are invisible space maintainers)
+		local btnIsEmpty = btn.actionType == "empty"
+		if not btnIsEmpty then
+			-- Update Keybind Display via Text
+			Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
+			Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
+		else
+			if btn.keybind then
+				btn.keybind:Hide()
+			end
+			if btn.interfaceKeybind then
+				btn.interfaceKeybind:Hide()
+			end
+		end
 
-    if type == "button" then
-        for i=1, count do
-            local btn = buttons[i]
-            if i == 1 then
-                btn:Show()
-                buttons[i].targetX = 0
-                buttons[i].targetY = 0
-                buttons[i]:SetPoint("CENTER", 0, 0)
-            else
-                buttons[i]:Hide()
-                buttons[i].targetX = 0
-                buttons[i].targetY = 0
-            end
-        end
-    elseif type == "line" then
-        local linePadding = 5 -- default padding between buttons
-        local anchorPoint = "CENTER"
-        local orientation = "horizontal" -- or "vertical"
-        if groupName and WiseDB.groups[groupName] then
-            if WiseDB.groups[groupName].padding then
-                linePadding = WiseDB.groups[groupName].padding
-            end
-            if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
-                anchorPoint = WiseDB.groups[groupName].anchor.point
-            end
-            if WiseDB.groups[groupName].lineOrientation then
-                orientation = WiseDB.groups[groupName].lineOrientation
-            end
-        end
-        -- Nested line children: override orientation and anchor from nesting logic
-        if frame.nestedLineOrientation then
-            orientation = frame.nestedLineOrientation
-        end
-        if frame.nestedLineAnchor then
-            anchorPoint = frame.nestedLineAnchor
-        end
-        local spacing = iconSize + linePadding
-        
-        local dx, dy = 0, 0
-        local startX, startY = 0, 0
+		-- Sync keybind and interface keybind to visual clone via Text module
+		if btn.visualClone then
+			if not btnIsEmpty then
+				Wise:Text_UpdateKeybind(btn.visualClone, groupName, showKeybinds)
+				Wise:Text_UpdateInterfaceKeybind(btn.visualClone, groupName, showInterfaceKeybind)
+			else
+				if btn.visualClone.keybind then
+					btn.visualClone.keybind:Hide()
+				end
+				if btn.visualClone.interfaceKeybind then
+					btn.visualClone.interfaceKeybind:Hide()
+				end
+			end
+		end
+	end
 
-        if orientation == "horizontal" then
-            if anchorPoint:find("RIGHT") then
-                dx = -spacing
-            elseif anchorPoint:find("LEFT") then
-                dx = spacing
-            else -- Center horizontally
-                dx = spacing
-                startX = - (math.max(count - 1, 0) * spacing) / 2
-            end
-        else -- vertical
-            if anchorPoint:find("BOTTOM") then
-                dy = spacing
-            elseif anchorPoint:find("TOP") then
-                dy = -spacing
-            else -- Center vertically
-                dy = -spacing -- default grow down for center vertical
-                startY = (math.max(count - 1, 0) * spacing) / 2
-            end
-        end
+	if type == "button" then
+		for i = 1, count do
+			local btn = buttons[i]
+			if i == 1 then
+				btn:Show()
+				buttons[i].targetX = 0
+				buttons[i].targetY = 0
+				buttons[i]:SetPoint("CENTER", 0, 0)
+			else
+				buttons[i]:Hide()
+				buttons[i].targetX = 0
+				buttons[i].targetY = 0
+			end
+		end
+	elseif type == "line" then
+		local linePadding = 5 -- default padding between buttons
+		local anchorPoint = "CENTER"
+		local orientation = "horizontal" -- or "vertical"
+		if groupName and WiseDB.groups[groupName] then
+			if WiseDB.groups[groupName].padding then
+				linePadding = WiseDB.groups[groupName].padding
+			end
+			if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
+				anchorPoint = WiseDB.groups[groupName].anchor.point
+			end
+			if WiseDB.groups[groupName].lineOrientation then
+				orientation = WiseDB.groups[groupName].lineOrientation
+			end
+		end
+		-- Nested line children: override orientation and anchor from nesting logic
+		if frame.nestedLineOrientation then
+			orientation = frame.nestedLineOrientation
+		end
+		if frame.nestedLineAnchor then
+			anchorPoint = frame.nestedLineAnchor
+		end
+		local spacing = iconSize + linePadding
 
-        for i=1, count do
-            local idx = i - 1
-            if invertOrder then idx = count - i end
-            buttons[i].targetX = startX + idx * dx
-            buttons[i].targetY = startY + idx * dy
-            buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
-        end
-    elseif type == "box" then
-        local fixedAxis = "x"
-        local boxW = 3
-        local boxH = 3
-        local boxPaddingX = 5 -- default X padding
-        local boxPaddingY = 5 -- default Y padding
-        local anchorPoint = "CENTER"
-        
-        if groupName and WiseDB.groups[groupName] then
-            local g = WiseDB.groups[groupName]
-            fixedAxis = g.fixedAxis or "x"
-            boxW = g.boxWidth or 3
-            boxH = g.boxHeight or 3
-            if g.paddingX then boxPaddingX = g.paddingX end
-            if g.paddingY then boxPaddingY = g.paddingY end
-            if g.anchor and g.anchor.point then anchorPoint = g.anchor.point end
-        end
-        local spacingX = iconSize + boxPaddingX
-        local spacingY = iconSize + boxPaddingY
-        
-        local cols, rows
-        if fixedAxis == "x" then
-            cols = math.max(1, boxW) -- Safety
-            rows = math.ceil(count / cols)
-        else
-            rows = math.max(1, boxH) -- Safety
-            cols = math.ceil(count / rows)
-        end
-        if cols < 1 then cols = 1 end -- Double safety if rows calculation results in 0 cols (count=0)
-        
-        local totalH = (rows - 1) * spacingY
-        local dirX = 1
-        local dirY = -1 -- Default grow down (negative Y)
+		local dx, dy = 0, 0
+		local startX, startY = 0, 0
 
-        if anchorPoint:find("RIGHT") then
-            dirX = -1
-        end
-        if anchorPoint:find("BOTTOM") then
-            dirY = 1
-        end
+		if orientation == "horizontal" then
+			if anchorPoint:find("RIGHT") then
+				dx = -spacing
+			elseif anchorPoint:find("LEFT") then
+				dx = spacing
+			else -- Center horizontally
+				dx = spacing
+				startX = -(math.max(count - 1, 0) * spacing) / 2
+			end
+		else -- vertical
+			if anchorPoint:find("BOTTOM") then
+				dy = spacing
+			elseif anchorPoint:find("TOP") then
+				dy = -spacing
+			else -- Center vertically
+				dy = -spacing -- default grow down for center vertical
+				startY = (math.max(count - 1, 0) * spacing) / 2
+			end
+		end
 
-        local startY = 0
-        if anchorPoint:find("TOP") then
-            startY = 0
-        elseif anchorPoint:find("BOTTOM") then
-            startY = 0
-        else -- CENTER vertically
-            startY = (dirY == -1) and (totalH / 2) or (-totalH / 2)
-        end
-        
-        for i=1, count do
-            local posIndex = i - 1
-            if invertOrder then posIndex = count - i end
+		for i = 1, count do
+			local idx = i - 1
+			if invertOrder then
+				idx = count - i
+			end
+			buttons[i].targetX = startX + idx * dx
+			buttons[i].targetY = startY + idx * dy
+			buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+		end
+	elseif type == "box" then
+		local fixedAxis = "x"
+		local boxW = 3
+		local boxH = 3
+		local boxPaddingX = 5 -- default X padding
+		local boxPaddingY = 5 -- default Y padding
+		local anchorPoint = "CENTER"
 
-            local r = math.floor(posIndex / cols)
-            local c = posIndex % cols
-            
-            local itemsInThisRow = cols
-            if r == rows - 1 then
-                local rem = count % cols
-                if rem > 0 then itemsInThisRow = rem end
-            end
-            
-            local rowIdx = c
-            local rowWidth = (itemsInThisRow - 1) * spacingX
-            
-            local startX = 0
-            if anchorPoint:find("LEFT") then
-                startX = 0
-            elseif anchorPoint:find("RIGHT") then
-                startX = 0
-            else -- CENTER horizontally
-                startX = (dirX == 1) and (-rowWidth / 2) or (rowWidth / 2)
-            end
+		if groupName and WiseDB.groups[groupName] then
+			local g = WiseDB.groups[groupName]
+			fixedAxis = g.fixedAxis or "x"
+			boxW = g.boxWidth or 3
+			boxH = g.boxHeight or 3
+			if g.paddingX then
+				boxPaddingX = g.paddingX
+			end
+			if g.paddingY then
+				boxPaddingY = g.paddingY
+			end
+			if g.anchor and g.anchor.point then
+				anchorPoint = g.anchor.point
+			end
+		end
+		local spacingX = iconSize + boxPaddingX
+		local spacingY = iconSize + boxPaddingY
 
-            buttons[i].targetX = startX + (rowIdx * spacingX * dirX)
-            buttons[i].targetY = startY + (r * spacingY * dirY)
-            
-            buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
-        end
-    elseif type == "list" then
-        -- Vertical text-based list
-        local _, textSize, fontPath = Wise:GetGroupDisplaySettings(groupName)
-        local listPadding = 8 -- default line padding
-        local anchorPoint = "CENTER"
-        if groupName and WiseDB.groups[groupName] then
-            if WiseDB.groups[groupName].padding then
-                listPadding = WiseDB.groups[groupName].padding
-            end
-            if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
-                anchorPoint = WiseDB.groups[groupName].anchor.point
-            end
-        end
-        -- Nested list children: override anchor and text align from nesting logic
-        if frame.nestedListAnchor then
-            anchorPoint = frame.nestedListAnchor
-        end
-        local listIconSize = iconSize
-        local contentHeight = math.max(textSize, listIconSize)
-        local lineHeight = contentHeight + listPadding
-        local maxTextWidth = 0
-        -- groupName is now passed as argument
+		local cols, rows
+		if fixedAxis == "x" then
+			cols = math.max(1, boxW) -- Safety
+			rows = math.ceil(count / cols)
+		else
+			rows = math.max(1, boxH) -- Safety
+			cols = math.ceil(count / rows)
+		end
+		if cols < 1 then
+			cols = 1
+		end -- Double safety if rows calculation results in 0 cols (count=0)
 
-        -- Alignment (Pre-calculate for loop)
-        local textAlign = (WiseDB.groups[groupName] and WiseDB.groups[groupName].textAlign) or "right"
-        -- Nested list children: override text align
-        if frame.nestedTextAlign then
-            textAlign = frame.nestedTextAlign
-        end
+		local totalH = (rows - 1) * spacingY
+		local dirX = 1
+		local dirY = -1 -- Default grow down (negative Y)
 
-        local dy = -lineHeight
-        local startY = 0
-        local totalH = math.max(count - 1, 0) * lineHeight
+		if anchorPoint:find("RIGHT") then
+			dirX = -1
+		end
+		if anchorPoint:find("BOTTOM") then
+			dirY = 1
+		end
 
-        if anchorPoint:find("BOTTOM") then
-            dy = lineHeight
-            startY = 0
-        elseif anchorPoint:find("TOP") then
-            dy = -lineHeight
-            startY = 0
-        else -- CENTER vertically
-            dy = -lineHeight
-            startY = totalH / 2
-        end
+		local startY = 0
+		if anchorPoint:find("TOP") then
+			startY = 0
+		elseif anchorPoint:find("BOTTOM") then
+			startY = 0
+		else -- CENTER vertically
+			startY = (dirY == -1) and (totalH / 2) or (-totalH / 2)
+		end
 
-        for i=1, count do
-            local idx = i - 1
-            if invertOrder then idx = count - i end
-            buttons[i].targetX = 0
-            buttons[i].targetY = startY + idx * dy
-            buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
-            buttons[i]:SetSize(150, lineHeight) -- Wider for text
-            
-            -- Create or update text label
-            if not buttons[i].textLabel then
-                buttons[i].textLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
-            end
-            
-            -- Apply global font settings
-            buttons[i].textLabel:SetFont(fontPath, textSize, "")
-            
-            buttons[i].textLabel:ClearAllPoints()
-            buttons[i].icon:ClearAllPoints()
-            buttons[i].icon:SetSize(listIconSize, listIconSize)
-            
-            -- Icon fixed at center (spine) - icons never move regardless of text position
-            buttons[i].icon:SetPoint("CENTER", 0, 0)
-            
-            -- Re-anchor count text to the icon using Text
-            if buttons[i].count and buttons[i].groupName then
-                local _, _, _, _, _, _, _, cPos = Wise:GetGroupDisplaySettings(buttons[i].groupName)
-                Wise:Text_ApplyPosition(buttons[i].count, cPos or "TOP")
-            end
-            
-            if textAlign == "right" then
-                -- Text Right (Left Aligned)
-                buttons[i].textLabel:SetPoint("LEFT", buttons[i].icon, "RIGHT", 5, 0)
-                buttons[i].textLabel:SetJustifyH("LEFT")
-            else
-                -- Text Left (Right Aligned)
-                buttons[i].textLabel:SetPoint("RIGHT", buttons[i].icon, "LEFT", -5, 0)
-                buttons[i].textLabel:SetJustifyH("RIGHT")
-            end
-            
-            -- Get action name
-            local btn = buttons[i]
-            if btn.actionData then
-                local name = Wise:GetActionName(btn.actionType, btn.actionValue, btn.actionData)
-                btn.textLabel:SetText(name)
-            end
-            buttons[i].textLabel:Show()
-            
-            -- Measure Width (Always measure, maxTextWidth used for sizing)
-            local w = buttons[i].textLabel:GetStringWidth()
-            if w > maxTextWidth then maxTextWidth = w end
-        end
-        
-        -- Second pass: Align Timers and Lines
-        local timerOffset = 0
-        if textAlign == "right" then
-             -- IconHalf + Gap + Text + Gap
-             timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 8
-        else
-             -- IconHalf + Gap
-             timerOffset = (listIconSize / 2) + 8
-        end
-        
-        for i=1, count do
-            -- Timer Label
-            if not buttons[i].timerLabel then 
-                 buttons[i].timerLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
-                 buttons[i].timerLabel:SetJustifyH("LEFT")
-            end
-            -- Apply global font settings to timer label
-            buttons[i].timerLabel:SetFont(fontPath, textSize, "")
-            
-            buttons[i].timerLabel:ClearAllPoints()
-            -- Anchor relative to icon center (spine), not button center
-            buttons[i].timerLabel:SetPoint("LEFT", buttons[i].icon, "CENTER", timerOffset, 0)
-            -- Hide initially
-             buttons[i].timerLabel:SetText("")
-            
-            -- Red Line
-            if not buttons[i].redLine then
-                buttons[i].redLine = buttons[i]:CreateTexture(nil, "ARTWORK")
-                buttons[i].redLine:SetColorTexture(1, 0, 0, 0.8)
-                buttons[i].redLine:SetHeight(1) -- Thin line
-            end
-            
-            buttons[i].redLine:ClearAllPoints()
-            buttons[i].redLine:SetPoint("RIGHT", buttons[i].timerLabel, "LEFT", -5, 0)
-            buttons[i].redLine:SetWidth(0)
-            buttons[i].redLine:Hide()
-        end
-        
-        -- Resize button frame to fit actual content, not symmetric padding
-        -- leftSide/rightSide = distance from icon center to content edge on each side
-        local rightSide = timerOffset + 35 -- Timer text width (~30px) + small margin
-        local leftSide = listIconSize / 2 -- At minimum, the icon half
-        if textAlign == "left" then
-             leftSide = (listIconSize / 2) + 5 + maxTextWidth + 5
-        end
-        local totalWidth = leftSide + rightSide
-        -- Shift button center so icon stays at the visual spine (original targetX)
-        local centerShift = (rightSide - leftSide) / 2
+		for i = 1, count do
+			local posIndex = i - 1
+			if invertOrder then
+				posIndex = count - i
+			end
 
-        for i=1, count do
-             -- Update targetX to include the shift (used by slide animation)
-             buttons[i].targetX = buttons[i].targetX + centerShift
-             buttons[i]:ClearAllPoints()
-             buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
-             buttons[i]:SetSize(totalWidth, lineHeight)
-             -- Offset icon back so it stays at the visual spine
-             buttons[i].icon:ClearAllPoints()
-             buttons[i].icon:SetPoint("CENTER", -centerShift, 0)
-        end
-    else -- circle
-        -- Configurable radius with minimum to prevent overlap
-        local circleRadius, circleRotation
-        if groupName and WiseDB.groups[groupName] then
-            circleRadius = WiseDB.groups[groupName].circleRadius
-            circleRotation = WiseDB.groups[groupName].circleRotation or 0
-        end
+			local r = math.floor(posIndex / cols)
+			local c = posIndex % cols
 
-        -- Default radius if not set (uses inherited iconSize for nested children)
-        if not circleRadius then
-            circleRadius = iconSize * 2
-        end
-        if not circleRotation then circleRotation = 0 end
+			local itemsInThisRow = cols
+			if r == rows - 1 then
+				local rem = count % cols
+				if rem > 0 then
+					itemsInThisRow = rem
+				end
+			end
 
-        -- Nested child: override rotation so button 1 points back toward parent
-        if frame.nestedCircleRotation then
-            circleRotation = frame.nestedCircleRotation
-        end
-        local step = 360 / max(count, 1)
-        for i=1, count do
-            local angle
-            if invertOrder then
-                angle = -(i-1) * step + circleRotation
-            else
-                angle = (i-1) * step + circleRotation
-            end
-            local rad = math.rad(angle + 90)
-            buttons[i].targetX = math.cos(rad) * circleRadius
-            buttons[i].targetY = math.sin(rad) * circleRadius
-            buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
-            buttons[i]:SetSize(iconSize, iconSize) -- Reset size to global setting
-            buttons[i].icon:ClearAllPoints()
-            buttons[i].icon:SetAllPoints()
-            if buttons[i].textLabel then
-                buttons[i].textLabel:Hide()
-            end
-        end
-    end
+			local rowIdx = c
+			local rowWidth = (itemsInThisRow - 1) * spacingX
 
-    -- Reset non-list buttons to normal size
-    if type ~= "list" then
-        for i=1, count do
-            buttons[i]:SetSize(iconSize, iconSize)
-            buttons[i].icon:ClearAllPoints()
-            buttons[i].icon:SetAllPoints()
-            if buttons[i].textLabel then
-                buttons[i].textLabel:Hide()
-            end
-            -- Reset count anchor back to button frame using Text positioning
-            if buttons[i].count and buttons[i].groupName then
-                local _, _, _, _, _, _, _, cPos = Wise:GetGroupDisplaySettings(buttons[i].groupName)
-                Wise:Text_ApplyPosition(buttons[i].count, cPos or "TOP")
-            elseif buttons[i].count then
-                buttons[i].count:ClearAllPoints()
-                buttons[i].count:SetPoint("TOP", buttons[i], "TOP", 0, -2)
-            end
-        end
-    end
+			local startX = 0
+			if anchorPoint:find("LEFT") then
+				startX = 0
+			elseif anchorPoint:find("RIGHT") then
+				startX = 0
+			else -- CENTER horizontally
+				startX = (dirX == 1) and (-rowWidth / 2) or (rowWidth / 2)
+			end
+
+			buttons[i].targetX = startX + (rowIdx * spacingX * dirX)
+			buttons[i].targetY = startY + (r * spacingY * dirY)
+
+			buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+		end
+	elseif type == "list" then
+		-- Vertical text-based list
+		local _, textSize, fontPath = Wise:GetGroupDisplaySettings(groupName)
+		local listPadding = 8 -- default line padding
+		local anchorPoint = "CENTER"
+		if groupName and WiseDB.groups[groupName] then
+			if WiseDB.groups[groupName].padding then
+				listPadding = WiseDB.groups[groupName].padding
+			end
+			if WiseDB.groups[groupName].anchor and WiseDB.groups[groupName].anchor.point then
+				anchorPoint = WiseDB.groups[groupName].anchor.point
+			end
+		end
+		-- Nested list children: override anchor and text align from nesting logic
+		if frame.nestedListAnchor then
+			anchorPoint = frame.nestedListAnchor
+		end
+		local listIconSize = iconSize
+		local contentHeight = math.max(textSize, listIconSize)
+		local lineHeight = contentHeight + listPadding
+		local maxTextWidth = 0
+		-- groupName is now passed as argument
+
+		-- Alignment (Pre-calculate for loop)
+		local textAlign = (WiseDB.groups[groupName] and WiseDB.groups[groupName].textAlign) or "right"
+		-- Nested list children: override text align
+		if frame.nestedTextAlign then
+			textAlign = frame.nestedTextAlign
+		end
+
+		local dy = -lineHeight
+		local startY = 0
+		local totalH = math.max(count - 1, 0) * lineHeight
+
+		if anchorPoint:find("BOTTOM") then
+			dy = lineHeight
+			startY = 0
+		elseif anchorPoint:find("TOP") then
+			dy = -lineHeight
+			startY = 0
+		else -- CENTER vertically
+			dy = -lineHeight
+			startY = totalH / 2
+		end
+
+		for i = 1, count do
+			local idx = i - 1
+			if invertOrder then
+				idx = count - i
+			end
+			buttons[i].targetX = 0
+			buttons[i].targetY = startY + idx * dy
+			buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+			buttons[i]:SetSize(150, lineHeight) -- Wider for text
+
+			-- Create or update text label
+			if not buttons[i].textLabel then
+				buttons[i].textLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
+			end
+
+			-- Apply global font settings
+			buttons[i].textLabel:SetFont(fontPath, textSize, "")
+
+			buttons[i].textLabel:ClearAllPoints()
+			buttons[i].icon:ClearAllPoints()
+			buttons[i].icon:SetSize(listIconSize, listIconSize)
+
+			-- Icon fixed at center (spine) - icons never move regardless of text position
+			buttons[i].icon:SetPoint("CENTER", 0, 0)
+
+			-- Re-anchor count text to the icon using Text
+			if buttons[i].count and buttons[i].groupName then
+				local _, _, _, _, _, _, _, cPos = Wise:GetGroupDisplaySettings(buttons[i].groupName)
+				Wise:Text_ApplyPosition(buttons[i].count, cPos or "TOP")
+			end
+
+			if textAlign == "right" then
+				-- Text Right (Left Aligned)
+				buttons[i].textLabel:SetPoint("LEFT", buttons[i].icon, "RIGHT", 5, 0)
+				buttons[i].textLabel:SetJustifyH("LEFT")
+			else
+				-- Text Left (Right Aligned)
+				buttons[i].textLabel:SetPoint("RIGHT", buttons[i].icon, "LEFT", -5, 0)
+				buttons[i].textLabel:SetJustifyH("RIGHT")
+			end
+
+			-- Get action name
+			local btn = buttons[i]
+			if btn.actionData then
+				local name = Wise:GetActionName(btn.actionType, btn.actionValue, btn.actionData)
+				btn.textLabel:SetText(name)
+			end
+			buttons[i].textLabel:Show()
+
+			-- Measure Width (Always measure, maxTextWidth used for sizing)
+			local w = buttons[i].textLabel:GetStringWidth()
+			if w > maxTextWidth then
+				maxTextWidth = w
+			end
+		end
+
+		-- Second pass: Align Timers and Lines
+		local timerOffset = 0
+		if textAlign == "right" then
+			-- IconHalf + Gap + Text + Gap
+			timerOffset = (listIconSize / 2) + 5 + maxTextWidth + 8
+		else
+			-- IconHalf + Gap
+			timerOffset = (listIconSize / 2) + 8
+		end
+
+		for i = 1, count do
+			-- Timer Label
+			if not buttons[i].timerLabel then
+				buttons[i].timerLabel = buttons[i]:CreateFontString(nil, "OVERLAY")
+				buttons[i].timerLabel:SetJustifyH("LEFT")
+			end
+			-- Apply global font settings to timer label
+			buttons[i].timerLabel:SetFont(fontPath, textSize, "")
+
+			buttons[i].timerLabel:ClearAllPoints()
+			-- Anchor relative to icon center (spine), not button center
+			buttons[i].timerLabel:SetPoint("LEFT", buttons[i].icon, "CENTER", timerOffset, 0)
+			-- Hide initially
+			buttons[i].timerLabel:SetText("")
+
+			-- Red Line
+			if not buttons[i].redLine then
+				buttons[i].redLine = buttons[i]:CreateTexture(nil, "ARTWORK")
+				buttons[i].redLine:SetColorTexture(1, 0, 0, 0.8)
+				buttons[i].redLine:SetHeight(1) -- Thin line
+			end
+
+			buttons[i].redLine:ClearAllPoints()
+			buttons[i].redLine:SetPoint("RIGHT", buttons[i].timerLabel, "LEFT", -5, 0)
+			buttons[i].redLine:SetWidth(0)
+			buttons[i].redLine:Hide()
+		end
+
+		-- Resize button frame to fit actual content, not symmetric padding
+		-- leftSide/rightSide = distance from icon center to content edge on each side
+		local rightSide = timerOffset + 35 -- Timer text width (~30px) + small margin
+		local leftSide = listIconSize / 2 -- At minimum, the icon half
+		if textAlign == "left" then
+			leftSide = (listIconSize / 2) + 5 + maxTextWidth + 5
+		end
+		local totalWidth = leftSide + rightSide
+		-- Shift button center so icon stays at the visual spine (original targetX)
+		local centerShift = (rightSide - leftSide) / 2
+
+		for i = 1, count do
+			-- Update targetX to include the shift (used by slide animation)
+			buttons[i].targetX = buttons[i].targetX + centerShift
+			buttons[i]:ClearAllPoints()
+			buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+			buttons[i]:SetSize(totalWidth, lineHeight)
+			-- Offset icon back so it stays at the visual spine
+			buttons[i].icon:ClearAllPoints()
+			buttons[i].icon:SetPoint("CENTER", -centerShift, 0)
+		end
+	else -- circle
+		-- Configurable radius with minimum to prevent overlap
+		local circleRadius, circleRotation
+		if groupName and WiseDB.groups[groupName] then
+			circleRadius = WiseDB.groups[groupName].circleRadius
+			circleRotation = WiseDB.groups[groupName].circleRotation or 0
+		end
+
+		-- Default radius if not set (uses inherited iconSize for nested children)
+		if not circleRadius then
+			circleRadius = iconSize * 2
+		end
+		if not circleRotation then
+			circleRotation = 0
+		end
+
+		-- Nested child: override rotation so button 1 points back toward parent
+		if frame.nestedCircleRotation then
+			circleRotation = frame.nestedCircleRotation
+		end
+		local step = 360 / max(count, 1)
+		for i = 1, count do
+			local angle
+			if invertOrder then
+				angle = -(i - 1) * step + circleRotation
+			else
+				angle = (i - 1) * step + circleRotation
+			end
+			local rad = math.rad(angle + 90)
+			buttons[i].targetX = math.cos(rad) * circleRadius
+			buttons[i].targetY = math.sin(rad) * circleRadius
+			buttons[i]:SetPoint("CENTER", buttons[i].targetX, buttons[i].targetY)
+			buttons[i]:SetSize(iconSize, iconSize) -- Reset size to global setting
+			buttons[i].icon:ClearAllPoints()
+			buttons[i].icon:SetAllPoints()
+			if buttons[i].textLabel then
+				buttons[i].textLabel:Hide()
+			end
+		end
+	end
+
+	-- Reset non-list buttons to normal size
+	if type ~= "list" then
+		for i = 1, count do
+			buttons[i]:SetSize(iconSize, iconSize)
+			buttons[i].icon:ClearAllPoints()
+			buttons[i].icon:SetAllPoints()
+			if buttons[i].textLabel then
+				buttons[i].textLabel:Hide()
+			end
+			-- Reset count anchor back to button frame using Text positioning
+			if buttons[i].count and buttons[i].groupName then
+				local _, _, _, _, _, _, _, cPos = Wise:GetGroupDisplaySettings(buttons[i].groupName)
+				Wise:Text_ApplyPosition(buttons[i].count, cPos or "TOP")
+			elseif buttons[i].count then
+				buttons[i].count:ClearAllPoints()
+				buttons[i].count:SetPoint("TOP", buttons[i], "TOP", 0, -2)
+			end
+		end
+	end
 end
 
 function Wise:StopSlideAnimations(frame)
-    for _, btn in ipairs(frame.buttons or {}) do
-        if btn.animGroup and btn.animGroup:IsPlaying() then
-            btn.animGroup:Stop()
-        end
-    end
+	for _, btn in ipairs(frame.buttons or {}) do
+		if btn.animGroup and btn.animGroup:IsPlaying() then
+			btn.animGroup:Stop()
+		end
+	end
 end
 
 function Wise:PlaySlideAnimation(frame, isOpening, onComplete)
-    -- Stop any in-flight animations to prevent closure/callback corruption
-    Wise:StopSlideAnimations(frame)
+	-- Stop any in-flight animations to prevent closure/callback corruption
+	Wise:StopSlideAnimations(frame)
 
-    local animatingCount = 0
-    local completedCount = 0
+	local animatingCount = 0
+	local completedCount = 0
 
-    for _, btn in ipairs(frame.buttons) do
-        if btn:IsShown() or not isOpening then
-            animatingCount = animatingCount + 1
+	for _, btn in ipairs(frame.buttons) do
+		if btn:IsShown() or not isOpening then
+			animatingCount = animatingCount + 1
 
-            if not btn.animGroup then
-                btn.animGroup = btn:CreateAnimationGroup()
-                btn.animTranslate = btn.animGroup:CreateAnimation("Translation")
-                btn.animTranslate:SetDuration(0.15)
-                btn.animTranslate:SetSmoothing("OUT")
-            end
+			if not btn.animGroup then
+				btn.animGroup = btn:CreateAnimationGroup()
+				btn.animTranslate = btn.animGroup:CreateAnimation("Translation")
+				btn.animTranslate:SetDuration(0.15)
+				btn.animTranslate:SetSmoothing("OUT")
+			end
 
-            if isOpening then
-                -- Opening: slide from center to target position
-                btn:ClearAllPoints()
-                btn:SetPoint("CENTER", 0, 0)
-                btn.animTranslate:SetOffset(btn.targetX or 0, btn.targetY or 0)
-                btn.animGroup:SetScript("OnFinished", function()
-                    -- Skip button manipulation if in combat (secure frame protection)
-                    if not InCombatLockdown() then
-                        btn:ClearAllPoints()
-                        btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
-                    end
-                    completedCount = completedCount + 1
-                    if completedCount >= animatingCount and onComplete then
-                        onComplete()
-                    end
-                end)
-            else
-                -- Closing: slide from target position back to center
-                btn:ClearAllPoints()
-                btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
-                btn.animTranslate:SetOffset(-(btn.targetX or 0), -(btn.targetY or 0))
-                btn.animGroup:SetScript("OnFinished", function()
-                    -- Skip button manipulation if in combat (secure frame protection)
-                    if not InCombatLockdown() then
-                        btn:ClearAllPoints()
-                        btn:SetPoint("CENTER", 0, 0)
-                    end
-                    completedCount = completedCount + 1
-                    if completedCount >= animatingCount and onComplete then
-                        onComplete()
-                    end
-                end)
-            end
-            btn.animGroup:Play()
-        end
-    end
+			if isOpening then
+				-- Opening: slide from center to target position
+				btn:ClearAllPoints()
+				btn:SetPoint("CENTER", 0, 0)
+				btn.animTranslate:SetOffset(btn.targetX or 0, btn.targetY or 0)
+				btn.animGroup:SetScript("OnFinished", function()
+					-- Skip button manipulation if in combat (secure frame protection)
+					if not InCombatLockdown() then
+						btn:ClearAllPoints()
+						btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
+					end
+					completedCount = completedCount + 1
+					if completedCount >= animatingCount and onComplete then
+						onComplete()
+					end
+				end)
+			else
+				-- Closing: slide from target position back to center
+				btn:ClearAllPoints()
+				btn:SetPoint("CENTER", btn.targetX or 0, btn.targetY or 0)
+				btn.animTranslate:SetOffset(-(btn.targetX or 0), -(btn.targetY or 0))
+				btn.animGroup:SetScript("OnFinished", function()
+					-- Skip button manipulation if in combat (secure frame protection)
+					if not InCombatLockdown() then
+						btn:ClearAllPoints()
+						btn:SetPoint("CENTER", 0, 0)
+					end
+					completedCount = completedCount + 1
+					if completedCount >= animatingCount and onComplete then
+						onComplete()
+					end
+				end)
+			end
+			btn.animGroup:Play()
+		end
+	end
 
-    -- If no buttons to animate, call callback immediately
-    if animatingCount == 0 and onComplete then
-        onComplete()
-    end
+	-- If no buttons to animate, call callback immediately
+	if animatingCount == 0 and onComplete then
+		onComplete()
+	end
 end
 
 function Wise:ActivateGroup(name)
-    local f = Wise.frames[name]
-    if not f then Wise:UpdateGroupDisplay(name) f = Wise.frames[name] end
-    
-    if f.toggleBtn then
-        f.toggleBtn:Click()
-    else
-        if f:IsShown() then
-            f:Hide()
-        else
-            f:Show()
-            -- Animation is handled by OnShow script
-        end
-    end
+	local f = Wise.frames[name]
+	if not f then
+		Wise:UpdateGroupDisplay(name)
+		f = Wise.frames[name]
+	end
+
+	if f.toggleBtn then
+		f.toggleBtn:Click()
+	else
+		if f:IsShown() then
+			f:Hide()
+		else
+			f:Show()
+			-- Animation is handled by OnShow script
+		end
+	end
 end
 
 Wise.BindingFrame = CreateFrame("Frame")
 function Wise:UpdateBindings()
-    if InCombatLockdown() then return end
-    ClearOverrideBindings(Wise.BindingFrame)
+	if InCombatLockdown() then
+		return
+	end
+	ClearOverrideBindings(Wise.BindingFrame)
 
-    for name, group in pairs(WiseDB.groups) do
-        -- 1. Group Toggle Binding
-        if group.binding and string.len(group.binding) > 0 then
-            -- "WiseGroupToggle_"..name is the global name of the secure button
-            local toggleName = "WiseGroupToggle_"..name
-            local mouseBtn = GetMouseClickName(group.binding)
-            if mouseBtn then
-                SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName, mouseBtn)
-            else
-                SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName)
-            end
-            ApplyModifierMirrors(Wise.BindingFrame, group.binding, toggleName, mouseBtn)
-        end
+	for name, group in pairs(WiseDB.groups) do
+		-- 1. Group Toggle Binding
+		if group.binding and string.len(group.binding) > 0 then
+			-- "WiseGroupToggle_"..name is the global name of the secure button
+			local toggleName = "WiseGroupToggle_" .. name
+			local mouseBtn = GetMouseClickName(group.binding)
+			if mouseBtn then
+				SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName, mouseBtn)
+			else
+				SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName)
+			end
+			ApplyModifierMirrors(Wise.BindingFrame, group.binding, toggleName, mouseBtn)
+		end
 
-        -- 2. Slot Bindings (Direct Mode only)
-        -- Nested bindings are handled by the SecureFrame itself (via attributes)
-        local f = Wise.frames[name]
-        local _, _, _, showKeybinds = Wise:GetGroupDisplaySettings(name)
+		-- 2. Slot Bindings (Direct Mode only)
+		-- Nested bindings are handled by the SecureFrame itself (via attributes)
+		local f = Wise.frames[name]
+		local _, _, _, showKeybinds = Wise:GetGroupDisplaySettings(name)
 
-        if group.actions then
-            local nested = (group.keybindSettings and group.keybindSettings.nested)
-            if not nested then
-                for slotIdx, actionList in pairs(group.actions) do
-                    if actionList.keybind and string.len(actionList.keybind) > 0 then
-                        -- Find button matching this slot (don't require IsShown —
-                        -- bindings must work even when the group UI is hidden)
-                        if f and f.buttons then
-                            local foundBtn = nil
-                            for _, btn in ipairs(f.buttons) do
-                                if btn.slot == slotIdx then
-                                    foundBtn = btn
-                                    break
-                                end
-                            end
+		if group.actions then
+			local nested = (group.keybindSettings and group.keybindSettings.nested)
+			if not nested then
+				for slotIdx, actionList in pairs(group.actions) do
+					if actionList.keybind and string.len(actionList.keybind) > 0 then
+						-- Find button matching this slot (don't require IsShown —
+						-- bindings must work even when the group UI is hidden)
+						if f and f.buttons then
+							local foundBtn = nil
+							for _, btn in ipairs(f.buttons) do
+								if btn.slot == slotIdx then
+									foundBtn = btn
+									break
+								end
+							end
 
-                            if foundBtn and _G[foundBtn:GetName()] then
-                                local slotMouseBtn = GetMouseClickName(actionList.keybind)
-                                if slotMouseBtn then
-                                    SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName(), slotMouseBtn)
-                                else
-                                    SetOverrideBindingClick(Wise.BindingFrame, true, actionList.keybind, foundBtn:GetName())
-                                end
-                                ApplyModifierMirrors(Wise.BindingFrame, actionList.keybind, foundBtn:GetName(), slotMouseBtn)
-                            end
-                        end
-                    end
-                end
-            end
-        end
+							if foundBtn and _G[foundBtn:GetName()] then
+								local slotMouseBtn = GetMouseClickName(actionList.keybind)
+								if slotMouseBtn then
+									SetOverrideBindingClick(
+										Wise.BindingFrame,
+										true,
+										actionList.keybind,
+										foundBtn:GetName(),
+										slotMouseBtn
+									)
+								else
+									SetOverrideBindingClick(
+										Wise.BindingFrame,
+										true,
+										actionList.keybind,
+										foundBtn:GetName()
+									)
+								end
+								ApplyModifierMirrors(
+									Wise.BindingFrame,
+									actionList.keybind,
+									foundBtn:GetName(),
+									slotMouseBtn
+								)
+							end
+						end
+					end
+				end
+			end
+		end
 
-        -- 3. Refresh Keybind UI Text
-        if f and f.buttons then
-            local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind = Wise:GetGroupDisplaySettings(name)
-            for _, btn in ipairs(f.buttons) do
-                if btn:IsShown() and btn.actionType ~= "empty" then
-                    Wise:Text_UpdateKeybind(btn, name, showKeybinds)
-                    Wise:Text_UpdateInterfaceKeybind(btn, name, showInterfaceKeybind)
-                end
-            end
-        end
-    end
-
+		-- 3. Refresh Keybind UI Text
+		if f and f.buttons then
+			local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind =
+				Wise:GetGroupDisplaySettings(name)
+			for _, btn in ipairs(f.buttons) do
+				if btn:IsShown() and btn.actionType ~= "empty" then
+					Wise:Text_UpdateKeybind(btn, name, showKeybinds)
+					Wise:Text_UpdateInterfaceKeybind(btn, name, showInterfaceKeybind)
+				end
+			end
+		end
+	end
 end
-
 
 -- Cooldown Update Functions
 -- Cooldown Update Functions
 function Wise:UpdateButtonCooldown(btn)
-    if not btn or not btn.cooldown then return end
+	if not btn or not btn.cooldown then
+		return
+	end
 
-    -- Retrieve metadata safely
-    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+	-- Retrieve metadata safely
+	local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
 
-    if meta and meta.baseSpellID then
-        local oldSpellID = meta.spellID
-        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
-        if oldSpellID ~= meta.spellID and btn.icon then
-            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
-            btn.icon:SetTexture(texture)
-            local vClone = meta.visualClone or btn.visualClone
-            if vClone and vClone.icon then
-                vClone.icon:SetTexture(texture)
-            end
-        end
-    end
+	if meta and meta.baseSpellID then
+		local oldSpellID = meta.spellID
+		meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+		if oldSpellID ~= meta.spellID and btn.icon then
+			local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+			btn.icon:SetTexture(texture)
+			local vClone = meta.visualClone or btn.visualClone
+			if vClone and vClone.icon then
+				vClone.icon:SetTexture(texture)
+			end
+		end
+	end
 
-    local spellID = (meta and meta.spellID) or btn.spellID
-    local itemID = (meta and meta.itemID) or btn.itemID
-    local visualClone = (meta and meta.visualClone) or btn.visualClone
+	local spellID = (meta and meta.spellID) or btn.spellID
+	local itemID = (meta and meta.itemID) or btn.itemID
+	local visualClone = (meta and meta.visualClone) or btn.visualClone
 
-    local actionType = (meta and meta.actionType) or btn.actionType
-    local actionValue = (meta and meta.actionValue) or btn.actionValue
+	local actionType = (meta and meta.actionType) or btn.actionType
+	local actionValue = (meta and meta.actionValue) or btn.actionValue
 
-    local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD, _, _, _, _, showDebuffs, _, _, _, cooldownSwipeReverse, buffSwipeReverse, debuffSwipeReverse = Wise:GetGroupDisplaySettings(btn.groupName)
+	local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD, _, _, _, _, showDebuffs, _, _, _, cooldownSwipeReverse, buffSwipeReverse, debuffSwipeReverse =
+		Wise:GetGroupDisplaySettings(btn.groupName)
 
-    -- Swipe-repaint guard: Cooldown:SetCooldown() and SetCooldownFromDurationObject()
-    -- always restart the swipe animation, even when called with identical values.
-    -- Because UNIT_AURA (player + target) fires frequently during combat — DoT ticks,
-    -- buff refreshes, nearby enemy auras — UpdateAllCooldowns() re-runs often, which
-    -- would re-paint every active swipe on every tick and cause visible "pulsing" on
-    -- short timers like the GCD. The helpers below short-circuit redundant writes by
-    -- caching the last applied tuple per-cooldown-frame.
-    -- The cache tuple is (start, duration, reverse) — source is stored for
-    -- debugging but not compared, because the rendered swipe is determined
-    -- entirely by the numeric tuple + reverse flag. Comparing source would
-    -- cause false-negatives across layers (CD → buff → CD) where nothing
-    -- actually changed from the Cooldown frame's perspective.
-    local function applyCD(cdFrame, newStart, newDur, reverse, source)
-        if not cdFrame then return end
-        local cache = cdFrame._wiseLastCD
-        local ok, matched = pcall(function()
-            return cache
-                and cache.start == newStart
-                and cache.duration == newDur
-                and cache.reverse == reverse
-        end)
-        if ok and matched then return end
-        if cdFrame.SetReverse then
-            cdFrame:SetReverse(reverse == true)
-        end
-        cdFrame:SetCooldown(newStart, newDur)
-        cdFrame._wiseLastCD = { start = newStart, duration = newDur, reverse = reverse, source = source }
-    end
-    local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
-        if not cdFrame then return end
-        -- numStart/numDur may be "secret numbers" in combat (WoW 11.1+) that
-        -- throw on any arithmetic or comparison. pcall the cache check so
-        -- secrets just force a re-write (safe — DurationObject handles them).
-        local cache = cdFrame._wiseLastCD
-        local ok, matched = pcall(function()
-            return cache
-                and cache.start == numStart
-                and cache.duration == numDur
-                and cache.reverse == reverse
-        end)
-        if ok and matched then return end
-        if cdFrame.SetReverse then
-            cdFrame:SetReverse(reverse == true)
-        end
-        cdFrame:SetCooldownFromDurationObject(durObj, true)
-        -- Store the raw values; next comparison will pcall too.
-        cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
-    end
-    local function clearCD(cdFrame)
-        if not cdFrame then return end
-        local cache = cdFrame._wiseLastCD
-        local ok, isZero = pcall(function()
-            return cache and cache.start == 0 and cache.duration == 0
-        end)
-        if ok and isZero then return end
-        cdFrame:SetCooldown(0, 0)
-        cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
-    end
+	-- Swipe-repaint guard: Cooldown:SetCooldown() and SetCooldownFromDurationObject()
+	-- always restart the swipe animation, even when called with identical values.
+	-- Because UNIT_AURA (player + target) fires frequently during combat — DoT ticks,
+	-- buff refreshes, nearby enemy auras — UpdateAllCooldowns() re-runs often, which
+	-- would re-paint every active swipe on every tick and cause visible "pulsing" on
+	-- short timers like the GCD. The helpers below short-circuit redundant writes by
+	-- caching the last applied tuple per-cooldown-frame.
+	-- The cache tuple is (start, duration, reverse) — source is stored for
+	-- debugging but not compared, because the rendered swipe is determined
+	-- entirely by the numeric tuple + reverse flag. Comparing source would
+	-- cause false-negatives across layers (CD → buff → CD) where nothing
+	-- actually changed from the Cooldown frame's perspective.
+	local function applyCD(cdFrame, newStart, newDur, reverse, source)
+		if not cdFrame then
+			return
+		end
+		local cache = cdFrame._wiseLastCD
+		local ok, matched = pcall(function()
+			return cache and cache.start == newStart and cache.duration == newDur and cache.reverse == reverse
+		end)
+		if ok and matched then
+			return
+		end
+		if cdFrame.SetReverse then
+			cdFrame:SetReverse(reverse == true)
+		end
+		cdFrame:SetCooldown(newStart, newDur)
+		cdFrame._wiseLastCD = { start = newStart, duration = newDur, reverse = reverse, source = source }
+	end
+	local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
+		if not cdFrame then
+			return
+		end
+		-- numStart/numDur may be "secret numbers" in combat (WoW 11.1+) that
+		-- throw on any arithmetic or comparison. pcall the cache check so
+		-- secrets just force a re-write (safe — DurationObject handles them).
+		local cache = cdFrame._wiseLastCD
+		local ok, matched = pcall(function()
+			return cache and cache.start == numStart and cache.duration == numDur and cache.reverse == reverse
+		end)
+		if ok and matched then
+			return
+		end
+		if cdFrame.SetReverse then
+			cdFrame:SetReverse(reverse == true)
+		end
+		cdFrame:SetCooldownFromDurationObject(durObj, true)
+		-- Store the raw values; next comparison will pcall too.
+		cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
+	end
+	local function clearCD(cdFrame)
+		if not cdFrame then
+			return
+		end
+		local cache = cdFrame._wiseLastCD
+		local ok, isZero = pcall(function()
+			return cache and cache.start == 0 and cache.duration == 0
+		end)
+		if ok and isZero then
+			return
+		end
+		cdFrame:SetCooldown(0, 0)
+		cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
+	end
 
-    -- Apply cooldown swipe direction (default: non-reversed). Overlays below
-    -- may override this before calling SetCooldown with their own direction.
-    if btn.cooldown.SetReverse then
-        btn.cooldown:SetReverse(cooldownSwipeReverse == true)
-    end
-    if visualClone and visualClone.cooldown and visualClone.cooldown.SetReverse then
-        visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
-    end
+	-- Apply cooldown swipe direction (default: non-reversed). Overlays below
+	-- may override this before calling SetCooldown with their own direction.
+	if btn.cooldown.SetReverse then
+		btn.cooldown:SetReverse(cooldownSwipeReverse == true)
+	end
+	if visualClone and visualClone.cooldown and visualClone.cooldown.SetReverse then
+		visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
+	end
 
-    -- ─── DurationObject path (spells) ───────────────────────────────
-    -- WoW 11.1+ returns secret numbers for cooldown start/duration in combat.
-    -- The DurationObject API passes opaque values the Cooldown frame can consume.
-    local usedDurationObject = false
-    local isOnGCD = false
-    -- start/duration captured for countdown text tracker (may be secret in combat)
-    local start, duration = 0, 0
+	-- ─── DurationObject path (spells) ───────────────────────────────
+	-- WoW 11.1+ returns secret numbers for cooldown start/duration in combat.
+	-- The DurationObject API passes opaque values the Cooldown frame can consume.
+	local usedDurationObject = false
+	local isOnGCD = false
+	-- start/duration captured for countdown text tracker (may be secret in combat)
+	local start, duration = 0, 0
 
-    if spellID and C_Spell.GetSpellCooldownDuration then
-        -- Detect GCD via isOnGCD field (secret-safe, no numeric comparison)
-        local cdInfo = C_Spell.GetSpellCooldown(spellID)
-        if cdInfo and cdInfo.isOnGCD == true then
-            isOnGCD = true
-        end
-        -- Capture start/duration for countdown text (secret-safe: pcall in ticker)
-        if cdInfo then
-            start = cdInfo.startTime or 0
-            duration = cdInfo.duration or 0
-        end
+	if spellID and C_Spell.GetSpellCooldownDuration then
+		-- Detect GCD via isOnGCD field (secret-safe, no numeric comparison)
+		local cdInfo = C_Spell.GetSpellCooldown(spellID)
+		if cdInfo and cdInfo.isOnGCD == true then
+			isOnGCD = true
+		end
+		-- Capture start/duration for countdown text (secret-safe: pcall in ticker)
+		if cdInfo then
+			start = cdInfo.startTime or 0
+			duration = cdInfo.duration or 0
+		end
 
-        -- Swipe color
-        if btn.cooldown.SetSwipeColor then
-            if isOnGCD then
-                btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
-            else
-                btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
-            end
-        end
+		-- Swipe color
+		if btn.cooldown.SetSwipeColor then
+			if isOnGCD then
+				btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
+			else
+				btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+			end
+		end
 
-        -- Charge spells use charge duration (tracks recharge, ignores GCD)
-        local chargeInfo = C_Spell.GetSpellCharges(spellID)
-        local isChargeSpell = chargeInfo ~= nil
+		-- Charge spells use charge duration (tracks recharge, ignores GCD)
+		local chargeInfo = C_Spell.GetSpellCharges(spellID)
+		local isChargeSpell = chargeInfo ~= nil
 
-        if isChargeSpell and C_Spell.GetSpellChargeDuration then
-            -- Override start/duration with recharge timer for countdown text
-            if chargeInfo then
-                local ok, cs, cd = pcall(function()
-                    return chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration
-                end)
-                if ok and cs and cd then
-                    start = cs
-                    duration = cd
-                end
-            end
+		if isChargeSpell and C_Spell.GetSpellChargeDuration then
+			-- Override start/duration with recharge timer for countdown text
+			if chargeInfo then
+				local ok, cs, cd = pcall(function()
+					return chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration
+				end)
+				if ok and cs and cd then
+					start = cs
+					duration = cd
+				end
+			end
 
-            local chargeDurObj = C_Spell.GetSpellChargeDuration(spellID)
-            if chargeDurObj then
-                applyCDFromDuration(btn.cooldown, chargeDurObj, start, duration, cooldownSwipeReverse)
-            else
-                clearCD(btn.cooldown)
-            end
-        else
-            -- Normal spell: filter GCD if user doesn't want it
-            if isOnGCD and not showGCD then
-                clearCD(btn.cooldown)
-            else
-                local durObj = C_Spell.GetSpellCooldownDuration(spellID)
-                if durObj then
-                    applyCDFromDuration(btn.cooldown, durObj, start, duration, cooldownSwipeReverse)
-                else
-                    clearCD(btn.cooldown)
-                end
-            end
-        end
+			local chargeDurObj = C_Spell.GetSpellChargeDuration(spellID)
+			if chargeDurObj then
+				applyCDFromDuration(btn.cooldown, chargeDurObj, start, duration, cooldownSwipeReverse)
+			else
+				clearCD(btn.cooldown)
+			end
+		else
+			-- Normal spell: filter GCD if user doesn't want it
+			if isOnGCD and not showGCD then
+				clearCD(btn.cooldown)
+			else
+				local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+				if durObj then
+					applyCDFromDuration(btn.cooldown, durObj, start, duration, cooldownSwipeReverse)
+				else
+					clearCD(btn.cooldown)
+				end
+			end
+		end
 
-        if visualClone and visualClone.cooldown then
-            local durObj = C_Spell.GetSpellCooldownDuration(spellID)
-            if durObj then
-                applyCDFromDuration(visualClone.cooldown, durObj, start, duration, cooldownSwipeReverse)
-            else
-                clearCD(visualClone.cooldown)
-            end
-            visualClone.cooldown:Show()
-        end
+		if visualClone and visualClone.cooldown then
+			local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+			if durObj then
+				applyCDFromDuration(visualClone.cooldown, durObj, start, duration, cooldownSwipeReverse)
+			else
+				clearCD(visualClone.cooldown)
+			end
+			visualClone.cooldown:Show()
+		end
 
-        usedDurationObject = true
-    end
+		usedDurationObject = true
+	end
 
-    -- ─── Legacy path (action slots, items, misc) ────────────────────
-    if not usedDurationObject then
-        if actionType == "action" and tonumber(actionValue) then
-            local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-            start, duration = GetActionCooldown(realID)
-            start = start or 0
-            duration = duration or 0
-        elseif actionType == "misc" and actionValue == "extrabutton" then
-            if HasExtraActionBar and HasExtraActionBar() then
-                start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
-                start = start or 0
-                duration = duration or 0
-            end
-        elseif actionType == "misc" and actionValue == "zoneability" then
-            local zoneBtn = GetZoneAbilitySpellButton()
-            if zoneBtn and zoneBtn.spellID then
-                -- Zone ability is a spell — try DurationObject
-                if C_Spell.GetSpellCooldownDuration then
-                    local durObj = C_Spell.GetSpellCooldownDuration(zoneBtn.spellID)
-                    if durObj then
-                        local zInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
-                        applyCDFromDuration(btn.cooldown, durObj, (zInfo and zInfo.startTime) or 0, (zInfo and zInfo.duration) or 0, cooldownSwipeReverse)
-                        usedDurationObject = true
-                    end
-                end
-                if not usedDurationObject then
-                    local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
-                    if cooldownInfo then
-                        start = cooldownInfo.startTime or 0
-                        duration = cooldownInfo.duration or 0
-                    end
-                end
-            end
-        elseif actionType == "misc" and actionValue == "overridebar" then
-            local realID = Wise:ResolveBarActionID(133)
-            start, duration = GetActionCooldown(realID)
-            start = start or 0
-            duration = duration or 0
-        elseif actionType == "misc" and actionValue == "possessbar" then
-            local realID = Wise:ResolveBarActionID(121)
-            start, duration = GetActionCooldown(realID)
-            start = start or 0
-            duration = duration or 0
-        elseif itemID then
-            start, duration = C_Item.GetItemCooldown(itemID)
-            start = start or 0
-            duration = duration or 0
-        end
+	-- ─── Legacy path (action slots, items, misc) ────────────────────
+	if not usedDurationObject then
+		if actionType == "action" and tonumber(actionValue) then
+			local realID = Wise:ResolveBarActionID(tonumber(actionValue))
+			start, duration = GetActionCooldown(realID)
+			start = start or 0
+			duration = duration or 0
+		elseif actionType == "misc" and actionValue == "extrabutton" then
+			if HasExtraActionBar and HasExtraActionBar() then
+				start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
+				start = start or 0
+				duration = duration or 0
+			end
+		elseif actionType == "misc" and actionValue == "zoneability" then
+			local zoneBtn = GetZoneAbilitySpellButton()
+			if zoneBtn and zoneBtn.spellID then
+				-- Zone ability is a spell — try DurationObject
+				if C_Spell.GetSpellCooldownDuration then
+					local durObj = C_Spell.GetSpellCooldownDuration(zoneBtn.spellID)
+					if durObj then
+						local zInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
+						applyCDFromDuration(
+							btn.cooldown,
+							durObj,
+							(zInfo and zInfo.startTime) or 0,
+							(zInfo and zInfo.duration) or 0,
+							cooldownSwipeReverse
+						)
+						usedDurationObject = true
+					end
+				end
+				if not usedDurationObject then
+					local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
+					if cooldownInfo then
+						start = cooldownInfo.startTime or 0
+						duration = cooldownInfo.duration or 0
+					end
+				end
+			end
+		elseif actionType == "misc" and actionValue == "overridebar" then
+			local realID = Wise:ResolveBarActionID(133)
+			start, duration = GetActionCooldown(realID)
+			start = start or 0
+			duration = duration or 0
+		elseif actionType == "misc" and actionValue == "possessbar" then
+			local realID = Wise:ResolveBarActionID(121)
+			start, duration = GetActionCooldown(realID)
+			start = start or 0
+			duration = duration or 0
+		elseif itemID then
+			start, duration = C_Item.GetItemCooldown(itemID)
+			start = start or 0
+			duration = duration or 0
+		end
 
-        if not usedDurationObject then
-            start = start or 0
-            duration = duration or 0
+		if not usedDurationObject then
+			start = start or 0
+			duration = duration or 0
 
-            -- GCD detection (legacy numeric comparison)
-            local isGCD = false
-            local _, gcdDuration = 0, 0
-            if GetSpellCooldown then
-                _, gcdDuration = GetSpellCooldown(61304)
-            elseif C_Spell.GetSpellCooldown then
-                local info = C_Spell.GetSpellCooldown(61304)
-                if info then gcdDuration = info.duration or 0 end
-            end
+			-- GCD detection (legacy numeric comparison)
+			local isGCD = false
+			local _, gcdDuration = 0, 0
+			if GetSpellCooldown then
+				_, gcdDuration = GetSpellCooldown(61304)
+			elseif C_Spell.GetSpellCooldown then
+				local info = C_Spell.GetSpellCooldown(61304)
+				if info then
+					gcdDuration = info.duration or 0
+				end
+			end
 
-            local s = pcall(function()
-                if start > 0 and duration > 0 and gcdDuration and gcdDuration > 0 then
-                    if math.abs(duration - gcdDuration) < 0.1 then
-                        isGCD = true
-                    end
-                end
-            end)
+			local s = pcall(function()
+				if start > 0 and duration > 0 and gcdDuration and gcdDuration > 0 then
+					if math.abs(duration - gcdDuration) < 0.1 then
+						isGCD = true
+					end
+				end
+			end)
 
-            if isGCD and not showGCD then
-                start = 0
-                duration = 0
-            end
+			if isGCD and not showGCD then
+				start = 0
+				duration = 0
+			end
 
-            -- Swipe color
-            if btn.cooldown.SetSwipeColor then
-                if isGCD then
-                    btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
-                else
-                    btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
-                end
-            end
+			-- Swipe color
+			if btn.cooldown.SetSwipeColor then
+				if isGCD then
+					btn.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
+				else
+					btn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+				end
+			end
 
-            local cache = btn.cooldown._wiseLastCD
-            local okC, unchanged = pcall(function()
-                return cache and cache.start == start and cache.duration == duration
-                    and cache.reverse == cooldownSwipeReverse
-            end)
-            if not (okC and unchanged) then
-                local cdOk = pcall(function()
-                    if btn.cooldown.SetReverse then
-                        btn.cooldown:SetReverse(cooldownSwipeReverse == true)
-                    end
-                    btn.cooldown:SetCooldown(start, duration)
-                end)
-                if cdOk then
-                    btn.cooldown._wiseLastCD = { start = start, duration = duration, reverse = cooldownSwipeReverse, source = "legacy" }
-                else
-                    btn.cooldown:SetCooldown(0, 0)
-                    btn.cooldown._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
-                end
-            end
+			local cache = btn.cooldown._wiseLastCD
+			local okC, unchanged = pcall(function()
+				return cache
+					and cache.start == start
+					and cache.duration == duration
+					and cache.reverse == cooldownSwipeReverse
+			end)
+			if not (okC and unchanged) then
+				local cdOk = pcall(function()
+					if btn.cooldown.SetReverse then
+						btn.cooldown:SetReverse(cooldownSwipeReverse == true)
+					end
+					btn.cooldown:SetCooldown(start, duration)
+				end)
+				if cdOk then
+					btn.cooldown._wiseLastCD =
+						{ start = start, duration = duration, reverse = cooldownSwipeReverse, source = "legacy" }
+				else
+					btn.cooldown:SetCooldown(0, 0)
+					btn.cooldown._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
+				end
+			end
 
-            if visualClone and visualClone.cooldown then
-                local vCache = visualClone.cooldown._wiseLastCD
-                local okV, vUnchanged = pcall(function()
-                    return vCache and vCache.start == start and vCache.duration == duration
-                        and vCache.reverse == cooldownSwipeReverse
-                end)
-                if not (okV and vUnchanged) then
-                    local cloneOk = pcall(function()
-                        if visualClone.cooldown.SetReverse then
-                            visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
-                        end
-                        visualClone.cooldown:SetCooldown(start, duration)
-                    end)
-                    if cloneOk then
-                        visualClone.cooldown._wiseLastCD = { start = start, duration = duration, reverse = cooldownSwipeReverse, source = "legacy" }
-                    else
-                        visualClone.cooldown:SetCooldown(0, 0)
-                        visualClone.cooldown._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
-                    end
-                end
-                visualClone.cooldown:Show()
-            end
-        end
-    end
+			if visualClone and visualClone.cooldown then
+				local vCache = visualClone.cooldown._wiseLastCD
+				local okV, vUnchanged = pcall(function()
+					return vCache
+						and vCache.start == start
+						and vCache.duration == duration
+						and vCache.reverse == cooldownSwipeReverse
+				end)
+				if not (okV and vUnchanged) then
+					local cloneOk = pcall(function()
+						if visualClone.cooldown.SetReverse then
+							visualClone.cooldown:SetReverse(cooldownSwipeReverse == true)
+						end
+						visualClone.cooldown:SetCooldown(start, duration)
+					end)
+					if cloneOk then
+						visualClone.cooldown._wiseLastCD =
+							{ start = start, duration = duration, reverse = cooldownSwipeReverse, source = "legacy" }
+					else
+						visualClone.cooldown:SetCooldown(0, 0)
+						visualClone.cooldown._wiseLastCD =
+							{ start = 0, duration = 0, reverse = false, source = "clear" }
+					end
+				end
+				visualClone.cooldown:Show()
+			end
+		end
+	end
 
-    -- ─── Buff overlay (overrides cooldown display with aura timer) ───
-    -- Runs AFTER the CD path so the overlay's SetCooldown overwrites the CD
-    -- swipe. Cache guards prevent the next tick's CD path from pulsing.
-    local isBuffActive = false
-    local buffStacks = 0
-    local scanSpellID = spellID
-    if not scanSpellID and itemID and C_Item and C_Item.GetItemSpell then
-        local _, itemSpellID = C_Item.GetItemSpell(itemID)
-        scanSpellID = itemSpellID
-    end
+	-- ─── Buff overlay (overrides cooldown display with aura timer) ───
+	-- Runs AFTER the CD path so the overlay's SetCooldown overwrites the CD
+	-- swipe. Cache guards prevent the next tick's CD path from pulsing.
+	local isBuffActive = false
+	local buffStacks = 0
+	local scanSpellID = spellID
+	if not scanSpellID and itemID and C_Item and C_Item.GetItemSpell then
+		local _, itemSpellID = C_Item.GetItemSpell(itemID)
+		scanSpellID = itemSpellID
+	end
 
-    if showBuffs and scanSpellID then
-        local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
-        if not aura then
-             local spellName = C_Spell.GetSpellName(scanSpellID)
-             if spellName then
-                 aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
-             end
-        end
+	if showBuffs and scanSpellID then
+		local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
+		if not aura then
+			local spellName = C_Spell.GetSpellName(scanSpellID)
+			if spellName then
+				aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+			end
+		end
 
-        if aura and aura.expirationTime and aura.duration then
-            local isValidDur = false
-            local s1, res = pcall(function(d) return d > 0 end, aura.duration)
-            if s1 then isValidDur = res else isValidDur = true end
+		if aura and aura.expirationTime and aura.duration then
+			local isValidDur = false
+			local s1, res = pcall(function(d)
+				return d > 0
+			end, aura.duration)
+			if s1 then
+				isValidDur = res
+			else
+				isValidDur = true
+			end
 
-            if isValidDur then
-                local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, aura.expirationTime, aura.duration)
-                if s2 then
-                    start = calcStart
-                    duration = calcDuration
-                    isBuffActive = true
-                    buffStacks = aura.applications or aura.charges or 0
-                    applyCD(btn.cooldown, start, duration, buffSwipeReverse, "buff")
-                    if btn.cooldown.SetSwipeColor then
-                        btn.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
-                    end
-                    if visualClone and visualClone.cooldown then
-                        applyCD(visualClone.cooldown, start, duration, buffSwipeReverse, "buff")
-                        if visualClone.cooldown.SetSwipeColor then
-                            visualClone.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
-                        end
-                    end
-                end
-            end
-        end
-    end
+			if isValidDur then
+				local s2, calcStart, calcDuration = pcall(function(e, d)
+					return e - d, d
+				end, aura.expirationTime, aura.duration)
+				if s2 then
+					start = calcStart
+					duration = calcDuration
+					isBuffActive = true
+					buffStacks = aura.applications or aura.charges or 0
+					applyCD(btn.cooldown, start, duration, buffSwipeReverse, "buff")
+					if btn.cooldown.SetSwipeColor then
+						btn.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
+					end
+					if visualClone and visualClone.cooldown then
+						applyCD(visualClone.cooldown, start, duration, buffSwipeReverse, "buff")
+						if visualClone.cooldown.SetSwipeColor then
+							visualClone.cooldown:SetSwipeColor(0, 0.4, 0, 0.6)
+						end
+					end
+				end
+			end
+		end
+	end
 
-    -- Pick up stack count even when buff swipe overlay is off
-    if buffStacks == 0 and scanSpellID then
-        local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
-        if not aura then
-            local spellName = C_Spell.GetSpellName(scanSpellID)
-            if spellName then
-                aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
-            end
-        end
-        if aura then
-            buffStacks = aura.applications or aura.charges or 0
-        end
-    end
-    Wise:Text_UpdateBuffStack(btn, btn.groupName, buffStacks)
-    if visualClone then
-        Wise:Text_UpdateBuffStack(visualClone, btn.groupName, buffStacks)
-    end
+	-- Pick up stack count even when buff swipe overlay is off
+	if buffStacks == 0 and scanSpellID then
+		local aura = C_UnitAuras.GetPlayerAuraBySpellID(scanSpellID)
+		if not aura then
+			local spellName = C_Spell.GetSpellName(scanSpellID)
+			if spellName then
+				aura = C_UnitAuras.GetAuraDataBySpellName("player", spellName)
+			end
+		end
+		if aura then
+			buffStacks = aura.applications or aura.charges or 0
+		end
+	end
+	Wise:Text_UpdateBuffStack(btn, btn.groupName, buffStacks)
+	if visualClone then
+		Wise:Text_UpdateBuffStack(visualClone, btn.groupName, buffStacks)
+	end
 
-    -- ─── Debuff overlay (target only, player-applied harmful auras) ──
-    -- Precedence: buff > debuff > cooldown.
-    local isDebuffActive = false
-    if showDebuffs and not isBuffActive and UnitExists and UnitExists("target") and scanSpellID then
-        local spellName = C_Spell.GetSpellName(scanSpellID)
-        local debuffAura
-        if spellName then
-            debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
-        end
+	-- ─── Debuff overlay (target only, player-applied harmful auras) ──
+	-- Precedence: buff > debuff > cooldown.
+	local isDebuffActive = false
+	if showDebuffs and not isBuffActive and UnitExists and UnitExists("target") and scanSpellID then
+		local spellName = C_Spell.GetSpellName(scanSpellID)
+		local debuffAura
+		if spellName then
+			debuffAura = C_UnitAuras.GetAuraDataBySpellName("target", spellName, "HARMFUL|PLAYER")
+		end
 
-        if debuffAura and debuffAura.expirationTime and debuffAura.duration then
-            local isValidDur = false
-            local s1, res = pcall(function(d) return d > 0 end, debuffAura.duration)
-            if s1 then isValidDur = res else isValidDur = true end
+		if debuffAura and debuffAura.expirationTime and debuffAura.duration then
+			local isValidDur = false
+			local s1, res = pcall(function(d)
+				return d > 0
+			end, debuffAura.duration)
+			if s1 then
+				isValidDur = res
+			else
+				isValidDur = true
+			end
 
-            if isValidDur then
-                local s2, calcStart, calcDuration = pcall(function(e, d) return e - d, d end, debuffAura.expirationTime, debuffAura.duration)
-                if s2 then
-                    start = calcStart
-                    duration = calcDuration
-                    isDebuffActive = true
-                    applyCD(btn.cooldown, start, duration, debuffSwipeReverse, "debuff")
-                    if btn.cooldown.SetSwipeColor then
-                        btn.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
-                    end
-                    if visualClone and visualClone.cooldown then
-                        applyCD(visualClone.cooldown, start, duration, debuffSwipeReverse, "debuff")
-                        if visualClone.cooldown.SetSwipeColor then
-                            visualClone.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
-                        end
-                    end
-                end
-            end
-        end
-    end
+			if isValidDur then
+				local s2, calcStart, calcDuration = pcall(function(e, d)
+					return e - d, d
+				end, debuffAura.expirationTime, debuffAura.duration)
+				if s2 then
+					start = calcStart
+					duration = calcDuration
+					isDebuffActive = true
+					applyCD(btn.cooldown, start, duration, debuffSwipeReverse, "debuff")
+					if btn.cooldown.SetSwipeColor then
+						btn.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
+					end
+					if visualClone and visualClone.cooldown then
+						applyCD(visualClone.cooldown, start, duration, debuffSwipeReverse, "debuff")
+						if visualClone.cooldown.SetSwipeColor then
+							visualClone.cooldown:SetSwipeColor(0.6, 0.2, 0, 0.6)
+						end
+					end
+				end
+			end
+		end
+	end
 
-    -- ─── Countdown text, list mode, active tracking ─────────────────
-    local parent = btn:GetParent()
-    local isListMode = false
-    local groupName = btn.groupName
-    if parent and parent.groupName and WiseDB.groups[parent.groupName] then
-        isListMode = (WiseDB.groups[parent.groupName].type == "list")
-        if not groupName then groupName = parent.groupName end
-    end
+	-- ─── Countdown text, list mode, active tracking ─────────────────
+	local parent = btn:GetParent()
+	local isListMode = false
+	local groupName = btn.groupName
+	if parent and parent.groupName and WiseDB.groups[parent.groupName] then
+		isListMode = (WiseDB.groups[parent.groupName].type == "list")
+		if not groupName then
+			groupName = parent.groupName
+		end
+	end
 
-    -- Hide Blizzard countdown text by default; the OnUpdate ticker will
-    -- enable it during combat when secret numbers prevent our custom text.
-    -- If the ticker already activated Blizzard countdown (secret mode), don't
-    -- reset it — that causes visual flickering on rapid cooldown updates.
-    if not btn._wiseBlizzCDActive then
-        btn.cooldown:SetHideCountdownNumbers(true)
-    end
-    if visualClone and visualClone.cooldown then
-        visualClone.cooldown:SetHideCountdownNumbers(true)
-    end
+	-- Hide Blizzard countdown text by default; the OnUpdate ticker will
+	-- enable it during combat when secret numbers prevent our custom text.
+	-- If the ticker already activated Blizzard countdown (secret mode), don't
+	-- reset it — that causes visual flickering on rapid cooldown updates.
+	if not btn._wiseBlizzCDActive then
+		btn.cooldown:SetHideCountdownNumbers(true)
+	end
+	if visualClone and visualClone.cooldown then
+		visualClone.cooldown:SetHideCountdownNumbers(true)
+	end
 
-    -- Determine active state: for DurationObject path, check if cooldown frame is showing
-    -- Also fall back to numeric start/duration check since the cooldown frame from
-    -- SetCooldownFromDurationObject may not be visible yet (async rendering).
-    local isActive = false
-    if usedDurationObject and not isBuffActive and not isDebuffActive then
-        isActive = btn.cooldown:IsShown()
-        if not isActive then
-            local s, r = pcall(function()
-                return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
-            end)
-            if s and r then isActive = true end
-        end
-    else
-        local s, r = pcall(function()
-            return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
-        end)
-        if s then isActive = r end
-    end
+	-- Determine active state: for DurationObject path, check if cooldown frame is showing
+	-- Also fall back to numeric start/duration check since the cooldown frame from
+	-- SetCooldownFromDurationObject may not be visible yet (async rendering).
+	local isActive = false
+	if usedDurationObject and not isBuffActive and not isDebuffActive then
+		isActive = btn.cooldown:IsShown()
+		if not isActive then
+			local s, r = pcall(function()
+				return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
+			end)
+			if s and r then
+				isActive = true
+			end
+		end
+	else
+		local s, r = pcall(function()
+			return (start and start > 0) and (duration and duration > 0) and (GetTime() < (start + duration))
+		end)
+		if s then
+			isActive = r
+		end
+	end
 
-    -- Clear old OnUpdate script (crucial for migration/performance)
-    btn:SetScript("OnUpdate", nil)
+	-- Clear old OnUpdate script (crucial for migration/performance)
+	btn:SetScript("OnUpdate", nil)
 
-    if isActive then
-         Wise.ActiveCooldownButtons[btn] = {
-             start = start,
-             duration = duration,
-             groupName = groupName,
-             isListMode = isListMode,
-             isBuffActive = isBuffActive,
-             isDebuffActive = isDebuffActive,
-             scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil,
-             lastText = ""
-         }
-         Wise.CooldownUpdateFrame:Show()
+	if isActive then
+		Wise.ActiveCooldownButtons[btn] = {
+			start = start,
+			duration = duration,
+			groupName = groupName,
+			isListMode = isListMode,
+			isBuffActive = isBuffActive,
+			isDebuffActive = isDebuffActive,
+			scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil,
+			lastText = "",
+		}
+		Wise.CooldownUpdateFrame:Show()
 
-         if isListMode then
-             btn.cooldown:SetAlpha(0)
-             if btn.timerLabel then
-                btn.timerLabel:Show()
-                if isBuffActive then
-                    btn.timerLabel:SetTextColor(0, 1, 0)
-                elseif isDebuffActive then
-                    btn.timerLabel:SetTextColor(1, 0.5, 0)
-                else
-                    btn.timerLabel:SetTextColor(1, 1, 1)
-                end
-             end
-             if btn.redLine then
-                btn.redLine:Show()
-                if isBuffActive then
-                    btn.redLine:SetVertexColor(0, 1, 0)
-                elseif isDebuffActive then
-                    btn.redLine:SetVertexColor(1, 0.5, 0)
-                else
-                    btn.redLine:SetVertexColor(1, 0, 0)
-                end
-             end
-         else
-             btn.cooldown:SetAlpha(1)
-         end
-    else
-         Wise.ActiveCooldownButtons[btn] = nil
+		if isListMode then
+			btn.cooldown:SetAlpha(0)
+			if btn.timerLabel then
+				btn.timerLabel:Show()
+				if isBuffActive then
+					btn.timerLabel:SetTextColor(0, 1, 0)
+				elseif isDebuffActive then
+					btn.timerLabel:SetTextColor(1, 0.5, 0)
+				else
+					btn.timerLabel:SetTextColor(1, 1, 1)
+				end
+			end
+			if btn.redLine then
+				btn.redLine:Show()
+				if isBuffActive then
+					btn.redLine:SetVertexColor(0, 1, 0)
+				elseif isDebuffActive then
+					btn.redLine:SetVertexColor(1, 0.5, 0)
+				else
+					btn.redLine:SetVertexColor(1, 0, 0)
+				end
+			end
+		else
+			btn.cooldown:SetAlpha(1)
+		end
+	else
+		Wise.ActiveCooldownButtons[btn] = nil
 
-         if isListMode then
-             if btn.timerLabel then btn.timerLabel:SetText("") end
-             if btn.redLine then btn.redLine:SetWidth(0); btn.redLine:Hide() end
-             btn.cooldown:SetAlpha(0)
-         else
-             btn.cooldown:SetAlpha(1)
-             Wise:Text_UpdateCountdown(btn, groupName, "")
-              local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-              local vClone = (meta and meta.visualClone) or btn.visualClone
-              if vClone then
-                   Wise:Text_UpdateCountdown(vClone, groupName, "")
-              end
-         end
-    end
+		if isListMode then
+			if btn.timerLabel then
+				btn.timerLabel:SetText("")
+			end
+			if btn.redLine then
+				btn.redLine:SetWidth(0)
+				btn.redLine:Hide()
+			end
+			btn.cooldown:SetAlpha(0)
+		else
+			btn.cooldown:SetAlpha(1)
+			Wise:Text_UpdateCountdown(btn, groupName, "")
+			local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+			local vClone = (meta and meta.visualClone) or btn.visualClone
+			if vClone then
+				Wise:Text_UpdateCountdown(vClone, groupName, "")
+			end
+		end
+	end
 end
 
 function Wise:UpdateAllCooldowns()
-    for name, frame in pairs(Wise.frames) do
-        -- Skip if group data is missing (stale frame check)
-        if not WiseDB.groups[name] then
-            Wise.frames[name] = nil
-        elseif frame.buttons then
-            for _, btn in ipairs(frame.buttons) do
-                -- Check visibility safely. 
-                -- Note: btn:IsShown() on secure frame is safe.
-                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
-                if btn:IsShown() or (visualClone and visualClone:IsShown()) then
-                    Wise:UpdateButtonCooldown(btn)
-                end
-            end
-        end
-    end
+	for name, frame in pairs(Wise.frames) do
+		-- Skip if group data is missing (stale frame check)
+		if not WiseDB.groups[name] then
+			Wise.frames[name] = nil
+		elseif frame.buttons then
+			for _, btn in ipairs(frame.buttons) do
+				-- Check visibility safely.
+				-- Note: btn:IsShown() on secure frame is safe.
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local visualClone = (meta and meta.visualClone) or btn.visualClone
+
+				if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+					Wise:UpdateButtonCooldown(btn)
+				end
+			end
+		end
+	end
 end
 
 -- Charge Count Update Functions
 function Wise:UpdateButtonCharges(btn)
-    if not btn or not btn.count then return end
-    
-    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    if not meta then return end
-    
-    local spellID = meta.spellID
-    local actionType = meta.actionType
-    
-    -- Only update charge-based spells
-    if actionType ~= "spell" or not spellID then return end
-    
-    local chargeInfo = C_Spell.GetSpellCharges(spellID)
-    local isValidCharge = false
-    local currentCharges = 0
-    
-    local success = pcall(function()
-        if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
-            isValidCharge = true
-            currentCharges = chargeInfo.currentCharges
-        end
-    end)
-    
-    if success and isValidCharge then
-        -- Re-apply position and font via Text (ensures settings changes are reflected)
-        local groupName = btn.groupName
-        local fontPath, chargeTextSize, chargeTextPosition
-        if groupName then
-            local _, _, fp, _, _, _, cts, ctp, _, _, _, _, _, _, showChargeText = Wise:GetGroupDisplaySettings(groupName)
-            fontPath = fp
-            chargeTextSize = cts
-            chargeTextPosition = ctp
-            if not showChargeText then
-                btn.count:Hide()
-                local visualClone = (meta and meta.visualClone) or btn.visualClone
-                if visualClone and visualClone.count then
-                    visualClone.count:Hide()
-                end
-                return
-            end
-            Wise:Text_ApplyPosition(btn.count, chargeTextPosition or "TOP")
-            btn.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
-        end
-        -- Defaults for when groupName is nil
-        fontPath = fontPath or "Fonts\\FRIZQT__.TTF"
-        chargeTextSize = chargeTextSize or 12
-        chargeTextPosition = chargeTextPosition or "TOP"
+	if not btn or not btn.count then
+		return
+	end
 
-        btn.count:SetText(currentCharges)
-        btn.count:Show()
+	local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+	if not meta then
+		return
+	end
 
-        -- Sync visual clone
-        local visualClone = (meta and meta.visualClone) or btn.visualClone
-        if visualClone and visualClone.count then
-            visualClone.count:SetText(currentCharges)
-            Wise:Text_ApplyPosition(visualClone.count, chargeTextPosition)
-            visualClone.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
-            visualClone.count:Show()
-        end
-    end
+	local spellID = meta.spellID
+	local actionType = meta.actionType
+
+	-- Only update charge-based spells
+	if actionType ~= "spell" or not spellID then
+		return
+	end
+
+	local chargeInfo = C_Spell.GetSpellCharges(spellID)
+	local isValidCharge = false
+	local currentCharges = 0
+
+	local success = pcall(function()
+		if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
+			isValidCharge = true
+			currentCharges = chargeInfo.currentCharges
+		end
+	end)
+
+	if success and isValidCharge then
+		-- Re-apply position and font via Text (ensures settings changes are reflected)
+		local groupName = btn.groupName
+		local fontPath, chargeTextSize, chargeTextPosition
+		if groupName then
+			local _, _, fp, _, _, _, cts, ctp, _, _, _, _, _, _, showChargeText =
+				Wise:GetGroupDisplaySettings(groupName)
+			fontPath = fp
+			chargeTextSize = cts
+			chargeTextPosition = ctp
+			if not showChargeText then
+				btn.count:Hide()
+				local visualClone = (meta and meta.visualClone) or btn.visualClone
+				if visualClone and visualClone.count then
+					visualClone.count:Hide()
+				end
+				return
+			end
+			Wise:Text_ApplyPosition(btn.count, chargeTextPosition or "TOP")
+			btn.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
+		end
+		-- Defaults for when groupName is nil
+		fontPath = fontPath or "Fonts\\FRIZQT__.TTF"
+		chargeTextSize = chargeTextSize or 12
+		chargeTextPosition = chargeTextPosition or "TOP"
+
+		btn.count:SetText(currentCharges)
+		btn.count:Show()
+
+		-- Sync visual clone
+		local visualClone = (meta and meta.visualClone) or btn.visualClone
+		if visualClone and visualClone.count then
+			visualClone.count:SetText(currentCharges)
+			Wise:Text_ApplyPosition(visualClone.count, chargeTextPosition)
+			visualClone.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
+			visualClone.count:Show()
+		end
+	end
 end
 
 function Wise:UpdateAllCharges()
-    for name, frame in pairs(Wise.frames) do
-        -- Skip if group data is missing (stale frame check)
-        if not WiseDB.groups[name] then
-            Wise.frames[name] = nil
-        elseif frame.buttons then
-            for _, btn in ipairs(frame.buttons) do
-                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
-                if btn:IsShown() or (visualClone and visualClone:IsShown()) then
-                    Wise:UpdateButtonCharges(btn)
-                end
-            end
-        end
-    end
-end
+	for name, frame in pairs(Wise.frames) do
+		-- Skip if group data is missing (stale frame check)
+		if not WiseDB.groups[name] then
+			Wise.frames[name] = nil
+		elseif frame.buttons then
+			for _, btn in ipairs(frame.buttons) do
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local visualClone = (meta and meta.visualClone) or btn.visualClone
 
+				if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+					Wise:UpdateButtonCharges(btn)
+				end
+			end
+		end
+	end
+end
 
 -- Usability Update Functions
 function Wise:UpdateButtonUsability(btn)
-    if not btn or not btn.icon then return end
-    
-    -- If permanently disabled (filtered/unknown), do not touch
-    if btn.isValid == false then return end
-    
-    -- Retrieve metadata safely
-    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    
-    if meta and meta.baseSpellID then
-        local oldSpellID = meta.spellID
-        meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
-        if oldSpellID ~= meta.spellID and btn.icon then
-            local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
-            btn.icon:SetTexture(texture)
-            local vClone = meta.visualClone or btn.visualClone
-            if vClone and vClone.icon then
-                vClone.icon:SetTexture(texture)
-            end
-        end
-    end
+	if not btn or not btn.icon then
+		return
+	end
 
-    local spellID = (meta and meta.spellID) or btn.spellID
-    local itemID = (meta and meta.itemID) or btn.itemID
-    local visualClone = (meta and meta.visualClone) or btn.visualClone
-    local vIcon = visualClone and visualClone.icon
-    
-    local isUsable, noMana = true, false
-    
-    local actionType = (meta and meta.actionType) or btn.actionType
-    local actionValue = (meta and meta.actionValue) or btn.actionValue
+	-- If permanently disabled (filtered/unknown), do not touch
+	if btn.isValid == false then
+		return
+	end
 
-    -- Module 4: API Compatibility (Polyfill)
-    if actionType == "action" and tonumber(actionValue) then
-        local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-        isUsable, noMana = IsUsableAction(realID)
-    elseif actionType == "misc" and actionValue == "extrabutton" then
-        if HasExtraActionBar and HasExtraActionBar() then
-            isUsable, noMana = IsUsableAction(EXTRA_ACTION_BUTTON_SLOT)
-        end
-    elseif actionType == "misc" and actionValue == "zoneability" then
-        local zoneBtn = GetZoneAbilitySpellButton()
-        if zoneBtn and zoneBtn.spellID then
-            isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
-        end
-    elseif actionType == "misc" and actionValue == "overridebar" then
-        local realID = Wise:ResolveBarActionID(133)
-        isUsable, noMana = IsUsableAction(realID)
-    elseif actionType == "misc" and actionValue == "possessbar" then
-        local realID = Wise:ResolveBarActionID(121)
-        isUsable, noMana = IsUsableAction(realID)
-    elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
-        local amIdx = tonumber(actionValue:sub(13))
-        if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
-            local slot = WiseDB.addonMagicSlots[amIdx]
-            if slot.addons and #slot.addons > 0 then
-                isUsable = true
-                for _, addon in ipairs(slot.addons) do
-                    addon = strtrim(addon)
-                    if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
-                        isUsable = false
-                        break
-                    end
-                end
-            else
-                isUsable = false -- No addons selected
-            end
-        end
-    elseif actionType == "toy" then
-        local toyID = tonumber(actionValue)
-        if toyID then
-            if C_ToyBox and C_ToyBox.IsToyUsable then
-                isUsable = C_ToyBox.IsToyUsable(toyID)
-            elseif PlayerHasToy then
-                isUsable = PlayerHasToy(toyID)
-            end
-        end
-    elseif spellID then
-        isUsable, noMana = Wise:IsSpellUsable(spellID)
-    elseif itemID then
-        if C_Item and C_Item.IsUsableItem then
-             isUsable, noMana = C_Item.IsUsableItem(itemID)
-        else
-             isUsable, noMana = IsUsableItem(itemID)
-        end
-    end
+	-- Retrieve metadata safely
+	local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
 
-    if isUsable then
-        btn.icon:SetDesaturated(false)
-        btn.icon:SetVertexColor(1, 1, 1)
-        btn.icon:SetAlpha(1)
-        if vIcon then
-            vIcon:SetDesaturated(false)
-            vIcon:SetVertexColor(1, 1, 1)
-            vIcon:SetAlpha(1)
-        end
-    elseif noMana then
-        -- Blue tint for OOM
-        btn.icon:SetDesaturated(false)
-        btn.icon:SetVertexColor(0.5, 0.5, 1.0)
-        btn.icon:SetAlpha(1)
-        if vIcon then
-            vIcon:SetDesaturated(false)
-            vIcon:SetVertexColor(0.5, 0.5, 1.0)
-            vIcon:SetAlpha(1)
-        end
-    else
-        btn.icon:SetAlpha(0.3) -- Lower alpha to make it harder to see
-        if vIcon then
-            vIcon:SetDesaturated(true)
-            vIcon:SetVertexColor(1, 1, 1)
-            vIcon:SetAlpha(0.3)
-        end
-    end
+	if meta and meta.baseSpellID then
+		local oldSpellID = meta.spellID
+		meta.spellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+		if oldSpellID ~= meta.spellID and btn.icon then
+			local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+			btn.icon:SetTexture(texture)
+			local vClone = meta.visualClone or btn.visualClone
+			if vClone and vClone.icon then
+				vClone.icon:SetTexture(texture)
+			end
+		end
+	end
 
-    local _, _, _, _, _, _, _, _, _, _, showGlows, _, _, _, _, _, btnHideEmpty = Wise:GetGroupDisplaySettings(btn.groupName)
-    local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
-    if btnHideEmpty and btnActionType == "empty" then
-        btn.icon:SetAlpha(0)
-        if vIcon then vIcon:SetAlpha(0) end
-    end
+	local spellID = (meta and meta.spellID) or btn.spellID
+	local itemID = (meta and meta.itemID) or btn.itemID
+	local visualClone = (meta and meta.visualClone) or btn.visualClone
+	local vIcon = visualClone and visualClone.icon
 
-    -- Proc Glow Handling
-    
-    local shouldGlow = false
-    if showGlows and spellID then
-        shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID)
-    end
-    
-    if shouldGlow then
-        Wise:ShowOverlayGlow(btn)
-        if visualClone then Wise:ShowOverlayGlow(visualClone) end
-    else
-        Wise:HideOverlayGlow(btn)
-        if visualClone then Wise:HideOverlayGlow(visualClone) end
-    end
+	local isUsable, noMana = true, false
+
+	local actionType = (meta and meta.actionType) or btn.actionType
+	local actionValue = (meta and meta.actionValue) or btn.actionValue
+
+	-- Module 4: API Compatibility (Polyfill)
+	if actionType == "action" and tonumber(actionValue) then
+		local realID = Wise:ResolveBarActionID(tonumber(actionValue))
+		isUsable, noMana = IsUsableAction(realID)
+	elseif actionType == "misc" and actionValue == "extrabutton" then
+		if HasExtraActionBar and HasExtraActionBar() then
+			isUsable, noMana = IsUsableAction(EXTRA_ACTION_BUTTON_SLOT)
+		end
+	elseif actionType == "misc" and actionValue == "zoneability" then
+		local zoneBtn = GetZoneAbilitySpellButton()
+		if zoneBtn and zoneBtn.spellID then
+			isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
+		end
+	elseif actionType == "misc" and actionValue == "overridebar" then
+		local realID = Wise:ResolveBarActionID(133)
+		isUsable, noMana = IsUsableAction(realID)
+	elseif actionType == "misc" and actionValue == "possessbar" then
+		local realID = Wise:ResolveBarActionID(121)
+		isUsable, noMana = IsUsableAction(realID)
+	elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
+		local amIdx = tonumber(actionValue:sub(13))
+		if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+			local slot = WiseDB.addonMagicSlots[amIdx]
+			if slot.addons and #slot.addons > 0 then
+				isUsable = true
+				for _, addon in ipairs(slot.addons) do
+					addon = strtrim(addon)
+					if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
+						isUsable = false
+						break
+					end
+				end
+			else
+				isUsable = false -- No addons selected
+			end
+		end
+	elseif actionType == "toy" then
+		local toyID = tonumber(actionValue)
+		if toyID then
+			if C_ToyBox and C_ToyBox.IsToyUsable then
+				isUsable = C_ToyBox.IsToyUsable(toyID)
+			elseif PlayerHasToy then
+				isUsable = PlayerHasToy(toyID)
+			end
+		end
+	elseif spellID then
+		isUsable, noMana = Wise:IsSpellUsable(spellID)
+	elseif itemID then
+		if C_Item and C_Item.IsUsableItem then
+			isUsable, noMana = C_Item.IsUsableItem(itemID)
+		else
+			isUsable, noMana = IsUsableItem(itemID)
+		end
+	end
+
+	if isUsable then
+		btn.icon:SetDesaturated(false)
+		btn.icon:SetVertexColor(1, 1, 1)
+		btn.icon:SetAlpha(1)
+		if vIcon then
+			vIcon:SetDesaturated(false)
+			vIcon:SetVertexColor(1, 1, 1)
+			vIcon:SetAlpha(1)
+		end
+	elseif noMana then
+		-- Blue tint for OOM
+		btn.icon:SetDesaturated(false)
+		btn.icon:SetVertexColor(0.5, 0.5, 1.0)
+		btn.icon:SetAlpha(1)
+		if vIcon then
+			vIcon:SetDesaturated(false)
+			vIcon:SetVertexColor(0.5, 0.5, 1.0)
+			vIcon:SetAlpha(1)
+		end
+	else
+		btn.icon:SetAlpha(0.3) -- Lower alpha to make it harder to see
+		if vIcon then
+			vIcon:SetDesaturated(true)
+			vIcon:SetVertexColor(1, 1, 1)
+			vIcon:SetAlpha(0.3)
+		end
+	end
+
+	local _, _, _, _, _, _, _, _, _, _, showGlows, _, _, _, _, _, btnHideEmpty =
+		Wise:GetGroupDisplaySettings(btn.groupName)
+	local btnMeta = Wise.buttonMeta and Wise.buttonMeta[btn]
+	local btnActionType = (btnMeta and btnMeta.actionType) or btn.actionType
+	if btnHideEmpty and btnActionType == "empty" then
+		btn.icon:SetAlpha(0)
+		if vIcon then
+			vIcon:SetAlpha(0)
+		end
+	end
+
+	-- Proc Glow Handling
+
+	local shouldGlow = false
+	if showGlows and spellID then
+		shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID)
+	end
+
+	if shouldGlow then
+		Wise:ShowOverlayGlow(btn)
+		if visualClone then
+			Wise:ShowOverlayGlow(visualClone)
+		end
+	else
+		Wise:HideOverlayGlow(btn)
+		if visualClone then
+			Wise:HideOverlayGlow(visualClone)
+		end
+	end
 end
 
 function Wise:UpdateAllOverrideIcons()
-    if not Wise.buttonMeta then return end
-    for btn, meta in pairs(Wise.buttonMeta) do
-        if meta.baseSpellID then
-            local newSpellID = Wise:GetOverrideSpellID(meta.baseSpellID)
-            if newSpellID ~= meta.spellID then
-                meta.spellID = newSpellID
-                if btn.icon then
-                    local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
-                    btn.icon:SetTexture(texture)
-                    local vClone = meta.visualClone or btn.visualClone
-                    if vClone and vClone.icon then
-                        vClone.icon:SetTexture(texture)
-                    end
-                end
-            end
-        end
-    end
+	if not Wise.buttonMeta then
+		return
+	end
+	for btn, meta in pairs(Wise.buttonMeta) do
+		if meta.baseSpellID then
+			local newSpellID = Wise:GetOverrideSpellID(meta.baseSpellID)
+			if newSpellID ~= meta.spellID then
+				meta.spellID = newSpellID
+				if btn.icon then
+					local texture = Wise:GetActionIcon(meta.actionType, meta.actionValue, meta.actionData)
+					btn.icon:SetTexture(texture)
+					local vClone = meta.visualClone or btn.visualClone
+					if vClone and vClone.icon then
+						vClone.icon:SetTexture(texture)
+					end
+				end
+			end
+		end
+	end
 end
 
 function Wise:UpdateAllUsability()
-    for name, frame in pairs(Wise.frames) do
-        -- Skip if group data is missing (stale frame check)
-        if not WiseDB.groups[name] then
-            Wise.frames[name] = nil
-        elseif frame.buttons then
-            for _, btn in ipairs(frame.buttons) do
-                -- Check visibility safely
-                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                local visualClone = (meta and meta.visualClone) or btn.visualClone
-                
-                if btn:IsShown() or (visualClone and visualClone:IsShown()) then
-                    Wise:UpdateButtonUsability(btn)
-                end
-            end
-        end
-    end
+	for name, frame in pairs(Wise.frames) do
+		-- Skip if group data is missing (stale frame check)
+		if not WiseDB.groups[name] then
+			Wise.frames[name] = nil
+		elseif frame.buttons then
+			for _, btn in ipairs(frame.buttons) do
+				-- Check visibility safely
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local visualClone = (meta and meta.visualClone) or btn.visualClone
+
+				if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+					Wise:UpdateButtonUsability(btn)
+				end
+			end
+		end
+	end
 end
 
 -- Active State Highlight Functions
@@ -6449,19 +7204,19 @@ end
 -- Cache: maps shapeshift form spellIDs to their form index
 local shapeshiftSpellToForm = {}
 local function RebuildShapeshiftCache()
-    wipe(shapeshiftSpellToForm)
-    local numForms = GetNumShapeshiftForms() or 0
-    for i = 1, numForms do
-        local _, _, _, formSpellID = GetShapeshiftFormInfo(i)
-        if formSpellID then
-            shapeshiftSpellToForm[formSpellID] = i
-            -- Also map base spellID in case the button stores a different rank/variant
-            local info = C_Spell.GetSpellInfo(formSpellID)
-            if info and info.spellID and info.spellID ~= formSpellID then
-                shapeshiftSpellToForm[info.spellID] = i
-            end
-        end
-    end
+	wipe(shapeshiftSpellToForm)
+	local numForms = GetNumShapeshiftForms() or 0
+	for i = 1, numForms do
+		local _, _, _, formSpellID = GetShapeshiftFormInfo(i)
+		if formSpellID then
+			shapeshiftSpellToForm[formSpellID] = i
+			-- Also map base spellID in case the button stores a different rank/variant
+			local info = C_Spell.GetSpellInfo(formSpellID)
+			if info and info.spellID and info.spellID ~= formSpellID then
+				shapeshiftSpellToForm[info.spellID] = i
+			end
+		end
+	end
 end
 
 -- Rebuild cache on relevant events
@@ -6472,139 +7227,167 @@ shapeshiftCacheFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 shapeshiftCacheFrame:SetScript("OnEvent", RebuildShapeshiftCache)
 
 function Wise:UpdateButtonState(btn)
-    if not btn then return end
+	if not btn then
+		return
+	end
 
-    local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-    if not meta then return end
+	local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+	if not meta then
+		return
+	end
 
-    local isActive = false
-    local actionType = meta.actionType
-    local actionValue = meta.actionValue
-    local spellID = meta.spellID
-    local itemID = meta.itemID
+	local isActive = false
+	local actionType = meta.actionType
+	local actionValue = meta.actionValue
+	local spellID = meta.spellID
+	local itemID = meta.itemID
 
-    if actionType == "action" and tonumber(actionValue) then
-        local aID = tonumber(actionValue)
-        local isCurrent = false
-        if C_ActionBar and C_ActionBar.IsCurrentAction then isCurrent = C_ActionBar.IsCurrentAction(aID) elseif IsCurrentAction then isCurrent = IsCurrentAction(aID) end
-        local isAutoRepeat = false
-        if C_ActionBar and C_ActionBar.IsAutoRepeatAction then isAutoRepeat = C_ActionBar.IsAutoRepeatAction(aID) elseif IsAutoRepeatAction then isAutoRepeat = IsAutoRepeatAction(aID) end
-        isActive = isCurrent or isAutoRepeat
-    elseif actionType == "spell" and spellID then
-        local isCurrent = false
-        if C_Spell and C_Spell.IsCurrentSpell then isCurrent = C_Spell.IsCurrentSpell(spellID) elseif IsCurrentSpell then isCurrent = IsCurrentSpell(spellID) end
-        local isAutoRepeat = false
-        if C_Spell and C_Spell.IsAutoRepeatSpell then isAutoRepeat = C_Spell.IsAutoRepeatSpell(spellID) elseif IsAutoRepeatSpell then isAutoRepeat = IsAutoRepeatSpell(spellID) end
-        isActive = isCurrent or isAutoRepeat
-        -- Also check if this spell is a shapeshift form
-        if not isActive then
-            local formIndex = shapeshiftSpellToForm[spellID]
-            if formIndex then
-                isActive = GetShapeshiftForm() == formIndex
-            end
-        end
-    elseif actionType == "item" and itemID then
-        local isCurrent = false
-        if C_Item and C_Item.IsCurrentItem then isCurrent = C_Item.IsCurrentItem(itemID) elseif IsCurrentItem then isCurrent = IsCurrentItem(itemID) end
-        isActive = isCurrent
-    elseif actionType == "misc" and type(actionValue) == "string" then
-        local formIndex = actionValue:match("^form_(%d+)")
-        if formIndex then
-            local currentForm = GetShapeshiftForm()
-            isActive = currentForm == tonumber(formIndex)
-            -- Refresh the icon from GetShapeshiftFormInfo (may change per form state)
-            local formIcon = GetShapeshiftFormInfo(tonumber(formIndex))
-            if formIcon and btn.icon then
-                btn.icon:SetTexture(formIcon)
-                local vClone = (meta and meta.visualClone) or btn.visualClone
-                if vClone and vClone.icon then
-                    vClone.icon:SetTexture(formIcon)
-                end
-            end
-        end
-        local amIdx = actionValue:match("^addon_magic_(%d+)")
-        if amIdx then
-            amIdx = tonumber(amIdx)
-            if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
-                local slot = WiseDB.addonMagicSlots[amIdx]
-                if slot.addons and #slot.addons > 0 then
-                    isActive = true
-                    for _, addon in ipairs(slot.addons) do
-                        addon = strtrim(addon)
-                        if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
-                            isActive = false
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
+	if actionType == "action" and tonumber(actionValue) then
+		local aID = tonumber(actionValue)
+		local isCurrent = false
+		if C_ActionBar and C_ActionBar.IsCurrentAction then
+			isCurrent = C_ActionBar.IsCurrentAction(aID)
+		elseif IsCurrentAction then
+			isCurrent = IsCurrentAction(aID)
+		end
+		local isAutoRepeat = false
+		if C_ActionBar and C_ActionBar.IsAutoRepeatAction then
+			isAutoRepeat = C_ActionBar.IsAutoRepeatAction(aID)
+		elseif IsAutoRepeatAction then
+			isAutoRepeat = IsAutoRepeatAction(aID)
+		end
+		isActive = isCurrent or isAutoRepeat
+	elseif actionType == "spell" and spellID then
+		local isCurrent = false
+		if C_Spell and C_Spell.IsCurrentSpell then
+			isCurrent = C_Spell.IsCurrentSpell(spellID)
+		elseif IsCurrentSpell then
+			isCurrent = IsCurrentSpell(spellID)
+		end
+		local isAutoRepeat = false
+		if C_Spell and C_Spell.IsAutoRepeatSpell then
+			isAutoRepeat = C_Spell.IsAutoRepeatSpell(spellID)
+		elseif IsAutoRepeatSpell then
+			isAutoRepeat = IsAutoRepeatSpell(spellID)
+		end
+		isActive = isCurrent or isAutoRepeat
+		-- Also check if this spell is a shapeshift form
+		if not isActive then
+			local formIndex = shapeshiftSpellToForm[spellID]
+			if formIndex then
+				isActive = GetShapeshiftForm() == formIndex
+			end
+		end
+	elseif actionType == "item" and itemID then
+		local isCurrent = false
+		if C_Item and C_Item.IsCurrentItem then
+			isCurrent = C_Item.IsCurrentItem(itemID)
+		elseif IsCurrentItem then
+			isCurrent = IsCurrentItem(itemID)
+		end
+		isActive = isCurrent
+	elseif actionType == "misc" and type(actionValue) == "string" then
+		local formIndex = actionValue:match("^form_(%d+)")
+		if formIndex then
+			local currentForm = GetShapeshiftForm()
+			isActive = currentForm == tonumber(formIndex)
+			-- Refresh the icon from GetShapeshiftFormInfo (may change per form state)
+			local formIcon = GetShapeshiftFormInfo(tonumber(formIndex))
+			if formIcon and btn.icon then
+				btn.icon:SetTexture(formIcon)
+				local vClone = (meta and meta.visualClone) or btn.visualClone
+				if vClone and vClone.icon then
+					vClone.icon:SetTexture(formIcon)
+				end
+			end
+		end
+		local amIdx = actionValue:match("^addon_magic_(%d+)")
+		if amIdx then
+			amIdx = tonumber(amIdx)
+			if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
+				local slot = WiseDB.addonMagicSlots[amIdx]
+				if slot.addons and #slot.addons > 0 then
+					isActive = true
+					for _, addon in ipairs(slot.addons) do
+						addon = strtrim(addon)
+						if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
+							isActive = false
+							break
+						end
+					end
+				end
+			end
+		end
+	end
 
-    if btn.activeHighlight then
-        btn.activeHighlight:SetShown(isActive)
-    end
+	if btn.activeHighlight then
+		btn.activeHighlight:SetShown(isActive)
+	end
 
-    local visualClone = (meta and meta.visualClone) or btn.visualClone
-    if visualClone and visualClone.activeHighlight then
-        visualClone.activeHighlight:SetShown(isActive)
-    end
+	local visualClone = (meta and meta.visualClone) or btn.visualClone
+	if visualClone and visualClone.activeHighlight then
+		visualClone.activeHighlight:SetShown(isActive)
+	end
 end
 
 function Wise:UpdateAllStates()
-    for name, frame in pairs(Wise.frames) do
-        if not WiseDB.groups[name] then
-            Wise.frames[name] = nil
-        elseif frame.buttons then
-            for _, btn in ipairs(frame.buttons) do
-                local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
-                local visualClone = (meta and meta.visualClone) or btn.visualClone
+	for name, frame in pairs(Wise.frames) do
+		if not WiseDB.groups[name] then
+			Wise.frames[name] = nil
+		elseif frame.buttons then
+			for _, btn in ipairs(frame.buttons) do
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local visualClone = (meta and meta.visualClone) or btn.visualClone
 
-                if btn:IsShown() or (visualClone and visualClone:IsShown()) then
-                    Wise:UpdateButtonState(btn)
-                end
-            end
-        end
-    end
+				if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+					Wise:UpdateButtonState(btn)
+				end
+			end
+		end
+	end
 end
 
 -- Error Suppression System
 -- When a Wise button with "Suppress all errors" is clicked, temporarily prevent
 -- UIErrorsFrame from receiving UI_ERROR_MESSAGE at all (no text, no sound).
 do
-    local suppressing = false
-    local ERROR_FILTER_DURATION = 0.5
-    local savedErrorSpeech = nil
+	local suppressing = false
+	local ERROR_FILTER_DURATION = 0.5
+	local savedErrorSpeech = nil
 
-    -- Hook AddMessage to catch any error text that bypasses the event system
-    local origAddMessage = UIErrorsFrame.AddMessage
-    UIErrorsFrame.AddMessage = function(self, ...)
-        if suppressing then return end
-        return origAddMessage(self, ...)
-    end
+	-- Hook AddMessage to catch any error text that bypasses the event system
+	local origAddMessage = UIErrorsFrame.AddMessage
+	UIErrorsFrame.AddMessage = function(self, ...)
+		if suppressing then
+			return
+		end
+		return origAddMessage(self, ...)
+	end
 
-    function Wise:BeginErrorSuppression()
-        if suppressing then return end
-        suppressing = true
+	function Wise:BeginErrorSuppression()
+		if suppressing then
+			return
+		end
+		suppressing = true
 
-        -- 1. Block red error text via event
-        UIErrorsFrame:UnregisterEvent("UI_ERROR_MESSAGE")
-        UIErrorsFrame:Clear()
+		-- 1. Block red error text via event
+		UIErrorsFrame:UnregisterEvent("UI_ERROR_MESSAGE")
+		UIErrorsFrame:Clear()
 
-        -- 2. Block error speech/voice ("That is still recharging", etc.)
-        savedErrorSpeech = GetCVarBool("Sound_EnableErrorSpeech")
-        SetCVar("Sound_EnableErrorSpeech", 0)
+		-- 2. Block error speech/voice ("That is still recharging", etc.)
+		savedErrorSpeech = GetCVarBool("Sound_EnableErrorSpeech")
+		SetCVar("Sound_EnableErrorSpeech", 0)
 
-        -- Re-enable after a short window
-        C_Timer.After(ERROR_FILTER_DURATION, function()
-            UIErrorsFrame:RegisterEvent("UI_ERROR_MESSAGE")
-            -- Restore error speech to whatever the user had it set to
-            if savedErrorSpeech then
-                SetCVar("Sound_EnableErrorSpeech", 1)
-            end
-            suppressing = false
-        end)
-    end
+		-- Re-enable after a short window
+		C_Timer.After(ERROR_FILTER_DURATION, function()
+			UIErrorsFrame:RegisterEvent("UI_ERROR_MESSAGE")
+			-- Restore error speech to whatever the user had it set to
+			if savedErrorSpeech then
+				SetCVar("Sound_EnableErrorSpeech", 1)
+			end
+			suppressing = false
+		end)
+	end
 end
 
 -- Cooldown & Usability Event Handler
@@ -6634,154 +7417,164 @@ eventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 local pendingCooldownUpdate = false
 local pendingChargeUpdate = false
 scheduleCooldownUpdate = function()
-    if not pendingCooldownUpdate then
-        pendingCooldownUpdate = true
-        C_Timer.After(0, function()
-            pendingCooldownUpdate = false
-            Wise:UpdateAllCooldowns()
-        end)
-    end
+	if not pendingCooldownUpdate then
+		pendingCooldownUpdate = true
+		C_Timer.After(0, function()
+			pendingCooldownUpdate = false
+			Wise:UpdateAllCooldowns()
+		end)
+	end
 end
 local function scheduleChargeUpdate()
-    if not pendingChargeUpdate then
-        pendingChargeUpdate = true
-        C_Timer.After(0, function()
-            pendingChargeUpdate = false
-            Wise:UpdateAllCharges()
-        end)
-    end
+	if not pendingChargeUpdate then
+		pendingChargeUpdate = true
+		C_Timer.After(0, function()
+			pendingChargeUpdate = false
+			Wise:UpdateAllCharges()
+		end)
+	end
 end
 
 eventFrame:SetScript("OnEvent", function(self, event, unit)
-    if event == "UNIT_AURA" then
-        if unit == "target" or unit == "player" then
-            Wise:UpdateAllUsability()
-            scheduleCooldownUpdate()
-        end
-        if unit == "player" then
-            Wise:UpdateAllStates()
-        end
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        Wise:UpdateAllUsability()
-        scheduleCooldownUpdate()
-    elseif event == "SPELL_UPDATE_USABLE" then
-        Wise:UpdateAllUsability()
-    elseif event == "SPELL_UPDATE_ICON" then
-        Wise:UpdateAllOverrideIcons()
-        Wise:UpdateAllUsability()
-    elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
-        Wise:UpdateAllUsability()
-    elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_UPDATE_STATE" then
-        Wise:UpdateAllStates()
-    elseif event == "SPELL_UPDATE_CHARGES" then
-        scheduleChargeUpdate()
-        scheduleCooldownUpdate()
-    elseif event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
-        scheduleCooldownUpdate()
-    else
-        -- BAG_UPDATE_COOLDOWN
-        scheduleCooldownUpdate()
-        scheduleChargeUpdate()
-    end
+	if event == "UNIT_AURA" then
+		if unit == "target" or unit == "player" then
+			Wise:UpdateAllUsability()
+			scheduleCooldownUpdate()
+		end
+		if unit == "player" then
+			Wise:UpdateAllStates()
+		end
+	elseif event == "PLAYER_TARGET_CHANGED" then
+		Wise:UpdateAllUsability()
+		scheduleCooldownUpdate()
+	elseif event == "SPELL_UPDATE_USABLE" then
+		Wise:UpdateAllUsability()
+	elseif event == "SPELL_UPDATE_ICON" then
+		Wise:UpdateAllOverrideIcons()
+		Wise:UpdateAllUsability()
+	elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+		Wise:UpdateAllUsability()
+	elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_UPDATE_STATE" then
+		Wise:UpdateAllStates()
+	elseif event == "SPELL_UPDATE_CHARGES" then
+		scheduleChargeUpdate()
+		scheduleCooldownUpdate()
+	elseif event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
+		scheduleCooldownUpdate()
+	else
+		-- BAG_UPDATE_COOLDOWN
+		scheduleCooldownUpdate()
+		scheduleChargeUpdate()
+	end
 end)
 
 -- Flash Animation for Immediate Feedback
 function Wise:FlashGroup(groupName)
-    local f = Wise.frames[groupName]
-    if not f then return end
+	local f = Wise.frames[groupName]
+	if not f then
+		return
+	end
 
-    if not f.flashAnim then
-        f.flashAnim = f:CreateAnimationGroup()
-        f.flashAnim:SetLooping("NONE")
+	if not f.flashAnim then
+		f.flashAnim = f:CreateAnimationGroup()
+		f.flashAnim:SetLooping("NONE")
 
-        -- Flash Out (Fade to 50%)
-        local a1 = f.flashAnim:CreateAnimation("Alpha")
-        a1:SetOrder(1)
-        a1:SetDuration(0.2)
-        a1:SetFromAlpha(1)
-        a1:SetToAlpha(0.3)
-        a1:SetSmoothing("OUT")
+		-- Flash Out (Fade to 50%)
+		local a1 = f.flashAnim:CreateAnimation("Alpha")
+		a1:SetOrder(1)
+		a1:SetDuration(0.2)
+		a1:SetFromAlpha(1)
+		a1:SetToAlpha(0.3)
+		a1:SetSmoothing("OUT")
 
-        -- Flash In (Back to 100%)
-        local a2 = f.flashAnim:CreateAnimation("Alpha")
-        a2:SetOrder(2)
-        a2:SetDuration(0.3)
-        a2:SetFromAlpha(0.3)
-        a2:SetToAlpha(1)
-        a2:SetSmoothing("IN")
-    end
+		-- Flash In (Back to 100%)
+		local a2 = f.flashAnim:CreateAnimation("Alpha")
+		a2:SetOrder(2)
+		a2:SetDuration(0.3)
+		a2:SetFromAlpha(0.3)
+		a2:SetToAlpha(1)
+		a2:SetSmoothing("IN")
+	end
 
-    if f:IsShown() then
-        f.flashAnim:Stop()
-        f.flashAnim:Play()
-    end
+	if f:IsShown() then
+		f.flashAnim:Stop()
+		f.flashAnim:Play()
+	end
 
-    -- Also flash the visual display if active (combat + mouse mode)
-    if f.visualDisplay and f.visualDisplay:IsShown() then
-         if not f.visualDisplay.flashAnim then
-            f.visualDisplay.flashAnim = f.visualDisplay:CreateAnimationGroup()
-            -- Mirror animation
-            local a1 = f.visualDisplay.flashAnim:CreateAnimation("Alpha")
-            a1:SetOrder(1); a1:SetDuration(0.2); a1:SetFromAlpha(1); a1:SetToAlpha(0.3); a1:SetSmoothing("OUT")
-            local a2 = f.visualDisplay.flashAnim:CreateAnimation("Alpha")
-            a2:SetOrder(2); a2:SetDuration(0.3); a2:SetFromAlpha(0.3); a2:SetToAlpha(1); a2:SetSmoothing("IN")
-         end
-         f.visualDisplay.flashAnim:Stop()
-         f.visualDisplay.flashAnim:Play()
-    end
+	-- Also flash the visual display if active (combat + mouse mode)
+	if f.visualDisplay and f.visualDisplay:IsShown() then
+		if not f.visualDisplay.flashAnim then
+			f.visualDisplay.flashAnim = f.visualDisplay:CreateAnimationGroup()
+			-- Mirror animation
+			local a1 = f.visualDisplay.flashAnim:CreateAnimation("Alpha")
+			a1:SetOrder(1)
+			a1:SetDuration(0.2)
+			a1:SetFromAlpha(1)
+			a1:SetToAlpha(0.3)
+			a1:SetSmoothing("OUT")
+			local a2 = f.visualDisplay.flashAnim:CreateAnimation("Alpha")
+			a2:SetOrder(2)
+			a2:SetDuration(0.3)
+			a2:SetFromAlpha(0.3)
+			a2:SetToAlpha(1)
+			a2:SetSmoothing("IN")
+		end
+		f.visualDisplay.flashAnim:Stop()
+		f.visualDisplay.flashAnim:Play()
+	end
 end
 
 -- Pending Update Handler
 local pendingFrame = CreateFrame("Frame")
 pendingFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 pendingFrame:SetScript("OnEvent", function(self, event)
-    if Wise.pendingUpdates then
-        local updates = Wise.pendingUpdates
-        Wise.pendingUpdates = nil -- Clear first to avoid loops if errors occur
+	if Wise.pendingUpdates then
+		local updates = Wise.pendingUpdates
+		Wise.pendingUpdates = nil -- Clear first to avoid loops if errors occur
 
-        for name, _ in pairs(updates) do
-            Wise:UpdateGroupDisplay(name)
-        end
-    end
-    -- Refresh all cooldowns on combat end so start/duration secret numbers
-    -- are replaced with real values for accurate countdown text.
-    Wise:UpdateAllCooldowns()
+		for name, _ in pairs(updates) do
+			Wise:UpdateGroupDisplay(name)
+		end
+	end
+	-- Refresh all cooldowns on combat end so start/duration secret numbers
+	-- are replaced with real values for accurate countdown text.
+	Wise:UpdateAllCooldowns()
 end)
 
-
-
 function Wise:ResetSequences()
-    if InCombatLockdown() or not Wise.buttonMeta then return end
-    
-    for btn, meta in pairs(Wise.buttonMeta) do
-        if meta.conflictStrategy == "sequence" and meta.resetOnCombat then
-            btn:SetAttribute("isa_seq", 1)
-            -- Trigger an immediate evaluation to update the icon
-            if meta.states and #meta.states > 1 then
-                local chosen = Wise:EvaluateSlotConditions(meta.states, "sequence", btn)
-                if chosen then
-                    meta.activeState = chosen
-                    local state = meta.states[chosen]
-                    if state then
-                        btn.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
-                        btn.actionType = state.type
-                        btn.actionValue = state.value
-                        btn.actionData = state
-                        
-                        local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
-                        btn:SetAttribute("type", nil)
-                        btn:SetAttribute("spell", nil)
-                        btn:SetAttribute("item", nil)
-                        btn:SetAttribute("macro", nil)
-                        btn:SetAttribute("macrotext", nil)
-                        btn:SetAttribute("clickbutton", nil)
-                        btn:SetAttribute("type", sType)
-                        if sAttr then
-                            btn:SetAttribute(sAttr, sValue)
-                        end
-                    end
-                end
-            end
-        end
-    end
+	if InCombatLockdown() or not Wise.buttonMeta then
+		return
+	end
+
+	for btn, meta in pairs(Wise.buttonMeta) do
+		if meta.conflictStrategy == "sequence" and meta.resetOnCombat then
+			btn:SetAttribute("isa_seq", 1)
+			-- Trigger an immediate evaluation to update the icon
+			if meta.states and #meta.states > 1 then
+				local chosen = Wise:EvaluateSlotConditions(meta.states, "sequence", btn)
+				if chosen then
+					meta.activeState = chosen
+					local state = meta.states[chosen]
+					if state then
+						btn.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
+						btn.actionType = state.type
+						btn.actionValue = state.value
+						btn.actionData = state
+
+						local sType, sAttr, sValue = Wise:GetSecureAttributes(state, state.conditions)
+						btn:SetAttribute("type", nil)
+						btn:SetAttribute("spell", nil)
+						btn:SetAttribute("item", nil)
+						btn:SetAttribute("macro", nil)
+						btn:SetAttribute("macrotext", nil)
+						btn:SetAttribute("clickbutton", nil)
+						btn:SetAttribute("type", sType)
+						if sAttr then
+							btn:SetAttribute(sAttr, sValue)
+						end
+					end
+				end
+			end
+		end
+	end
 end
