@@ -238,6 +238,27 @@ local function EvalCustomToken(token)
 	return result
 end
 
+-- Helper to determine if a condition string contains any custom conditionals or interface dependencies
+local function HasCustomConditionals(str)
+	if not str or str == "" then
+		return false
+	end
+	if str:find("wise:") then
+		return true
+	end
+	for block in str:gmatch("%[([^%]]*)%]") do
+		for token in block:gmatch("[^,]+") do
+			token = token:match("^%s*(.-)%s*$")
+			local base = token:match("^no?(.+)") or token
+			base = base:match("^([^:]+)") or base
+			if CUSTOM_VIS_CONDITIONALS[base:lower()] then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- Evaluate a full condition string (e.g. "[extrabar]", "[zoneability]", "[combat,bank]")
 -- Returns true if ANY bracket group matches (OR across groups). Handles both custom and secure conditionals.
 -- Used by dynamic groups to determine per-slot visibility.
@@ -280,11 +301,10 @@ local function EvalFullConditionString(str)
 		end
 
 		if groupMatch and #secureTokens > 0 then
-			local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
-			local result = SecureCmdOptionParse(secureStr)
-			if result ~= "true" then
-				groupMatch = false
-			end
+			-- Secure tokens represent standard WoW macro conditionals (like combat, mod, stealth, etc.)
+			-- which can change at runtime. Since secure layouts cannot be restructured in combat,
+			-- we must assume secure conditionals match for layout generation so the secure buttons
+			-- are created and positioned. They will be evaluated securely when clicked/used.
 		end
 
 		if groupMatch then
@@ -2214,6 +2234,59 @@ function Wise:CreateGroupFrame(name, instanceId)
 	return f
 end
 
+local function Sanitize(str)
+	if not str then
+		return ""
+	end
+
+	-- 1. Remove solitary [wise:...] blocks entirely FIRST
+	-- Handle separators to avoid parsing errors
+	-- Replace [wise:...] with nothing, then clean up semicolons
+	str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "")
+
+	-- Clean up semicolons (e.g. "; ;" -> ";")
+	str = str:gsub(";", " ; ") -- padding
+	str = str:gsub("%s+", " ") -- normalize spaces
+	str = str:gsub("%s*;%s*", "; ") -- normalize semicolons
+	str = str:gsub("^;%s*", "") -- remove leading
+	str = str:gsub(";%s*$", "") -- remove trailing
+	str = str:gsub("; ;", ";") -- remove doubles
+
+	-- 2. Strip wise:name content inside mixed brackets (e.g. [mod:shift, wise:dev])
+	-- (This handles "AND" logic inside single brackets)
+	str = str:gsub("wise:[^,^%]]+,?", "") -- Remove "wise:name," or "wise:name"
+	str = str:gsub(",?%s*wise:[^,^%]]+", "") -- Remove ", wise:name"
+
+	-- 3. Convert [always] to []
+	str = str:gsub("%[always%]", "[]")
+	str = str:gsub("%[always, ", "[")
+
+	-- Final Clean
+	str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+
+	return str
+end
+
+local function SanitizeCustom(str)
+	if not str then
+		return ""
+	end
+	-- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
+	-- so the secure driver always returns false for it (Lua handles it via state-custom).
+	str = str:gsub("%[([^%]]+)%]", function(inner)
+		for token in inner:gmatch("[^,]+") do
+			token = token:match("^%s*(.-)%s*$") -- trim
+			local base = token:match("^no?(.+)") or token
+			base = base:match("^([^:]+)") or base
+			if CUSTOM_VIS_CONDITIONALS[base:lower()] then
+				return "[actionbar:99]"
+			end
+		end
+		return "[" .. inner .. "]"
+	end)
+	return str
+end
+
 -- Module 1: The Visibility Engine (Helper)
 function Wise:BuildVisibilityDriver(f, group)
 	local showStr = group.visibilitySettings.customShow or ""
@@ -2255,62 +2328,6 @@ function Wise:BuildVisibilityDriver(f, group)
 	end
 
 	f:SetAttribute("wise_dependencies", table.concat(deps, ","))
-
-	-- Helper: replacements (convert [always] to [])
-	-- [always] is user-friendly for "true". In macro syntax, [] is true.
-	-- [wise:name] is a placeholder for Manual State. We strip it from Driver (so Driver=Hide), letting Manual State control visibility.
-	local function Sanitize(str)
-		if not str then
-			return ""
-		end
-
-		-- 1. Remove solitary [wise:...] blocks entirely FIRST
-		-- Handle separators to avoid parsing errors
-		-- Replace [wise:...] with nothing, then clean up semicolons
-		str = str:gsub("%s*%[%s*wise:[^%]]+%]%s*", "")
-
-		-- Clean up semicolons (e.g. "; ;" -> ";")
-		str = str:gsub(";", " ; ") -- padding
-		str = str:gsub("%s+", " ") -- normalize spaces
-		str = str:gsub("%s*;%s*", "; ") -- normalize semicolons
-		str = str:gsub("^;%s*", "") -- remove leading
-		str = str:gsub(";%s*$", "") -- remove trailing
-		str = str:gsub("; ;", ";") -- remove doubles
-
-		-- 2. Strip wise:name content inside mixed brackets (e.g. [mod:shift, wise:dev])
-		-- (This handles "AND" logic inside single brackets)
-		str = str:gsub("wise:[^,^%]]+,?", "") -- Remove "wise:name," or "wise:name"
-		str = str:gsub(",?%s*wise:[^,^%]]+", "") -- Remove ", wise:name"
-
-		-- 3. Convert [always] to []
-		str = str:gsub("%[always%]", "[]")
-		str = str:gsub("%[always, ", "[")
-
-		-- Final Clean
-		str = str:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-
-		return str
-	end
-
-	local function SanitizeCustom(str)
-		if not str then
-			return ""
-		end
-		-- Replace each bracket group that contains ANY custom conditional with [actionbar:99]
-		-- so the secure driver always returns false for it (Lua handles it via state-custom).
-		str = str:gsub("%[([^%]]+)%]", function(inner)
-			for token in inner:gmatch("[^,]+") do
-				token = token:match("^%s*(.-)%s*$") -- trim
-				local base = token:match("^no?(.+)") or token
-				base = base:match("^([^:]+)") or base
-				if CUSTOM_VIS_CONDITIONALS[base:lower()] then
-					return "[actionbar:99]"
-				end
-			end
-			return "[" .. inner .. "]"
-		end)
-		return str
-	end
 
 	showStr = Sanitize(showStr)
 	hideStr = Sanitize(hideStr)
@@ -4754,7 +4771,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			-- Check for spell charges first
 			if spellID then
 				local chargeInfo = C_Spell.GetSpellCharges(spellID)
-				if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) > 1 then
+				if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) >= 1 then
 					count = chargeInfo.currentCharges
 					isChargeSpell = true
 				end
@@ -4768,7 +4785,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				count = GetActionCount(tonumber(aValue))
 			end
 			local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
-			if maxCharges and (tonumber(maxCharges) or 0) > 1 then
+			if maxCharges and (tonumber(maxCharges) or 0) >= 1 then
 				count = charges
 				isChargeSpell = true
 			end
@@ -4776,6 +4793,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
 		-- Apply charge/count text via Text
 		Wise:Text_UpdateCharges(btn, name, count, isChargeSpell)
+
+		-- Register a visibility state driver on the secure button to safely hide/show in combat
+		UnregisterStateDriver(btn, "visibility")
+		btn:Show()
+		if not isEmptySlot and actionData.conditions and actionData.conditions ~= "" then
+			if not HasCustomConditionals(actionData.conditions) then
+				local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
+				if sanitized ~= "" then
+					RegisterStateDriver(btn, "visibility", sanitized .. " show; hide")
+				end
+			end
+		end
 	end
 
 	-- Sync Visual Display Buttons
@@ -4895,10 +4924,24 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			else
 				vBtn.keybind:Hide()
 			end
+
+			-- Register a visibility state driver on the visual clone button to safely hide/show in combat
+			UnregisterStateDriver(vBtn, "visibility")
+			vBtn:Show()
+			if not vIsEmpty and actionData.conditions and actionData.conditions ~= "" then
+				if not HasCustomConditionals(actionData.conditions) then
+					local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
+					if sanitized ~= "" then
+						RegisterStateDriver(vBtn, "visibility", sanitized .. " show; hide")
+					end
+				end
+			end
 		end
 		-- Hide unused
 		for i = #actionsToShow + 1, #f.visualDisplay.buttons do
-			f.visualDisplay.buttons[i]:Hide()
+			local vBtn = f.visualDisplay.buttons[i]
+			UnregisterStateDriver(vBtn, "visibility")
+			vBtn:Hide()
 		end
 
 		-- Propagate inherited display settings to visual display
@@ -4914,7 +4957,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 
 	-- Hide unused buttons
 	for i = #actionsToShow + 1, #f.buttons do
-		f.buttons[i]:Hide()
+		local btn = f.buttons[i]
+		UnregisterStateDriver(btn, "visibility")
+		btn:Hide()
 	end
 
 	-- Cleanup Stale Refs (Critical for Single Button Fallback)
@@ -5091,7 +5136,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		end
 		f._dynamicCondSnapshot = condSnapshot
 	end
-	-- Track cooldown state for dynamic groups so slot add/remove happens promptly
+	-- Track cooldown & availability state for dynamic groups so slot add/remove happens promptly
 	if hasDynamicCooldowns then
 		local cdSnapshot = {}
 		if group.actions then
@@ -5100,8 +5145,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					for _, state in ipairs(states) do
 						if state.type == "spell" or state.type == "item" or state.type == "toy" then
 							local isKnown = Wise:IsActionKnown(state.type, state.value)
-							cdSnapshot[slotIdx] = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state)
-								or false
+							local status = "unknown"
+							if isKnown then
+								local onCD = Wise:IsActionOnCooldown(state.type, state.value, state)
+								status = onCD and "cd" or "ready"
+							end
+							cdSnapshot[slotIdx] = status
 						end
 					end
 				end
@@ -5141,7 +5190,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					return
 				end
 			end
-			-- For dynamic groups with cooldown-filterable slots, detect CD state changes
+			-- For dynamic groups with cooldown-filterable slots, detect CD or availability state changes
 			if hasDynamicCooldowns and f._dynamicCDSnapshot and not InCombatLockdown() then
 				local changed = false
 				if group.actions then
@@ -5150,9 +5199,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							for _, state in ipairs(states) do
 								if state.type == "spell" or state.type == "item" or state.type == "toy" then
 									local isKnown = Wise:IsActionKnown(state.type, state.value)
-									local nowOnCD = isKnown and Wise:IsActionOnCooldown(state.type, state.value, state)
-										or false
-									if nowOnCD ~= f._dynamicCDSnapshot[slotIdx] then
+									local status = "unknown"
+									if isKnown then
+										local onCD = Wise:IsActionOnCooldown(state.type, state.value, state)
+										status = onCD and "cd" or "ready"
+									end
+									if status ~= f._dynamicCDSnapshot[slotIdx] then
 										changed = true
 										break
 									end
@@ -6943,7 +6995,7 @@ function Wise:UpdateButtonCharges(btn)
 	local currentCharges = 0
 
 	local success = pcall(function()
-		if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges > 1 then
+		if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges >= 1 then
 			isValidCharge = true
 			currentCharges = chargeInfo.currentCharges
 		end
@@ -7139,10 +7191,16 @@ function Wise:UpdateButtonUsability(btn)
 	end
 
 	-- Proc Glow Handling
-
 	local shouldGlow = false
 	if showGlows and spellID then
-		shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID)
+		shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID) or false
+		if shouldGlow then
+			-- If the spell has charges and current charges is 0, do not glow
+			local chargeInfo = C_Spell.GetSpellCharges(spellID)
+			if chargeInfo and chargeInfo.currentCharges == 0 then
+				shouldGlow = false
+			end
+		end
 	end
 
 	if shouldGlow then
@@ -7395,6 +7453,7 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
+eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 -- Usability events
 eventFrame:RegisterEvent("SPELL_UPDATE_USABLE")

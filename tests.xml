@@ -187,4 +187,13 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_DynamicGroupCombatVisibility" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Dynamic Group Combat Visibility" type="string"/>
+            <KeyValue key="instructions" value="Verify that dynamic groups properly show items/spells with [combat] conditions in combat.\n1. Verify that 'POTS' interface shows healthstone/potion in combat even if they were hidden out of combat." type="string"/>
+            <KeyValue key="action" value="print('Verify that the POTS interface correctly displays combat-restricted items (Healthstone/Potent Healing Potion) when in combat, even though they are hidden/desaturated out of combat.')" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
