@@ -196,4 +196,40 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_ItemCountUpdates" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Item Count updates (Mana Buns)" type="string"/>
+            <KeyValue key="instructions" value="Verify that item counts (such as Conjured Mana Buns) update immediately when modified out of combat.\n1. Place 'Conjured Mana Bun' (or any stackable item) on an action button.\n2. Note the count shown on the button.\n3. Add more buns/items to your bags (e.g. by clicking a Mage distribution box or picking them up from inventory/bank).\n4. Verify that the count on the button updates immediately to reflect the new total." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_RoleFilterStarfall" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Role Filter Class Restriction" type="string"/>
+            <KeyValue key="instructions" value="Verify that Druid-specific spells and macros (like Starfall, Rejuv, and Moonfire) do not show under the Role filter when logged in on a Priest.\n1. Log in on a Priest character.\n2. Open Options -> Middle column filter.\n3. Click 'Role' filter.\n4. Verify that 'Starfall', 'Rejuv', and 'moonfire' are NOT visible in the slots action list." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_RoleFilterGlobalActions" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Role Filter Global Actions" type="string"/>
+            <KeyValue key="instructions" value="Verify that global macros and spells (like target macro or Single-Button Assistant) show under the Role filter when logged in on a Priest of a matching role.\n1. Log in on a Priest (Shadow) character.\n2. Open Options -> Middle column filter.\n3. Click 'Role' filter.\n4. Verify that 'target' macro and 'Single-Button Assistant' are visible in the slots action list." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_SecretChargesTaint" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Secret Charges Taint Guard" type="string"/>
+            <KeyValue key="instructions" value="Verify that having a charge-based spell (like Mind Blast or Fire Blast) on the bar does not crash the usability updates or glow logic when execution is tainted in combat.\n1. Place a charge-based spell (like Mind Blast) on a Wise button.\n2. Engage in combat.\n3. Make execution tainted (e.g. by toggling/manipulating options or bindings in combat, or triggering a taint source).\n4. Verify that the spell button updates its usability and charge text correctly without throwing any 'attempt to compare field currentCharges (a secret number value...)' Lua errors." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

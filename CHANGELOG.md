@@ -1,4 +1,14 @@
 # Changelog
+## [1.0.20260423] - 2026-05-31
+
+### Fixed
+- Bypassed class restriction checks for actions with global category (such as custom macros, toys, mounts, items, and neutral spells like Single-Button Assistant), ensuring they properly display under toon-scoped filters (Class, Role, Spec) for all characters.
+
+## [1.0.20260423] - 2026-05-31
+
+### Fixed
+- Restricted spec: tags in roleTagDecision to specs belonging to the player's class to prevent spells from other classes (e.g. Starfall) from appearing under the Role filter.
+
 
 ## [1.0.20260423] - 2026-04-23
 

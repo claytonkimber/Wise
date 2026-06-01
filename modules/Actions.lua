@@ -674,6 +674,16 @@ function Wise:ShouldShowAction(action)
 	-- to this filter and the decision is final; matched=false means no
 	-- relevant tag was found and the caller should fall through.
 	local enables = action.visibilityEnable or {}
+	local function isActionGlobal()
+		if action.type ~= "spell" then
+			return true
+		end
+		if action.category == "global" then
+			return true
+		end
+		return false
+	end
+
 	local function specBelongsToPlayerClass(savedSpecID)
 		if not savedSpecID then
 			return false
@@ -708,7 +718,7 @@ function Wise:ShouldShowAction(action)
 				end
 			elseif tag:match("^role:") then
 				matched = true
-				if action.addedByClass == Wise.characterInfo.class then
+				if isActionGlobal() or action.addedByClass == Wise.characterInfo.class then
 					decision = true
 				end
 			end
@@ -728,9 +738,11 @@ function Wise:ShouldShowAction(action)
 				local savedSpecID = tonumber(tag:sub(6))
 				if savedSpecID then
 					matched = true
-					local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
-					if specRole == (Wise.characterInfo.role or "") then
-						decision = true
+					if specBelongsToPlayerClass(savedSpecID) then
+						local _, _, _, _, specRole = GetSpecializationInfoByID(savedSpecID)
+						if specRole == (Wise.characterInfo.role or "") then
+							decision = true
+						end
 					end
 				end
 			end
@@ -776,7 +788,7 @@ function Wise:ShouldShowAction(action)
 		if matched then
 			-- Tags win, but still require the action to belong to the player's
 			-- class when that metadata is set (mirrors pre-refactor behavior).
-			if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+			if not isActionGlobal() and action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
 				return false
 			end
 			return decision
@@ -790,7 +802,7 @@ function Wise:ShouldShowAction(action)
 				local _, _, _, _, specRole = GetSpecializationInfoByID(resolvedSpecID)
 				return specRole == (Wise.characterInfo.role or "")
 			end
-			if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+			if not isActionGlobal() and action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
 				return false
 			end
 			return Wise:IsActionKnown(aType, action.value)
@@ -799,7 +811,7 @@ function Wise:ShouldShowAction(action)
 	elseif filter == "spec" then
 		local matched, decision = specTagDecision()
 		if matched then
-			if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+			if not isActionGlobal() and action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
 				return false
 			end
 			return decision
@@ -812,7 +824,7 @@ function Wise:ShouldShowAction(action)
 			if resolved == "spec" then
 				return resolvedSpecID == (Wise.characterInfo.specID or 0)
 			end
-			if action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+			if not isActionGlobal() and action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
 				return false
 			end
 			return Wise:IsActionKnown(aType, action.value)

@@ -31,6 +31,44 @@ local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
 
+local issecretvalue = issecretvalue or (_G and _G.issecretvalue)
+
+-- Helper: Safely read a field from a table that may contain secret number values.
+-- Returns the raw value only if it can be accessed without error.
+-- Accepts a table and a key (string) rather than the already-read value,
+-- because even *reading* the field `table.key` can crash on secret values.
+local function SafeReadField(tbl, key)
+	local ok, val = pcall(function()
+		return tbl[key]
+	end)
+	if not ok then
+		return nil
+	end
+	return val
+end
+
+-- Helper: Clean secret number values in WoW 11.1+/12.0+ to prevent comparison errors in tainted execution.
+-- Pass the *containing table* and *key* instead of the value directly when the
+-- field might be secret; use CleanSecretNumber(SafeReadField(t, k)) together.
+local function CleanSecretNumber(val)
+	if val == nil then
+		return nil
+	end
+	-- Fast-path: issecretvalue() is available in WoW 12.0+
+	local svOk, isSecret = pcall(function()
+		return issecretvalue and issecretvalue(val)
+	end)
+	if svOk and isSecret then
+		return nil
+	end
+	-- tostring() on a secret value will also throw, so wrap it too
+	local ok, str = pcall(tostring, val)
+	if ok and str then
+		return tonumber(str)
+	end
+	return nil
+end
+
 -- Mouse button keys need the 5th arg to SetOverrideBindingClick so the
 -- simulated click uses the correct button name; without it WoW silently
 -- drops the event for some mouse keys (BUTTON3 in particular).
@@ -4771,9 +4809,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			-- Check for spell charges first
 			if spellID then
 				local chargeInfo = C_Spell.GetSpellCharges(spellID)
-				if chargeInfo and chargeInfo.maxCharges and (tonumber(chargeInfo.maxCharges) or 0) >= 1 then
-					count = chargeInfo.currentCharges
-					isChargeSpell = true
+				if chargeInfo then
+					local maxCharges = CleanSecretNumber(SafeReadField(chargeInfo, "maxCharges"))
+					local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
+					if maxCharges and maxCharges >= 1 then
+						count = currentCharges
+						isChargeSpell = true
+					end
 				end
 			end
 			-- Fallback to consumable spell count if not a charge spell
@@ -4785,7 +4827,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				count = GetActionCount(tonumber(aValue))
 			end
 			local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
-			if maxCharges and (tonumber(maxCharges) or 0) >= 1 then
+			charges = CleanSecretNumber(charges)
+			maxCharges = CleanSecretNumber(maxCharges)
+			if maxCharges and maxCharges >= 1 then
 				count = charges
 				isChargeSpell = true
 			end
@@ -6537,10 +6581,11 @@ function Wise:UpdateButtonCooldown(btn)
 		if isChargeSpell and C_Spell.GetSpellChargeDuration then
 			-- Override start/duration with recharge timer for countdown text
 			if chargeInfo then
-				local ok, cs, cd = pcall(function()
-					return chargeInfo.cooldownStartTime, chargeInfo.cooldownDuration
-				end)
-				if ok and cs and cd then
+				local cs = SafeReadField(chargeInfo, "cooldownStartTime")
+				local cd = SafeReadField(chargeInfo, "cooldownDuration")
+				cs = cs and CleanSecretNumber(cs)
+				cd = cd and CleanSecretNumber(cd)
+				if cs and cd then
 					start = cs
 					duration = cd
 				end
@@ -6982,62 +7027,90 @@ function Wise:UpdateButtonCharges(btn)
 		return
 	end
 
-	local spellID = meta.spellID
 	local actionType = meta.actionType
+	local actionValue = meta.actionValue
+	local spellID = meta.spellID
 
-	-- Only update charge-based spells
-	if actionType ~= "spell" or not spellID then
+	local count = 0
+	local isChargeSpell = false
+	local hasCount = false
+
+	if actionType == "item" or actionType == "toy" then
+		local itemVal = actionValue
+		if type(itemVal) == "string" then
+			local num = tonumber(itemVal:match("^%a+:(%d+)")) or tonumber(itemVal)
+			if num then
+				itemVal = num
+			end
+		end
+
+		local groupName = btn.groupName
+		local group = groupName and WiseDB.groups[groupName]
+		if group and group.smartSources then
+			local bagCount = GetItemCount(itemVal, false) or 0
+			local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
+			if bankCount < 0 then
+				bankCount = 0
+			end
+
+			if group.smartSources.bags then
+				count = count + bagCount
+			end
+			if group.smartSources.bank then
+				count = count + bankCount
+			end
+		else
+			count = GetItemCount(itemVal, true) or 0
+		end
+		hasCount = true
+	elseif actionType == "spell" then
+		if spellID then
+			local chargeInfo = C_Spell.GetSpellCharges(spellID)
+			if chargeInfo then
+				local maxCharges = CleanSecretNumber(SafeReadField(chargeInfo, "maxCharges"))
+				local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
+				if maxCharges and maxCharges >= 1 then
+					count = currentCharges
+					isChargeSpell = true
+					hasCount = true
+				end
+			end
+		end
+		if not isChargeSpell and IsConsumableSpell and IsConsumableSpell(actionValue) then
+			count = GetSpellCount(actionValue) or 0
+			hasCount = true
+		end
+	elseif actionType == "action" and tonumber(actionValue) then
+		local aVal = tonumber(actionValue)
+		if IsConsumableAction(aVal) then
+			count = GetActionCount(aVal) or 0
+			hasCount = true
+		end
+		local charges, maxCharges = GetActionCharges(aVal)
+		charges = CleanSecretNumber(charges)
+		maxCharges = CleanSecretNumber(maxCharges)
+		if maxCharges and maxCharges >= 1 then
+			count = charges
+			isChargeSpell = true
+			hasCount = true
+		end
+	end
+
+	if not hasCount then
+		btn.count:Hide()
+		local visualClone = (meta and meta.visualClone) or btn.visualClone
+		if visualClone and visualClone.count then
+			visualClone.count:Hide()
+		end
 		return
 	end
 
-	local chargeInfo = C_Spell.GetSpellCharges(spellID)
-	local isValidCharge = false
-	local currentCharges = 0
+	local groupName = btn.groupName or ""
+	Wise:Text_UpdateCharges(btn, groupName, count, isChargeSpell)
 
-	local success = pcall(function()
-		if chargeInfo and chargeInfo.maxCharges and chargeInfo.maxCharges >= 1 then
-			isValidCharge = true
-			currentCharges = chargeInfo.currentCharges
-		end
-	end)
-
-	if success and isValidCharge then
-		-- Re-apply position and font via Text (ensures settings changes are reflected)
-		local groupName = btn.groupName
-		local fontPath, chargeTextSize, chargeTextPosition
-		if groupName then
-			local _, _, fp, _, _, _, cts, ctp, _, _, _, _, _, _, showChargeText =
-				Wise:GetGroupDisplaySettings(groupName)
-			fontPath = fp
-			chargeTextSize = cts
-			chargeTextPosition = ctp
-			if not showChargeText then
-				btn.count:Hide()
-				local visualClone = (meta and meta.visualClone) or btn.visualClone
-				if visualClone and visualClone.count then
-					visualClone.count:Hide()
-				end
-				return
-			end
-			Wise:Text_ApplyPosition(btn.count, chargeTextPosition or "TOP")
-			btn.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
-		end
-		-- Defaults for when groupName is nil
-		fontPath = fontPath or "Fonts\\FRIZQT__.TTF"
-		chargeTextSize = chargeTextSize or 12
-		chargeTextPosition = chargeTextPosition or "TOP"
-
-		btn.count:SetText(currentCharges)
-		btn.count:Show()
-
-		-- Sync visual clone
-		local visualClone = (meta and meta.visualClone) or btn.visualClone
-		if visualClone and visualClone.count then
-			visualClone.count:SetText(currentCharges)
-			Wise:Text_ApplyPosition(visualClone.count, chargeTextPosition)
-			visualClone.count:SetFont(fontPath, chargeTextSize, "OUTLINE")
-			visualClone.count:Show()
-		end
+	local visualClone = (meta and meta.visualClone) or btn.visualClone
+	if visualClone and visualClone.count then
+		Wise:Text_UpdateCharges(visualClone, groupName, count, isChargeSpell)
 	end
 end
 
@@ -7195,10 +7268,15 @@ function Wise:UpdateButtonUsability(btn)
 	if showGlows and spellID then
 		shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID) or false
 		if shouldGlow then
-			-- If the spell has charges and current charges is 0, do not glow
+			-- If the spell has charges and current charges is 0, do not glow.
+			-- Use SafeReadField because accessing chargeInfo fields can throw when
+			-- the engine returns secret number values (WoW 12.0+ taint system).
 			local chargeInfo = C_Spell.GetSpellCharges(spellID)
-			if chargeInfo and chargeInfo.currentCharges == 0 then
-				shouldGlow = false
+			if chargeInfo then
+				local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
+				if currentCharges and currentCharges == 0 then
+					shouldGlow = false
+				end
 			end
 		end
 	end
