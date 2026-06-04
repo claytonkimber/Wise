@@ -232,4 +232,13 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_ActionPickerHighlighting" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Action Picker Highlight Spells" type="string"/>
+            <KeyValue key="instructions" value="Verify that spells not used in active rotation have a red dot, and those in macros have a yellow dot.\n1. Open Options -> select an interface -> select an action -> click Change Action.\n2. In the Spell picker, verify that spells not bound to any interface show a small red dot to the left of their icon.\n3. Bind a macro containing a spell name (e.g. '/cast Dash') in any active interface.\n4. Open the spell picker again and verify that Dash now has a yellow dot to the left of its icon." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

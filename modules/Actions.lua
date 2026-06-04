@@ -31,6 +31,30 @@ local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
 local GetFlyoutInfo = GetFlyoutInfo
 local GetFlyoutSlotInfo = GetFlyoutSlotInfo
 
+local function IsSpellPassive(spellId)
+	if not spellId then
+		return false
+	end
+	if C_Spell.IsSpellPassive(spellId) then
+		return true
+	end
+	-- Check resolved override (e.g. Efflorescence overridden by Lifetreading)
+	if Wise and Wise.GetOverrideSpellID then
+		local overrideId = Wise:GetOverrideSpellID(spellId)
+		if overrideId and overrideId ~= spellId and C_Spell.IsSpellPassive(overrideId) then
+			return true
+		end
+	end
+	local name = C_Spell.GetSpellName(spellId)
+	if name then
+		local lowerName = string.lower(name)
+		if lowerName == "lifetreading" then
+			return true
+		end
+	end
+	return false
+end
+
 -- ═══════════════════════════════════════════════════════════════
 -- Drag-to-Reorder Infrastructure
 -- ═══════════════════════════════════════════════════════════════
@@ -1042,7 +1066,7 @@ function Wise:GetTransportation(filter)
 				local index = offset + j
 				local spellType, spellId = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
 				if spellType == Enum.SpellBookItemType.Spell then
-					if not C_Spell.IsSpellPassive(spellId) then
+					if not IsSpellPassive(spellId) then
 						local sName = C_Spell.GetSpellName(spellId)
 						local sIcon = C_Spell.GetSpellTexture(spellId)
 						if sName then
@@ -1089,7 +1113,7 @@ function Wise:GetTransportation(filter)
 							local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
 							if isKnownSlot and flyoutSpellID then
 								local actualSpellID = overrideSpellID or flyoutSpellID
-								if not C_Spell.IsSpellPassive(actualSpellID) then
+								if not IsSpellPassive(actualSpellID) then
 									local sName = C_Spell.GetSpellName(actualSpellID)
 									local sIcon = C_Spell.GetSpellTexture(actualSpellID)
 									if sName then
@@ -2379,7 +2403,7 @@ function Wise:IsActionKnown(actionType, value)
 										and (bookSpellID == storedOverride or overrideID == storedOverride)
 									)
 								then
-									if not C_Spell.IsSpellPassive(bookSpellID) then
+									if not IsSpellPassive(bookSpellID) then
 										return true
 									end
 								end
@@ -2736,9 +2760,99 @@ function Wise:SetCastReadout(f, actionType, value, groupName)
 	end
 end
 
--- ============================================================================
--- Picker UI (Ported from Picker.lua)
--- ============================================================================
+-- IsSpellPassive helper has been moved to the top of the file
+
+local function IsSpellInMacro(macroText, spellName)
+	if not macroText or not spellName then
+		return false
+	end
+	local lowerMacro = string.lower(macroText)
+	local lowerSpell = string.lower(spellName)
+
+	local startIdx = string.find(lowerMacro, lowerSpell, 1, true)
+	while startIdx do
+		local endIdx = startIdx + string.len(lowerSpell) - 1
+		local charBefore = startIdx > 1 and string.sub(lowerMacro, startIdx - 1, startIdx - 1) or nil
+		local charAfter = endIdx < string.len(lowerMacro) and string.sub(lowerMacro, endIdx + 1, endIdx + 1) or nil
+
+		local beforeOk = not charBefore or not string.match(charBefore, "[%a%d]")
+		local afterOk = not charAfter or not string.match(charAfter, "[%a%d]")
+
+		if beforeOk and afterOk then
+			return true
+		end
+		startIdx = string.find(lowerMacro, lowerSpell, endIdx + 1, true)
+	end
+	return false
+end
+
+function Wise:GetActiveRotationSpells()
+	local boundSpells = {}
+	local boundSpellIDs = {}
+	local activeMacroTexts = {}
+
+	if not WiseDB or not WiseDB.groups then
+		return boundSpells, boundSpellIDs, activeMacroTexts
+	end
+
+	for groupName, group in pairs(WiseDB.groups) do
+		if Wise:IsGroupAvailable(groupName) and not group.isWiser then
+			if Wise.MigrateGroupToActions then
+				Wise:MigrateGroupToActions(group)
+			end
+
+			if group.actions then
+				for _, slotStates in pairs(group.actions) do
+					for _, action in ipairs(slotStates) do
+						if Wise:ShouldLoadAction(action, group) then
+							if action.type == "spell" and action.value then
+								local spellID = tonumber(action.value)
+								local spellName
+								if spellID then
+									boundSpellIDs[spellID] = true
+									spellName = C_Spell.GetSpellName(spellID)
+								else
+									spellName = action.value
+									local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(action.value)
+									if info and info.spellID then
+										boundSpellIDs[info.spellID] = true
+									end
+								end
+								if spellName then
+									boundSpells[string.lower(spellName)] = true
+								end
+							elseif
+								action.type == "macro" or (action.type == "misc" and action.value == "custom_macro")
+							then
+								local macroText = ""
+								if action.macroText and action.macroText ~= "" then
+									macroText = action.macroText
+								elseif action.value then
+									if string.sub(action.value, 1, 1) == "/" then
+										macroText = action.value
+									else
+										if GetMacroBody then
+											macroText = GetMacroBody(action.value) or ""
+										end
+										if macroText == "" and GetMacroInfo then
+											local _, _, b = GetMacroInfo(action.value)
+											macroText = b or ""
+										end
+									end
+								end
+								if macroText ~= "" then
+									table.insert(activeMacroTexts, macroText)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return boundSpells, boundSpellIDs, activeMacroTexts
+end
 
 function Wise:CreateEmbeddedPicker(parent)
 	local ep = Wise.EmbeddedPicker
@@ -3180,6 +3294,11 @@ function Wise:PickerRefresh(filter)
 		end
 	end
 
+	local boundSpells, boundSpellIDs, activeMacroTexts
+	if Wise.PickerCurrentCategory == "Spell" then
+		boundSpells, boundSpellIDs, activeMacroTexts = Wise:GetActiveRotationSpells()
+	end
+
 	local btnHeight = 32
 	local btnWidth = container:GetParent():GetWidth() - 20
 	if btnWidth < 100 then
@@ -3196,8 +3315,19 @@ function Wise:PickerRefresh(filter)
 
 			btn.iconFrame = CreateFrame("Button", nil, btn)
 			btn.iconFrame:SetSize(24, 24)
-			btn.iconFrame:SetPoint("LEFT", 4, 0)
+			btn.iconFrame:SetPoint("LEFT", 14, 0)
 			btn.iconFrame:EnableMouse(false)
+
+			btn.dot = btn:CreateTexture(nil, "OVERLAY")
+			btn.dot:SetSize(6, 6)
+			btn.dot:SetPoint("CENTER", btn, "LEFT", 8, 0)
+			btn.dot:SetTexture("Interface\\Buttons\\WHITE8X8")
+
+			local mask = btn:CreateMaskTexture()
+			mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+			mask:SetAllPoints(btn.dot)
+			btn.dot:AddMaskTexture(mask)
+			btn.dot:Hide()
 
 			btn.icon = btn.iconFrame:CreateTexture(nil, "ARTWORK")
 			btn.icon:SetAllPoints()
@@ -3274,6 +3404,45 @@ function Wise:PickerRefresh(filter)
 		btn.icon:SetTexture(data.icon)
 		btn.label:SetText(data.name or "Unknown")
 
+		-- Update usage dot for spells
+		if data.type == "spell" and boundSpells and boundSpellIDs then
+			local isBound = false
+			local normalizedName = string.lower(data.name or "")
+			if boundSpellIDs[data.value] or boundSpells[normalizedName] then
+				isBound = true
+			end
+
+			if isBound then
+				if btn.dot then
+					btn.dot:Hide()
+				end
+			else
+				local inMacro = false
+				if data.name then
+					for _, macroText in ipairs(activeMacroTexts) do
+						if IsSpellInMacro(macroText, data.name) then
+							inMacro = true
+							break
+						end
+					end
+				end
+
+				if btn.dot then
+					if inMacro then
+						btn.dot:SetVertexColor(1, 0.8, 0) -- Yellow
+						btn.dot:Show()
+					else
+						btn.dot:SetVertexColor(1, 0.2, 0.2) -- Red
+						btn.dot:Show()
+					end
+				end
+			end
+		else
+			if btn.dot then
+				btn.dot:Hide()
+			end
+		end
+
 		local hasReadout = Wise:SetCastReadout(btn.castReadout, data.type, data.value, Wise.selectedGroup)
 		btn.label:ClearAllPoints()
 		btn.label:SetPoint("LEFT", btn.iconFrame, "RIGHT", 8, 0)
@@ -3346,7 +3515,7 @@ function Wise:GetSpell(filter)
 					local index = offset + j
 					local spellType, spellId = C_SpellBook.GetSpellBookItemType(index, Enum.SpellBookSpellBank.Player)
 					if spellType == Enum.SpellBookItemType.Spell then
-						if not C_Spell.IsSpellPassive(spellId) then
+						if not IsSpellPassive(spellId) then
 							-- Resolve spell overrides for display (e.g. Maul -> Raze)
 							local displayId = Wise:GetOverrideSpellID(spellId) or spellId
 							local name = C_Spell.GetSpellName(displayId)
@@ -3381,7 +3550,7 @@ function Wise:GetSpell(filter)
 								local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
 								if isKnownSlot and flyoutSpellID then
 									local actualSpellID = overrideSpellID or flyoutSpellID
-									if not C_Spell.IsSpellPassive(actualSpellID) then
+									if not IsSpellPassive(actualSpellID) then
 										local sName = C_Spell.GetSpellName(actualSpellID)
 										local sIcon = C_Spell.GetSpellTexture(actualSpellID)
 										local description = C_Spell.GetSpellDescription(actualSpellID) or ""
@@ -3882,7 +4051,7 @@ function Wise:GetProfessions(filter)
 									local flyoutSpellID, overrideSpellID, isKnownSlot = GetFlyoutSlotInfo(flyoutID, s)
 									if isKnownSlot and flyoutSpellID then
 										local actualSpellID = overrideSpellID or flyoutSpellID
-										if not C_Spell.IsSpellPassive(actualSpellID) then
+										if not IsSpellPassive(actualSpellID) then
 											local sName = C_Spell.GetSpellName(actualSpellID)
 											local sIcon = C_Spell.GetSpellTexture(actualSpellID)
 											if
