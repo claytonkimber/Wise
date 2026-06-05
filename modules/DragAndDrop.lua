@@ -53,7 +53,11 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
 
 		if not finalSpellID and bookSlot then
 			if C_SpellBook and C_SpellBook.GetSpellBookItemInfo then
-				local info = C_SpellBook.GetSpellBookItemInfo(bookSlot, bookType)
+				local bank = Enum.SpellBookSpellBank.Player
+				if bookType == "pet" or bookType == BOOKTYPE_PET or bookType == Enum.SpellBookSpellBank.Pet then
+					bank = Enum.SpellBookSpellBank.Pet
+				end
+				local info = C_SpellBook.GetSpellBookItemInfo(bookSlot, bank)
 				if info then
 					finalSpellID = info.spellID
 				end
@@ -110,6 +114,8 @@ function Wise:StartDragHighlight()
 		return
 	end
 
+	Wise.isDragging = true
+
 	for groupName, f in pairs(Wise.frames) do
 		if f:IsShown() and f.buttons then
 			for _, btn in ipairs(f.buttons) do
@@ -163,6 +169,8 @@ function Wise:StartDragHighlight()
 end
 
 function Wise:StopDragHighlight()
+	Wise.isDragging = false
+
 	-- Clear glows from all buttons
 	-- Note: This might clear legitimate proc glows too!
 	-- We should perhaps only clear if we instigated it, or just refresh usability after drop.

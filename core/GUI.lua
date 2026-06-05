@@ -7286,7 +7286,7 @@ function Wise:UpdateButtonUsability(btn)
 		if visualClone then
 			Wise:ShowOverlayGlow(visualClone)
 		end
-	else
+	elseif not Wise.isDragging then
 		Wise:HideOverlayGlow(btn)
 		if visualClone then
 			Wise:HideOverlayGlow(visualClone)

@@ -2376,6 +2376,12 @@ function Wise:IsActionKnown(actionType, value)
 		-- Also resolve the override of the stored spellID (e.g. skyriding talent → active spell)
 		local storedOverride = Wise:GetOverrideSpellID(spellID)
 
+		-- Switch Flight Style (460002 / 460003) is an account-wide collections toggle
+		-- and returns false for IsPlayerSpell/IsSpellKnown once overridden on use.
+		if spellID == 460002 or spellID == 460003 or storedOverride == 460002 or storedOverride == 460003 then
+			return UnitLevel("player") >= 20
+		end
+
 		local currentSpec = GetSpecialization()
 		local currentSpecID = currentSpec and GetSpecializationInfo(currentSpec) or nil
 
@@ -2415,12 +2421,26 @@ function Wise:IsActionKnown(actionType, value)
 		end
 
 		-- Check both original and override spell IDs
-		if IsPlayerSpell and type(spellID) == "number" then
-			if IsPlayerSpell(spellID) then
+		if type(spellID) == "number" then
+			if IsPlayerSpell and IsPlayerSpell(spellID) then
 				return true
 			end
-			if storedOverride and storedOverride ~= spellID and IsPlayerSpell(storedOverride) then
+			if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(spellID) then
 				return true
+			end
+			if IsSpellKnown and IsSpellKnown(spellID) then
+				return true
+			end
+			if storedOverride and storedOverride ~= spellID then
+				if IsPlayerSpell and IsPlayerSpell(storedOverride) then
+					return true
+				end
+				if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(storedOverride) then
+					return true
+				end
+				if IsSpellKnown and IsSpellKnown(storedOverride) then
+					return true
+				end
 			end
 		end
 		return false

@@ -241,4 +241,22 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_SpellbookDragDrop" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Spellbook Drag Drop Highlight" type="string"/>
+            <KeyValue key="instructions" value="Verify that dragging a spell from the spellbook correctly highlights drop targets and highlights do not disappear during drag.\n1. Pick up any spell from the spellbook.\n2. Verify that eligible slot buttons glow (highlight).\n3. Move the cursor around, hover over action buttons, and verify the highlight stays visible.\n4. Drop the spell onto a button and verify the slot updates." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_SwitchFlightStyleKnown" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Switch Flight Style Known Status" type="string"/>
+            <KeyValue key="instructions" value="Verify that the Switch Flight Style spell (460002) is detected as known by the Wise action bar logic.\n1. Click Run.\n2. Verify in the chat/output if it prints 'Switch Flight Style (460002) known: true'." type="string"/>
+            <KeyValue key="action" value="print('Switch Flight Style (460002) known:', Wise:IsActionKnown('spell', 460002))" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
