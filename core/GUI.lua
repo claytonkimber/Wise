@@ -6431,6 +6431,7 @@ end
 
 -- Cache: maps shapeshift form spellIDs to their form index
 local shapeshiftSpellToForm = {}
+local shapeshiftBaseSpellCache = {}
 local function RebuildShapeshiftCache()
     wipe(shapeshiftSpellToForm)
     local numForms = GetNumShapeshiftForms() or 0
@@ -6439,9 +6440,18 @@ local function RebuildShapeshiftCache()
         if formSpellID then
             shapeshiftSpellToForm[formSpellID] = i
             -- Also map base spellID in case the button stores a different rank/variant
-            local info = C_Spell.GetSpellInfo(formSpellID)
-            if info and info.spellID and info.spellID ~= formSpellID then
-                shapeshiftSpellToForm[info.spellID] = i
+            if shapeshiftBaseSpellCache[formSpellID] == nil then
+                local info = C_Spell.GetSpellInfo(formSpellID)
+                if info and info.spellID and info.spellID ~= formSpellID then
+                    shapeshiftBaseSpellCache[formSpellID] = info.spellID
+                else
+                    shapeshiftBaseSpellCache[formSpellID] = false
+                end
+            end
+
+            local baseSpellID = shapeshiftBaseSpellCache[formSpellID]
+            if baseSpellID then
+                shapeshiftSpellToForm[baseSpellID] = i
             end
         end
     end
