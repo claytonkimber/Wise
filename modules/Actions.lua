@@ -603,6 +603,24 @@ FinalizeSlotReorder = function()
 	end)
 end
 
+local function EnsureStateReorderWarningPopup()
+	if not StaticPopupDialogs["WISE_STATE_REORDER_WARNING"] then
+		StaticPopupDialogs["WISE_STATE_REORDER_WARNING"] = {
+			text = "Dragging to reorder spells directly is not recommended because the Slot Configurator maintains a structured layout.\n\nUse the Slot Configurator instead?",
+			button1 = "Open Configurator",
+			button2 = "Cancel",
+			OnAccept = function(self, data)
+				if data and data.groupName and data.slotID then
+					Wise:OpenSlotConfigurator(data.groupName, data.slotID)
+				end
+			end,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+	end
+end
+
 FinalizeStateReorder = function()
 	local container = reorderDrag.container
 	local groupName = Wise.selectedGroup
@@ -610,55 +628,18 @@ FinalizeStateReorder = function()
 		CleanupDrag(container)
 		return
 	end
-	local group = WiseDB.groups[groupName]
 
 	local slotID = reorderDrag.sourceSlotID
-	local states = group.actions[slotID]
-	if not states then
-		CleanupDrag(container)
-		return
-	end
-
 	local targetIdx = reorderDrag.targetStateIdx
 	if not targetIdx then
 		CleanupDrag(container)
 		return
 	end
 
-	local srcIdx = reorderDrag.sourceStateIdx
-	if not srcIdx or srcIdx < 1 or srcIdx > #states then
-		CleanupDrag(container)
-		return
-	end
-
-	local movedState = table.remove(states, srcIdx)
-
-	local insertAt = targetIdx
-	if targetIdx > srcIdx then
-		insertAt = insertAt - 1
-	end
-	if insertAt < 1 then
-		insertAt = 1
-	end
-	if insertAt > #states + 1 then
-		insertAt = #states + 1
-	end
-
-	table.insert(states, insertAt, movedState)
-
-	-- Update selection tracking
-	if Wise.selectedSlot == slotID and Wise.selectedState == srcIdx then
-		Wise.selectedState = insertAt
-	end
-
 	CleanupDrag(container)
-	Wise:RefreshActionsView(container)
-	Wise:RefreshPropertiesPanel()
-	C_Timer.After(0, function()
-		if not InCombatLockdown() then
-			Wise:UpdateGroupDisplay(groupName)
-		end
-	end)
+
+	EnsureStateReorderWarningPopup()
+	StaticPopup_Show("WISE_STATE_REORDER_WARNING", nil, nil, { groupName = groupName, slotID = slotID })
 end
 
 -- ═══════════════════════════════════════════════════════════════
@@ -2511,6 +2492,17 @@ function Wise:IsActionKnown(actionType, value)
 			return (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
 				or (HasVehicleActionBar and HasVehicleActionBar())
 				or false
+		elseif type(value) == "string" and string.sub(value, 1, 11) == "spec_equip_" then
+			local slotIdx = tonumber(string.sub(value, 12))
+			if slotIdx and WiseDB and WiseDB.specEquipSlots then
+				local slot = WiseDB.specEquipSlots[slotIdx]
+				if slot and slot.class then
+					local _, playerClass = UnitClass("player")
+					if slot.class ~= playerClass then
+						return false
+					end
+				end
+			end
 		end
 		return true
 	elseif actionType == "interface" then
@@ -4191,124 +4183,151 @@ function Wise:GetAddons(filter)
 
 	if C_AddOns and C_AddOns.GetNumAddOns then
 		for i = 1, C_AddOns.GetNumAddOns() do
-			if C_AddOns.IsAddOnLoaded(i) then
-				local addonName = C_AddOns.GetAddOnInfo(i)
-				if addonName and not string.find(addonName, "^Blizzard_") then
-					local title = C_AddOns.GetAddOnMetadata(i, "Title") or addonName
-					-- Clean up title (remove color codes)
-					title = string.gsub(title, "|c%x%x%x%x%x%x%x%x", "")
-					title = string.gsub(title, "|r", "")
+			local addonName = C_AddOns.GetAddOnInfo(i)
+			if addonName and not string.find(addonName, "^Blizzard_") and C_AddOns.IsAddOnLoaded(addonName) then
+				local title = C_AddOns.GetAddOnMetadata(addonName, "Title") or addonName
+				-- Clean up title (remove color codes)
+				title = string.gsub(title, "|c%x%x%x%x%x%x%x%x", "")
+				title = string.gsub(title, "|r", "")
 
-					local lName = string.lower(title)
-					local lAddonName = string.lower(addonName)
-					if
-						not filter
-						or string.find(lName, filter, 1, true)
-						or string.find(lAddonName, filter, 1, true)
-					then
-						-- Skip sub-addons (e.g. Journalator_Auctionator) if parent is already seen
-						local parentName = string.match(lAddonName, "^([^_]+)_")
-						local isSubAddon = parentName and seen[parentName]
+				local lName = string.lower(title)
+				local lAddonName = string.lower(addonName)
+				if not filter or string.find(lName, filter, 1, true) or string.find(lAddonName, filter, 1, true) then
+					-- Skip sub-addons (e.g. Journalator_Auctionator) if parent is already seen
+					local parentName = string.match(lAddonName, "^([^_]+)_")
+					local isSubAddon = parentName and seen[parentName]
 
-						-- If we haven't seen this from LDB and it's not a sub-addon duplicate
-						if not isSubAddon and not seen[lName] and not seen[lAddonName] then
-							-- Find ALL matching slash commands for this addon
-							local allCommands = {}
-							local allCommandsSeen = {}
-							local upperName = string.upper(addonName)
-							local upperTitle = string.upper(title)
+					-- If we haven't seen this from LDB and it's not a sub-addon duplicate
+					if not isSubAddon and not seen[lName] and not seen[lAddonName] then
+						-- Find ALL matching slash commands for this addon
+						local allCommands = {}
+						local allCommandsSeen = {}
+						local upperName = string.upper(addonName)
+						local upperTitle = string.upper(title)
 
-							-- Direct match
-							if slashCmds[upperName] then
-								for _, cmd in ipairs(slashCmds[upperName]) do
-									if not allCommandsSeen[cmd] then
-										table.insert(allCommands, cmd)
-										allCommandsSeen[cmd] = true
-									end
+						-- Direct match
+						if slashCmds[upperName] then
+							for _, cmd in ipairs(slashCmds[upperName]) do
+								if not allCommandsSeen[cmd] then
+									table.insert(allCommands, cmd)
+									allCommandsSeen[cmd] = true
 								end
-							end
-
-							-- Fuzzy match — only match when the slash command key
-							-- contains the addon name/title (command derived from addon),
-							-- or the addon name/title contains the full command key AND the
-							-- key is long enough to be meaningful (>=4 chars to avoid
-							-- short keys like "TI" matching everything)
-							for k, variants in pairs(slashCmds) do
-								if k ~= upperName then
-									local matched = false
-									-- Command key contains addon name (e.g. key "ADVANCEDINTERFACEOPTIONS" contains addon "ADVANCED")
-									if string.find(k, upperName, 1, true) or string.find(k, upperTitle, 1, true) then
-										matched = true
-									-- Addon name contains command key, but only if key is long enough
-									elseif
-										#k >= 4
-										and (string.find(upperName, k, 1, true) or string.find(upperTitle, k, 1, true))
-									then
-										matched = true
-									end
-									if matched then
-										for _, cmd in ipairs(variants) do
-											if not allCommandsSeen[cmd] then
-												table.insert(allCommands, cmd)
-												allCommandsSeen[cmd] = true
-											end
-										end
-									end
-								end
-							end
-
-							if #allCommands > 0 then
-								-- Pick the best default: user override > options-keyword match > first found
-								local foundCmd = nil
-								local userOverride = WiseDB.addonSlashOverrides[addonName]
-								if userOverride and allCommandsSeen[userOverride] then
-									foundCmd = userOverride
-								else
-									-- Score commands and pick the best one (favoring options/config commands)
-									local bestScore = 0
-									for _, cmd in ipairs(allCommands) do
-										local score = ScoreCommand(cmd)
-										if score > bestScore then
-											bestScore = score
-											foundCmd = cmd
-										end
-									end
-								end
-
-								-- Resolve icon: TOC IconTexture > AddonCompartment > LDB > default
-								local icon = C_AddOns.GetAddOnMetadata(i, "IconTexture")
-								if not icon or icon == "" then
-									icon = compartmentIcons[lAddonName] or compartmentIcons[lName]
-								end
-								if not icon or icon == "" then
-									icon = ldbIcons[lAddonName] or ldbIcons[lName]
-								end
-								if not icon or icon == "" then
-									icon = "Interface\\Icons\\INV_Misc_Gear_01"
-								end
-								local activeCmd = foundCmd
-								local savedArgs = WiseDB.addonSlashArgs[addonName]
-								local displayCmd = activeCmd
-								if savedArgs and savedArgs ~= "" then
-									displayCmd = activeCmd .. " " .. savedArgs
-								end
-								table.insert(items, {
-									type = "macro",
-									value = foundCmd,
-									name = title,
-									icon = icon,
-									category = "Addons",
-									addonName = addonName,
-									availableCommands = allCommands,
-									slashArgs = savedArgs,
-									tooltipFunc = function()
-										GameTooltip:SetText(title .. "\nCommand: " .. displayCmd)
-									end,
-								})
-								seen[lName] = true
-								seen[lAddonName] = true
 							end
 						end
+
+						-- Fuzzy match — only match when the slash command key
+						-- contains the addon name/title (command derived from addon),
+						-- or the addon name/title contains the full command key AND the
+						-- key is long enough to be meaningful (>=4 chars to avoid
+						-- short keys like "TI" matching everything)
+						for k, variants in pairs(slashCmds) do
+							if k ~= upperName then
+								local matched = false
+								-- Command key contains addon name (e.g. key "ADVANCEDINTERFACEOPTIONS" contains addon "ADVANCED")
+								if string.find(k, upperName, 1, true) or string.find(k, upperTitle, 1, true) then
+									matched = true
+								-- Addon name contains command key, but only if key is long enough
+								elseif
+									#k >= 4
+									and (string.find(upperName, k, 1, true) or string.find(upperTitle, k, 1, true))
+								then
+									matched = true
+								end
+								if matched then
+									for _, cmd in ipairs(variants) do
+										if not allCommandsSeen[cmd] then
+											table.insert(allCommands, cmd)
+											allCommandsSeen[cmd] = true
+										end
+									end
+								end
+							end
+						end
+
+						if #allCommands > 0 then
+							-- Pick the best default: user override > options-keyword match > first found
+							local foundCmd = nil
+							local userOverride = WiseDB.addonSlashOverrides[addonName]
+							if userOverride and allCommandsSeen[userOverride] then
+								foundCmd = userOverride
+							else
+								-- Score commands and pick the best one (favoring options/config commands)
+								local bestScore = 0
+								for _, cmd in ipairs(allCommands) do
+									local score = ScoreCommand(cmd)
+									if score > bestScore then
+										bestScore = score
+										foundCmd = cmd
+									end
+								end
+							end
+
+							-- Resolve icon: TOC IconTexture > AddonCompartment > LDB > default
+							local icon = C_AddOns.GetAddOnMetadata(addonName, "IconTexture")
+							if not icon or icon == "" then
+								icon = compartmentIcons[lAddonName] or compartmentIcons[lName]
+							end
+							if not icon or icon == "" then
+								icon = ldbIcons[lAddonName] or ldbIcons[lName]
+							end
+							if not icon or icon == "" then
+								icon = "Interface\\Icons\\INV_Misc_Gear_01"
+							end
+							local activeCmd = foundCmd
+							local savedArgs = WiseDB.addonSlashArgs[addonName]
+							local displayCmd = activeCmd
+							if savedArgs and savedArgs ~= "" then
+								displayCmd = activeCmd .. " " .. savedArgs
+							end
+							table.insert(items, {
+								type = "macro",
+								value = foundCmd,
+								name = title,
+								icon = icon,
+								category = "Addons",
+								addonName = addonName,
+								availableCommands = allCommands,
+								slashArgs = savedArgs,
+								tooltipFunc = function()
+									GameTooltip:SetText(title .. "\nCommand: " .. displayCmd)
+								end,
+							})
+							seen[lName] = true
+							seen[lAddonName] = true
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Addons registered in Blizzard's Addon Compartment
+	if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then
+		for _, entry in ipairs(AddonCompartmentFrame.registeredAddons) do
+			if entry.text then
+				local name = entry.text
+				local lName = string.lower(name)
+				if not filter or string.find(lName, filter, 1, true) then
+					if not seen[lName] then
+						local icon = entry.icon or "Interface\\Icons\\INV_Misc_Gear_01"
+						-- We call the registered function when clicked
+						local macroText = string.format(
+							'/run if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then for _, e in ipairs(AddonCompartmentFrame.registeredAddons) do if e.text == "%s" and e.func then e.func("%s", "LeftButton") break end end end',
+							name,
+							name
+						)
+
+						table.insert(items, {
+							type = "macro",
+							value = macroText,
+							name = name,
+							icon = icon,
+							category = "Addons",
+							tooltipFunc = function()
+								GameTooltip:SetText(name .. " (Compartment)")
+							end,
+						})
+						seen[lName] = true
 					end
 				end
 			end

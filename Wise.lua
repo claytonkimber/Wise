@@ -192,6 +192,10 @@ function Wise:IsGroupAvailable(groupName)
 	-- enabled=false (legacy default) or availability.mode="NONE" (from Properties migration)
 	-- that would incorrectly mark them unavailable.
 	if group.isWiser then
+		if groupName == "Forms" then
+			local numForms = GetNumShapeshiftForms()
+			return numForms and numForms > 0
+		end
 		return true
 	end
 
@@ -415,6 +419,12 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 			g.migrated_box_v1 = true
 		end
 
+		-- Migration: Force Spec and Equipment Changer to be dynamic
+		if name == "Spec and Equipment Changer" and not g.migrated_dynamic_v1 then
+			g.dynamic = true
+			g.migrated_dynamic_v1 = true
+		end
+
 		g.isWiser = true -- Mark as Wiser
 		if name ~= "Cooldowns" and name ~= "Utilities" and name ~= "Spec and Equipment Changer" then
 			g.buttons = {} -- Clear for rebuild
@@ -488,9 +498,9 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 	end
 
 	-- 3. Forms (Shapeshift / Stances)
+	local formGroup = EnsureWiserGroup("Forms", "circle")
 	local numForms = GetNumShapeshiftForms()
 	if numForms and numForms > 0 then
-		local formGroup = EnsureWiserGroup("Forms", "circle")
 		for i = 1, numForms do
 			local icon, isActive, isCastable, spellID = GetShapeshiftFormInfo(i)
 			if icon then
@@ -509,9 +519,9 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 				})
 			end
 		end
-		if Wise.frames["Forms"] and Wise.frames["Forms"]:IsShown() then
-			Wise:UpdateGroupDisplay("Forms")
-		end
+	end
+	if Wise.frames["Forms"] then
+		Wise:UpdateGroupDisplay("Forms")
 	end
 
 	-- 4. Specs
@@ -574,7 +584,7 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		Wise:UpdateGroupDisplay("Addon Loading Magic")
 	end
 	-- 6. Spec and Equipment Changer (persistent slots — only rebuild when slot count changes)
-	local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle")
+	local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle", { dynamic = true })
 	WiseDB.specEquipSlots = WiseDB.specEquipSlots or {}
 
 	-- Check if rebuild is needed (slot count changed vs current buttons)
@@ -582,11 +592,34 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		or not specEquipGroup.buttons
 		or #specEquipGroup.buttons ~= #WiseDB.specEquipSlots
 
-	-- Also rebuild if any slot name/icon changed
+	-- Also rebuild if any slot name/icon/class restriction changed
 	if not seNeedsRebuild and specEquipGroup.buttons then
 		for i, slot in ipairs(WiseDB.specEquipSlots) do
 			local btn = specEquipGroup.buttons[i]
-			if not btn or btn.name ~= (slot.name or ("Slot " .. i)) then
+			local expectedCategory = slot.class and "class" or "global"
+			local expectedIcon = slot.icon or "Interface\\Icons\\Inv_misc_gear_01"
+			if not slot.icon and slot.specIndex then
+				local _, _, _, specIcon = GetSpecializationInfo(slot.specIndex)
+				if specIcon then
+					expectedIcon = specIcon
+				end
+			end
+			local hasClassEnable = false
+			if btn and btn.visibilityEnable then
+				for _, enableVal in ipairs(btn.visibilityEnable) do
+					if slot.class and enableVal == "class:" .. slot.class then
+						hasClassEnable = true
+						break
+					end
+				end
+			end
+			if not btn
+				or btn.name ~= (slot.name or ("Slot " .. i))
+				or btn.icon ~= expectedIcon
+				or btn.category ~= expectedCategory
+				or (slot.class and not hasClassEnable)
+				or (not slot.class and btn.visibilityEnable and #btn.visibilityEnable > 0)
+			then
 				seNeedsRebuild = true
 				break
 			end
@@ -610,12 +643,20 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 				end
 			end
 
+			local enables = {}
+			local category = "global"
+			if slot.class then
+				table.insert(enables, "class:" .. slot.class)
+				category = "class"
+			end
+
 			table.insert(specEquipGroup.buttons, {
 				type = "misc",
 				value = "spec_equip_" .. i,
 				name = slotName,
 				icon = slotIcon,
-				category = "global",
+				category = category,
+				visibilityEnable = enables,
 			})
 		end
 		-- Migrate buttons to actions so keybinds can be restored

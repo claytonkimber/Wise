@@ -11,6 +11,75 @@ local function EnsureData()
 		return
 	end
 	WiseDB.specEquipSlots = WiseDB.specEquipSlots or {}
+
+	-- Self-healing: Populate class for legacy slots without it
+	local _, playerClass = UnitClass("player")
+	for _, slot in ipairs(WiseDB.specEquipSlots) do
+		if not slot.class then
+			local isMatch = false
+			if slot.equipmentSetName and C_EquipmentSet and C_EquipmentSet.GetEquipmentSetID then
+				if C_EquipmentSet.GetEquipmentSetID(slot.equipmentSetName) then
+					isMatch = true
+				end
+			end
+			if not isMatch and slot.talentConfigID and C_ClassTalents then
+				local specIndex = GetSpecialization()
+				local specID = specIndex and GetSpecializationInfo(specIndex)
+				if specID and C_ClassTalents.GetConfigIDsBySpecID then
+					local configs = C_ClassTalents.GetConfigIDsBySpecID(specID) or {}
+					for _, cid in ipairs(configs) do
+						if cid == slot.talentConfigID then
+							isMatch = true
+							break
+						end
+					end
+				end
+				if not isMatch and C_ClassTalents.GetConfigIDsByClass then
+					local classID = select(3, UnitClass("player"))
+					local configs = C_ClassTalents.GetConfigIDsByClass(classID) or {}
+					for _, cid in ipairs(configs) do
+						if cid == slot.talentConfigID then
+							isMatch = true
+							break
+						end
+					end
+				end
+			end
+
+			local resolvedClass = nil
+			if isMatch then
+				resolvedClass = playerClass
+			elseif slot.specIndex and slot.name then
+				-- Scan all classes and their specs to see if the slot's specIndex + spec name matches
+				for classID = 1, 13 do
+					local numSpecs = GetNumSpecializationsForClassID(classID) or 0
+					for si = 1, numSpecs do
+						if si == slot.specIndex then
+							local _, specName = GetSpecializationInfoForClassID(classID, si)
+							if specName and slot.name:find(specName, 1, true) then
+								local _, classTag = GetClassInfo(classID)
+								if classTag then
+									resolvedClass = classTag
+									break
+								end
+							end
+						end
+					end
+					if resolvedClass then
+						break
+					end
+				end
+			end
+
+			if not resolvedClass and slot.specIndex == 4 then
+				resolvedClass = "DRUID"
+			end
+
+			if resolvedClass then
+				slot.class = resolvedClass
+			end
+		end
+	end
 end
 
 -- ============================================================================
@@ -233,6 +302,23 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 	end)
 	tinsert(panel.controls, delBtn)
 	y = y - 35
+
+	-- Class Restriction Label
+	if slot.class then
+		local classLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		classLabel:SetPoint("TOPLEFT", 10, y)
+		local className = slot.class
+		for i = 1, GetNumClasses() do
+			local name, tag = GetClassInfo(i)
+			if tag == slot.class then
+				className = name
+				break
+			end
+		end
+		classLabel:SetText("Class Restriction: |cff00ffff" .. className .. "|r")
+		tinsert(panel.controls, classLabel)
+		y = y - 20
+	end
 
 	-- Separator
 	local sep = panel:CreateTexture(nil, "ARTWORK")
@@ -552,6 +638,7 @@ function Wise:RefreshActionsView(container)
 			addSlotBtn:Enable()
 			addSlotBtn:SetScript("OnClick", function()
 				EnsureData()
+				local _, playerClass = UnitClass("player")
 				local nextSlot = #WiseDB.specEquipSlots + 1
 				WiseDB.specEquipSlots[nextSlot] = {
 					name = "Slot " .. nextSlot,
@@ -559,6 +646,7 @@ function Wise:RefreshActionsView(container)
 					talentConfigID = nil,
 					equipmentSetName = nil,
 					icon = nil,
+					class = playerClass,
 				}
 				if Wise.UpdateWiserInterfaces then
 					Wise:UpdateWiserInterfaces()
@@ -566,11 +654,38 @@ function Wise:RefreshActionsView(container)
 			end)
 		end
 	end
+
+	if isSE and container.slots then
+		local _, playerClass = UnitClass("player")
+		local y = -10
+		for _, slotFrame in ipairs(container.slots) do
+			if slotFrame:IsShown() then
+				local sIdx = slotFrame.slotID
+				local slot = WiseDB.specEquipSlots[sIdx]
+				if slot and slot.class and slot.class ~= playerClass then
+					slotFrame:Hide()
+				else
+					slotFrame:ClearAllPoints()
+					slotFrame:SetPoint("TOPLEFT", 10, y)
+					y = y - slotFrame:GetHeight() - 10
+				end
+			end
+		end
+		container:SetHeight(math.abs(y) + 20)
+	end
 end
 
 -- ============================================================================
 -- Hook UpdateBindings to sync keybinds back to persistent storage
 -- ============================================================================
+
+local origUpdateWiserInterfaces = Wise.UpdateWiserInterfaces
+function Wise:UpdateWiserInterfaces(isSpecChange)
+	EnsureData()
+	if origUpdateWiserInterfaces then
+		origUpdateWiserInterfaces(self, isSpecChange)
+	end
+end
 
 local origUpdateBindings = Wise.UpdateBindings
 function Wise:UpdateBindings()

@@ -259,4 +259,30 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_SpecEquipClassFilter" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Spec and Equipment Class Filter" type="string"/>
+            <KeyValue key="instructions" value="Verify that Spec and Equipment changer slots are class-restricted.\n1. Run the test.\n2. Verify the output displays that the group is dynamic, and that other classes' slots are successfully filtered out." type="string"/>
+            <KeyValue key="action" value="local group = WiseDB.groups['Spec and Equipment Changer']; if not group then print('Group not found') return end; print('Group dynamic:', group.dynamic); local _, playerClass = UnitClass('player'); print('Current Player Class:', playerClass); local simulatedSlot = { name = 'Simulated Druid Slot', class = 'DRUID', specIndex = 1 }; local enables = {}; if simulatedSlot.class then table.insert(enables, 'class:' .. simulatedSlot.class) end; local simulatedAction = { type = 'misc', value = 'spec_equip_sim', name = simulatedSlot.name, category = 'class', visibilityEnable = enables }; local isAllowed = Wise:IsActionAllowed(simulatedAction); print('Simulated Druid Slot Allowed on ' .. playerClass .. ':', isAllowed); if playerClass == 'DRUID' and isAllowed then print('Test Part 2 Passed: Allowed on matching class') elseif playerClass ~= 'DRUID' and not isAllowed then print('Test Part 2 Passed: Correctly blocked on non-matching class') else print('Test Part 2 FAILED!') end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_AddonCompartment" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Addon Compartment Integration Test" type="string"/>
+            <KeyValue key="instructions" value="Verify that addons registered only to the Addon Compartment (and without slash commands/LDB) appear in the Addons interface.\n1. Open Options and select or create an interface.\n2. Add an action and check the Addons category.\n3. Verify that addons registered to the compartment (like WildUTools, BugSack, etc.) are listed.\n4. Click 'Run' to print the compartment-registered addons list in the chat/output." type="string"/>
+            <KeyValue key="action" value="if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then print('Compartment Addons registered:') for _, e in ipairs(AddonCompartmentFrame.registeredAddons) do print('-', e.text) end else print('AddonCompartmentFrame not available') end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_FormsAvailability" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Forms Interface Availability" type="string"/>
+            <KeyValue key="instructions" value="Verify that the 'Forms' Wiser Interface is only available and shown if the player has forms to change into.\n1. Run the test.\n2. Verify that the output displays whether the Forms group is available on this character/spec, and that it correctly matches the status of GetNumShapeshiftForms()." type="string"/>
+            <KeyValue key="action" value="local numForms = GetNumShapeshiftForms() or 0; local available = Wise:IsGroupAvailable('Forms'); print(string.format('GetNumShapeshiftForms(): %d, Forms available: %s', numForms, tostring(available))); if (numForms &gt; 0 and available) or (numForms == 0 and not available) then print('Test Passed: Forms availability correctly reflects GetNumShapeshiftForms()') else print('Test FAILED: Forms availability does not match GetNumShapeshiftForms()') end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
+
