@@ -780,6 +780,19 @@ end
 
 -- ... (existing code) ...
 
+local targetSkyridingSpells = {
+    "Switch Flight Style",
+    "Skyward Ascent",
+    "Surge Forward",
+    "Whirling Surge",
+    "Bronze Timelock",
+    "Second Wind",
+    "Airborne Tumbling",
+    "Lightning Rush",
+    "Aerial Halt"
+}
+local cachedSkyridingSpellInfo = {}
+
 function Wise:GetSkyriding(filter)
     local spells = {}
     local seen = {}
@@ -789,21 +802,15 @@ function Wise:GetSkyriding(filter)
     -- Alternatively, they might be marked with a specific label or category in C_SpellBook?
     -- For now, let's combine a known list with a scan of the General tab for keywords.
     
-    local targetSpells = {
-        "Switch Flight Style",
-        "Skyward Ascent",
-        "Surge Forward",
-        "Whirling Surge",
-        "Bronze Timelock",
-        "Second Wind",
-        "Airborne Tumbling",
-        "Lightning Rush",
-        "Aerial Halt"
-    }
-    
     -- Add from hardcoded list first
-    for _, spellName in ipairs(targetSpells) do
-        local info = C_Spell.GetSpellInfo(spellName)
+    for _, spellName in ipairs(targetSkyridingSpells) do
+        local info = cachedSkyridingSpellInfo[spellName]
+        if not info then
+            info = C_Spell.GetSpellInfo(spellName)
+            if info then
+                cachedSkyridingSpellInfo[spellName] = info
+            end
+        end
         if info then
             if not seen[info.name] and (not filter or string.find(string.lower(info.name), filter, 1, true)) then
                 table.insert(spells, {type="spell", value=info.spellID, name=info.name, icon=info.iconID, category="Skyriding"})
