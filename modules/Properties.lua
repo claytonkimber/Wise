@@ -5351,50 +5351,51 @@ function Wise:CreateEmbeddedTalentPicker(parent, action)
 		btn:Hide()
 	end
 
-	-- Collect Talents
-	local items = {}
+    -- Collect Talents
+    local items = {}
+    local seen = {}
+    local defCache = {}
 
-	local configID = C_ClassTalents.GetActiveConfigID()
-	if configID then
-		local configInfo = C_Traits.GetConfigInfo(configID)
-		if configInfo then
-			for _, treeID in ipairs(configInfo.treeIDs) do
-				local nodes = C_Traits.GetTreeNodes(treeID)
-				for _, nodeID in ipairs(nodes) do
-					local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-					if nodeInfo and nodeInfo.entryIDs then
-						-- Iterate all entries in this node
-						for _, entryID in ipairs(nodeInfo.entryIDs) do
-							local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
-							if entryInfo and entryInfo.definitionID then
-								local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
-								if defInfo and defInfo.spellID then
-									local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
-									if spellInfo then
-										-- Deduplicate by spellID
-										local exists = false
-										for _, item in ipairs(items) do
-											if item.spellID == spellInfo.spellID then
-												exists = true
-												break
-											end
-										end
-										if not exists then
-											table.insert(items, {
-												spellID = spellInfo.spellID,
-												name = spellInfo.name,
-												icon = spellInfo.iconID,
-											})
-										end
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+    local configID = C_ClassTalents.GetActiveConfigID()
+    if configID then
+        local configInfo = C_Traits.GetConfigInfo(configID)
+        if configInfo then
+            for _, treeID in ipairs(configInfo.treeIDs) do
+                local nodes = C_Traits.GetTreeNodes(treeID)
+                for _, nodeID in ipairs(nodes) do
+                    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+                    if nodeInfo and nodeInfo.entryIDs then
+                        -- Iterate all entries in this node
+                        for _, entryID in ipairs(nodeInfo.entryIDs) do
+                            local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                            if entryInfo and entryInfo.definitionID then
+                                local defID = entryInfo.definitionID
+                                local defInfo = defCache[defID]
+                                if not defInfo then
+                                    defInfo = C_Traits.GetDefinitionInfo(defID)
+                                    defCache[defID] = defInfo
+                                end
+                                if defInfo and defInfo.spellID then
+                                    local spellID = defInfo.spellID
+                                    if not seen[spellID] then
+                                        seen[spellID] = true
+                                        local spellInfo = C_Spell.GetSpellInfo(spellID)
+                                        if spellInfo then
+                                            table.insert(items, {
+                                                spellID = spellInfo.spellID,
+                                                name = spellInfo.name,
+                                                icon = spellInfo.iconID
+                                            })
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 
 	-- Sort by name
 	table.sort(items, function(a, b)
@@ -5822,59 +5823,55 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 						end
 						CreateRow(45, specNodeTitle, "spec:" .. id, specIsNode, "talents", id, specTalentCount)
 
-						if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
-							local configID = C_ClassTalents.GetActiveConfigID()
-							if configID then
-								local configInfo = C_Traits.GetConfigInfo(configID)
-								local titems = {}
-								if configInfo then
-									for _, treeID in ipairs(configInfo.treeIDs) do
-										local nodes = C_Traits.GetTreeNodes(treeID)
-										for _, nodeID in ipairs(nodes) do
-											local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-											if nodeInfo and nodeInfo.entryIDs then
-												for _, entryID in ipairs(nodeInfo.entryIDs) do
-													local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
-													if entryInfo and entryInfo.definitionID then
-														local defInfo =
-															C_Traits.GetDefinitionInfo(entryInfo.definitionID)
-														if defInfo and defInfo.spellID then
-															local spellInfo = C_Spell.GetSpellInfo(defInfo.spellID)
-															if spellInfo then
-																local exists = false
-																for _, itm in ipairs(titems) do
-																	if itm.spellID == spellInfo.spellID then
-																		exists = true
-																		break
-																	end
-																end
-																if not exists then
-																	table.insert(titems, {
-																		spellID = spellInfo.spellID,
-																		name = spellInfo.name,
-																	})
-																end
-															end
-														end
-													end
-												end
-											end
-										end
-									end
-								end
-								table.sort(titems, function(a, b)
-									return a.name < b.name
-								end)
-								for _, tit in ipairs(titems) do
-									CreateRow(65, tit.name, "talent:" .. tit.spellID, false)
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
+                        if specIsNode and ep.expanded.talents and ep.expanded.talents[id] then
+                            local configID = C_ClassTalents.GetActiveConfigID()
+                            if configID then
+                                local configInfo = C_Traits.GetConfigInfo(configID)
+                                local titems = {}
+                                local seenTalent = {}
+                                local defCacheTalent = {}
+                                if configInfo then
+                                    for _, treeID in ipairs(configInfo.treeIDs) do
+                                        local nodes = C_Traits.GetTreeNodes(treeID)
+                                        for _, nodeID in ipairs(nodes) do
+                                            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+                                            if nodeInfo and nodeInfo.entryIDs then
+                                                for _, entryID in ipairs(nodeInfo.entryIDs) do
+                                                    local entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                                                    if entryInfo and entryInfo.definitionID then
+                                                        local defID = entryInfo.definitionID
+                                                        local defInfo = defCacheTalent[defID]
+                                                        if not defInfo then
+                                                            defInfo = C_Traits.GetDefinitionInfo(defID)
+                                                            defCacheTalent[defID] = defInfo
+                                                        end
+                                                        if defInfo and defInfo.spellID then
+                                                            local spellID = defInfo.spellID
+                                                            if not seenTalent[spellID] then
+                                                                seenTalent[spellID] = true
+                                                                local spellInfo = C_Spell.GetSpellInfo(spellID)
+                                                                if spellInfo then
+                                                                    table.insert(titems, {spellID=spellInfo.spellID, name=spellInfo.name})
+                                                                end
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                table.sort(titems, function(a,b) return a.name < b.name end)
+                                for _, tit in ipairs(titems) do
+                                    CreateRow(65, tit.name, "talent:"..tit.spellID, false)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 
 	-- 4. Characters
 	local charsCount = not ep.expanded.chars and CountTagsWithPrefix("char:") or nil

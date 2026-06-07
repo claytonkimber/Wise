@@ -954,6 +954,19 @@ end
 
 -- ... (existing code) ...
 
+local targetSkyridingSpells = {
+    "Switch Flight Style",
+    "Skyward Ascent",
+    "Surge Forward",
+    "Whirling Surge",
+    "Bronze Timelock",
+    "Second Wind",
+    "Airborne Tumbling",
+    "Lightning Rush",
+    "Aerial Halt"
+}
+local cachedSkyridingSpellInfo = {}
+
 function Wise:GetSkyriding(filter)
 	local spells = {}
 	local seen = {}
