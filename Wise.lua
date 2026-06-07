@@ -419,10 +419,14 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 			g.migrated_box_v1 = true
 		end
 
-		-- Migration: Force Spec and Equipment Changer to be dynamic
-		if name == "Spec and Equipment Changer" and not g.migrated_dynamic_v1 then
-			g.dynamic = true
-			g.migrated_dynamic_v1 = true
+		-- Migration: Spec and Equipment Changer must NOT be dynamic.
+		-- An earlier build set dynamic=true (migrated_dynamic_v1) to get per-slot class
+		-- filtering, but dynamic groups break the [undermouse] show path so the panel never
+		-- appeared on hover. Class filtering is handled by per-button visibilityEnable tags
+		-- instead. This corrective migration (v2) clears the stale dynamic flag.
+		if name == "Spec and Equipment Changer" and not g.migrated_dynamic_v2 then
+			g.dynamic = false
+			g.migrated_dynamic_v2 = true
 		end
 
 		g.isWiser = true -- Mark as Wiser
@@ -584,7 +588,11 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		Wise:UpdateGroupDisplay("Addon Loading Magic")
 	end
 	-- 6. Spec and Equipment Changer (persistent slots — only rebuild when slot count changes)
-	local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle", { dynamic = true })
+	-- NOTE: This group is intentionally NOT dynamic. Per-slot class filtering is handled by
+	-- the "class:DRUID"-style visibilityEnable tags on each button (same mechanism the Specs
+	-- interface uses). Making it dynamic breaks the [undermouse] show path, so the panel would
+	-- never appear on hover (only "Always Show" would surface it).
+	local specEquipGroup = EnsureWiserGroup("Spec and Equipment Changer", "circle")
 	WiseDB.specEquipSlots = WiseDB.specEquipSlots or {}
 
 	-- Check if rebuild is needed (slot count changed vs current buttons)
