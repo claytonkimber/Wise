@@ -814,10 +814,10 @@ function Wise:Initialize()
 	-- If default Blizzard buff/debuff trackers are hidden, the game stops scanning auras for AddOns.
 	-- We keep them functionally "active" but set Alpha to 0 so they scan invisibly.
 	if BuffIconCooldownViewer then
-		BuffIconCooldownViewer:SetAlpha(0)
+		BuffIconCooldownViewer:SetAlpha(WiseDB.settings.hideTrackedBuffs and 0 or 1)
 	end
 	if BuffBarCooldownViewer then
-		BuffBarCooldownViewer:SetAlpha(0)
+		BuffBarCooldownViewer:SetAlpha(WiseDB.settings.hideTrackedBars and 0 or 1)
 	end
 end
 
@@ -1296,11 +1296,19 @@ function frame:OnEvent(event, arg1)
 					showBuffs = false, -- Default: Disable Buff Durations
 					enableDragDrop = true, -- Default: Enable Drag and Drop
 					showTooltips = true, -- Default: Enable Interface Tooltips
+					hideTrackedBars = false,
+					hideTrackedBuffs = false,
 				},
 			}
 		end
 		-- Ensure global settings exist for existing users
 		if WiseDB.settings then
+			if WiseDB.settings.hideTrackedBars == nil then
+				WiseDB.settings.hideTrackedBars = false
+			end
+			if WiseDB.settings.hideTrackedBuffs == nil then
+				WiseDB.settings.hideTrackedBuffs = false
+			end
 			if WiseDB.settings.showTooltips == nil then
 				WiseDB.settings.showTooltips = true
 			end
