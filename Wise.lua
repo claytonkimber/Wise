@@ -2227,6 +2227,97 @@ SlashCmdList["WISE"] = function(msg)
 		return
 	end
 
+	if cmd == "cpu" then
+		-- Delta-based CPU profiler for Wise's OWN frames.
+		--   /wise cpu start  → reset counters, mark t0
+		--   (play/idle ~30s)
+		--   /wise cpu        → report ms used SINCE start, as a rate (ms/sec)
+		-- Cumulative-since-login is useless for finding live cost (global frames
+		-- like UIParent dominate it), so we always measure a window instead.
+		if GetCVar("scriptProfile") ~= "1" then
+			SetCVar("scriptProfile", "1")
+			print(
+				"|cff00ccff[Wise]|r CPU profiling was OFF. Enabled it — |cffffd700/reload|r,"
+					.. " then |cffffd700/wise cpu start|r, wait ~30s, then |cffffd700/wise cpu|r."
+			)
+			return
+		end
+
+		if arg == "start" then
+			ResetCPUUsage()
+			Wise._cpuT0 = GetTime()
+			Wise._cpuBaseTotal = 0
+			print("|cff00ccff[Wise CPU]|r Counters reset. Play/idle ~30s, then run |cffffd700/wise cpu|r.")
+			return
+		end
+
+		local window = Wise._cpuT0 and (GetTime() - Wise._cpuT0) or 0
+		if window < 1 then
+			print("|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu|r.")
+			return
+		end
+
+		UpdateAddOnCPUUsage()
+		local total = GetAddOnCPUUsage("Wise") or 0
+
+		-- Walk every Wise-owned frame (named "Wise*" or tagged _wiseProfileName)
+		-- that has ANY script (OnUpdate or OnEvent). GetFrameCPUUsage(f, true)
+		-- returns total time spent in all of the frame's scripts.
+		local rows = {}
+		local accounted = 0
+		local f = EnumerateFrames()
+		while f do
+			local hasScript = f.GetScript and (f:GetScript("OnUpdate") or f:GetScript("OnEvent"))
+			if hasScript then
+				local nm = (f.GetName and f:GetName()) or nil
+				local tag = f._wiseProfileName
+				local isWise = tag or (nm and nm:find("^Wise"))
+				if isWise then
+					local ms = GetFrameCPUUsage and GetFrameCPUUsage(f, true) or 0
+					if ms and ms > 0 then
+						-- Note which script types this frame has, to hint at the source.
+						local kinds = ""
+						if f:GetScript("OnUpdate") then
+							kinds = kinds .. "U"
+						end
+						if f:GetScript("OnEvent") then
+							kinds = kinds .. "E"
+						end
+						rows[#rows + 1] = { name = (tag or nm) .. " [" .. kinds .. "]", ms = ms }
+						accounted = accounted + ms
+					end
+				end
+			end
+			f = EnumerateFrames(f)
+		end
+
+		table.sort(rows, function(a, b)
+			return a.ms > b.ms
+		end)
+
+		print(
+			string.format(
+				"|cff00ccff[Wise CPU]|r Over %.0fs: addon |cffffd700%.3f ms/s|r total, |cff00ff00%.3f ms/s|r in frames, |cffff5555%.3f ms/s|r elsewhere (tickers/handlers).",
+				window,
+				total / window,
+				accounted / window,
+				(total - accounted) / window
+			)
+		)
+		for i = 1, math.min(14, #rows) do
+			print(
+				string.format("  %2d. |cffffd700%.3f ms/s|r  %s", i, rows[i].ms / window, rows[i].name)
+			)
+		end
+		if (total - accounted) / window > 1 then
+			print(
+				"  |cffff5555Most cost is NOT in frames|r → it's in C_Timer tickers or hooked scripts."
+					.. " Likely a NewTicker or a hooked Blizzard frame. Check /wise cputick."
+			)
+		end
+		return
+	end
+
 	if cmd == "demo" then
 		if arg == "reset" then
 			WiseDB.tutorialComplete = false

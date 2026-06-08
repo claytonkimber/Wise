@@ -681,6 +681,7 @@ Wise.frames = {}
 
 -- Central Cooldown Update Frame
 Wise.CooldownUpdateFrame = CreateFrame("Frame")
+Wise.CooldownUpdateFrame._wiseProfileName = "CooldownUpdateFrame"
 Wise.ActiveCooldownButtons = {}
 Wise.CooldownUpdateFrame:Hide()
 
@@ -694,6 +695,17 @@ Wise.CooldownUpdateFrame:Hide()
 
 -- Forward declaration — real implementation follows after UpdateAllCooldowns.
 local scheduleCooldownUpdate
+
+-- Reusable remaining-time computation for the cooldown loop below.
+-- In combat, start/duration can be "secret numbers" that throw on arithmetic,
+-- so the call must be wrapped in pcall. We use a single hoisted closure with
+-- scratch upvalues instead of allocating a fresh closure per button per frame —
+-- the per-frame allocation was the dominant GC cost in this loop. Set
+-- _cdStart/_cdDuration/_cdNow, then pcall(ComputeCooldownRemaining).
+local _cdStart, _cdDuration, _cdNow
+local function ComputeCooldownRemaining()
+	return (_cdStart + _cdDuration) - _cdNow
+end
 
 Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 	local now = GetTime()
@@ -756,9 +768,8 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 		-- Try to compute remaining time. start/duration may be secret in combat.
 		local rem = 0
 		local secretMode = false
-		local success, val = pcall(function()
-			return (start + duration) - now
-		end)
+		_cdStart, _cdDuration, _cdNow = start, duration, now
+		local success, val = pcall(ComputeCooldownRemaining)
 		if success then
 			rem = val
 		else
@@ -858,14 +869,15 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 
 				local maxWidth = 50
 				if btn.redLine then
-					local ok4, pct = pcall(function()
-						return rem / info.duration
-					end)
-					if ok4 and type(pct) == "number" then
+					-- In this branch rem and info.duration are both plain numbers
+					-- (secret/finished cases handled above), so the division can't
+					-- throw — no pcall/closure needed.
+					local dur = info.duration
+					if type(rem) == "number" and type(dur) == "number" and dur > 0 then
+						local pct = rem / dur
 						if pct > 1 then
 							pct = 1
-						end
-						if pct < 0 then
+						elseif pct < 0 then
 							pct = 0
 						end
 						btn.redLine:SetWidth(maxWidth * pct)
@@ -1306,6 +1318,7 @@ function Wise:CreateGroupFrame(name, instanceId)
 	-- The Secure Group is anchored to this proxy.
 	-- This allows "spawn at mouse" logic to work in combat (mostly).
 	f.Anchor = CreateFrame("Frame", nil, UIParent)
+	f.Anchor._wiseProfileName = "anchor:" .. name
 	f.Anchor:SetSize(1, 1)
 	f.Anchor:SetPoint("CENTER")
 
@@ -3519,6 +3532,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- We use a separate frame to avoid conflicting with f.Anchor's OnUpdate (mouse-follow mode).
 		if not f.undermouseFrame then
 			f.undermouseFrame = CreateFrame("Frame")
+			f.undermouseFrame._wiseProfileName = "undermouse:" .. name
 		end
 		local nonMouseElapsed = 0
 		local wasShowingInCombat = false

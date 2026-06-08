@@ -12,6 +12,10 @@ local RegisterStateDriver = RegisterStateDriver
 local UnregisterStateDriver = UnregisterStateDriver
 local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
+local IsShiftKeyDown = IsShiftKeyDown
+local IsControlKeyDown = IsControlKeyDown
+local IsAltKeyDown = IsAltKeyDown
+local next = next
 local pairs = pairs
 local tostring = tostring
 
@@ -153,15 +157,41 @@ end)
 
 -- ─── 6. Modifier Tracking (Insecure Side) ────────────────────────
 -- Track modifier state for the secure snippet to read.
--- Updated via OnUpdate on the dispatcher frame for simplicity.
+-- Runs per-frame (mouse input demands full responsiveness), but does the
+-- minimum work each frame:
+--   1. Bail instantly if no bindings are registered — nothing to dispatch.
+--   2. Bail in combat — secure attributes can't be written then anyway.
+--   3. Only call SetAttribute when a modifier key actually changed state.
+-- In practice modifier state is identical on the vast majority of frames,
+-- so the SetAttribute calls (the expensive part) fire only on key edges.
 local modTracker = CreateFrame("Frame")
+modTracker._wiseProfileName = "Dispatcher.modTracker"
+local lastShift, lastCtrl, lastAlt = false, false, false
 modTracker:SetScript("OnUpdate", function()
+	-- No registered bindings → the dispatcher is dormant, skip all work.
+	if not next(Dispatcher.bindings) then
+		return
+	end
 	if InCombatLockdown() then
 		return
 	end
-	dispatcherBtn:SetAttribute("_dispatch_shift", IsShiftKeyDown() and true or nil)
-	dispatcherBtn:SetAttribute("_dispatch_ctrl", IsControlKeyDown() and true or nil)
-	dispatcherBtn:SetAttribute("_dispatch_alt", IsAltKeyDown() and true or nil)
+
+	local shift = IsShiftKeyDown() and true or false
+	local ctrl = IsControlKeyDown() and true or false
+	local alt = IsAltKeyDown() and true or false
+
+	if shift ~= lastShift then
+		lastShift = shift
+		dispatcherBtn:SetAttribute("_dispatch_shift", shift or nil)
+	end
+	if ctrl ~= lastCtrl then
+		lastCtrl = ctrl
+		dispatcherBtn:SetAttribute("_dispatch_ctrl", ctrl or nil)
+	end
+	if alt ~= lastAlt then
+		lastAlt = alt
+		dispatcherBtn:SetAttribute("_dispatch_alt", alt or nil)
+	end
 end)
 
 -- ─── 7. Public API ────────────────────────────────────────────────
@@ -275,6 +305,15 @@ function Dispatcher:ClearAll()
 
 	self.bindings = {}
 	ClearOverrideBindings(dispatcherBtn)
+
+	-- Reset cached modifier state so the next arming starts clean and the
+	-- change-guard in modTracker can't carry stale state across a full unbind.
+	lastShift, lastCtrl, lastAlt = false, false, false
+	if not InCombatLockdown() then
+		dispatcherBtn:SetAttribute("_dispatch_shift", nil)
+		dispatcherBtn:SetAttribute("_dispatch_ctrl", nil)
+		dispatcherBtn:SetAttribute("_dispatch_alt", nil)
+	end
 end
 
 -- ─── 8. Hardware Button Mapping Helper ────────────────────────────
