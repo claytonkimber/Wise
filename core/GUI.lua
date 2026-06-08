@@ -631,6 +631,16 @@ function Wise:DeleteGroup(name)
 		if f.Anchor then
 			f.Anchor:SetScript("OnUpdate", nil)
 		end
+		if f.conditionTicker then
+			f.conditionTicker:Cancel()
+			f.conditionTicker = nil
+		end
+		-- Deregister from the event-driven dynamic refresh so events no longer
+		-- invoke this deleted group's closure.
+		if Wise._dynamicGroups then
+			Wise._dynamicGroups[f] = nil
+		end
+		f._dynamicRefresh = nil
 
 		-- Clear from internal frame registry
 		Wise.frames[name] = nil
@@ -3776,6 +3786,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- Attach to ANCHOR frame so it runs even if secure frame is hidden (combat)
 		local function MouseFollowUpdate()
 			-- Closure captures 'f' and 'group'
+			-- Skip while the group is hidden: there's nothing to position, and
+			-- OnShow already snaps the frame to the cursor when it appears, so
+			-- tracking while hidden is pure waste (this was the top idle cost for
+			-- toggle/hold rings that sit hidden most of the time). The OnUpdate
+			-- stays attached and resumes automatically when the frame shows.
+			if not f:IsShown() then
+				return
+			end
 			if f.mouseAnchorLocked then
 				return
 			end
@@ -5115,9 +5133,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		Wise:UpdateButtonState(btn)
 	end
 
-	-- Condition evaluation ticker for multi-state and interface icon updates
+	-- Condition evaluation for multi-state and interface icon updates.
+	-- Cancel any legacy per-group ticker (from older sessions / hot-reload) and
+	-- clear the event-driven registration; both are re-established below if the
+	-- group still qualifies as dynamic.
 	if f.conditionTicker then
 		f.conditionTicker:Cancel()
+		f.conditionTicker = nil
+	end
+	if Wise._dynamicGroups then
+		Wise._dynamicGroups[f] = nil
 	end
 	local needsTicker = false
 	-- For dynamic groups, check if any slot has per-action conditions or availability-dependent
@@ -5126,6 +5151,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 	local AVAILABILITY_MISC = { extrabutton = true, zoneability = true, overridebar = true, possessbar = true }
 	local hasDynamicConditions = false
 	local hasDynamicCooldowns = false
+	-- Some condition inputs have NO game event to react to and must be polled by
+	-- the safety-net ticker: modifier keys ([mod:shift], [nomod]). Most others
+	-- (stance, spec, target reaction, vehicle, action slots) are covered by the
+	-- DynamicRefreshDriver's events, so groups without these tokens never poll.
+	local needsPoll = false
 	if isDynamic and group.actions then
 		for _, states in pairs(group.actions) do
 			if type(states) == "table" then
@@ -5135,6 +5165,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						or (state.type == "misc" and AVAILABILITY_MISC[state.value])
 					then
 						hasDynamicConditions = true
+					end
+					-- Detect event-less modifier conditions on this slot.
+					if state.conditions and state.conditions:find("mod") then
+						needsPoll = true
 					end
 					-- Track cooldown-filterable action types for dynamic groups
 					if
@@ -5216,8 +5250,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		end
 		f._dynamicCDSnapshot = cdSnapshot
 	end
+	-- Build the refresh closure for dynamic groups. Previously this ran on a
+	-- 0.2s C_Timer.NewTicker, which re-ran the full per-button loop 5x/sec
+	-- forever (dominant idle CPU cost). Now we store it as f._dynamicRefresh
+	-- and drive it from game events (see Wise._dynamicEventFrame below), with a
+	-- slow 1s safety-net poll for state that lacks a clean event. The closure
+	-- body is unchanged — only WHEN it runs has changed.
 	if needsTicker then
-		f.conditionTicker = C_Timer.NewTicker(0.2, function()
+		f._dynamicRefresh = function()
 			-- For dynamic groups with conditional/availability slots, check if state changed
 			-- and trigger a full rebuild when it does (e.g. [extrabar] or [zoneability] toggled)
 			if hasDynamicConditions and f._dynamicCondSnapshot and not InCombatLockdown() then
@@ -5596,7 +5636,30 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end
 			end
+		end
+
+		-- Register this frame for event-driven refresh.
+		Wise._dynamicGroups = Wise._dynamicGroups or {}
+		Wise._dynamicGroups[f] = true
+		-- Only groups with event-less modifier conditions need the safety-net poll.
+		f._needsPoll = needsPoll or nil
+		-- Run once after setup completes so initial state is correct. Deferred by
+		-- a frame to preserve the old ticker's ordering (it first fired ~0.2s after
+		-- setup, i.e. after UpdateBindings / embedded-parent propagation below).
+		local refresh = f._dynamicRefresh
+		C_Timer.After(0, function()
+			-- Guard: the group may have been deleted or rebuilt before this fires.
+			if Wise._dynamicGroups and Wise._dynamicGroups[f] and f._dynamicRefresh == refresh then
+				refresh()
+			end
 		end)
+	else
+		-- Not (or no longer) a dynamic group — deregister and drop any stale
+		-- refresh closure so events don't keep invoking the old one.
+		if Wise._dynamicGroups then
+			Wise._dynamicGroups[f] = nil
+		end
+		f._dynamicRefresh = nil
 	end
 
 	-- Ensure bindings are active (fixes potential staleness on new groups)
@@ -7626,6 +7689,105 @@ eventFrame:SetScript("OnEvent", function(self, event, unit)
 		-- BAG_UPDATE_COOLDOWN
 		scheduleCooldownUpdate()
 		scheduleChargeUpdate()
+	end
+end)
+
+-- ─── Dynamic Group Refresh Driver (event-driven) ──────────────────
+-- Replaces the old per-group 0.2s conditionTicker. Each dynamic group stores
+-- its refresh closure on f._dynamicRefresh and registers in Wise._dynamicGroups.
+-- We run those closures only when a relevant game event fires, instead of
+-- polling 5x/sec forever. Refreshes are coalesced to once per frame so a burst
+-- of events (common on stance/spec change) costs a single pass.
+local pendingDynamicRefresh = false
+local function RefreshAllDynamicGroups()
+	local reg = Wise._dynamicGroups
+	if not reg then
+		return
+	end
+	-- Refresh closures touch secure attributes; skip in combat (they self-guard
+	-- too, but bailing here avoids the loop entirely).
+	if InCombatLockdown() then
+		return
+	end
+	for frame in pairs(reg) do
+		local fn = frame._dynamicRefresh
+		if fn then
+			fn()
+		else
+			reg[frame] = nil
+		end
+	end
+end
+local function scheduleDynamicRefresh()
+	if not pendingDynamicRefresh then
+		pendingDynamicRefresh = true
+		C_Timer.After(0, function()
+			pendingDynamicRefresh = false
+			RefreshAllDynamicGroups()
+		end)
+	end
+end
+Wise.ScheduleDynamicRefresh = scheduleDynamicRefresh
+
+local dynEventFrame = CreateFrame("Frame")
+dynEventFrame._wiseProfileName = "DynamicRefreshDriver"
+-- Action-slot texture changes (action / overridebar / possessbar slots)
+dynEventFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+dynEventFrame:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
+dynEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+dynEventFrame:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
+dynEventFrame:RegisterEvent("UPDATE_VEHICLE_ACTIONBAR")
+-- Extra action button / zone ability appearing or changing
+dynEventFrame:RegisterEvent("UPDATE_EXTRA_ACTIONBAR")
+dynEventFrame:RegisterEvent("ZONE_CHANGED")
+dynEventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+dynEventFrame:RegisterEvent("SPELL_UPDATE_ICON")
+-- Multi-state condition inputs (stances, spec, learning spells)
+dynEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+dynEventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
+dynEventFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+dynEventFrame:RegisterEvent("SPELLS_CHANGED")
+-- Cooldown-filtered dynamic slots (slot becomes ready / goes on CD)
+dynEventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+dynEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
+-- Target / mouseover reaction conditions ([harm], [help], [@target,exists])
+dynEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+dynEventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+-- Vehicle/possess transitions
+dynEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
+dynEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+dynEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED") -- flush after leaving combat
+dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
+	-- UNIT_*_VEHICLE fire for every unit; only the player matters here.
+	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
+		return
+	end
+	-- In combat the refresh is a no-op (secure attrs are locked), and cooldown
+	-- events fire every GCD — so don't even schedule. PLAYER_REGEN_ENABLED
+	-- flushes a single refresh on combat exit to catch anything that changed.
+	if event ~= "PLAYER_REGEN_ENABLED" and InCombatLockdown() then
+		return
+	end
+	scheduleDynamicRefresh()
+end)
+
+-- Safety-net poll for inputs that have NO clean event: modifier-key conditions
+-- ([mod:shift] etc.). Only groups flagged f._needsPoll are refreshed here, so
+-- the common case (no modifier conditions) does ZERO polling — those groups
+-- update purely from the DynamicRefreshDriver events above. Modifier-driven
+-- slots update within ~0.3s of a key press, imperceptible for icon/visibility.
+C_Timer.NewTicker(0.3, function()
+	local reg = Wise._dynamicGroups
+	if not reg or InCombatLockdown() then
+		return
+	end
+	for frame in pairs(reg) do
+		if frame._needsPoll then
+			local fn = frame._dynamicRefresh
+			if fn then
+				fn()
+			end
+		end
 	end
 end)
 
