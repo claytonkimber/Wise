@@ -1,168 +1,168 @@
-MAIN_MENU_BAR_MARGIN = 75;		-- number of art pixels on one side, used by UIParent_ManageFramePositions. It's not the art's full size, don't care about the gryphon's tail.
+MAIN_MENU_BAR_MARGIN = 75 -- number of art pixels on one side, used by UIParent_ManageFramePositions. It's not the art's full size, don't care about the gryphon's tail.
 
-MainActionBarMixin = {};
+MainActionBarMixin = {}
 
 function MainActionBarMixin:OnLoad()
-	self:RegisterEvent("ACTIONBAR_PAGE_CHANGED");
-	self:RegisterEvent("NEUTRAL_FACTION_SELECT_RESULT");
+	self:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
+	self:RegisterEvent("NEUTRAL_FACTION_SELECT_RESULT")
 
-	self.state = "player";
-	MainActionBar.ActionBarPageNumber.Text:SetText(C_ActionBar.GetActionBarPage());
+	self.state = "player"
+	MainActionBar.ActionBarPageNumber.Text:SetText(C_ActionBar.GetActionBarPage())
 end
 
 function MainActionBarMixin:OnShow()
-	MicroMenu:ResetMicroMenuPosition();
+	MicroMenu:ResetMicroMenuPosition()
 end
 
 function MainActionBarMixin:SetYOffset(yOffset)
-	self.yOffset = yOffset;
+	self.yOffset = yOffset
 end
 
 function MainActionBarMixin:GetYOffset()
-	return self.yOffset;
+	return self.yOffset
 end
 
 function MainActionBarMixin:OnEvent(event, ...)
-	if ( event == "ACTIONBAR_PAGE_CHANGED" ) then
-		MainActionBar.ActionBarPageNumber.Text:SetText(C_ActionBar.GetActionBarPage());
-	elseif ( event == "NEUTRAL_FACTION_SELECT_RESULT" ) then
-		self:UpdateEndCaps();
+	if event == "ACTIONBAR_PAGE_CHANGED" then
+		MainActionBar.ActionBarPageNumber.Text:SetText(C_ActionBar.GetActionBarPage())
+	elseif event == "NEUTRAL_FACTION_SELECT_RESULT" then
+		self:UpdateEndCaps()
 	end
 end
 
 function MainActionBarMixin:AttachToFrame(frame)
-	self.attachedFrame = frame;
+	self.attachedFrame = frame
 	if not self.preAttachPoints then
-		self.preAttachPoints = RegionUtil.GetPointsArray(self);
-		self:ClearAllPoints();
+		self.preAttachPoints = RegionUtil.GetPointsArray(self)
+		self:ClearAllPoints()
 	end
 
-	self:SetParent(frame);
+	self:SetParent(frame)
 end
 
 function MainActionBarMixin:DetachFromFrame(frame)
 	if self.attachedFrame == frame then
-		self.attachedFrame = nil;
+		self.attachedFrame = nil
 
-		self:SetParent(UIParent);
+		self:SetParent(UIParent)
 		if self.preAttachPoints then
-			RegionUtil.ApplyRegionPoints(self, self.preAttachPoints);
-			self.preAttachPoints = nil;
+			RegionUtil.ApplyRegionPoints(self, self.preAttachPoints)
+			self.preAttachPoints = nil
 		end
 	end
 end
 
 function MainActionBarMixin:IsInDefaultPosition()
-	return not self.attachedFrame and EditModeSystemMixin.IsInDefaultPosition(self);
+	return not self.attachedFrame and EditModeSystemMixin.IsInDefaultPosition(self)
 end
 
 function MainActionBarMixin:SetQuickKeybindModeEffectsShown(showEffects)
-	self.QuickKeybindBottomShadow:SetShown(showEffects);
-	self.QuickKeybindGlowSmall:SetShown(showEffects);
-	self.QuickKeybindGlowLarge:SetShown(showEffects);
-	local useRightShadow = MultiBarRight:IsShown();
-	self.QuickKeybindRightShadow:SetShown(useRightShadow and showEffects);
+	self.QuickKeybindBottomShadow:SetShown(showEffects)
+	self.QuickKeybindGlowSmall:SetShown(showEffects)
+	self.QuickKeybindGlowLarge:SetShown(showEffects)
+	local useRightShadow = MultiBarRight:IsShown()
+	self.QuickKeybindRightShadow:SetShown(useRightShadow and showEffects)
 end
 
 function MainActionBarMixin:UpdateEndCaps(forceHide)
-	self.EndCaps:SetShown(not forceHide);
+	self.EndCaps:SetShown(not forceHide)
 end
 
 function MainActionBarMixin:EditModeSetScale(newScale)
-	if (self.BorderArt) then
-		self.BorderArt:SetScale(newScale);
+	if self.BorderArt then
+		self.BorderArt:SetScale(newScale)
 	end
 
 	-- For end caps and page number, only scale down, not up
-	self.EndCaps:SetScale(newScale < 1 and newScale or 1);
-	self.ActionBarPageNumber:SetScale(newScale < 1 and newScale or 1);
+	self.EndCaps:SetScale(newScale < 1 and newScale or 1)
+	self.ActionBarPageNumber:SetScale(newScale < 1 and newScale or 1)
 end
 
 function MainActionBarMixin:UpdateDividers()
-	if (not self.enableDividers) then
-		return;
+	if not self.enableDividers then
+		return
 	end
 
 	if not self.HorizontalDividersPool then
-		self.HorizontalDividersPool = CreateFramePool("FRAME", self, "HorizontalDividerTemplate");
-		self.VerticalDividersPool = CreateFramePool("FRAME", self, "VerticalDividerTemplate");
+		self.HorizontalDividersPool = CreateFramePool("FRAME", self, "HorizontalDividerTemplate")
+		self.VerticalDividersPool = CreateFramePool("FRAME", self, "VerticalDividerTemplate")
 	end
-	self.HorizontalDividersPool:ReleaseAll();
-	self.VerticalDividersPool:ReleaseAll();
+	self.HorizontalDividersPool:ReleaseAll()
+	self.VerticalDividersPool:ReleaseAll()
 
 	if self.hideBarArt or self.numRows > 1 or self.buttonPadding > self.minButtonPadding then
-		return;
+		return
 	end
 
-	local dividersPool = self.isHorizontal and self.HorizontalDividersPool or self.VerticalDividersPool;
-	local wasLastButtonShown = false;
+	local dividersPool = self.isHorizontal and self.HorizontalDividersPool or self.VerticalDividersPool
+	local wasLastButtonShown = false
 	for i, actionButton in pairs(self.actionButtons) do
 		if actionButton:IsShown() then
 			if wasLastButtonShown then
-				local divider = dividersPool:Acquire();
-				divider:ClearAllPoints();
+				local divider = dividersPool:Acquire()
+				divider:ClearAllPoints()
 				if self.isHorizontal then
-					divider:SetPoint("TOP", actionButton, "TOP", 0, 0);
-					divider:SetPoint("BOTTOM", actionButton, "BOTTOM", 0, 0);
-					divider:SetPoint("RIGHT", actionButton, "LEFT", 5, 0);
+					divider:SetPoint("TOP", actionButton, "TOP", 0, 0)
+					divider:SetPoint("BOTTOM", actionButton, "BOTTOM", 0, 0)
+					divider:SetPoint("RIGHT", actionButton, "LEFT", 5, 0)
 				else
-					divider:SetPoint("LEFT", actionButton, "LEFT", 0, 0);
-					divider:SetPoint("RIGHT", actionButton, "RIGHT", 0, 0);
-					divider:SetPoint("BOTTOM", actionButton, "TOP", 0, -5);
+					divider:SetPoint("LEFT", actionButton, "LEFT", 0, 0)
+					divider:SetPoint("RIGHT", actionButton, "RIGHT", 0, 0)
+					divider:SetPoint("BOTTOM", actionButton, "TOP", 0, -5)
 				end
-				divider:Show();
+				divider:Show()
 			end
-			wasLastButtonShown = true;
+			wasLastButtonShown = true
 		else
-			wasLastButtonShown = false;
+			wasLastButtonShown = false
 		end
 	end
 end
 
 function MainActionBarMixin:GetEndCapsFrameLevel()
-	return self.EndCaps:GetFrameLevel();
+	return self.EndCaps:GetFrameLevel()
 end
 
-MainActionBarUpButtonMixin = {};
+MainActionBarUpButtonMixin = {}
 
 function MainActionBarUpButtonMixin:OnClick()
-	if ( not KeybindFrames_InQuickKeybindMode() ) then
-		ActionBar_PageUp();
-		PlaySound(SOUNDKIT.U_CHAT_SCROLL_BUTTON);
+	if not KeybindFrames_InQuickKeybindMode() then
+		ActionBar_PageUp()
+		PlaySound(SOUNDKIT.U_CHAT_SCROLL_BUTTON)
 	end
 end
 
 function MainActionBarUpButtonMixin:OnLeave()
-	GameTooltip:Hide();
+	GameTooltip:Hide()
 end
 
-MainActionBarDownButtonMixin = {};
+MainActionBarDownButtonMixin = {}
 
 function MainActionBarDownButtonMixin:OnClick()
-	if ( not KeybindFrames_InQuickKeybindMode() ) then
-		ActionBar_PageDown();
-		PlaySound(SOUNDKIT.U_CHAT_SCROLL_BUTTON);
+	if not KeybindFrames_InQuickKeybindMode() then
+		ActionBar_PageDown()
+		PlaySound(SOUNDKIT.U_CHAT_SCROLL_BUTTON)
 	end
 end
 
 function MainActionBarDownButtonMixin:OnLeave()
-	GameTooltip:Hide();
+	GameTooltip:Hide()
 end
 
 -- For arrow buttons that need to swap their textures between two styles.
 -- Currently used by Classic.
-MainActionBarSwappableButtonMixin = {};
+MainActionBarSwappableButtonMixin = {}
 
 function MainActionBarSwappableButtonMixin:SwapToDefaultAtlas()
-	self:SetNormalAtlas(self:GetNormalTexture().defaultAtlas);
-	self:SetPushedAtlas(self:GetPushedTexture().defaultAtlas);
-	self:SetDisabledAtlas(self:GetDisabledTexture().defaultAtlas);
-	self:SetHighlightAtlas(self:GetHighlightTexture().defaultAtlas);
+	self:SetNormalAtlas(self:GetNormalTexture().defaultAtlas)
+	self:SetPushedAtlas(self:GetPushedTexture().defaultAtlas)
+	self:SetDisabledAtlas(self:GetDisabledTexture().defaultAtlas)
+	self:SetHighlightAtlas(self:GetHighlightTexture().defaultAtlas)
 end
 
 function MainActionBarSwappableButtonMixin:SwapToAlternateAtlas()
-	self:SetNormalAtlas(self:GetNormalTexture().alternateAtlas);
-	self:SetPushedAtlas(self:GetPushedTexture().alternateAtlas);
-	self:SetDisabledAtlas(self:GetDisabledTexture().alternateAtlas);
-	self:SetHighlightAtlas(self:GetHighlightTexture().alternateAtlas);
+	self:SetNormalAtlas(self:GetNormalTexture().alternateAtlas)
+	self:SetPushedAtlas(self:GetPushedTexture().alternateAtlas)
+	self:SetDisabledAtlas(self:GetDisabledTexture().alternateAtlas)
+	self:SetHighlightAtlas(self:GetHighlightTexture().alternateAtlas)
 end

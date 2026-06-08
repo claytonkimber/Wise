@@ -12,16 +12,18 @@ License: LGPL v2.1
 local MAJOR, MINOR = "LibSharedMedia-3.0", 8020003 -- 8.2.0 v3 / increase manually on changes
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 
-if not lib then return end
+if not lib then
+	return
+end
 
 local _G = getfenv(0)
 
-local pairs		= _G.pairs
-local type		= _G.type
+local pairs = _G.pairs
+local type = _G.type
 
-local band			= _G.bit.band
+local band = _G.bit.band
 
-local table_sort	= _G.table.sort
+local table_sort = _G.table.sort
 
 local RESTRICTED_FILE_ACCESS = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE -- starting with 8.2, some rules for file access have changed; classic still uses the old way
 
@@ -40,7 +42,9 @@ local mediaTypeOrder = {}
 
 local function rebuildMediaList(mediatype)
 	local mtable = MediaTable[mediatype]
-	if not mtable then return end
+	if not mtable then
+		return
+	end
 	local mediaList = {}
 	for k in pairs(mtable) do
 		mediaList[#mediaList + 1] = k
@@ -54,10 +58,10 @@ end
 
 function lib:Register(mediatype, key, data, langmask)
 	if type(mediatype) ~= "string" then
-		error(MAJOR..":Register(mediatype, key, data, langmask) - mediatype must be string, got "..type(mediatype))
+		error(MAJOR .. ":Register(mediatype, key, data, langmask) - mediatype must be string, got " .. type(mediatype))
 	end
 	if type(key) ~= "string" then
-		error(MAJOR..":Register(mediatype, key, data, langmask) - key must be string, got "..type(key))
+		error(MAJOR .. ":Register(mediatype, key, data, langmask) - key must be string, got " .. type(key))
 	end
 	mediatype = mediatype:lower()
 	if not MediaTable[mediatype] then
@@ -66,8 +70,10 @@ function lib:Register(mediatype, key, data, langmask)
 		table_sort(mediaTypeOrder)
 	end
 	local mtable = MediaTable[mediatype]
-	if mtable[key] then return false end
-	
+	if mtable[key] then
+		return false
+	end
+
 	mtable[key] = data
 	rebuildMediaList(mediatype)
 	self.callbacks:Fire("LibSharedMedia_Registered", mediatype, key)
@@ -128,11 +134,11 @@ function lib:SetDefault(mediatype, key)
 end
 
 -- Define the standard media types
-MediaType.FONT          = "font"
-MediaType.SOUND         = "sound"
-MediaType.STATUSBAR     = "statusbar"
-MediaType.BACKGROUND    = "background"
-MediaType.BORDER        = "border"
+MediaType.FONT = "font"
+MediaType.SOUND = "sound"
+MediaType.STATUSBAR = "statusbar"
+MediaType.BACKGROUND = "background"
+MediaType.BORDER = "border"
 
 -- Register default fonts
 lib:Register(MediaType.FONT, "Friz Quadrata TT", [[Fonts\FRIZQT__.TTF]])
@@ -147,19 +153,39 @@ lib:SetDefault(MediaType.FONT, "Friz Quadrata TT")
 
 -- Register default statusbar textures
 lib:Register(MediaType.STATUSBAR, "Blizzard", [[Interface\TargetingFrame\UI-StatusBar]])
-lib:Register(MediaType.STATUSBAR, "Blizzard Character Skills Bar", [[Interface\PaperDollInfoFrame\UI-Character-Skills-Bar]])
+lib:Register(
+	MediaType.STATUSBAR,
+	"Blizzard Character Skills Bar",
+	[[Interface\PaperDollInfoFrame\UI-Character-Skills-Bar]]
+)
 lib:Register(MediaType.STATUSBAR, "Blizzard Raid Bar", [[Interface\RaidFrame\Raid-Bar-Hp-Fill]])
 lib:SetDefault(MediaType.STATUSBAR, "Blizzard")
 
 -- Register default backgrounds
 lib:Register(MediaType.BACKGROUND, "Blizzard Dialog Background", [[Interface\DialogFrame\UI-DialogBox-Background]])
-lib:Register(MediaType.BACKGROUND, "Blizzard Dialog Background Dark", [[Interface\DialogFrame\UI-DialogBox-Background-Dark]])
-lib:Register(MediaType.BACKGROUND, "Blizzard Dialog Background Gold", [[Interface\DialogFrame\UI-DialogBox-Gold-Background]])
+lib:Register(
+	MediaType.BACKGROUND,
+	"Blizzard Dialog Background Dark",
+	[[Interface\DialogFrame\UI-DialogBox-Background-Dark]]
+)
+lib:Register(
+	MediaType.BACKGROUND,
+	"Blizzard Dialog Background Gold",
+	[[Interface\DialogFrame\UI-DialogBox-Gold-Background]]
+)
 lib:Register(MediaType.BACKGROUND, "Blizzard Low Health", [[Interface\FullScreenTextures\LowHealth]])
 lib:Register(MediaType.BACKGROUND, "Blizzard Marble", [[Interface\FrameGeneral\UI-Background-Marble]])
 lib:Register(MediaType.BACKGROUND, "Blizzard Out of Control", [[Interface\FullScreenTextures\OutOfControl]])
-lib:Register(MediaType.BACKGROUND, "Blizzard Parchment", [[Interface\AchievementFrame\UI-Achievement-Parchment-Horizontal]])
-lib:Register(MediaType.BACKGROUND, "Blizzard Parchment 2", [[Interface\AchievementFrame\UI-GuildAchievement-Parchment-Horizontal]])
+lib:Register(
+	MediaType.BACKGROUND,
+	"Blizzard Parchment",
+	[[Interface\AchievementFrame\UI-Achievement-Parchment-Horizontal]]
+)
+lib:Register(
+	MediaType.BACKGROUND,
+	"Blizzard Parchment 2",
+	[[Interface\AchievementFrame\UI-GuildAchievement-Parchment-Horizontal]]
+)
 lib:Register(MediaType.BACKGROUND, "Blizzard Rock", [[Interface\FrameGeneral\UI-Background-Rock]])
 lib:Register(MediaType.BACKGROUND, "Blizzard Tabard Background", [[Interface\TabardFrame\TabardFrameBackground]])
 lib:Register(MediaType.BACKGROUND, "Blizzard Tooltip", [[Interface\Tooltips\UI-Tooltip-Background]])
