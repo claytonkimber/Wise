@@ -174,7 +174,27 @@ The following operations are always safe in insecure context, even referencing s
 - `C_Spell.GetSpellInfo()`, `C_Item.GetItemInfo()` — API data lookups
 - `CreateFrame()` for non-secure frames (UI chrome, options panels, tooltips)
 
-Use insecure tickers (0.2s–0.5s) to update icons, cooldowns, usability, and visual state on secure buttons without risk.
+These insecure updates are safe to run from event handlers, `OnShow`, or tickers. **Prefer event-driven updates over polling tickers** (see Rule 12) — these operations are safe *when* they run, but running them on a fast unconditional ticker is the dominant avoidable CPU cost.
+
+### Rule 12: Drive Updates From Events, Not Polling Tickers (Performance)
+
+Insecure UI updates are safe (Rule 10), but a `C_Timer.NewTicker` that re-runs a per-button refresh loop several times per second — forever, whether or not anything changed — is the single largest source of avoidable idle CPU in this addon. A profiling pass measured one such 0.2s per-group ticker at ~22 ms/sec, ~80% of Wise's total idle cost.
+
+**The rules:**
+
+1. **Default to events.** Dynamic icon/cooldown/state refreshes are driven by a central event frame (`DynamicRefreshDriver` in `core/GUI.lua`). A group registers its refresh closure on `f._dynamicRefresh` + `Wise._dynamicGroups[f]`; the driver runs it only when a relevant event fires (`ACTIONBAR_*`, `UPDATE_*_ACTIONBAR`, `UPDATE_EXTRA_ACTIONBAR`, `SPELL_UPDATE_*`, `UPDATE_SHAPESHIFT_FORM`, `PLAYER_SPECIALIZATION_CHANGED`, `SPELLS_CHANGED`, `PLAYER_TARGET_CHANGED`, `UPDATE_MOUSEOVER_UNIT`, vehicle events, `BAG_UPDATE_COOLDOWN`). Add new dynamic state to the driver's event list, don't add a ticker.
+
+2. **Coalesce event bursts.** Many events fire together (stance + spec + bar swap on a single action). Funnel them through a one-frame-deferred `C_Timer.After(0)` flag so a burst costs one refresh pass, not N.
+
+3. **Skip in combat, flush on exit.** Refreshes that touch secure attributes no-op in combat anyway — don't even schedule them while `InCombatLockdown()`; register `PLAYER_REGEN_ENABLED` to flush a single refresh on combat exit.
+
+4. **Poll only the genuinely event-less.** The only inputs with no event are modifier keys (`[mod:shift]`). Flag just those groups (`f._needsPoll`) and serve them from one shared slow ticker (0.3s), not a ticker per group. Groups without modifier conditions poll zero times.
+
+5. **Gate per-frame `OnUpdate` on visibility.** A mouse-follow / cursor-tracking `OnUpdate` must `if not frame:IsShown() then return end` — `OnShow` handles positioning on appear, so tracking while hidden is pure waste.
+
+6. **Zero-allocation hot loops.** In any per-frame or high-frequency loop, hoist closures out of the loop (reuse one closure with scratch upvalues rather than allocating per iteration); only call `SetTexture`/`SetAttribute`/etc. when the value actually changed (cache the last value and compare). The taint-safe `pcall(closure)` pattern for secret-number arithmetic must reuse a single hoisted closure, never `pcall(function() ... end)` inside a loop.
+
+**Diagnostics:** `/wise cpu start` → wait → `/wise cpu` measures a time-boxed delta of Wise-owned frames (tagged via `_wiseProfileName`), splitting cost into "in frames" vs "elsewhere (tickers/handlers)". Use it before/after any perf change.
 
 ### Rule 11: Bindings Must Use Secure Channels
 
@@ -223,7 +243,7 @@ Before merging any code, verify:
 - **Frames:** Prefer modern `Mixins` over legacy XML templates when possible.
 - **Table Management:** When clearing tables, use the built-in `wipe(table)` function to safely and efficiently clear the contents without creating memory garbage collection overhead.
 - **Code Organization:** To prevent bloating `Wise.lua`, large default configurations and standard loadout bars (such as the Demo bar) should be created as separate files in the `modules/` directory and dynamically hooked into `Wise.lua` for initialization and resets.
-- **Optimization:** Optimize performance where possible, e.g., pre-parsing condition strings or using O(1) lookups in `modules/States.lua`.
+- **Optimization:** Optimize performance where possible, e.g., pre-parsing condition strings or using O(1) lookups in `modules/States.lua`. For per-frame/recurring work, follow Rule 12: event-driven over polling, coalesce bursts, gate `OnUpdate` on visibility, and keep hot loops zero-allocation.
 - **Formatting:** Use `mcp__mechanic__addon-format` (StyLua) to auto-format code to match project style guidelines.
 - **Deprecations:** Use `mcp__mechanic__addon-deprecations` to scan for deprecated API calls that need updating for current and upcoming WoW versions.
 - **Dead Code:** Use `mcp__mechanic__addon-deadcode` to detect unused functions, orphaned files, and dead exports.
@@ -279,6 +299,8 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - **Nesting Cycles:** `Wise:WouldCreateNestingCycle` in `modules/Nesting.lua` proactively prevents circular interface nesting by traversing the hierarchy via `Wise:GetParentInfo`.
 
 ## Performance
+- **In-game profiler:** `/wise cpu start`, play/idle ~30s, then `/wise cpu` reports a time-boxed CPU delta for Wise-owned frames (split into "in frames" vs "elsewhere"). Requires the `scriptProfile` CVar (the command enables it + prompts a reload on first use). This is the source of truth for idle cost — addon-CPU displays misattribute `UIParent`/child time to whichever addon parents those frames.
+- **Design rule:** Updates are event-driven, not ticker-polled — see Rule 12. The central `DynamicRefreshDriver` (`core/GUI.lua`) is where dynamic-group refresh events are registered; add new triggers there rather than introducing tickers.
 - **Baselines:** Use `mcp__mechanic__perf-baseline` to record memory/CPU baselines after stable releases. Use `mcp__mechanic__perf-compare` to check for regressions against the baseline after changes.
 - **Reports:** Use `mcp__mechanic__perf-report` to view performance history and trends.
 
