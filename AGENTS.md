@@ -8,7 +8,7 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - Framework:
 - IDE: Antigravity 2026
 - Agent Trio: Claude Code (Logic), Jules (Background Ops), Gemini (Arch)
-- Tooling: Mechanic MCP (addon lifecycle automation)
+- Tooling: Mechanic MCP (addon lifecycle automation); CodeSight MCP (codebase structure / blast-radius analysis)
 
 ## Taint Avoidance (MANDATORY)
 
@@ -228,6 +228,24 @@ Before merging any code, verify:
 - **Deprecations:** Use `mcp__mechanic__addon-deprecations` to scan for deprecated API calls that need updating for current and upcoming WoW versions.
 - **Dead Code:** Use `mcp__mechanic__addon-deadcode` to detect unused functions, orphaned files, and dead exports.
 - **Complexity:** Use `mcp__mechanic__addon-complexity` to detect deep nesting, long functions, and magic numbers.
+
+## Codebase Navigation (CodeSight MCP)
+
+CodeSight is a local, patched MCP that maps Wise's structure. Because WoW addons share one global `Wise.*` table instead of importing by path, CodeSight has a **Tier 2 patch** that builds a namespace symbol graph (which file reads a `Wise.Foo`/`Wise:Foo` that another file defines). Use it to orient before edits — it is faster and cheaper than grepping the whole tree.
+
+- **Before changing a foundational file**, run `mcp__codesight__codesight_get_blast_radius` (file path) to see which files depend on it. This answers "what could this change break." Verified examples: editing `core/Polyfill.lua` affects ~26 files, `core/Text.lua` ~25; a leaf or internally-wired file like `core/Dispatcher.lua` correctly returns 0. A `0` result means no *symbol* dependents — trust it, don't grep again "just in case."
+- **To find the load-bearing files**, use `mcp__codesight__codesight_get_hot_files` (most depended-upon: `Wise.lua`, `core/Polyfill`, `core/Text`, `core/Bindings`, `core/GUI`, `modules/States`).
+- **For a one-shot overview**, use `mcp__codesight__codesight_get_summary`.
+- **After editing addon `.lua`/`.toc` files**, the MCP serves a cached scan — call `mcp__codesight__codesight_refresh` so blast-radius/hot-files reflect your changes.
+- **Scope:** CodeSight answers *structural* questions (load order, who-depends-on-whom). For *API-level* WoW analysis (taint, deprecations, API signatures) use the Mechanic tools below — the two are complementary, not interchangeable.
+
+### Maintaining CodeSight (MANDATORY when editing its source)
+
+CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is versioned in git but **excluded from CurseForge packaging** (listed in `.pkgmeta` `ignore:`), so never add CodeSight files to `Wise.toc` or expect them in the shipped `.zip`.
+
+- The patch is `patches/codesight+1.14.0.patch`; it modifies only `node_modules/codesight/dist/scanner.js` (Lua/`.toc` detection) and `dist/detectors/graph.js` (the symbol graph). `node_modules/` and `.codesight/` are gitignored and regenerate via `npm install`, which re-applies the patch through the `postinstall` hook.
+- **If you edit anything under `node_modules/codesight/dist/`, you MUST regenerate the patch** or the change is lost on the next `npm install`: with node on PATH (`export PATH="/c/Program Files/nodejs:$PATH"` in git-bash, since `patch-package` shells out to bare `node`), run `npx patch-package codesight`, then commit the updated `patches/codesight+1.14.0.patch`.
+- The hub threshold (symbols defined in ≥4 files are skipped as shared mutable state) and namespace-token detection live in `graph.js`; tune there if the symbol graph over- or under-connects after the addon's structure changes.
 
 ## Verification Workflow
 - **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names. Use `mcp__mechanic__api-search` to look up APIs by name pattern and `mcp__mechanic__api-info` to get detailed signatures and documentation for a specific API. Use `mcp__mechanic__api-list` to browse all APIs in a namespace (e.g., `C_Spell`).
