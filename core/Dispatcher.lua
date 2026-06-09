@@ -172,9 +172,6 @@ modTracker:SetScript("OnUpdate", function()
 	if not next(Dispatcher.bindings) then
 		return
 	end
-	if InCombatLockdown() then
-		return
-	end
 
 	local shift = IsShiftKeyDown() and true or false
 	local ctrl = IsControlKeyDown() and true or false

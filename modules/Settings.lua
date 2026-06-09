@@ -328,53 +328,41 @@ function Wise:PopulateSettingsView(panel)
 		ly = ly - 30
 	end
 
-	CreateCDMCheck("Hide Utilities",
-		function()
-			return WiseDB.groups["Utilities"] and WiseDB.groups["Utilities"].hideNativeInterface or false
-		end,
-		function(checked)
-			if WiseDB.groups["Utilities"] then
-				WiseDB.groups["Utilities"].hideNativeInterface = checked
-				Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")
-			end
+	CreateCDMCheck("Hide Utilities", function()
+		return WiseDB.groups["Utilities"] and WiseDB.groups["Utilities"].hideNativeInterface or false
+	end, function(checked)
+		if WiseDB.groups["Utilities"] then
+			WiseDB.groups["Utilities"].hideNativeInterface = checked
+			Wise:UpdateCooldownWiser("Utilities", "UtilityCooldownViewer")
 		end
-	)
+	end)
 
-	CreateCDMCheck("Hide Cooldowns",
-		function()
-			return WiseDB.groups["Cooldowns"] and WiseDB.groups["Cooldowns"].hideNativeInterface or false
-		end,
-		function(checked)
-			if WiseDB.groups["Cooldowns"] then
-				WiseDB.groups["Cooldowns"].hideNativeInterface = checked
-				Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
-			end
+	CreateCDMCheck("Hide Cooldowns", function()
+		return WiseDB.groups["Cooldowns"] and WiseDB.groups["Cooldowns"].hideNativeInterface or false
+	end, function(checked)
+		if WiseDB.groups["Cooldowns"] then
+			WiseDB.groups["Cooldowns"].hideNativeInterface = checked
+			Wise:UpdateCooldownWiser("Cooldowns", "EssentialCooldownViewer")
 		end
-	)
+	end)
 
-	CreateCDMCheck("Hide Tracked Bars",
-		function()
-			return WiseDB.settings.hideTrackedBars or false
-		end,
-		function(checked)
-			WiseDB.settings.hideTrackedBars = checked
-			if not InCombatLockdown() and BuffBarCooldownViewer then
-				BuffBarCooldownViewer:SetAlpha(checked and 0 or 1)
-			end
+	CreateCDMCheck("Hide Tracked Bars", function()
+		return WiseDB.settings.hideTrackedBars or false
+	end, function(checked)
+		WiseDB.settings.hideTrackedBars = checked
+		if not InCombatLockdown() and BuffBarCooldownViewer then
+			BuffBarCooldownViewer:SetAlpha(checked and 0 or 1)
 		end
-	)
+	end)
 
-	CreateCDMCheck("Hide Tracked Buffs",
-		function()
-			return WiseDB.settings.hideTrackedBuffs or false
-		end,
-		function(checked)
-			WiseDB.settings.hideTrackedBuffs = checked
-			if not InCombatLockdown() and BuffIconCooldownViewer then
-				BuffIconCooldownViewer:SetAlpha(checked and 0 or 1)
-			end
+	CreateCDMCheck("Hide Tracked Buffs", function()
+		return WiseDB.settings.hideTrackedBuffs or false
+	end, function(checked)
+		WiseDB.settings.hideTrackedBuffs = checked
+		if not InCombatLockdown() and BuffIconCooldownViewer then
+			BuffIconCooldownViewer:SetAlpha(checked and 0 or 1)
 		end
-	)
+	end)
 
 	leftContent:SetHeight(math.abs(ly) + 20)
 

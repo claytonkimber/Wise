@@ -621,7 +621,8 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 					end
 				end
 			end
-			if not btn
+			if
+				not btn
 				or btn.name ~= (slot.name or ("Slot " .. i))
 				or btn.icon ~= expectedIcon
 				or btn.category ~= expectedCategory
@@ -2305,9 +2306,7 @@ SlashCmdList["WISE"] = function(msg)
 			)
 		)
 		for i = 1, math.min(14, #rows) do
-			print(
-				string.format("  %2d. |cffffd700%.3f ms/s|r  %s", i, rows[i].ms / window, rows[i].name)
-			)
+			print(string.format("  %2d. |cffffd700%.3f ms/s|r  %s", i, rows[i].ms / window, rows[i].name))
 		end
 		if (total - accounted) / window > 1 then
 			print(

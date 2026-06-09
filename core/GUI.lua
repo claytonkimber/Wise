@@ -3039,8 +3039,13 @@ function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
 		end
 	end
 
+	-- No state's condition currently matches. Return state 1 as the icon to DISPLAY
+	-- (so the slot stays populated), but signal hadMatch=false so callers can grey it
+	-- out — nothing would actually fire right now. The secure cast path has no such
+	-- fallback (an unmatched macro simply does nothing), so without this flag the icon
+	-- would misleadingly show state 1 fully lit while a click casts nothing.
 	if #matches == 0 then
-		return 1
+		return 1, false
 	end
 
 	if conflictStrategy == "sequence" then
@@ -3055,22 +3060,22 @@ function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
 		if not startIdx then
 			startIdx = 1
 		end
-		return matches[startIdx]
+		return matches[startIdx], true
 	elseif conflictStrategy == "random" then
-		return matches[math.random(#matches)]
+		return matches[math.random(#matches)], true
 	elseif conflictStrategy == "waterfall" then
 		-- Walk matches in priority order; return the first off-cooldown action so the
 		-- icon mirrors what the engine's stacked-/cast macro will actually fire.
 		for i = 1, #matches do
 			local state = states[matches[i]]
 			if state and not Wise:IsActionOnCooldown(state.type, state.value, state) then
-				return matches[i]
+				return matches[i], true
 			end
 		end
-		return matches[1]
+		return matches[1], true
 	else
 		-- priority (default)
-		return matches[1]
+		return matches[1], true
 	end
 end
 
@@ -3940,7 +3945,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			if #validStates > 0 then
 				-- Evaluate conditions to pick the active state from VALID states
 				local conflictStrategy = validStates.conflictStrategy or "priority"
-				local chosenIdx = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
+				local chosenIdx, slotHadMatch = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
 				local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
 
 				if actionData then
@@ -3981,6 +3986,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								suppressErrors = validStates.suppressErrors,
 								pressAndHold = validStates.pressAndHold,
 								activeState = chosenIdx,
+								hadMatch = slotHadMatch,
 							})
 						end
 					else
@@ -4013,6 +4019,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							suppressErrors = validStates.suppressErrors,
 							pressAndHold = validStates.pressAndHold,
 							activeState = chosenIdx,
+							hadMatch = slotHadMatch,
 						})
 					end
 				end
@@ -4772,6 +4779,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			conflictStrategy = actionInfo.conflictStrategy,
 			resetOnCombat = actionInfo.resetOnCombat,
 			activeState = actionInfo.activeState or 1,
+			-- nil for single-state slots (no condition gating); only multi-state slots
+			-- carry a meaningful match flag that the dynamic refresh greys out on.
+			activeHadMatch = actionInfo.hadMatch,
 		}
 		btn.groupName = name -- Store for Text lookups
 
@@ -4779,9 +4789,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		Wise:UpdateButtonCooldown(btn)
 		Wise:UpdateButtonState(btn)
 
-		-- Apply visual state for known/unknown and category match
+		-- Apply visual state for known/unknown and category match.
+		-- hadMatch is false only for multi-state slots where no condition currently
+		-- matches (the shown action is a non-firing placeholder); grey those too.
+		-- nil (single-state slots) is treated as matched.
 		local categoryMatch = actionInfo.categoryMatch
-		local isValid = isKnown and categoryMatch
+		local hasCurrentMatch = actionInfo.hadMatch ~= false
+		local isValid = isKnown and categoryMatch and hasCurrentMatch
 		btn.isValid = isValid
 
 		local isEmptySlot = (aType == "empty")
@@ -4873,12 +4887,38 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- Register a visibility state driver on the secure button to safely hide/show in combat
 		UnregisterStateDriver(btn, "visibility")
 		btn:Show()
-		if not isEmptySlot and actionData.conditions and actionData.conditions ~= "" then
-			if not HasCustomConditionals(actionData.conditions) then
-				local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
-				if sanitized ~= "" then
-					RegisterStateDriver(btn, "visibility", sanitized .. " show; hide")
+		if not isEmptySlot then
+			local combinedCond = ""
+			if stateCount > 1 then
+				local conds = {}
+				for sIdx = 1, stateCount do
+					local stateAction = allStates[sIdx]
+					if stateAction and stateAction.conditions and stateAction.conditions ~= "" then
+						if not HasCustomConditionals(stateAction.conditions) then
+							local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+							if sanitized ~= "" then
+								local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
+								table.insert(conds, "[" .. inner .. "] show")
+							end
+						end
+					end
 				end
+				if #conds > 0 then
+					combinedCond = table.concat(conds, "; ") .. "; hide"
+				end
+			else
+				if actionData.conditions and actionData.conditions ~= "" then
+					if not HasCustomConditionals(actionData.conditions) then
+						local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
+						if sanitized ~= "" then
+							combinedCond = sanitized .. " show; hide"
+						end
+					end
+				end
+			end
+
+			if combinedCond ~= "" then
+				RegisterStateDriver(btn, "visibility", combinedCond)
 			end
 		end
 	end
@@ -5004,12 +5044,40 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			-- Register a visibility state driver on the visual clone button to safely hide/show in combat
 			UnregisterStateDriver(vBtn, "visibility")
 			vBtn:Show()
-			if not vIsEmpty and actionData.conditions and actionData.conditions ~= "" then
-				if not HasCustomConditionals(actionData.conditions) then
-					local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
-					if sanitized ~= "" then
-						RegisterStateDriver(vBtn, "visibility", sanitized .. " show; hide")
+			if not vIsEmpty then
+				local allStates = actionInfo.states
+				local stateCount = allStates and #allStates or 1
+				local combinedCond = ""
+				if stateCount > 1 then
+					local conds = {}
+					for sIdx = 1, stateCount do
+						local stateAction = allStates[sIdx]
+						if stateAction and stateAction.conditions and stateAction.conditions ~= "" then
+							if not HasCustomConditionals(stateAction.conditions) then
+								local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+								if sanitized ~= "" then
+									local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
+									table.insert(conds, "[" .. inner .. "] show")
+								end
+							end
+						end
 					end
+					if #conds > 0 then
+						combinedCond = table.concat(conds, "; ") .. "; hide"
+					end
+				else
+					if actionData.conditions and actionData.conditions ~= "" then
+						if not HasCustomConditionals(actionData.conditions) then
+							local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
+							if sanitized ~= "" then
+								combinedCond = sanitized .. " show; hide"
+							end
+						end
+					end
+				end
+
+				if combinedCond ~= "" then
+					RegisterStateDriver(vBtn, "visibility", combinedCond)
 				end
 			end
 		end
@@ -5155,27 +5223,36 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 	-- the safety-net ticker: modifier keys ([mod:shift], [nomod]). Most others
 	-- (stance, spec, target reaction, vehicle, action slots) are covered by the
 	-- DynamicRefreshDriver's events, so groups without these tokens never poll.
+	-- NOTE: needsPoll is independent of interface style. "dynamic" vs "static"
+	-- controls only whether the interface resizes its visible slot COUNT based on
+	-- availability (hasDynamicConditions / hasDynamicCooldowns below). Per-slot icon
+	-- swapping to reflect the action that would fire ([harm]/[help]/[mod] etc.) must
+	-- happen in BOTH styles, so modifier polling is detected regardless of isDynamic.
 	local needsPoll = false
-	if isDynamic and group.actions then
+	if group.actions then
 		for _, states in pairs(group.actions) do
 			if type(states) == "table" then
 				for _, state in ipairs(states) do
-					if
-						(state.conditions and state.conditions ~= "")
-						or (state.type == "misc" and AVAILABILITY_MISC[state.value])
-					then
-						hasDynamicConditions = true
+					-- Slot-count resize inputs — only matter for dynamic-style interfaces.
+					if isDynamic then
+						if
+							(state.conditions and state.conditions ~= "")
+							or (state.type == "misc" and AVAILABILITY_MISC[state.value])
+						then
+							hasDynamicConditions = true
+						end
+						-- Track cooldown-filterable action types for dynamic groups
+						if
+							group.propertyType ~= "CooldownWiser"
+							and (state.type == "spell" or state.type == "item" or state.type == "toy")
+						then
+							hasDynamicCooldowns = true
+						end
 					end
-					-- Detect event-less modifier conditions on this slot.
+					-- Event-less modifier conditions need polling in any style so the
+					-- displayed icon stays in sync with the modifier key.
 					if state.conditions and state.conditions:find("mod") then
 						needsPoll = true
-					end
-					-- Track cooldown-filterable action types for dynamic groups
-					if
-						group.propertyType ~= "CooldownWiser"
-						and (state.type == "spell" or state.type == "item" or state.type == "toy")
-					then
-						hasDynamicCooldowns = true
 					end
 				end
 			end
@@ -5531,7 +5608,26 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							Wise:StoreChildActionsOnButton(btn, meta.actionValue, nestMode)
 						end
 					elseif meta.states and #meta.states > 1 then
-						local chosen = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
+						local chosen, hadMatch = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
+						-- Grey the icon when nothing currently matches: the displayed state is
+						-- only a placeholder and a click would cast nothing. Update desaturation
+						-- whenever hadMatch flips, even if the chosen index is unchanged (e.g. the
+						-- fallback index equals the previously-matched index).
+						if hadMatch ~= meta.activeHadMatch then
+							meta.activeHadMatch = hadMatch
+							-- Keep isValid in sync so UpdateButtonUsability (which early-returns
+							-- on isValid==false) skips a placeholder and refines a real match.
+							-- States in meta.states are pre-filtered to known/allowed, so a match
+							-- is castable; usability coloring takes over from here when matched.
+							btn.isValid = hadMatch
+							btn.icon:SetDesaturated(not hadMatch)
+							btn.icon:SetAlpha(hadMatch and 1 or 0.5)
+							local vc = meta.visualClone or btn.visualClone
+							if vc and vc.icon then
+								vc.icon:SetDesaturated(not hadMatch)
+								vc.icon:SetAlpha(hadMatch and 1 or 0.5)
+							end
+						end
 						if chosen and chosen ~= meta.activeState then
 							meta.activeState = chosen
 							local state = meta.states[chosen]
@@ -7418,28 +7514,28 @@ end
 local shapeshiftSpellToForm = {}
 local shapeshiftBaseSpellCache = {}
 local function RebuildShapeshiftCache()
-    wipe(shapeshiftSpellToForm)
-    local numForms = GetNumShapeshiftForms() or 0
-    for i = 1, numForms do
-        local _, _, _, formSpellID = GetShapeshiftFormInfo(i)
-        if formSpellID then
-            shapeshiftSpellToForm[formSpellID] = i
-            -- Also map base spellID in case the button stores a different rank/variant
-            if shapeshiftBaseSpellCache[formSpellID] == nil then
-                local info = C_Spell.GetSpellInfo(formSpellID)
-                if info and info.spellID and info.spellID ~= formSpellID then
-                    shapeshiftBaseSpellCache[formSpellID] = info.spellID
-                else
-                    shapeshiftBaseSpellCache[formSpellID] = false
-                end
-            end
+	wipe(shapeshiftSpellToForm)
+	local numForms = GetNumShapeshiftForms() or 0
+	for i = 1, numForms do
+		local _, _, _, formSpellID = GetShapeshiftFormInfo(i)
+		if formSpellID then
+			shapeshiftSpellToForm[formSpellID] = i
+			-- Also map base spellID in case the button stores a different rank/variant
+			if shapeshiftBaseSpellCache[formSpellID] == nil then
+				local info = C_Spell.GetSpellInfo(formSpellID)
+				if info and info.spellID and info.spellID ~= formSpellID then
+					shapeshiftBaseSpellCache[formSpellID] = info.spellID
+				else
+					shapeshiftBaseSpellCache[formSpellID] = false
+				end
+			end
 
-            local baseSpellID = shapeshiftBaseSpellCache[formSpellID]
-            if baseSpellID then
-                shapeshiftSpellToForm[baseSpellID] = i
-            end
-        end
-    end
+			local baseSpellID = shapeshiftBaseSpellCache[formSpellID]
+			if baseSpellID then
+				shapeshiftSpellToForm[baseSpellID] = i
+			end
+		end
+	end
 end
 
 -- Rebuild cache on relevant events
@@ -7704,11 +7800,6 @@ local function RefreshAllDynamicGroups()
 	if not reg then
 		return
 	end
-	-- Refresh closures touch secure attributes; skip in combat (they self-guard
-	-- too, but bailing here avoids the loop entirely).
-	if InCombatLockdown() then
-		return
-	end
 	for frame in pairs(reg) do
 		local fn = frame._dynamicRefresh
 		if fn then
@@ -7753,6 +7844,7 @@ dynEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 -- Target / mouseover reaction conditions ([harm], [help], [@target,exists])
 dynEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 dynEventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+dynEventFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
 -- Vehicle/possess transitions
 dynEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 dynEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
@@ -7762,11 +7854,17 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
 		return
 	end
-	-- In combat the refresh is a no-op (secure attrs are locked), and cooldown
-	-- events fire every GCD — so don't even schedule. PLAYER_REGEN_ENABLED
-	-- flushes a single refresh on combat exit to catch anything that changed.
-	if event ~= "PLAYER_REGEN_ENABLED" and InCombatLockdown() then
-		return
+	-- In combat, only schedule for target, mouseover, modifier, and shapeshift updates to keep icons responsive.
+	-- Layout changes are deferred until PLAYER_REGEN_ENABLED flushes on combat exit.
+	if InCombatLockdown() then
+		if
+			event ~= "MODIFIER_STATE_CHANGED"
+			and event ~= "UPDATE_MOUSEOVER_UNIT"
+			and event ~= "PLAYER_TARGET_CHANGED"
+			and event ~= "UPDATE_SHAPESHIFT_FORM"
+		then
+			return
+		end
 	end
 	scheduleDynamicRefresh()
 end)

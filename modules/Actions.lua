@@ -955,15 +955,15 @@ end
 -- ... (existing code) ...
 
 local targetSkyridingSpells = {
-    "Switch Flight Style",
-    "Skyward Ascent",
-    "Surge Forward",
-    "Whirling Surge",
-    "Bronze Timelock",
-    "Second Wind",
-    "Airborne Tumbling",
-    "Lightning Rush",
-    "Aerial Halt"
+	"Switch Flight Style",
+	"Skyward Ascent",
+	"Surge Forward",
+	"Whirling Surge",
+	"Bronze Timelock",
+	"Second Wind",
+	"Airborne Tumbling",
+	"Lightning Rush",
+	"Aerial Halt",
 }
 local cachedSkyridingSpellInfo = {}
 
@@ -1753,6 +1753,21 @@ function Wise:ResolveMacroData(macroText)
 	-- Evaluate Conditional
 	local result = SecureCmdOptionParse(targetLine)
 	if not result then
+		return nil, nil, nil
+	end
+
+	-- Clean up castsequence reset rules and comma lists
+	local cleanResult = result
+	if cleanResult:match("^reset=") then
+		cleanResult = cleanResult:gsub("^reset=%S+%s*", "")
+	end
+	if cleanResult:match(",") then
+		cleanResult = cleanResult:match("^([^,]+)")
+	end
+	if cleanResult then
+		result = strtrim(cleanResult)
+	end
+	if not result or result == "" then
 		return nil, nil, nil
 	end
 

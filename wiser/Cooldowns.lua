@@ -236,4 +236,3 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 		Wise:UpdateGroupDisplay(groupName)
 	end
 end
-
