@@ -3,6 +3,8 @@
 .tmp.drivedownload/
 .agent/
 .claude/
+.codesight/
+node_modules/
 
 # Configuration and Rule Files
 .antigravityrules

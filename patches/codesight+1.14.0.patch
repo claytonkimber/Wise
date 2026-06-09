@@ -1,0 +1,256 @@
+diff --git a/node_modules/codesight/dist/detectors/graph.js b/node_modules/codesight/dist/detectors/graph.js
+index 888a60c..6459c30 100644
+--- a/node_modules/codesight/dist/detectors/graph.js
++++ b/node_modules/codesight/dist/detectors/graph.js
+@@ -3,7 +3,14 @@ import { readFileSafe } from "../scanner.js";
+ export async function detectDependencyGraph(files, project) {
+     const edges = [];
+     const importCount = new Map();
+-    const codeFiles = files.filter((f) => f.match(/\.(ts|tsx|js|jsx|mjs|py|go|rb|ex|exs|java|kt|rs|php|brs|bs|xml)$/));
++    // Tier 2 (WoW Lua): collected across all files, resolved after the per-file
++    // loop. WoW addons share one global namespace table (e.g. `Wise`) instead of
++    // path imports, so coupling is symbol-level: file A reads `Wise.Foo` that file
++    // B defines. We record defines (file -> symbol) and reads (file -> symbol)
++    // per file, then add reader->definer edges so blast-radius reverse-BFS works.
++    const luaSymbolDefs = new Map(); // symbol -> Set<rel file that defines it>
++    const luaSymbolReads = new Map(); // rel file -> Set<symbol it reads>
++    const codeFiles = files.filter((f) => f.match(/\.(ts|tsx|js|jsx|mjs|py|go|rb|ex|exs|java|kt|rs|php|brs|bs|xml|lua|toc)$/));
+     // Build a lookup map for faster resolution: relative path -> true
+     const relPathSet = new Set();
+     const relPaths = [];
+@@ -44,13 +51,31 @@ export async function detectDependencyGraph(files, project) {
+         else if (ext === ".bs") {
+             extractBrighterScriptImportsInline(content, rel, edges, importCount, relPathSet);
+         }
++        else if (ext === ".toc") {
++            extractTocLoadOrder(content, rel, edges, importCount, relPathSet);
++        }
++        else if (ext === ".lua") {
++            // WoW Lua files don't import by path — they share one global addon table
++            // and are wired together by .toc load order (handled above). Inbound
++            // load-order edges come from the .toc / XML branches. Tier 2: also
++            // collect namespace-symbol defines/reads here so the symbol graph (built
++            // after this loop) can add reader->definer edges for blast radius.
++            extractWowSymbols(content, rel, luaSymbolDefs, luaSymbolReads);
++        }
+         else if (ext === ".xml") {
+             extractSceneGraphImportsInline(content, rel, edges, importCount, relPathSet);
++            extractWowXmlIncludes(content, rel, edges, importCount, relPathSet);
+         }
+         else {
+             extractTSImports(content, rel, file, project, relPathSet, edges, importCount);
+         }
+     }
++    // Tier 2 (WoW Lua): resolve the namespace-symbol graph into reader->definer
++    // edges. For each file that reads `Wise.Foo`, link it to every file that
++    // defines `Wise.Foo` (skipping self-reads and the same-file define). These
++    // edges feed the same blast-radius reverse-BFS as path imports: changing a
++    // definer file now surfaces all reader files as downstream dependents.
++    resolveWowSymbolGraph(luaSymbolDefs, luaSymbolReads, edges, importCount);
+     // Sort by most imported
+     const hotFiles = Array.from(importCount.entries())
+         .map(([file, count]) => ({ file, importedBy: count }))
+@@ -58,6 +83,175 @@ export async function detectDependencyGraph(files, project) {
+         .slice(0, 20);
+     return { edges, hotFiles };
+ }
++// WoW addon .toc manifest (local patch). Each non-comment line is a file path,
++// loaded in order, relative to the addon root, using backslash separators.
++// Files loaded earlier can be depended on by everything loaded later, so we
++// weight inbound count by how many later files exist — foundational core files
++// (loaded first) surface as the highest blast-radius "hot files".
++function extractTocLoadOrder(content, rel, edges, importCount, relPathSet) {
++    const tocDir = dirname(rel);
++    const listed = [];
++    for (const rawLine of content.split("\n")) {
++        const line = rawLine.trim();
++        // Skip blanks, ## directives, # comments, and #@packager@ tags.
++        if (!line || line.startsWith("#"))
++            continue;
++        const norm = normalizeWowPath(line.replace(/\\/g, "/"), tocDir, relPathSet);
++        // Skip vendored libraries — they load first (so load-order weighting would
++        // rank them highest) but they are never edited here, so they are noise in
++        // the hot-file list. Mirrors the intent of .codesightignore's Libs/ rule.
++        if (norm && !/^Libs\//i.test(norm))
++            listed.push(norm);
++    }
++    // Manifest -> file edge (so blast radius from the .toc covers the load set),
++    // plus load-order weighting: file at index i is "depended on" by the
++    // (N - 1 - i) files that load after it.
++    const n = listed.length;
++    listed.forEach((target, i) => {
++        edges.push({ from: rel, to: target });
++        const laterCount = n - 1 - i;
++        importCount.set(target, (importCount.get(target) || 0) + 1 + laterCount);
++    });
++}
++// WoW XML <Script file="..."/> and <Include file="..."/> — paths are relative to
++// the XML file's own directory and use backslash separators.
++function extractWowXmlIncludes(content, rel, edges, importCount, relPathSet) {
++    const xmlDir = dirname(rel);
++    const pattern = /<(?:Script|Include)\b[^>]*\bfile\s*=\s*["']([^"']+)["']/gi;
++    let match;
++    while ((match = pattern.exec(content)) !== null) {
++        const norm = normalizeWowPath(match[1].replace(/\\/g, "/"), xmlDir, relPathSet);
++        if (norm && norm !== rel) {
++            edges.push({ from: rel, to: norm });
++            importCount.set(norm, (importCount.get(norm) || 0) + 1);
++        }
++    }
++}
++// Resolve a WoW-relative path (forward-slashed) against a base dir, preferring an
++// exact match in the known file set; fall back to the joined path.
++function normalizeWowPath(p, baseDir, relPathSet) {
++    if (!p)
++        return null;
++    const direct = baseDir && baseDir !== "." ? `${baseDir}/${p}` : p;
++    const candidates = [direct, p];
++    for (const c of candidates) {
++        const cleaned = c.replace(/^\.\//, "");
++        if (relPathSet.has(cleaned))
++            return cleaned;
++    }
++    // Not in the scanned set (e.g. a Libs/ file we skip) — keep the best guess so
++    // the edge still registers for blast-radius completeness.
++    return (baseDir && baseDir !== "." ? `${baseDir}/${p}` : p).replace(/^\.\//, "");
++}
++// ─── WoW namespace symbol graph (Tier 2) ─────────────────────────────────────
++//
++// WoW addons don't `import` each other; every file shares one global namespace
++// table seeded in the entry file (`AddonName = addon` / `Wise = addon`). Files
++// communicate by writing and reading members of that table: file B does
++// `Wise.Dispatcher = ...` (a *define*), file A later does `Wise.Dispatcher:Fire()`
++// (a *read*). The real dependency is A -> B even though no path links them.
++//
++// We track per-file the top-level namespace members each file defines vs reads,
++// keyed by the first component after the namespace (e.g. `Wise.GUI.foo` -> `GUI`).
++// Top-level keying matches how the addon is actually partitioned (one concern per
++// table member) and keeps the graph from exploding on deep field chains.
++//
++// Namespace tokens are auto-detected: the entry file's `X = select(2, ...)` /
++// `X = addon` / `local addonName, addon = ...; X = addon` pattern, plus the
++// literal `addon`/`ns`/`A` locals commonly aliased to it. We default to the
++// well-known set below and additionally pick up any `<Token> = addon`-style
++// global seed we see, so this generalizes beyond this one addon.
++const WOW_NS_TOKENS = new Set(["Wise", "addon", "ns", "A", "Addon"]);
++// Reserved/structural members we never treat as cross-file symbols (too generic
++// or framework-owned to carry meaningful coupling).
++const WOW_NS_SKIP = new Set(["name", "version", "L"]);
++function isNsToken(tok) {
++    return WOW_NS_TOKENS.has(tok);
++}
++function extractWowSymbols(content, rel, defs, reads) {
++    // Detect additional namespace globals seeded as `Foo = addon` / `Foo = ns`,
++    // so reads/defines through that alias are captured for any addon, not just Wise.
++    let seed;
++    const seedRe = /(?:^|\n)\s*(?:local\s+)?([A-Z][A-Za-z0-9_]*)\s*=\s*(addon|ns|select\s*\(\s*2\s*,\s*\.\.\.\s*\))\b/g;
++    while ((seed = seedRe.exec(content)) !== null) {
++        WOW_NS_TOKENS.add(seed[1]);
++    }
++    // Build alternation of known namespace tokens for member matching.
++    const tokenAlt = Array.from(WOW_NS_TOKENS).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
++    // DEFINES. The member separator is `.` OR `:` — Lua method syntax
++    // `function Wise:Foo(...)` defines `Foo` just like `Wise.Foo = function...`.
++    // Forms covered: `Wise.Foo = ...`, `Wise.Foo.bar = ...` (still owns `Foo`),
++    // `function Wise.Foo(...)`, `function Wise:Foo(...)`, `Wise.Foo = Wise.Foo or {}`.
++    // A define is an assignment to the member (`=` not `==`), a `function` decl,
++    // or a deeper field write `Wise.Foo.bar = ` (the top-level owner is `Foo`).
++    const defReList = [
++        // function Wise.Foo(...) / function Wise:Foo(...)
++        new RegExp(`(?:^|\\n)\\s*(?:local\\s+)?function\\s+(?:${tokenAlt})[.:]([A-Za-z_][A-Za-z0-9_]*)\\b`, "g"),
++        // Wise.Foo = ...   and   Wise.Foo.bar... = ...   (assignment, not ==)
++        new RegExp(`(?:^|\\n)\\s*(?:${tokenAlt})\\.([A-Za-z_][A-Za-z0-9_]*)(?:[.:][A-Za-z_][A-Za-z0-9_]*)*\\s*=(?!=)`, "g"),
++    ];
++    let m;
++    for (const defRe of defReList) {
++        while ((m = defRe.exec(content)) !== null) {
++            const sym = m[1];
++            if (WOW_NS_SKIP.has(sym))
++                continue;
++            if (!defs.has(sym))
++                defs.set(sym, new Set());
++            defs.get(sym).add(rel);
++        }
++    }
++    // READS: any `Wise.Foo` or `Wise:Foo` member access. We collect them all;
++    // same-file/self-define filtering happens at resolution time (a file that
++    // defines a symbol AND reads it is its own owner, not a dependent).
++    const readRe = new RegExp(`(?:${tokenAlt})[.:]([A-Za-z_][A-Za-z0-9_]*)\\b`, "g");
++    while ((m = readRe.exec(content)) !== null) {
++        const sym = m[1];
++        if (WOW_NS_SKIP.has(sym))
++            continue;
++        if (!reads.has(rel))
++            reads.set(rel, new Set());
++        reads.get(rel).add(sym);
++    }
++}
++// A symbol defined in this many files or more is treated as shared mutable state
++// (e.g. UI selection globals everyone reads and writes), not a directional
++// dependency. Linking every reader to every definer of such a symbol creates an
++// N x M clique that drowns the real, single-owner edges in noise. Skipping them
++// keeps blast radius precise; the .toc load-order edges still cover global wiring.
++const WOW_HUB_DEFINE_THRESHOLD = 4;
++function resolveWowSymbolGraph(defs, reads, edges, importCount) {
++    // Match the separator the rest of the graph already uses (the .toc/XML edges
++    // run first), so blast-radius's edge-0 separator sniff sees one convention.
++    const sep = edges.length > 0 && edges[0].from.includes("\\") ? "\\" : "/";
++    const norm = (p) => sep === "\\" ? p.replace(/\//g, "\\") : p.replace(/\\/g, "/");
++    // Dedup edges (a reader/definer pair may already be linked via the .toc).
++    const seen = new Set();
++    for (const [readerFileRaw, syms] of reads) {
++        const readerFile = norm(readerFileRaw);
++        for (const sym of syms) {
++            const definers = defs.get(sym);
++            if (!definers)
++                continue;
++            // Skip hub symbols: shared state, no directional dependency signal.
++            if (definers.size >= WOW_HUB_DEFINE_THRESHOLD)
++                continue;
++            for (const definerFileRaw of definers) {
++                const definerFile = norm(definerFileRaw);
++                if (definerFile === readerFile)
++                    continue; // file reads what it defines — same owner
++                const key = `${readerFile} ${definerFile}`;
++                if (seen.has(key))
++                    continue;
++                seen.add(key);
++                // reader depends on definer: edge from reader -> definer, and the
++                // definer's inbound count grows (it's depended upon).
++                edges.push({ from: readerFile, to: definerFile });
++                importCount.set(definerFile, (importCount.get(definerFile) || 0) + 1);
++            }
++        }
++    }
++}
+ function extractTSImports(content, rel, absPath, project, relPathSet, edges, importCount) {
+     // Match: import ... from "./path" or import("./path") or require("./path")
+     const patterns = [
+diff --git a/node_modules/codesight/dist/scanner.js b/node_modules/codesight/dist/scanner.js
+index f8b514a..c94b5e6 100644
+--- a/node_modules/codesight/dist/scanner.js
++++ b/node_modules/codesight/dist/scanner.js
+@@ -55,6 +55,8 @@ const CODE_EXTENSIONS = new Set([
+     ".brs",
+     ".bs",
+     ".xml",
++    ".lua", // WoW addon Lua (local patch)
++    ".toc", // WoW addon manifest / load order (local patch)
+     // Additional file types for new detectors
+     ".graphql",
+     ".gql",
+@@ -804,6 +806,14 @@ function detectComponentFramework(deps, frameworks = []) {
+     return "unknown";
+ }
+ async function detectLanguage(root, deps) {
++    // WoW addon (local patch): a root-level *.toc manifest is the definitive signal.
++    // Return early so the tooling package.json (which pins codesight itself) can't
++    // mis-flag this as a javascript project.
++    try {
++        if ((await readdir(root)).some((e) => e.endsWith(".toc")))
++            return "lua";
++    }
++    catch { }
+     const hasTsConfig = await fileExists(join(root, "tsconfig.json"));
+     const hasPyProject = await fileExists(join(root, "pyproject.toml")) || await fileExists(join(root, "backend/pyproject.toml"));
+     const hasGoMod = await fileExists(join(root, "go.mod"));
