@@ -14,3 +14,11 @@ ignore:
   - README.md
   - tests.xml
   - wiki/
+  # CodeSight dev tooling — versioned in git, never shipped to CurseForge
+  - .codesight/
+  - .codesightignore
+  - .mcp.json
+  - node_modules/
+  - package.json
+  - package-lock.json
+  - patches/

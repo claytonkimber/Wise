@@ -2,7 +2,12 @@
 .tmp.driveupload/
 .tmp.drivedownload/
 .agent/
-.claude/
+# Ignore all of .claude EXCEPT the shared, path-agnostic settings.json.
+# settings.local.json (personal paths/permissions) stays ignored.
+.claude/*
+!.claude/settings.json
+.codesight/
+node_modules/
 
 # Configuration and Rule Files
 .antigravityrules

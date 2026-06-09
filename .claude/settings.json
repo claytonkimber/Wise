@@ -1,0 +1,40 @@
+{
+  "//": "Shared, path-agnostic Claude Code settings for the Wise project. Machine-specific paths and personal permissions live in the gitignored settings.local.json, which overrides/extends this file locally.",
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:us.forums.blizzard.com)",
+      "WebFetch(domain:warcraft.wiki.gg)",
+
+      "mcp__mechanic__addon-validate",
+      "mcp__mechanic__addon-lint",
+      "mcp__mechanic__addon-complexity",
+      "mcp__mechanic__addon-deprecations",
+      "mcp__mechanic__addon-security",
+      "mcp__mechanic__addon-deadcode",
+      "mcp__mechanic__addon-output",
+      "mcp__mechanic__api-search",
+      "mcp__mechanic__api-info",
+      "mcp__mechanic__sandbox-exec",
+      "mcp__mechanic__lua-queue",
+      "mcp__mechanic__lua-results",
+      "mcp__mechanic__sv-discover",
+      "mcp__mechanic__research-query",
+
+      "mcp__codesight__codesight_get_summary",
+      "mcp__codesight__codesight_get_hot_files",
+      "mcp__codesight__codesight_get_blast_radius",
+      "mcp__codesight__codesight_refresh",
+      "mcp__codesight__codesight_scan",
+
+      "Bash(node node_modules/codesight/dist/index.js:*)",
+      "Bash(npx patch-package codesight)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "mechanic",
+    "codesight"
+  ]
+}

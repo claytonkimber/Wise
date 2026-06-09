@@ -1,0 +1,14 @@
+{
+  "name": "Wise",
+  "private": true,
+  "description": "Local dev tooling pin for the Wise addon. Not shipped — pins codesight (patched for WoW Lua: see node_modules/codesight patches) for the codesight MCP server.",
+  "scripts": {
+    "postinstall": "patch-package"
+  },
+  "dependencies": {
+    "codesight": "1.14.0"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
+}

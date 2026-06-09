@@ -1,0 +1,4 @@
+# Vendored third-party libraries — not our code, never edited here.
+Libs/
+# Local dev tooling (pins the patched codesight itself).
+node_modules/
