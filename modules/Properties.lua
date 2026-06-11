@@ -27,7 +27,7 @@ end
 
 function Wise:ValidateMouseWheelBinding(group, isSlot)
 	if isSlot then
-		return false, "Direct slot bindings require a button release event, which Mouse Wheel does not support."
+		return true
 	end
 
 	-- Group Binding Logic
@@ -1616,6 +1616,26 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
 		y = y - 15
 		y = Wise:CreateMacroEditor(panel, action, y)
+	end
+
+	-- Abundance Spell Experiment Settings
+	local isAbundance = false
+	if action.type == "spell" and action.value then
+		local spellName
+		local valNum = tonumber(action.value)
+		if valNum then
+			local spellInfo = C_Spell.GetSpellInfo(valNum)
+			spellName = spellInfo and spellInfo.name
+		else
+			spellName = action.value
+		end
+		if spellName == "Abundance" then
+			isAbundance = true
+		end
+	end
+
+	if isAbundance and Wise.RenderAbundanceProperties then
+		y = Wise:RenderAbundanceProperties(panel, action, y)
 	end
 
 	return y

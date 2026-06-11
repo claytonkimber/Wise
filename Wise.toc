@@ -49,6 +49,7 @@ modules\Info.lua
 modules\Minimap.lua
 modules\Demo.lua
 modules\BugReport.lua
+modules\AbundanceTest.lua
 
 # Wiser
 wiser\Cooldowns.lua

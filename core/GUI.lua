@@ -688,6 +688,22 @@ function Wise:DeleteGroup(name)
 end
 
 Wise.frames = {}
+function Wise:UpdateMouseWheelState()
+	if not Wise.frames then
+		return
+	end
+	local enable = false
+	for _, f in pairs(Wise.frames) do
+		if not InCombatLockdown() then
+			f:EnableMouseWheel(enable)
+			if f.buttons then
+				for _, btn in ipairs(f.buttons) do
+					btn:EnableMouseWheel(enable)
+				end
+			end
+		end
+	end
+end
 
 -- Central Cooldown Update Frame
 Wise.CooldownUpdateFrame = CreateFrame("Frame")
@@ -1692,6 +1708,8 @@ function Wise:CreateGroupFrame(name, instanceId)
         local heldMode = self:GetAttribute("visibleWhenHeld")
         local toggleMode = self:GetAttribute("toggleOnPress")
         local hideOnUse = self:GetAttribute("hideOnUse")
+        local keybind = self:GetAttribute("keybind") or ""
+        local isMouseWheel = keybind:find("MOUSEWHEEL")
 
         -- Shared resolve variables (set by RESOLVE_BLOCK)
         local _rv_ref, _rv_t, _rv_s, _rv_i, _rv_m
@@ -1730,7 +1748,7 @@ function Wise:CreateGroupFrame(name, instanceId)
                 end
             end
 
-            -- EXECUTION LOGIC (Press)
+            -- EXECUTION LOGIC (Press / Scroll Down)
             if trigger == "press" then
                 if layoutType == "button" then
                     local targetRef = nil
@@ -1798,6 +1816,40 @@ function Wise:CreateGroupFrame(name, instanceId)
                         self:SetAttribute("type", nil)
                         self:SetAttribute("pressAndHoldAction", nil)
                     end
+                end
+            elseif isMouseWheel and (trigger == "release_mouseover" or trigger == "release_repeat") then
+                -- For mouse wheel scroll, run the release/hovered execution immediately on Down click
+                local hovered = self:GetAttribute("hoveredButton")
+                local targetRef = nil
+                if hovered then
+                    local count = self:GetAttribute("buttonCount") or 0
+                    for i = 1, count do
+                        local ref = self:GetFrameRef("btn" .. i)
+                        if ref and ref:GetName() == hovered then
+                            targetRef = ref
+                            break
+                        end
+                    end
+                end
+                if not targetRef then
+                    -- Fallback: first button
+                    local count = self:GetAttribute("buttonCount") or 0
+                    for i = 1, count do
+                        local ref = self:GetFrameRef("btn" .. i)
+                        if ref then
+                            targetRef = ref
+                            break
+                        end
+                    end
+                end
+                if targetRef then
+                    _rv_ref = targetRef
+                    ]] .. RESOLVE_BLOCK .. [[
+                    self:SetAttribute("type", _rv_t)
+                    self:SetAttribute("spell", _rv_s)
+                    self:SetAttribute("item", _rv_i)
+                    self:SetAttribute("macrotext", _rv_m)
+                    if hideOnUse and _rv_t then f:SetAttribute("state-manual", "hide") end
                 end
             else
                 self:SetAttribute("type", nil)
@@ -2053,6 +2105,11 @@ function Wise:CreateGroupFrame(name, instanceId)
 	-- Module 2: Blocker Strategy
 	-- Prevent "Invisible Walls" by enabling mouse only when shown.
 	f:SetScript("OnShow", function(self)
+		if self.buttons then
+			for _, btn in ipairs(self.buttons) do
+				btn:EnableMouse(true)
+			end
+		end
 		if self.isClosing then
 			-- Safety: if isClosing is stuck (e.g. WoW forced hide during close animation),
 			-- reset it so the frame can re-show properly
@@ -2169,6 +2226,11 @@ function Wise:CreateGroupFrame(name, instanceId)
 	end)
 
 	f:SetScript("OnHide", function(self)
+		if self.buttons then
+			for _, btn in ipairs(self.buttons) do
+				btn:EnableMouse(false)
+			end
+		end
 		-- Reset hover indication on all buttons (skip in combat — protected frames)
 		if not InCombatLockdown() then
 			for _, btn in ipairs(self.buttons or {}) do
@@ -2243,7 +2305,7 @@ function Wise:CreateGroupFrame(name, instanceId)
 	end)
 
 	-- Mousewheel scroll support: cycle through buttons on scroll
-	f:EnableMouseWheel(true)
+	f:EnableMouseWheel(false)
 	f:SetScript("OnMouseWheel", function(self, delta)
 		if not self.buttons or #self.buttons == 0 then
 			return
@@ -3649,11 +3711,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							f.visualDisplay:Show()
 							f:SetAlpha(0) -- Hide secure frame visually (keeps keybinds active)
 							wasShowingInCombat = true
+							if f.buttons then
+								for _, btn in ipairs(f.buttons) do
+									btn:EnableMouse(true)
+								end
+							end
 						end
 					else
 						if wasShowingInCombat then
 							f.visualDisplay:Hide()
 							wasShowingInCombat = false
+							if f.buttons then
+								for _, btn in ipairs(f.buttons) do
+									btn:EnableMouse(false)
+								end
+							end
 						end
 					end
 				end
@@ -3668,6 +3740,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				local target = customShow and "show" or "hide"
 				if f:GetAttribute("state-custom") ~= target then
 					f:SetAttribute("state-custom", target)
+				end
+				if f.buttons then
+					for _, btn in ipairs(f.buttons) do
+						btn:EnableMouse(customShow)
+					end
 				end
 			end
 		end)
@@ -4348,7 +4425,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			Wise:AddHoverIndication(btn)
 
 			-- Mousewheel: propagate to parent group frame for scroll navigation
-			btn:EnableMouseWheel(true)
+			btn:EnableMouseWheel(false)
 			btn:SetScript("OnMouseWheel", function(self, delta)
 				local parent = self:GetParent()
 				if parent and parent:GetScript("OnMouseWheel") then
@@ -4361,9 +4438,31 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				btn,
 				"OnEnter",
 				f.toggleBtn,
-				[[ owner:SetAttribute("hoveredButton", self:GetName()) ]]
+				[[
+					owner:SetAttribute("hoveredButton", self:GetName())
+					local key = self:GetAttribute("keybind")
+					if key and key:find("MOUSEWHEEL") then
+						self:SetBindingClick(true, key, self:GetName())
+						if not (key:find("SHIFT%-") or key:find("CTRL%-") or key:find("ALT%-")) then
+							self:SetBindingClick(true, "SHIFT-" .. key, self:GetName())
+							self:SetBindingClick(true, "CTRL-" .. key, self:GetName())
+							self:SetBindingClick(true, "ALT-" .. key, self:GetName())
+						end
+					end
+				]]
 			)
-			SecureHandlerWrapScript(btn, "OnLeave", f.toggleBtn, [[ owner:SetAttribute("hoveredButton", nil) ]])
+			SecureHandlerWrapScript(
+				btn,
+				"OnLeave",
+				f.toggleBtn,
+				[[
+					owner:SetAttribute("hoveredButton", nil)
+					local key = self:GetAttribute("keybind")
+					if key and key:find("MOUSEWHEEL") then
+						self:ClearBindings()
+					end
+				]]
+			)
 
 			-- Debug hooks removed to prevent secret value errors
 
@@ -4701,7 +4800,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			if not btn.isaConditionWrapped then
 				local condSnippet = [[
                     local downOnly = self:GetAttribute("isa_action_on_down")
-                    if (down and not downOnly) or (not down and downOnly) then return end
+                    local keybind = self:GetAttribute("keybind") or ""
+                    local isMouseWheel = keybind:find("MOUSEWHEEL")
+                    if not isMouseWheel and ((down and not downOnly) or (not down and downOnly)) then return end
                     
                     local _rv_ref = self
                     local _rv_t, _rv_s, _rv_i, _rv_m
@@ -5175,7 +5276,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				else
 					if actionData.conditions and actionData.conditions ~= "" then
 						if not HasCustomConditionals(actionData.conditions) then
-							local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
+							local sanitized =
+								SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(actionData.conditions)))
 							if sanitized ~= "" then
 								combinedCond = sanitized .. " show; hide"
 							end
@@ -6702,7 +6804,11 @@ function Wise:SanitizeMouseAnchorOffsets(onlyName)
 		return
 	end
 	for name, group in pairs(WiseDB.groups) do
-		if (not onlyName or name == onlyName) and group.anchorMode == "mouse" and (group.visibility == "always" or group.visibility == "combat") then
+		if
+			(not onlyName or name == onlyName)
+			and group.anchorMode == "mouse"
+			and (group.visibility == "always" or group.visibility == "combat")
+		then
 			local f = Wise.frames and Wise.frames[name]
 			if f then
 				local scale = f:GetScale() or 1
@@ -6738,6 +6844,10 @@ function Wise:UpdateBindings()
 		if group.binding and string.len(group.binding) > 0 then
 			-- "WiseGroupToggle_"..name is the global name of the secure button
 			local toggleName = "WiseGroupToggle_" .. name
+			local toggleBtn = _G[toggleName]
+			if toggleBtn then
+				toggleBtn:SetAttribute("keybind", group.binding)
+			end
 			local mouseBtn = GetMouseClickName(group.binding)
 			if mouseBtn then
 				SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName, mouseBtn)
@@ -6745,6 +6855,12 @@ function Wise:UpdateBindings()
 				SetOverrideBindingClick(Wise.BindingFrame, true, group.binding, toggleName)
 			end
 			ApplyModifierMirrors(Wise.BindingFrame, group.binding, toggleName, mouseBtn)
+		else
+			local toggleName = "WiseGroupToggle_" .. name
+			local toggleBtn = _G[toggleName]
+			if toggleBtn then
+				toggleBtn:SetAttribute("keybind", nil)
+			end
 		end
 
 		-- 2. Slot Bindings (Direct Mode only)
@@ -6769,29 +6885,42 @@ function Wise:UpdateBindings()
 							end
 
 							if foundBtn and _G[foundBtn:GetName()] then
-								local slotMouseBtn = GetMouseClickName(actionList.keybind)
-								if slotMouseBtn then
-									SetOverrideBindingClick(
+								foundBtn:SetAttribute("keybind", actionList.keybind)
+								local isMouseWheel = actionList.keybind:find("MOUSEWHEEL")
+								if not isMouseWheel then
+									local slotMouseBtn = GetMouseClickName(actionList.keybind)
+									if slotMouseBtn then
+										SetOverrideBindingClick(
+											Wise.BindingFrame,
+											true,
+											actionList.keybind,
+											foundBtn:GetName(),
+											slotMouseBtn
+										)
+									else
+										SetOverrideBindingClick(
+											Wise.BindingFrame,
+											true,
+											actionList.keybind,
+											foundBtn:GetName()
+										)
+									end
+									ApplyModifierMirrors(
 										Wise.BindingFrame,
-										true,
 										actionList.keybind,
 										foundBtn:GetName(),
 										slotMouseBtn
 									)
-								else
-									SetOverrideBindingClick(
-										Wise.BindingFrame,
-										true,
-										actionList.keybind,
-										foundBtn:GetName()
-									)
 								end
-								ApplyModifierMirrors(
-									Wise.BindingFrame,
-									actionList.keybind,
-									foundBtn:GetName(),
-									slotMouseBtn
-								)
+							end
+						end
+					else
+						-- Clear keybind attribute if keybind was removed
+						if f and f.buttons then
+							for _, btn in ipairs(f.buttons) do
+								if btn.slot == slotIdx then
+									btn:SetAttribute("keybind", nil)
+								end
 							end
 						end
 					end

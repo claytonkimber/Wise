@@ -36,10 +36,16 @@ function Wise:CreateOptionsFrame()
 		if Wise.UpdateExitEditModeFrameVisibility then
 			Wise:UpdateExitEditModeFrameVisibility()
 		end
+		if Wise.UpdateMouseWheelState then
+			Wise:UpdateMouseWheelState()
+		end
 	end)
 	f:HookScript("OnHide", function()
 		if Wise.UpdateExitEditModeFrameVisibility then
 			Wise:UpdateExitEditModeFrameVisibility()
+		end
+		if Wise.UpdateMouseWheelState then
+			Wise:UpdateMouseWheelState()
 		end
 	end)
 
