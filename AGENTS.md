@@ -10,6 +10,15 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - Agent Trio: Claude Code (Logic), Jules (Background Ops), Gemini (Arch)
 - Tooling: Mechanic MCP (addon lifecycle automation); CodeSight MCP (codebase structure / blast-radius analysis)
 
+### Mechanic Usage Policy (token cost)
+
+Mechanic tool calls return very large outputs and burn context tokens fast. **Use Mechanic sparingly:**
+
+- Prefer local/built-in alternatives first: Read/Grep/Glob for navigation, `luacheck`/`stylua` via the shell for lint/format, and your own knowledge of the WoW API before reaching for `api-search`/`api-info`.
+- Reserve Mechanic for what only it can do: in-game execution (`lua-queue`/`lua-results`/`addon-output`), sandbox runs with WoW API stubs, and the security/deprecation scanners before a release.
+- Run the heavy scanners (`addon-security`, `addon-deprecations`, `addon-deadcode`, `addon-complexity`) once per change-set as a pre-merge gate, not after every edit.
+- Never call Mechanic tools speculatively or "just to check" — each call should answer a specific question you cannot answer locally.
+
 ## Taint Avoidance (MANDATORY)
 
 WoW's taint system tracks which code "touched" a value or frame. If addon (tainted) code modifies a protected value, the client blocks the action and throws an "action blocked" error. Every rule below exists to prevent taint from propagating into the secure execution path. **These rules are non-negotiable — violating any of them can silently break combat functionality.**
@@ -220,7 +229,7 @@ f:SetAttribute("_onhide", [[
 
 ### Automated Security Analysis
 
-Use `mcp__mechanic__addon-security` to detect combat lockdown violations, taint risks, and unsafe eval patterns. Run this after any changes to secure frame code or visibility logic. This complements the manual checklist below.
+Use `mcp__mechanic__addon-security` to detect combat lockdown violations, taint risks, and unsafe eval patterns. Run it once as a pre-merge gate when a change-set touched secure frame code or visibility logic — not after every edit (see Mechanic Usage Policy). This complements the manual checklist below.
 
 ### Quick Reference: Taint Danger Checklist
 
@@ -268,7 +277,7 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - The hub threshold (symbols defined in ≥4 files are skipped as shared mutable state) and namespace-token detection live in `graph.js`; tune there if the symbol graph over- or under-connects after the addon's structure changes.
 
 ## Verification Workflow
-- **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names. Use `mcp__mechanic__api-search` to look up APIs by name pattern and `mcp__mechanic__api-info` to get detailed signatures and documentation for a specific API. Use `mcp__mechanic__api-list` to browse all APIs in a namespace (e.g., `C_Spell`).
+- **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names. Only when genuinely unsure of a signature, use `mcp__mechanic__api-search` / `mcp__mechanic__api-info` for a specific API — avoid `mcp__mechanic__api-list` namespace browsing, which returns huge outputs (see Mechanic Usage Policy).
 - **Automated Tests:** Do not write custom automated tests for the addon, as executing and passing them requires the actual World of Warcraft game client to be running.
 - **tests.xml Workflow:** Every bug fix, feature, or test must add a debugging/testing procedure to `tests.xml`. Before every merge, review `tests.xml` to check if existing tests are still needed, ensuring the file stays clean and unpolluted.
 - **Syntax Validation:** Use `mcp__mechanic__addon-lint` (Luacheck) to validate Lua syntax and catch code quality issues. Use `mcp__mechanic__addon-validate` to validate the `.toc` file for common issues before release.

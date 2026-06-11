@@ -810,6 +810,20 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 					pcall(fs.SetParent, fs, btn.cooldown)
 				end
 			end
+			do
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local vClone = (meta and meta.visualClone) or btn.visualClone
+				if vClone and vClone._wiseBlizzCDActive then
+					vClone._wiseBlizzCDActive = nil
+					if vClone.cooldown then
+						vClone.cooldown:SetHideCountdownNumbers(true)
+						local vfs = vClone.cooldown.GetCountdownFontString and vClone.cooldown:GetCountdownFontString()
+						if vfs then
+							pcall(vfs.SetParent, vfs, vClone.cooldown)
+						end
+					end
+				end
+			end
 
 			-- Cooldown Finished
 			if isListMode then
@@ -853,6 +867,27 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 					pcall(fs.SetParent, fs, overlay)
 				end
 			end
+			-- Mirror onto the visual clone (mouse-follow combat mirror): its
+			-- custom countdown text is only written in the numeric branch, so
+			-- without this it freezes at the last out-of-combat value.
+			local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+			local vClone = (meta and meta.visualClone) or btn.visualClone
+			if vClone and vClone.cooldown and not vClone._wiseBlizzCDActive then
+				vClone._wiseBlizzCDActive = true
+				vClone.cooldown:SetHideCountdownNumbers(false)
+				if vClone.countdown then
+					vClone.countdown:Hide()
+				end
+				local vfs = vClone.cooldown.GetCountdownFontString and vClone.cooldown:GetCountdownFontString()
+				if vfs then
+					local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
+					if fontPath and countdownTextSize then
+						pcall(vfs.SetFont, vfs, fontPath, countdownTextSize, "OUTLINE")
+					end
+					local vOverlay = vClone._textOverlay or vClone
+					pcall(vfs.SetParent, vfs, vOverlay)
+				end
+			end
 		else
 			-- Normal mode: we have numeric remaining time
 			-- Ensure Blizzard countdown is off, our custom text is active
@@ -863,6 +898,20 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 				local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
 				if fs then
 					pcall(fs.SetParent, fs, btn.cooldown)
+				end
+			end
+			do
+				local meta = Wise.buttonMeta and Wise.buttonMeta[btn]
+				local vClone = (meta and meta.visualClone) or btn.visualClone
+				if vClone and vClone._wiseBlizzCDActive then
+					vClone._wiseBlizzCDActive = nil
+					if vClone.cooldown then
+						vClone.cooldown:SetHideCountdownNumbers(true)
+						local vfs = vClone.cooldown.GetCountdownFontString and vClone.cooldown:GetCountdownFontString()
+						if vfs then
+							pcall(vfs.SetParent, vfs, vClone.cooldown)
+						end
+					end
 				end
 			end
 
@@ -2039,6 +2088,18 @@ function Wise:CreateGroupFrame(name, instanceId)
 			local offsetX = (group.mouseOffsetX or 0) / frameScale
 			local offsetY = (group.mouseOffsetY or 0) / frameScale
 
+			local layoutType = group.type or "circle"
+			local mode = group.interaction or "toggle"
+			local willFollow = (layoutType == "button" and mode == "press_visible")
+				or (group.visibility == "always" or group.visibility == "combat")
+
+			-- Persistent followers must never sit under the cursor (they'd
+			-- intercept every click forever). Locked rings and press-to-show
+			-- interfaces may center on it — that's their designed behavior.
+			if group.visibility == "always" or group.visibility == "combat" then
+				offsetX, offsetY = Wise:ClampMouseFollowOffset(self, offsetX, offsetY)
+			end
+
 			if self.Anchor and not InCombatLockdown() then
 				self.Anchor:ClearAllPoints()
 				self.Anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
@@ -2049,16 +2110,7 @@ function Wise:CreateGroupFrame(name, instanceId)
 				self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX + offsetX, correctedY + offsetY)
 			end
 
-			local layoutType = group.type or "circle"
-			local mode = group.interaction or "toggle"
-			if
-				(layoutType == "button" and mode == "press_visible")
-				or (group.visibility == "always" or group.visibility == "combat")
-			then
-				self.mouseAnchorLocked = false
-			else
-				self.mouseAnchorLocked = true
-			end
+			self.mouseAnchorLocked = not willFollow
 		end
 
 		-- Button manipulation (ClearAllPoints/SetPoint on secure buttons) is protected
@@ -3799,6 +3851,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			if not f:IsShown() then
 				return
 			end
+
+			-- Combat mirror enforcement: the secure gatekeeper re-applies
+			-- activeOpacity when the [combat] state driver shows the frame,
+			-- which can race the REGEN_DISABLED handler's SetAlpha(0) and
+			-- leave the secure frame visible as a stationary ghost next to
+			-- the mouse-following visualDisplay. Alpha isn't protected, so
+			-- re-assert it every frame while the mirror is active.
+			if
+				isAlwaysVisibleMouse
+				and InCombatLockdown()
+				and f.visualDisplay
+				and f.visualDisplay:IsShown()
+				and f:GetAlpha() > 0
+			then
+				f:SetAlpha(0)
+			end
+
 			if f.mouseAnchorLocked then
 				return
 			end
@@ -3813,6 +3882,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			local correctedY = (cursorY / uiScale) / frameScale
 			local offsetX = (group.mouseOffsetX or 0) / frameScale
 			local offsetY = (group.mouseOffsetY or 0) / frameScale
+
+			-- Keep persistently visible followers clear of the cursor — a frame
+			-- riding under the cursor intercepts every click on the screen.
+			-- Press-to-show interfaces (transient, shown on key hold) are
+			-- exempt: appearing at the cursor is their designed behavior.
+			if group.visibility == "always" or group.visibility == "combat" then
+				offsetX, offsetY = Wise:ClampMouseFollowOffset(f, offsetX, offsetY)
+			end
 
 			-- Move the PROXY ANCHOR (Insecure, safe to move in combat NOW that f is detached)
 			if f.Anchor then
@@ -4890,20 +4967,35 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		if not isEmptySlot then
 			local combinedCond = ""
 			if stateCount > 1 then
+				-- Only register a hide-fallback driver when EVERY state contributed a
+				-- driver-expressible condition. A state with no conditions always
+				-- matches (it's the fallback the cast macro fires), and custom
+				-- conditionals can't be evaluated by the secure driver — in either
+				-- case the trailing "; hide" would wrongly hide the slot, so skip
+				-- the driver and leave the button always visible.
 				local conds = {}
+				local allDriverExpressible = true
 				for sIdx = 1, stateCount do
 					local stateAction = allStates[sIdx]
-					if stateAction and stateAction.conditions and stateAction.conditions ~= "" then
-						if not HasCustomConditionals(stateAction.conditions) then
-							local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
-							if sanitized ~= "" then
-								local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
-								table.insert(conds, "[" .. inner .. "] show")
+					if stateAction then
+						local expressed = false
+						if stateAction.conditions and stateAction.conditions ~= "" then
+							if not HasCustomConditionals(stateAction.conditions) then
+								local sanitized =
+									SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+								if sanitized ~= "" then
+									local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
+									table.insert(conds, "[" .. inner .. "] show")
+									expressed = true
+								end
 							end
+						end
+						if not expressed then
+							allDriverExpressible = false
 						end
 					end
 				end
-				if #conds > 0 then
+				if allDriverExpressible and #conds > 0 then
 					combinedCond = table.concat(conds, "; ") .. "; hide"
 				end
 			else
@@ -4958,7 +5050,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				vBtn.cooldown:SetSwipeColor(0, 0, 0, 0.8)
 				vBtn.cooldown:SetDrawEdge(true)
 				vBtn.cooldown:SetDrawSwipe(true)
-				vBtn.cooldown:SetHideCountdownNumbers(false)
+				-- Hidden by default; the cooldown ticker enables Blizzard's
+				-- countdown in combat when start/duration are secret numbers
+				-- (mirrors btn._wiseBlizzCDActive handling).
+				vBtn.cooldown:SetHideCountdownNumbers(true)
 
 				-- Text layers via Text module
 				Wise:Text_CreateFontStrings(vBtn)
@@ -5049,20 +5144,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				local stateCount = allStates and #allStates or 1
 				local combinedCond = ""
 				if stateCount > 1 then
+					-- Same rule as the real button above: a state with no conditions
+					-- (or custom conditionals) always matches, so a hide-fallback
+					-- driver would wrongly hide the slot — skip it in that case.
 					local conds = {}
+					local allDriverExpressible = true
 					for sIdx = 1, stateCount do
 						local stateAction = allStates[sIdx]
-						if stateAction and stateAction.conditions and stateAction.conditions ~= "" then
-							if not HasCustomConditionals(stateAction.conditions) then
-								local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
-								if sanitized ~= "" then
-									local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
-									table.insert(conds, "[" .. inner .. "] show")
+						if stateAction then
+							local expressed = false
+							if stateAction.conditions and stateAction.conditions ~= "" then
+								if not HasCustomConditionals(stateAction.conditions) then
+									local sanitized =
+										SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+									if sanitized ~= "" then
+										local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
+										table.insert(conds, "[" .. inner .. "] show")
+										expressed = true
+									end
 								end
+							end
+							if not expressed then
+								allDriverExpressible = false
 							end
 						end
 					end
-					if #conds > 0 then
+					if allDriverExpressible and #conds > 0 then
 						combinedCond = table.concat(conds, "; ") .. "; hide"
 					end
 				else
@@ -5774,6 +5881,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			end
 			Wise._embeddedUpdating = nil
 		end
+	end
+
+	-- Sanitize mouse-anchor offsets if layout changes might cause collisions
+	if Wise.SanitizeMouseAnchorOffsets then
+		Wise:SanitizeMouseAnchorOffsets(name)
 	end
 end
 
@@ -6524,6 +6636,96 @@ function Wise:ActivateGroup(name)
 	end
 end
 
+-- Safety clamp for PERSISTENTLY VISIBLE mouse-following interfaces (always/
+-- combat visibility): if the configured offset leaves the cursor inside the
+-- frame's bounds, the frame rides under the cursor and intercepts EVERY
+-- click — the rest of the screen becomes unclickable. Push the frame clear
+-- of the cursor along the Y axis (preserving the configured direction).
+-- Exempt (not called for): locked toggle/hold rings (they stop following on
+-- show, so the cursor can move off them) and press-to-show interfaces
+-- (appearing at the cursor on key press/hold is their designed behavior, and
+-- they vanish on release). Offsets are in frame-local units (callers divide
+-- by frame scale before passing them in).
+function Wise:ClampMouseFollowOffset(frame, offsetX, offsetY)
+	local margin = 5
+	local adjusted = true
+	local iterations = 0
+
+	local buttons = {}
+	for _, btn in ipairs(frame.buttons or {}) do
+		if btn:IsShown() then
+			local bx, by = btn.targetX or 0, btn.targetY or 0
+			local bw, bh = btn:GetWidth() or 0, btn:GetHeight() or 0
+			if bw == 0 or bh == 0 then
+				local groupName = frame.groupName
+				local iconSize = groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].iconSize or 30
+				bw, bh = iconSize, iconSize
+			end
+			table.insert(buttons, {
+				minX = -bx - bw / 2 - margin,
+				maxX = -bx + bw / 2 + margin,
+				minY = -by - bh / 2 - margin,
+				maxY = -by + bh / 2 + margin,
+			})
+		end
+	end
+
+	while adjusted and iterations < 10 do
+		adjusted = false
+		iterations = iterations + 1
+		for _, btn in ipairs(buttons) do
+			if offsetX >= btn.minX and offsetX <= btn.maxX then
+				if offsetY >= btn.minY and offsetY <= btn.maxY then
+					adjusted = true
+					if offsetY < 0 then
+						offsetY = btn.minY
+					else
+						offsetY = btn.maxY
+					end
+				end
+			end
+		end
+	end
+
+	return offsetX, offsetY
+end
+
+-- Retroactive repair for saved configs (WTF) where a persistently visible
+-- mouse-anchored interface stored an offset that parks it under the cursor —
+-- the frame then intercepts every click and the rest of the UI becomes
+-- unclickable. Rewrites the stored offset with the same clamp the live follow
+-- path enforces, so the saved value and the Properties UI match what is
+-- actually rendered. Press-to-show / toggle / hold interfaces are exempt
+-- (appearing at the cursor is their designed behavior).
+function Wise:SanitizeMouseAnchorOffsets(onlyName)
+	if not (WiseDB and WiseDB.groups) or not Wise.ClampMouseFollowOffset then
+		return
+	end
+	for name, group in pairs(WiseDB.groups) do
+		if (not onlyName or name == onlyName) and group.anchorMode == "mouse" and (group.visibility == "always" or group.visibility == "combat") then
+			local f = Wise.frames and Wise.frames[name]
+			if f then
+				local scale = f:GetScale() or 1
+				if scale <= 0 then
+					scale = 1
+				end
+				local ox = (group.mouseOffsetX or 0) / scale
+				local oy = (group.mouseOffsetY or 0) / scale
+				local cx, cy = Wise:ClampMouseFollowOffset(f, ox, oy)
+				if cx ~= ox or cy ~= oy then
+					group.mouseOffsetX = cx * scale
+					group.mouseOffsetY = cy * scale
+					print(
+						"|cffffd700Wise:|r interface '"
+							.. name
+							.. "' was riding under the mouse cursor and would block clicks — its offset has been adjusted."
+					)
+				end
+			end
+		end
+	end
+end
+
 Wise.BindingFrame = CreateFrame("Frame")
 function Wise:UpdateBindings()
 	if InCombatLockdown() then
@@ -6784,12 +6986,33 @@ function Wise:UpdateButtonCooldown(btn)
 			end
 		end
 
+		-- Mirror the same logic onto the visual clone (charge recharge timer,
+		-- GCD filter, GCD swipe color) so it behaves like the real button.
 		if visualClone and visualClone.cooldown then
-			local durObj = C_Spell.GetSpellCooldownDuration(spellID)
-			if durObj then
-				applyCDFromDuration(visualClone.cooldown, durObj, start, duration, cooldownSwipeReverse)
-			else
+			if visualClone.cooldown.SetSwipeColor then
+				if isOnGCD then
+					visualClone.cooldown:SetSwipeColor(0.2, 0.2, 0.2, 0.6)
+				else
+					visualClone.cooldown:SetSwipeColor(0, 0, 0, 0.8)
+				end
+			end
+
+			if isChargeSpell and C_Spell.GetSpellChargeDuration then
+				local chargeDurObj = C_Spell.GetSpellChargeDuration(spellID)
+				if chargeDurObj then
+					applyCDFromDuration(visualClone.cooldown, chargeDurObj, start, duration, cooldownSwipeReverse)
+				else
+					clearCD(visualClone.cooldown)
+				end
+			elseif isOnGCD and not showGCD then
 				clearCD(visualClone.cooldown)
+			else
+				local durObj = C_Spell.GetSpellCooldownDuration(spellID)
+				if durObj then
+					applyCDFromDuration(visualClone.cooldown, durObj, start, duration, cooldownSwipeReverse)
+				else
+					clearCD(visualClone.cooldown)
+				end
 			end
 			visualClone.cooldown:Show()
 		end
@@ -7077,7 +7300,7 @@ function Wise:UpdateButtonCooldown(btn)
 	if not btn._wiseBlizzCDActive then
 		btn.cooldown:SetHideCountdownNumbers(true)
 	end
-	if visualClone and visualClone.cooldown then
+	if visualClone and visualClone.cooldown and not visualClone._wiseBlizzCDActive then
 		visualClone.cooldown:SetHideCountdownNumbers(true)
 	end
 

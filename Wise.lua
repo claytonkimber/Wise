@@ -1501,6 +1501,15 @@ function frame:OnEvent(event, arg1)
 			Wise:InitializeDebug()
 		end
 
+		-- Repair saved mouse-anchor offsets that would park a persistently
+		-- visible interface under the cursor (blocking all clicks). Deferred
+		-- so group frames exist and have been laid out with real sizes.
+		C_Timer.After(2, function()
+			if Wise.SanitizeMouseAnchorOffsets then
+				Wise:SanitizeMouseAnchorOffsets()
+			end
+		end)
+
 		-- Trigger Demo if first time
 		if not WiseDB.tutorialComplete and Wise.Demo then
 			C_Timer.After(2, function()

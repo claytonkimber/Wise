@@ -172,6 +172,12 @@ modTracker:SetScript("OnUpdate", function()
 	if not next(Dispatcher.bindings) then
 		return
 	end
+	-- SetAttribute on the secure dispatcher button is a protected operation in
+	-- combat — attempting it from insecure code is blocked by WoW and can break
+	-- the override bindings. Modifier changes are picked up on combat exit.
+	if InCombatLockdown() then
+		return
+	end
 
 	local shift = IsShiftKeyDown() and true or false
 	local ctrl = IsControlKeyDown() and true or false

@@ -1,4 +1,4 @@
--- SmartItem.lua
+-----------------------------r-- SmartItem.lua
 -- Optional integration with Syndicator/Baganator for item-based smart interfaces
 local addonName, Wise = ...
 

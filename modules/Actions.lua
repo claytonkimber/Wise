@@ -3031,13 +3031,13 @@ function Wise:CreateEmbeddedPicker(parent)
 
 	-- Filter frame (shared by spell filters and collection filters)
 	ep.FilterFrame = CreateFrame("Frame", nil, parent)
-	ep.FilterFrame:SetSize(220, 24)
+	ep.FilterFrame:SetSize(280, 24)
 	ep.FilterFrame:SetPoint("TOPLEFT", ep.CancelBtn, "BOTTOMLEFT", 0, -8)
 	tinsert(parent.controls, ep.FilterFrame)
 
-	-- Spell filter buttons: In-Spec / Off-Spec / All
+	-- Spell filter buttons: In-Spec / Off-Spec / All / CDM
 	ep.SpellFilterButtons = {}
-	local spellFilters = { "In-Spec", "Off-Spec", "All" }
+	local spellFilters = { "In-Spec", "Off-Spec", "All", "CDM" }
 	local filterX = 0
 	for _, filterName in ipairs(spellFilters) do
 		local filterBtn = CreateFrame("Button", nil, ep.FilterFrame, "BackdropTemplate")
@@ -3284,7 +3284,7 @@ function Wise:PickerSelectCategory(catName)
 	end
 
 	if isSpell then
-		ep.FilterFrame:SetSize(220, 24)
+		ep.FilterFrame:SetSize(280, 24)
 		Wise:UpdatePickerFilterButtons()
 	elseif isCollection then
 		ep.FilterFrame:SetSize(170, 24)
@@ -3508,7 +3508,56 @@ end
 -- NOTE: I am abbreviating these slightly for brevity if they are identical,
 -- but I will copy the logic 1:1.
 
+-- Spells the Cooldown Manager tracks as Tracked Buffs / Tracked Bars.
+-- These are often passive auras, so we deliberately skip the IsSpellPassive
+-- check used for spellbook entries.
+function Wise:GetCDMTrackedSpells(filter)
+	local spells = {}
+	local seen = {}
+	if not (C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCategorySet and Enum.CooldownViewerCategory) then
+		return spells
+	end
+
+	local categories = {
+		Enum.CooldownViewerCategory.TrackedBuff,
+		Enum.CooldownViewerCategory.TrackedBar,
+	}
+	for _, category in ipairs(categories) do
+		local cooldownIDs = C_CooldownViewer.GetCooldownViewerCategorySet(category)
+		if cooldownIDs then
+			for _, cooldownID in ipairs(cooldownIDs) do
+				local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cooldownID)
+				local spellID = info and info.spellID
+				if spellID then
+					local displayId = Wise:GetOverrideSpellID(spellID) or spellID
+					local name = C_Spell.GetSpellName(displayId)
+					local icon = C_Spell.GetSpellTexture(displayId)
+					if name and not seen[name] and (not filter or string.find(string.lower(name), filter, 1, true)) then
+						seen[name] = true
+						table.insert(spells, {
+							type = "spell",
+							value = spellID,
+							name = name,
+							icon = icon,
+							category = "cdm",
+						})
+					end
+				end
+			end
+		end
+	end
+
+	table.sort(spells, function(a, b)
+		return a.name < b.name
+	end)
+	return spells
+end
+
 function Wise:GetSpell(filter)
+	if Wise.PickerSpellFilter == "CDM" then
+		return Wise:GetCDMTrackedSpells(filter)
+	end
+
 	local spells = {}
 	local seen = {}
 	local currentSpec = GetSpecialization()
