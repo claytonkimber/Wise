@@ -1502,6 +1502,13 @@ function Wise:CreateGroupFrame(name, instanceId)
 		"_onhide",
 		[[
         self:ClearBindings()
+        local max = self:GetAttribute("buttonCount") or 0
+        for i = 1, max do
+            local btn = self:GetFrameRef("btn" .. i)
+            if btn then
+                btn:ClearBindings()
+            end
+        end
     ]]
 	)
 
@@ -2106,8 +2113,10 @@ function Wise:CreateGroupFrame(name, instanceId)
 	-- Prevent "Invisible Walls" by enabling mouse only when shown.
 	f:SetScript("OnShow", function(self)
 		if self.buttons then
+			local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
+			local inEditMode = Wise.editMode
 			for _, btn in ipairs(self.buttons) do
-				btn:EnableMouse(true)
+				btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
 			end
 		end
 		if self.isClosing then
@@ -3665,8 +3674,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		end
 		local nonMouseElapsed = 0
 		local wasShowingInCombat = false
+		local throttledElapsed = 0
 		f.undermouseFrame:Show()
 		f.undermouseFrame:SetScript("OnUpdate", function(self, elapsed)
+			throttledElapsed = throttledElapsed + elapsed
+			if throttledElapsed < 0.05 then
+				return
+			end
+			throttledElapsed = 0
+
 			local inCombat = InCombatLockdown()
 
 			-- Respect combat modifiers: [combat][undermouse] vs [nocombat][undermouse]
@@ -3712,8 +3728,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							f:SetAlpha(0) -- Hide secure frame visually (keeps keybinds active)
 							wasShowingInCombat = true
 							if f.buttons then
+								local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
+								local inEditMode = Wise.editMode
 								for _, btn in ipairs(f.buttons) do
-									btn:EnableMouse(true)
+									btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
 								end
 							end
 						end
@@ -3742,8 +3760,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					f:SetAttribute("state-custom", target)
 				end
 				if f.buttons then
+					local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
+					local inEditMode = Wise.editMode
 					for _, btn in ipairs(f.buttons) do
-						btn:EnableMouse(customShow)
+						btn:EnableMouse((btn.isValid or not not optionsOpen or not not inEditMode) and customShow)
 					end
 				end
 			end
@@ -4463,6 +4483,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				]]
 			)
+			btn:SetAttribute("_onhide", [[
+				self:ClearBindings()
+			]])
 
 			-- Debug hooks removed to prevent secret value errors
 
@@ -4491,10 +4514,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					-- print("Wise Debug: OnMouseUp fired (No Cursor)")
 				end
 			end)
-
-			f.toggleBtn:SetFrameRef(btn:GetName(), btn)
-			f.toggleBtn:SetFrameRef("btn" .. i, btn)
 		end
+
+		f.toggleBtn:SetFrameRef(btn:GetName(), btn)
+		f.toggleBtn:SetFrameRef("btn" .. i, btn)
+		f:SetFrameRef("btn" .. i, btn)
 
 		-- Explicitly clear btn2 ref if we only have 1 button (to avoid stale refs from recycled frames)
 		-- MOVED outside loop for clarity
@@ -4986,7 +5010,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			end
 		else
 			btn:SetAlpha(1)
-			btn:EnableMouse(true)
+			local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
+			local inEditMode = Wise.editMode
+			btn:EnableMouse(isValid or not not optionsOpen or not not inEditMode)
 			if btn.activeHighlight then
 				btn.activeHighlight:Hide()
 			end
@@ -5318,6 +5344,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 	-- Cleanup Stale Refs (Critical for Single Button Fallback)
 	-- Set the total count so the snippet knows how far to check
 	f.toggleBtn:SetAttribute("buttonCount", #actionsToShow)
+	f:SetAttribute("buttonCount", #actionsToShow)
 
 	-- IMPORTANT: Clear old references if the list got shorter
 	local maxExisting = f.toggleBtn:GetAttribute("maxButtonRefs") or 0
@@ -5328,6 +5355,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		end
 	end
 	f.toggleBtn:SetAttribute("maxButtonRefs", #actionsToShow)
+	f:SetAttribute("maxButtonRefs", #actionsToShow)
 
 	-- Setup Nested Keybind Attributes (on 'f' - the Show/Hide frame)
 	local nested = (group.keybindSettings and group.keybindSettings.nested)
@@ -5338,10 +5366,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		for i, actionInfo in ipairs(actionsToShow) do
 			local btn = f.buttons[i]
 			local slotKey = group.actions[actionInfo.slot] and group.actions[actionInfo.slot].keybind
+			local keyToSet = btn.isValid and slotKey or nil
 
-			f:SetAttribute("nested_key_" .. i, slotKey) -- Set or Clear (if nil)
+			f:SetAttribute("nested_key_" .. i, keyToSet) -- Set or Clear (if nil)
 			f:SetAttribute("nested_btn_name_" .. i, btn:GetName())
-			f:SetAttribute("nested_mouse_" .. i, slotKey and GetMouseClickName(slotKey) or nil)
+			f:SetAttribute("nested_mouse_" .. i, keyToSet and GetMouseClickName(keyToSet) or nil)
 		end
 	end
 

@@ -820,6 +820,10 @@ function Wise:Initialize()
 	if BuffBarCooldownViewer then
 		BuffBarCooldownViewer:SetAlpha(WiseDB.settings.hideTrackedBars and 0 or 1)
 	end
+
+	if Wise.UpdateMouseWheelState then
+		Wise:UpdateMouseWheelState()
+	end
 end
 
 -- Import/Export Serialization

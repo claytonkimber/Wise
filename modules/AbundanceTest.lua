@@ -49,17 +49,18 @@ function Wise:UpdateAbundanceBorders()
 				local isAbundanceBtn = false
 
 				if meta and meta.actionType == "spell" and meta.actionValue then
-					local spellName
-					local valNum = tonumber(meta.actionValue)
-					if valNum then
-						local spellInfo = C_Spell.GetSpellInfo(valNum)
-						spellName = spellInfo and spellInfo.name
-					else
-						spellName = meta.actionValue
+					if meta.isAbundanceBtn == nil then
+						local spellName
+						local valNum = tonumber(meta.actionValue)
+						if valNum then
+							local spellInfo = C_Spell.GetSpellInfo(valNum)
+							spellName = spellInfo and spellInfo.name
+						else
+							spellName = meta.actionValue
+						end
+						meta.isAbundanceBtn = (spellName == "Abundance")
 					end
-					if spellName == "Abundance" then
-						isAbundanceBtn = true
-					end
+					isAbundanceBtn = meta.isAbundanceBtn
 				end
 
 				if isAbundanceBtn then
