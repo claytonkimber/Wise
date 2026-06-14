@@ -250,6 +250,12 @@ function Wise:RefreshPropertiesPanel()
 		return
 	end
 
+	-- Keep the slot toolbar (Name / Keybind / Hold / Delete) in sync with the
+	-- current selection on every properties refresh.
+	if Wise.RefreshSlotToolbar then
+		Wise:RefreshSlotToolbar()
+	end
+
 	local panel = Wise.OptionsFrame.Right.Content
 	-- Clear/Hide existing controls
 	if panel.controls then
@@ -259,41 +265,25 @@ function Wise:RefreshPropertiesPanel()
 	end
 	panel.controls = panel.controls or {}
 
-	-- Slot Configurator overlay
+	-- Always-on node configurator: when a slot (not an action/state) is selected
+	-- on an editable group, the configurator is shown directly inside the Right
+	-- panel (embedded mode) — no "Open Slot Configurator" step. Sidebar and Middle
+	-- stay visible; all configurator/picker hosts are confined to the Right panel.
+	Wise:MaybeEnterEmbeddedConfigurator()
+
+	-- Slot Configurator (embedded in the Right panel)
 	if Wise.configuringSlot then
-		-- Hide column contents (but keep filter buttons visible)
-		if Wise.OptionsFrame.Sidebar.AddBtn then
-			Wise.OptionsFrame.Sidebar.AddBtn:Hide()
-		end
-		if Wise.OptionsFrame.Sidebar.Scroll then
-			Wise.OptionsFrame.Sidebar.Scroll:Hide()
-		end
-		if Wise.OptionsFrame.Sidebar.Content then
-			Wise.OptionsFrame.Sidebar.Content:Hide()
-		end
-		if Wise.OptionsFrame.Middle.Content then
-			Wise.OptionsFrame.Middle.Content:Hide()
-		end
-		if Wise.OptionsFrame.Middle.ScrollFrame then
-			Wise.OptionsFrame.Middle.ScrollFrame:Hide()
-		end
-		if Wise.OptionsFrame.Middle.AddSlotBtn then
-			Wise.OptionsFrame.Middle.AddSlotBtn:Hide()
-		end
+		-- Embedded mode keeps Sidebar + Middle fully visible. Only the Right
+		-- panel's normal scroll/title are suppressed so the configurator owns it.
 		if Wise.OptionsFrame.Right.Scroll then
 			Wise.OptionsFrame.Right.Scroll:Hide()
 		end
 		Wise.OptionsFrame.Right.Title:SetText("")
 
-		-- Keep filter buttons visible and hook them for configurator filtering
 		Wise:UpdateFilterButtons()
-		-- Raise filter buttons above the configurator host
-		for _, btn in pairs(Wise.OptionsFrame.Middle.FilterButtons or {}) do
-			btn:Show()
-			btn:SetFrameLevel(Wise.OptionsFrame:GetFrameLevel() + 12)
-		end
 
-		-- Dedicated ConfiguratorHost
+		-- Dedicated ConfiguratorHost, anchored to the Right panel only (below the
+		-- slot toolbar that sits on the Right panel's top edge).
 		if not Wise.OptionsFrame.ConfiguratorHost then
 			local host = CreateFrame("Frame", nil, Wise.OptionsFrame)
 			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
@@ -302,20 +292,8 @@ function Wise:RefreshPropertiesPanel()
 
 		local host = Wise.OptionsFrame.ConfiguratorHost
 		host:ClearAllPoints()
-
-		if Wise.pickingCondition then
-			-- Condition picker open: configurator takes Sidebar only, picker takes Middle+Right
-			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Sidebar, "BOTTOMRIGHT", 0, 0)
-		elseif Wise.pickingAction then
-			-- Action picker open: configurator takes Sidebar+Middle, picker takes Right
-			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Middle, "BOTTOMRIGHT", 0, 0)
-		else
-			-- No picker: configurator spans all 3 columns
-			host:SetPoint("TOPLEFT", Wise.OptionsFrame.Sidebar, "TOPLEFT", 0, 0)
-			host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
-		end
+		host:SetPoint("TOPLEFT", Wise.OptionsFrame.Right, "TOPLEFT", 0, 0)
+		host:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
 		host:Show()
 
 		if not host.bg then
@@ -327,9 +305,12 @@ function Wise:RefreshPropertiesPanel()
 
 		Wise:CreateSlotConfiguratorUI(host)
 
-		-- If condition picker is open, render it in Middle+Right columns
+		-- Surface any grid→node migration problem for this slot.
+		Wise:RenderConfiguratorMigrationWarning(host)
+
+		-- Condition picker open: render it confined to the Right panel, overlaying
+		-- the configurator.
 		if Wise.pickingCondition then
-			-- Hide the normal Right scroll/title
 			if Wise.OptionsFrame.Right.Scroll then
 				Wise.OptionsFrame.Right.Scroll:Hide()
 			end
@@ -337,12 +318,12 @@ function Wise:RefreshPropertiesPanel()
 
 			if not Wise.OptionsFrame.ConditionPickerHost then
 				local cpHost = CreateFrame("Frame", nil, Wise.OptionsFrame)
-				cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+				cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 10)
 				Wise.OptionsFrame.ConditionPickerHost = cpHost
 			end
 			local cpHost = Wise.OptionsFrame.ConditionPickerHost
 			cpHost:ClearAllPoints()
-			cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Middle, "TOPLEFT", 0, 0)
+			cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Right, "TOPLEFT", 0, 0)
 			cpHost:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
 			cpHost:Show()
 
@@ -355,7 +336,6 @@ function Wise:RefreshPropertiesPanel()
 
 			Wise:CreateConditionPickerUI(cpHost)
 
-			-- Hide action picker host if it exists
 			if Wise.OptionsFrame.Right.PickerHost then
 				Wise.OptionsFrame.Right.PickerHost:Hide()
 			end
@@ -367,9 +347,48 @@ function Wise:RefreshPropertiesPanel()
 			Wise.OptionsFrame.ConditionPickerHost:Hide()
 		end
 
-		-- If also picking action, fall through to show picker in Right column
+		-- Availability Filtering open (clicked a node card): render the restriction
+		-- picker confined to the Right panel, overlaying the configurator — same
+		-- placement as the condition picker.
+		if Wise.pickingRestrictions then
+			if Wise.OptionsFrame.Right.Scroll then
+				Wise.OptionsFrame.Right.Scroll:Hide()
+			end
+			Wise.OptionsFrame.Right.Title:SetText("")
+
+			if not Wise.OptionsFrame.Right.PickerHost then
+				local pHost = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
+				pHost:SetAllPoints(Wise.OptionsFrame.Right)
+				pHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 12)
+				pHost.controls = {}
+				Wise.OptionsFrame.Right.PickerHost = pHost
+			end
+
+			local pHost = Wise.OptionsFrame.Right.PickerHost
+			if pHost.controls then
+				for _, ctrl in ipairs(pHost.controls) do
+					ctrl:Hide()
+				end
+			else
+				pHost.controls = {}
+			end
+			pHost:ClearAllPoints()
+			pHost:SetAllPoints(Wise.OptionsFrame.Right)
+			pHost:Show()
+
+			if not pHost.bg then
+				pHost.bg = pHost:CreateTexture(nil, "BACKGROUND")
+				pHost.bg:SetAllPoints()
+				pHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+			end
+			pHost.bg:Show()
+
+			Wise:CreateEmbeddedRestrictionPicker(pHost, Wise.pickingRestrictionsAction)
+			return
+		end
+
+		-- If also picking action, fall through to show picker in the Right column
 		if not Wise.pickingAction then
-			-- Hide action picker host since configurator now spans all 3 columns
 			if Wise.OptionsFrame.Right.PickerHost then
 				Wise.OptionsFrame.Right.PickerHost:Hide()
 				if Wise.OptionsFrame.Right.PickerHost.bg then
@@ -405,11 +424,12 @@ function Wise:RefreshPropertiesPanel()
 			Wise.OptionsFrame.Right.Scroll:Hide()
 		end
 
-		-- Create/Show dedicated host frame for action picker
+		-- Create/Show dedicated host frame for action picker. It sits above the
+		-- embedded configurator host (Right+5) so the picker overlays it cleanly.
 		if not Wise.OptionsFrame.Right.PickerHost then
 			local host = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
 			host:SetAllPoints(Wise.OptionsFrame.Right)
-			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 5)
+			host:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 12)
 			host.controls = {}
 			Wise.OptionsFrame.Right.PickerHost = host
 		end
@@ -445,10 +465,18 @@ function Wise:RefreshPropertiesPanel()
 
 			Wise:CreateEmbeddedRestrictionPicker(host, Wise.pickingRestrictionsAction)
 		elseif Wise.pickingAction then
-			-- Normal single-column host
+			-- Single-column host confined to the Right panel, overlaying the
+			-- embedded configurator. Needs an opaque background so the configurator
+			-- behind it doesn't bleed through.
 			local host = Wise.OptionsFrame.Right.PickerHost
 			host:ClearAllPoints()
 			host:SetAllPoints(Wise.OptionsFrame.Right)
+			if not host.bg then
+				host.bg = host:CreateTexture(nil, "BACKGROUND")
+				host.bg:SetAllPoints()
+				host.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+			end
+			host.bg:Show()
 			Wise:CreateEmbeddedPicker(host)
 		elseif Wise.pickingTalents then
 			local host = Wise.OptionsFrame.Right.PickerHost
@@ -666,11 +694,148 @@ end
 
 function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 	Wise:MigrateGroupToActions(group)
-	if not group.actions[slotIdx] then
+	local actions = group.actions[slotIdx]
+	if not actions then
 		return y
 	end
-	local action = group.actions[slotIdx][stateIdx]
+	local isGraphSlot = actions.graph and actions.graph.nodes and true or false
+	local graphNode = isGraphSlot and actions.graph.nodes[stateIdx]
+	local action = graphNode and graphNode.action or actions[stateIdx]
 	if not action then
+		return y
+	end
+
+	if isGraphSlot then
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		label:SetPoint("TOPLEFT", 10, y)
+		local slotDisplayName = Wise:GetSlotDisplayName(group, slotIdx)
+		label:SetText("Action (" .. slotDisplayName .. " State " .. stateIdx .. "):")
+		tinsert(panel.controls, label)
+		y = y - 20
+
+		local valueLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		valueLabel:SetPoint("TOPLEFT", 10, y)
+		valueLabel:SetWidth(180)
+		valueLabel:SetJustifyH("LEFT")
+		local actionName = Wise:GetActionName(action.type, action.value, action)
+		valueLabel:SetText(actionName)
+		tinsert(panel.controls, valueLabel)
+		y = y - 25
+
+		-- Show editable conditions box
+		local condLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		condLabel:SetPoint("TOPLEFT", 10, y)
+		condLabel:SetText("Conditions (e.g. [combat]):")
+		tinsert(panel.controls, condLabel)
+
+		y = y - 20
+		local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		condEdit:SetSize(180, 20)
+		condEdit:SetPoint("TOPLEFT", 14, y)
+		condEdit:SetAutoFocus(false)
+		condEdit:SetText(graphNode.condition or "")
+		condEdit:SetCursorPosition(0)
+
+		local function UpdateCondData(self)
+			local text = self:GetText()
+			graphNode.condition = text
+			if Wise.ExportSlotConfiguratorData then
+				Wise:ExportSlotConfiguratorData()
+			end
+			if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+				Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			end
+		end
+
+		local function CommitCond(self)
+			UpdateCondData(self)
+			C_Timer.After(0, function()
+				if not InCombatLockdown() then
+					Wise:UpdateGroupDisplay(Wise.selectedGroup)
+				end
+			end)
+		end
+
+		condEdit:SetScript("OnTextChanged", function(self)
+			UpdateCondData(self)
+		end)
+
+		condEdit:SetScript("OnEnterPressed", function(self)
+			self:ClearFocus()
+		end)
+		condEdit:SetScript("OnEditFocusLost", function(self)
+			CommitCond(self)
+		end)
+		condEdit:SetScript("OnEscapePressed", function(self)
+			self:SetText(graphNode.condition or "")
+			self:ClearFocus()
+			UpdateCondData(self)
+		end)
+		tinsert(panel.controls, condEdit)
+		if Wise.CreateConditionValidator then
+			tinsert(panel.controls, Wise:CreateConditionValidator(condEdit, panel))
+		end
+
+		y = y - 25
+		local condNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		condNote:SetPoint("TOPLEFT", 10, y)
+		condNote:SetWidth(200)
+		condNote:SetJustifyH("LEFT")
+		condNote:SetText("Leave empty for 'always active'. Uses WoW macro conditionals.")
+		tinsert(panel.controls, condNote)
+		y = y - 30
+
+		local infoLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		infoLabel:SetPoint("TOPLEFT", 10, y)
+		infoLabel:SetWidth(200)
+		infoLabel:SetJustifyH("LEFT")
+		infoLabel:SetText(
+			"This slot is configured visually. Spells and connections must be edited in the Slot Configurator."
+		)
+		tinsert(panel.controls, infoLabel)
+		y = y - 45
+
+		local openBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		openBtn:SetSize(160, 22)
+		openBtn:SetPoint("TOPLEFT", 10, y)
+		openBtn:SetText("Open Slot Configurator")
+		openBtn:SetScript("OnClick", function()
+			Wise:OpenSlotConfigurator(Wise.selectedGroup, slotIdx)
+		end)
+		tinsert(panel.controls, openBtn)
+		y = y - 30
+
+		-- Check if any node in this graph slot casts Abundance, and if so render its config panel.
+		local graphIsAbundance = false
+		for _, node in pairs(actions.graph.nodes) do
+			local na = node.action
+			if na then
+				if na.type == "spell" and na.value then
+					local valNum = tonumber(na.value)
+					local spellName
+					if valNum then
+						local spellInfo = C_Spell.GetSpellInfo(valNum)
+						spellName = spellInfo and spellInfo.name
+					else
+						spellName = na.value
+					end
+					if spellName == "Abundance" then
+						graphIsAbundance = true
+						break
+					end
+				elseif na.type == "misc" and na.value == "custom_macro" and na.macroText then
+					if na.macroText:find("Abundance", 1, true) then
+						graphIsAbundance = true
+						break
+					end
+				end
+			end
+		end
+		if graphIsAbundance and Wise.RenderAbundanceProperties then
+			-- Pass the graph-level compiled state so RenderAbundanceProperties can read/write SV keys.
+			y = Wise:RenderAbundanceProperties(panel, actions, y)
+		end
+
 		return y
 	end
 
@@ -1618,7 +1783,10 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		y = Wise:CreateMacroEditor(panel, action, y)
 	end
 
-	-- Abundance Spell Experiment Settings
+	-- Abundance Spell Experiment Settings. Detect BOTH a plain Abundance spell slot
+	-- AND a graph-compiled custom_macro slot that casts Abundance (the configurator
+	-- emits custom_macro, type "misc", not "spell"), so the color/glow config panel
+	-- still appears for it.
 	local isAbundance = false
 	if action.type == "spell" and action.value then
 		local spellName
@@ -1632,6 +1800,10 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		if spellName == "Abundance" then
 			isAbundance = true
 		end
+	elseif action.type == "misc" and action.value == "custom_macro" and action.macroText then
+		if action.macroText:find("Abundance", 1, true) then
+			isAbundance = true
+		end
 	end
 
 	if isAbundance and Wise.RenderAbundanceProperties then
@@ -1639,6 +1811,305 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 	end
 
 	return y
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Slot Toolbar
+-- ═══════════════════════════════════════════════════════════════
+-- A persistent horizontal strip above the Right (Properties / Configurator)
+-- panel holding the slot-level controls that used to live inside the scrolling
+-- properties list: Slot Name, Direct Keybind, Press-and-Hold, Delete Slot.
+-- It sits in line with "New Wise Interface" / "Add New Slot" and is only shown
+-- when a slot (and not a specific action/state) is selected.
+
+-- Wire the click-to-bind capture flow onto a keybind button. Shared so the
+-- toolbar and any legacy callers behave identically. `getSlot` returns the
+-- slot's actions table; `slotIdx`/`group` identify the binding owner.
+local function AttachSlotKeybindCapture(bindBtn, group, slotIdx, getSlot)
+	bindBtn:RegisterForClicks("AnyUp")
+	bindBtn:SetScript("OnClick", function(self, button)
+		local slot = getSlot()
+		if not slot then
+			return
+		end
+		if button == "RightButton" then
+			slot.keybind = nil
+			Wise:UpdateBindings()
+			Wise:UpdateOptionsUI()
+		elseif button == "LeftButton" then
+			self:SetText("Press Key...")
+			self:EnableKeyboard(true)
+			self:EnableMouseWheel(true)
+
+			local function FinishSlotBinding(key)
+				if not key then
+					return
+				end
+
+				if key == "ESCAPE" then
+					self:EnableKeyboard(false)
+					self:EnableMouseWheel(false)
+					self:SetScript("OnKeyDown", nil)
+					self:SetScript("OnMouseWheel", nil)
+					self:SetScript("OnMouseDown", nil)
+					self:SetText(slot.keybind or "None")
+					return
+				end
+
+				if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
+					return
+				end
+
+				local mods = ""
+				if IsAltKeyDown() then
+					mods = mods .. "ALT-"
+				end
+				if IsControlKeyDown() then
+					mods = mods .. "CTRL-"
+				end
+				if IsShiftKeyDown() then
+					mods = mods .. "SHIFT-"
+				end
+
+				-- Check MouseWheel Validation
+				if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
+					local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
+					if not isValid then
+						EnsureBindingErrorPopup()
+						StaticPopup_Show("WISE_BINDING_ERROR", err)
+						self:EnableKeyboard(false)
+						self:EnableMouseWheel(false)
+						self:SetScript("OnKeyDown", nil)
+						self:SetScript("OnMouseWheel", nil)
+						self:SetScript("OnMouseDown", nil)
+						self:SetText(slot.keybind or "None")
+						return
+					end
+				end
+
+				local fullKey = mods .. key
+				self:EnableKeyboard(false)
+				self:EnableMouseWheel(false)
+				self:SetScript("OnKeyDown", nil)
+				self:SetScript("OnMouseWheel", nil)
+				self:SetScript("OnMouseDown", nil)
+
+				if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
+					return
+				end
+
+				slot.keybind = fullKey
+				self:SetText(fullKey)
+
+				Wise:UpdateBindings()
+				Wise:UpdateOptionsUI()
+			end
+
+			self:SetScript("OnKeyDown", function(_, key)
+				FinishSlotBinding(key)
+			end)
+
+			self:SetScript("OnMouseWheel", function(_, delta)
+				local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
+				FinishSlotBinding(key)
+			end)
+
+			self:SetScript("OnMouseDown", function(_, btn)
+				if btn == "LeftButton" or btn == "RightButton" then
+					return
+				end
+				local key = btn
+				if btn == "MiddleButton" then
+					key = "BUTTON3"
+				end
+				if btn == "Button4" then
+					key = "BUTTON4"
+				end
+				if btn == "Button5" then
+					key = "BUTTON5"
+				end
+				FinishSlotBinding(key)
+			end)
+		end
+	end)
+end
+
+function Wise:CreateSlotToolbar()
+	local f = Wise.OptionsFrame
+	if not f or f.SlotToolbar then
+		return f and f.SlotToolbar
+	end
+
+	-- Parent to the main frame (like the filter buttons) so it can sit on the
+	-- Right panel's top edge without being clipped by the inset. Captions sit to
+	-- the LEFT of each control so the bar stays one row high and never clips into
+	-- the window title above it.
+	local bar = CreateFrame("Frame", nil, f)
+	bar:SetPoint("BOTTOMLEFT", f.Right, "TOPLEFT", 4, 2)
+	bar:SetPoint("BOTTOMRIGHT", f.Right, "TOPRIGHT", -4, 2)
+	bar:SetHeight(26)
+	bar:SetFrameLevel(f:GetFrameLevel() + 6)
+	f.SlotToolbar = bar
+
+	-- "Slot Name:" caption (left of the editbox)
+	bar.nameCaption = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	bar.nameCaption:SetPoint("LEFT", bar, "LEFT", 8, 0)
+	bar.nameCaption:SetText("Slot Name:")
+
+	-- Slot Name editbox
+	bar.nameEdit = CreateFrame("EditBox", nil, bar, "InputBoxTemplate")
+	bar.nameEdit:SetSize(150, 22)
+	bar.nameEdit:SetPoint("LEFT", bar.nameCaption, "RIGHT", 8, 0)
+	bar.nameEdit:SetAutoFocus(false)
+	Wise:AddTooltip(bar.nameEdit, "Slot name (shown in the Slots and Actions list).")
+	bar.nameEdit:SetScript("OnEnterPressed", function(self)
+		local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+		local slotIdx = Wise.selectedSlot
+		if group and slotIdx then
+			local text = strtrim(self:GetText())
+			group.slotNames = group.slotNames or {}
+			group.slotNames[slotIdx] = (text ~= "") and text or nil
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			Wise:RefreshSlotToolbar()
+		end
+		self:ClearFocus()
+	end)
+	bar.nameEdit:SetScript("OnEscapePressed", function(self)
+		self:ClearFocus()
+		Wise:RefreshSlotToolbar()
+	end)
+
+	-- Direct Keybind: button centered in the toolbar, caption to its left.
+	bar.bindBtn = CreateFrame("Button", nil, bar, "GameMenuButtonTemplate")
+	bar.bindBtn:SetSize(120, 22)
+	bar.bindBtn:SetPoint("CENTER", bar, "CENTER", 80, 0)
+	Wise:AddTooltip(bar.bindBtn, "Direct keybind that triggers this slot. Left-click to set, right-click to clear.")
+
+	-- "Direct Keybind:" caption, left of the button.
+	bar.bindCaption = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	bar.bindCaption:SetPoint("RIGHT", bar.bindBtn, "LEFT", -8, 0)
+	bar.bindCaption:SetText("Direct Keybind (right-click to clear):")
+	AttachSlotKeybindCapture(bar.bindBtn, nil, nil, function()
+		local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+		return group and group.actions and group.actions[Wise.selectedSlot]
+	end)
+
+	-- Delete Slot button (right-aligned, bottom row with the other controls)
+	bar.delBtn = CreateFrame("Button", nil, bar, "UIPanelButtonTemplate")
+	bar.delBtn:SetSize(110, 22)
+	bar.delBtn:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -8, 1)
+	bar.delBtn:SetText("Delete Slot")
+	local delText = bar.delBtn:GetFontString()
+	if delText then
+		delText:SetTextColor(1, 0.2, 0.2)
+	end
+	bar.delBtn:SetScript("OnClick", function()
+		local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+		local slotIdx = Wise.selectedSlot
+		if not group or not slotIdx then
+			return
+		end
+		StaticPopupDialogs["WISE_CONFIRM_DELETE_SLOT"] = {
+			text = "Delete '" .. Wise:GetSlotDisplayName(group, slotIdx) .. "' and all its actions?",
+			button1 = "Delete",
+			button2 = "Cancel",
+			OnAccept = function()
+				Wise:RemoveSlot(Wise.selectedGroup, slotIdx)
+				Wise.selectedSlot = nil
+				Wise.selectedState = nil
+				Wise:UpdateBindings()
+				Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+				Wise:RefreshPropertiesPanel()
+				C_Timer.After(0, function()
+					if not InCombatLockdown() then
+						Wise:UpdateGroupDisplay(Wise.selectedGroup)
+					end
+				end)
+			end,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+		StaticPopup_Show("WISE_CONFIRM_DELETE_SLOT")
+	end)
+
+	bar:Hide()
+	return bar
+end
+
+-- Refresh toolbar contents from the current selection, and decide visibility.
+-- The toolbar is shown only on the Editor tab when a slot (not an action/state)
+-- is selected on an editable, valid group.
+function Wise:RefreshSlotToolbar()
+	local f = Wise.OptionsFrame
+	if not f then
+		return
+	end
+	local bar = f.SlotToolbar or Wise:CreateSlotToolbar()
+	if not bar then
+		return
+	end
+
+	local group = Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup]
+	local slotIdx = Wise.selectedSlot
+
+	-- A picker overlay owns the whole Right panel; hide the toolbar so it doesn't
+	-- float above an unrelated picker.
+	local pickerOpen = Wise.pickingAction
+		or Wise.pickingCondition
+		or Wise.pickingTalents
+		or Wise.pickingSpecs
+		or Wise.pickingRestrictions
+		or Wise.pickingIcon
+
+	-- Only show for a real slot selection in the Editor tab. Hide for group-level
+	-- selection, action/state selection, picker overlays, special templates, and
+	-- locked/invalid groups.
+	local show = (Wise.currentTab == nil or Wise.currentTab == "Editor")
+		and not pickerOpen
+		and group ~= nil
+		and slotIdx ~= nil
+		and not Wise.selectedState
+		and not group.isLocked
+		and group.actions ~= nil
+		and group.actions[slotIdx] ~= nil
+
+	if not show then
+		bar:Hide()
+		return
+	end
+
+	local slot = group.actions[slotIdx]
+
+	bar.nameEdit:SetText((group.slotNames and group.slotNames[slotIdx]) or "")
+	bar.nameEdit:SetCursorPosition(0)
+	bar.bindBtn:SetText(slot.keybind or "None")
+
+	-- Auto-imported wiser slots cannot be deleted.
+	local isAutoImportedSlot = false
+	if group.isWiser then
+		if group.propertyType == "CooldownWiser" then
+			isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
+		else
+			isAutoImportedSlot = true
+		end
+	end
+	if isAutoImportedSlot then
+		bar.delBtn:Disable()
+		bar.delBtn:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_TOP")
+			GameTooltip:SetText("Auto-imported slot", 1, 0.82, 0, true)
+			GameTooltip:AddLine("This slot is managed by Wise and cannot be deleted.", 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		bar.delBtn:SetScript("OnLeave", GameTooltip_Hide)
+	else
+		bar.delBtn:Enable()
+		bar.delBtn:SetScript("OnEnter", nil)
+		bar.delBtn:SetScript("OnLeave", nil)
+	end
+
+	bar:Show()
 end
 
 function Wise:RenderSlotProperties(panel, group, slotIdx, y)
@@ -1832,26 +2303,6 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
 		)
 		tinsert(panel.controls, pahCheck)
 		y = y - 30
-
-		-- Slot Configurator Button
-		local configBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-		configBtn:SetSize(200, 24)
-		configBtn:SetPoint("TOPLEFT", 10, y)
-		configBtn:SetText("Open Slot Configurator")
-		configBtn:SetScript("OnClick", function()
-			Wise:OpenSlotConfigurator(Wise.selectedGroup, slotIdx)
-		end)
-		Wise:AddTooltip(configBtn, "Visual editor for conditions, sequences, and modifier breaks.")
-		tinsert(panel.controls, configBtn)
-		y = y - 28
-
-		local configDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-		configDesc:SetPoint("TOPLEFT", 10, y)
-		configDesc:SetWidth(200)
-		configDesc:SetJustifyH("LEFT")
-		configDesc:SetText("Graphically configure spell priority, sequences, and modifier conditions.")
-		tinsert(panel.controls, configDesc)
-		y = y - 35
 
 		-- Delete Slot Button
 		local isAutoImportedSlot = false

@@ -2116,7 +2116,9 @@ function Wise:CreateGroupFrame(name, instanceId)
 			local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
 			local inEditMode = Wise.editMode
 			for _, btn in ipairs(self.buttons) do
-				btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
+				if not InCombatLockdown() then
+					btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
+				end
 			end
 		end
 		if self.isClosing then
@@ -2237,7 +2239,9 @@ function Wise:CreateGroupFrame(name, instanceId)
 	f:SetScript("OnHide", function(self)
 		if self.buttons then
 			for _, btn in ipairs(self.buttons) do
-				btn:EnableMouse(false)
+				if not InCombatLockdown() then
+					btn:EnableMouse(false)
+				end
 			end
 		end
 		-- Reset hover indication on all buttons (skip in combat — protected frames)
@@ -2686,7 +2690,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
 		if hasCond then
 			secureType = "macro"
 			secureAttr = "macrotext"
-			secureValue = "/cast " .. conditions .. " " .. castName
+			-- Prefer the numeric spell ID in conditional /cast lines so ResolveMacroData
+			-- can resolve the icon even when the spell isn't currently known by name
+			-- (e.g. an untalented talent spell that is gated by [combat] or [spec:N]).
+			local castTarget = (castID and castName == fallbackName) and tostring(castID) or castName
+			secureValue = "/cast " .. conditions .. " " .. castTarget
 		else
 			secureType = "spell"
 			secureAttr = "spell"
@@ -3731,7 +3739,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
 								local inEditMode = Wise.editMode
 								for _, btn in ipairs(f.buttons) do
-									btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
+									if not InCombatLockdown() then
+										btn:EnableMouse(btn.isValid or not not optionsOpen or not not inEditMode)
+									end
 								end
 							end
 						end
@@ -3741,7 +3751,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							wasShowingInCombat = false
 							if f.buttons then
 								for _, btn in ipairs(f.buttons) do
-									btn:EnableMouse(false)
+									if not InCombatLockdown() then
+										btn:EnableMouse(false)
+									end
 								end
 							end
 						end
@@ -3763,7 +3775,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
 					local inEditMode = Wise.editMode
 					for _, btn in ipairs(f.buttons) do
-						btn:EnableMouse((btn.isValid or not not optionsOpen or not not inEditMode) and customShow)
+						if not InCombatLockdown() then
+							btn:EnableMouse((btn.isValid or not not optionsOpen or not not inEditMode) and customShow)
+						end
 					end
 				end
 			end
@@ -4090,29 +4104,71 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			validStates.pressAndHold = states.pressAndHold
 			for _, state in ipairs(states) do
 				if Wise:IsActionAllowed(state) then
-					-- Also filter out spells/items that aren't known to the current character.
-					-- This prevents unknown off-spec talents from winning over valid same-spec spells
-					-- during condition evaluation.  Only apply to types with meaningful "known" checks.
-					-- Skip the filter for states with conditions (e.g. [overridebar]) — those are
-					-- temporary/encounter spells whose availability is gated by the condition itself.
-					local sType = state.type
-					local hasCond = state.conditions and state.conditions ~= ""
+					-- Graph-compiled custom_macro steps store the CANONICAL (all-character)
+					-- macro text. Re-derive a LIVE, per-character macro here so the bar
+					-- fires/shows only spells this character can use (e.g. no Druid lines
+					-- on a Priest). This is recomputed every UpdateGroupDisplay, which runs
+					-- on spec/talent change, so it tracks availability. Saved data is left
+					-- canonical — we filter into a shallow copy, never the stored table.
 					if
-						not hasCond
-						and (
-							sType == "spell"
-							or sType == "item"
-							or sType == "toy"
-							or sType == "mount"
-							or sType == "battlepet"
-						)
+						state.type == "misc"
+						and state.value == "custom_macro"
+						and state.pathNodeIds
+						and Wise.FilterMacroTextForCharacter
 					then
-						if Wise:IsActionKnown(sType, state.value) then
+						local liveMacro, liveCond, liveIcon = Wise:FilterMacroTextForCharacter(state, states.graph)
+						-- A step that filters down to no castable line for this character is
+						-- dropped entirely (it would be a dead press / blank icon).
+						if liveMacro:match("\n/cast") or liveMacro:match("\n/use") or liveMacro:match("\n/click") then
+							local copy = {}
+							for k, v in pairs(state) do
+								copy[k] = v
+							end
+							copy.macroText = liveMacro
+							-- Carry the node's resolved icon so the bar button renderer can use it
+							-- as a fallback when ResolveMacroData can't resolve the spell by name/ID
+							-- (e.g. an untalented talent spell).
+							if liveIcon and not copy.icon then
+								copy.icon = liveIcon
+							end
+							-- Derive the slot-level condition live from the graph so the secure
+							-- visibility driver hides the slot when unmet (e.g. [combat]). This
+							-- works even for slots compiled before conditions were promoted.
+							if liveCond and liveCond ~= "" then
+								copy.conditions = liveCond
+							end
+							state = copy
+						else
+							state = nil
+						end
+					end
+					if not state then -- step dropped for this character
+						-- skip insertion below
+					else
+						-- Also filter out spells/items that aren't known to the current character.
+						-- This prevents unknown off-spec talents from winning over valid same-spec spells
+						-- during condition evaluation.  Only apply to types with meaningful "known" checks.
+						-- Skip the filter for states with conditions (e.g. [overridebar]) — those are
+						-- temporary/encounter spells whose availability is gated by the condition itself.
+						local sType = state.type
+						local hasCond = state.conditions and state.conditions ~= ""
+						if
+							not hasCond
+							and (
+								sType == "spell"
+								or sType == "item"
+								or sType == "toy"
+								or sType == "mount"
+								or sType == "battlepet"
+							)
+						then
+							if Wise:IsActionKnown(sType, state.value) then
+								table.insert(validStates, state)
+							end
+						else
 							table.insert(validStates, state)
 						end
-					else
-						table.insert(validStates, state)
-					end
+					end -- close per-character custom_macro guard
 				end
 			end
 
@@ -4483,9 +4539,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				]]
 			)
-			btn:SetAttribute("_onhide", [[
+			btn:SetAttribute(
+				"_onhide",
+				[[
 				self:ClearBindings()
-			]])
+			]]
+			)
 
 			-- Debug hooks removed to prevent secret value errors
 
@@ -4909,8 +4968,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		local resolvedType, resolvedValue, resolvedIcon
 		if aType == "misc" and aValue == "custom_macro" then
 			resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
-			-- Priority: Only use dynamic resolved icon if no manual icon override is present
-			if resolvedIcon and not actionData.icon then
+			-- Priority: manual icon override > dynamic resolution > stored node icon > question mark
+			if actionData.icon then
+				texture = actionData.icon
+			elseif resolvedIcon then
 				texture = resolvedIcon
 			end
 		end
@@ -5004,7 +5065,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		if isEmptySlot then
 			-- Empty slots are pure space maintainers — completely invisible
 			btn:SetAlpha(0)
-			btn:EnableMouse(false)
+			if not InCombatLockdown() then
+				btn:EnableMouse(false)
+			end
 			if btn._textOverlay then
 				btn._textOverlay:Hide()
 			end
@@ -5012,7 +5075,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			btn:SetAlpha(1)
 			local optionsOpen = Wise.OptionsFrame and Wise.OptionsFrame:IsShown()
 			local inEditMode = Wise.editMode
-			btn:EnableMouse(isValid or not not optionsOpen or not not inEditMode)
+			if not InCombatLockdown() then
+				btn:EnableMouse(isValid or not not optionsOpen or not not inEditMode)
+			end
 			if btn.activeHighlight then
 				btn.activeHighlight:Hide()
 			end

@@ -16,6 +16,52 @@ function Wise:CreateOptionsFrame()
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
 	f:SetTitle("Wise Options")
 
+	-- Maximize / Minimize button
+	local maxBtn = CreateFrame("Button", nil, f)
+	maxBtn:SetSize(24, 24)
+	if f.CloseButton then
+		maxBtn:SetPoint("RIGHT", f.CloseButton, "LEFT", 4, 0)
+		maxBtn:SetFrameLevel(f.CloseButton:GetFrameLevel() + 2)
+	else
+		maxBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -4)
+		maxBtn:SetFrameLevel(f:GetFrameLevel() + 20)
+	end
+	maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+	maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+	maxBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+	Wise:AddTooltip(maxBtn, "Maximize / Minimize Options Window")
+
+	local maximized = false
+	maxBtn:SetScript("OnClick", function()
+		maximized = not maximized
+		if maximized then
+			local parentWidth, parentHeight = UIParent:GetSize()
+			f:SetSize(parentWidth * 0.95, parentHeight * 0.90)
+			f:ClearAllPoints()
+			f:SetPoint("CENTER", UIParent, "CENTER")
+			maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+			maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
+		else
+			f:SetSize(930, 500)
+			f:ClearAllPoints()
+			f:SetPoint("CENTER", UIParent, "CENTER")
+			maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+			maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+		end
+		-- Re-render canvas if slot configurator is active
+		if Wise.configuringSlot and Wise.SlotConfigurator and Wise.SlotConfigurator.canvas then
+			if configuratorState and configuratorState.activeTab == "nodes" then
+				if RenderNodesCanvas then
+					RenderNodesCanvas()
+				end
+			else
+				if RenderCanvas then
+					RenderCanvas()
+				end
+			end
+		end
+	end)
+
 	-- Set the Wise tree logo in the portrait
 	local portraitTex = nil
 	if f.PortraitContainer and f.PortraitContainer.portrait then
@@ -248,6 +294,11 @@ function Wise:CreateOptionsFrame()
 	-- Note: "Create Group" button is now f.Sidebar.AddBtn (sticky)
 	-- Note: "Edit Mode" button is now f.EditModeBtn in TabStrip
 
+	-- Slot toolbar (above the Right panel, in line with the other column buttons)
+	if Wise.CreateSlotToolbar then
+		Wise:CreateSlotToolbar()
+	end
+
 	Wise:RefreshGroupList()
 	Wise:RefreshActionsView(f.Middle.Content)
 	Wise:UpdateFilterButtons()
@@ -375,6 +426,15 @@ function Wise:SetTab(viewName)
 			f.WiseOnlyEditModeBtn:Show()
 		else
 			f.WiseOnlyEditModeBtn:Hide()
+		end
+	end
+
+	-- Slot toolbar only belongs to the Editor tab.
+	if f.SlotToolbar then
+		if viewName == "Editor" then
+			Wise:RefreshSlotToolbar()
+		else
+			f.SlotToolbar:Hide()
 		end
 	end
 

@@ -281,6 +281,13 @@
             <KeyValue key="testName" value="Forms Interface Availability" type="string"/>
             <KeyValue key="instructions" value="Verify that the 'Forms' Wiser Interface is only available and shown if the player has forms to change into.\n1. Run the test.\n2. Verify that the output displays whether the Forms group is available on this character/spec, and that it correctly matches the status of GetNumShapeshiftForms()." type="string"/>
             <KeyValue key="action" value="local numForms = GetNumShapeshiftForms() or 0; local available = Wise:IsGroupAvailable('Forms'); print(string.format('GetNumShapeshiftForms(): %d, Forms available: %s', numForms, tostring(available))); if (numForms &gt; 0 and available) or (numForms == 0 and not available) then print('Test Passed: Forms availability correctly reflects GetNumShapeshiftForms()') else print('Test FAILED: Forms availability does not match GetNumShapeshiftForms()') end" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_CombatEnableMouse" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Combat EnableMouse Taint Guard" type="string"/>
+            <KeyValue key="instructions" value="Verify that popup rings/groups can be shown and hidden in combat without throwing EnableMouse action blocked errors.\n1. Bind a popup ring group to a keybind.\n2. Engage in combat (e.g. attack a training dummy).\n3. Toggle the popup ring visible and invisible multiple times via keybind.\n4. Verify that no ADDON_ACTION_BLOCKED error occurs for EnableMouse." type="string"/>
+            <KeyValue key="action" value="" type="string"/>
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>

@@ -1752,8 +1752,22 @@ function Wise:ResolveMacroData(macroText)
 
 	-- Evaluate Conditional
 	local result = SecureCmdOptionParse(targetLine)
-	if not result then
-		return nil, nil, nil
+	if not result or result == "" then
+		-- The conditional did not currently match (e.g. "[combat] Abundance" while
+		-- out of combat). For DISPLAY purposes we still want the button to show the
+		-- intended spell's icon rather than going blank — mirroring how a real macro
+		-- with #showtooltip still shows the spell. Strip the [conditions] from each
+		-- clause and use the first resolvable spell/item as the icon source.
+		for clause in string.gmatch(targetLine, "[^;]+") do
+			local stripped = strtrim((clause:gsub("%b[]", "")))
+			if stripped ~= "" then
+				result = stripped
+				break
+			end
+		end
+		if not result or result == "" then
+			return nil, nil, nil
+		end
 	end
 
 	-- Clean up castsequence reset rules and comma lists
@@ -2063,11 +2077,16 @@ function Wise:GetActionIcon(actionType, value, extraData)
 			local spellInfo = C_Spell.GetSpellInfo(overrideValue)
 			if spellInfo and spellInfo.iconID then
 				texture = spellInfo.iconID
+			elseif extraData and extraData.icon then
+				-- Spell not currently known (e.g. unlearned talent) — use the stored icon.
+				texture = extraData.icon
 			end
 		else
 			local _, _, icon = GetSpellInfo(overrideValue)
 			if icon then
 				texture = icon
+			elseif extraData and extraData.icon then
+				texture = extraData.icon
 			end
 		end
 	elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
@@ -4520,6 +4539,82 @@ end
 -- Options UI: Actions View Checklist
 -- ============================================================================
 
+-- Build the short visibility/availability summary for an action — the same
+-- "+(Spec, Class) -(Role)" text shown in the Slots and Actions list. Shared so
+-- the Slot Configurator node cards can show the identical tag. Returns "" when
+-- the action is unrestricted (no enables/disables and no legacy category).
+function Wise:GetActionVisibilitySummary(action)
+	if type(action) ~= "table" then
+		return ""
+	end
+	local enables = action.visibilityEnable or {}
+	local disables = action.visibilityDisable or {}
+
+	local function formatTag(tag)
+		if tag == "global" then
+			return "All"
+		end
+		local prefix, val = strsplit(":", tag, 2)
+		if not val then
+			return tag
+		end
+		if prefix == "role" then
+			return Wise.RoleLabels and Wise.RoleLabels[val] or val
+		elseif prefix == "class" then
+			return val
+		elseif prefix == "spec" then
+			local _, name = GetSpecializationInfoByID(tonumber(val))
+			return name or val
+		elseif prefix == "talent" then
+			local spellInfo = C_Spell.GetSpellInfo(tonumber(val))
+			return spellInfo and spellInfo.name or val
+		elseif prefix == "char" then
+			local name = strsplit("-", val)
+			return name or val
+		end
+		return val
+	end
+
+	if #enables == 0 and #disables == 0 then
+		local cat = action.category or "global"
+		if cat == "class" then
+			return action.addedByClass or "Class"
+		elseif cat == "spec" then
+			local sp = action.addedBySpec
+			if sp then
+				local _, sn = GetSpecializationInfoByID(sp)
+				return sn or "Spec"
+			end
+		elseif cat == "character" then
+			return "Char"
+		end
+		return ""
+	end
+
+	local parts = {}
+	if #enables > 0 then
+		local eStrs = {}
+		for i = 1, math.min(2, #enables) do
+			table.insert(eStrs, formatTag(enables[i]))
+		end
+		if #enables > 2 then
+			table.insert(eStrs, "...")
+		end
+		table.insert(parts, "+(" .. table.concat(eStrs, ", ") .. ")")
+	end
+	if #disables > 0 then
+		local dStrs = {}
+		for i = 1, math.min(2, #disables) do
+			table.insert(dStrs, formatTag(disables[i]))
+		end
+		if #disables > 2 then
+			table.insert(dStrs, "...")
+		end
+		table.insert(parts, "-(" .. table.concat(dStrs, ", ") .. ")")
+	end
+	return table.concat(parts, " ")
+end
+
 -- This is the new "Middle" panel logic replacing RefreshActionList in Options.lua
 function Wise:RefreshActionsView(container)
 	local groupName = Wise.selectedGroup
@@ -4816,8 +4911,21 @@ function Wise:RefreshActionsView(container)
 			b:Hide()
 		end
 
-		local totalStates = #actions
-		for aIdx, action in ipairs(actions) do
+		local displayActions = actions
+		if actions.graph and actions.graph.nodes then
+			displayActions = {}
+			for _, node in ipairs(actions.graph.nodes) do
+				local actCopy = {}
+				for k, v in pairs(node.action) do
+					actCopy[k] = v
+				end
+				actCopy.conditions = node.condition
+				tinsert(displayActions, actCopy)
+			end
+		end
+
+		local totalStates = #displayActions
+		for aIdx, action in ipairs(displayActions) do
 			local btn = slotFrame.ActionButtons[aIdx]
 			if not btn then
 				btn = CreateFrame("Button", nil, slotFrame, "BackdropTemplate")
@@ -4880,74 +4988,8 @@ function Wise:RefreshActionsView(container)
 
 				btn.icon:SetTexture(icon)
 
-				-- Build suffix text from visibility arrays
-				local suffixText = ""
-				local enables = action.visibilityEnable or {}
-				local disables = action.visibilityDisable or {}
-
-				local function formatTag(tag)
-					if tag == "global" then
-						return "All"
-					end
-					local prefix, val = strsplit(":", tag, 2)
-					if not val then
-						return tag
-					end
-					if prefix == "role" then
-						return Wise.RoleLabels and Wise.RoleLabels[val] or val
-					elseif prefix == "class" then
-						return val -- already a class tag
-					elseif prefix == "spec" then
-						local _, name = GetSpecializationInfoByID(tonumber(val))
-						return name or val
-					elseif prefix == "talent" then
-						local spellInfo = C_Spell.GetSpellInfo(tonumber(val))
-						return spellInfo and spellInfo.name or val
-					elseif prefix == "char" then
-						local name = strsplit("-", val)
-						return name or val
-					end
-					return val
-				end
-
-				if #enables == 0 and #disables == 0 then
-					-- Legacy fallback text
-					local cat = action.category or "global"
-					if cat == "class" then
-						suffixText = action.addedByClass or "Class"
-					elseif cat == "spec" then
-						local sp = action.addedBySpec
-						if sp then
-							local _, sn = GetSpecializationInfoByID(sp)
-							suffixText = sn or "Spec"
-						end
-					elseif cat == "character" then
-						suffixText = "Char"
-					end
-				else
-					local parts = {}
-					if #enables > 0 then
-						local eStrs = {}
-						for i = 1, math.min(2, #enables) do
-							table.insert(eStrs, formatTag(enables[i]))
-						end
-						if #enables > 2 then
-							table.insert(eStrs, "...")
-						end
-						table.insert(parts, "+(" .. table.concat(eStrs, ", ") .. ")")
-					end
-					if #disables > 0 then
-						local dStrs = {}
-						for i = 1, math.min(2, #disables) do
-							table.insert(dStrs, formatTag(disables[i]))
-						end
-						if #disables > 2 then
-							table.insert(dStrs, "...")
-						end
-						table.insert(parts, "-(" .. table.concat(dStrs, ", ") .. ")")
-					end
-					suffixText = table.concat(parts, " ")
-				end
+				-- Build suffix text from visibility arrays (shared with node cards)
+				local suffixText = Wise:GetActionVisibilitySummary(action)
 
 				-- Addon Magic: show addon count as suffix
 				if

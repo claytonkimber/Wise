@@ -1477,6 +1477,59 @@ function frame:OnEvent(event, arg1)
 		-- Initialize modules if needed
 		self:UnregisterEvent("ADDON_LOADED")
 	elseif event == "PLAYER_LOGIN" then
+		-- One-time repair: early Slot Configurator builds compiled custom_macro
+		-- actions with raw numeric spell/item IDs in /cast and /use lines, which
+		-- silently cast nothing.  Rebuild every graph-compiled slot from its stored
+		-- graph so the macros become castable (also clears the [[..]] bracket bug).
+		-- Run here (not ADDON_LOADED) so spell-name APIs are reliable, and before
+		-- Initialize so the bars bind the repaired macros. Guarded to run once.
+		if WiseDB then
+			WiseDB.migrations = WiseDB.migrations or {}
+			if not WiseDB.migrations.compiledMacroIDsToNames then
+				if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+					local repaired = 0
+					for _, g in pairs(WiseDB.groups) do
+						if type(g.actions) == "table" then
+							for slotKey, slotActions in pairs(g.actions) do
+								if type(slotKey) == "number" and Wise:RepairCompiledSlotFromGraph(slotActions) then
+									repaired = repaired + 1
+								end
+							end
+						end
+					end
+					WiseDB.migrations.compiledMacroIDsToNames = true
+					if repaired > 0 then
+						Wise:DebugPrint("Repaired " .. repaired .. " configurator slot(s) with ID-based macros")
+					end
+				end
+
+				-- One-time RE-repair: an earlier build baked per-character availability
+				-- (IsActionAllowed) into the stored macro, so the login migration above
+				-- froze whichever character ran it into the SHARED slot data — corrupting
+				-- multi-character slots (e.g. AtMouse showed wrong/stale icons on other
+				-- specs/chars). The compiler now produces CANONICAL, all-character macros
+				-- and filters live per character at display time. Rebuild every graph slot
+				-- once more from its preserved graph to restore the canonical macros.
+				if not WiseDB.migrations.canonicalMacroRecompileV2 then
+					if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+						local rerepaired = 0
+						for _, g in pairs(WiseDB.groups) do
+							if type(g.actions) == "table" then
+								for slotKey, slotActions in pairs(g.actions) do
+									if type(slotKey) == "number" and Wise:RepairCompiledSlotFromGraph(slotActions) then
+										rerepaired = rerepaired + 1
+									end
+								end
+							end
+						end
+						WiseDB.migrations.canonicalMacroRecompileV2 = true
+						if rerepaired > 0 then
+							Wise:DebugPrint("Recompiled " .. rerepaired .. " configurator slot(s) to canonical macros")
+						end
+					end
+				end
+			end
+		end
 		if Wise.Initialize then
 			Wise:Initialize()
 		end
