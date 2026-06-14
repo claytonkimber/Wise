@@ -2690,11 +2690,15 @@ function Wise:GetSecureAttributes(actionData, conditions)
 		if hasCond then
 			secureType = "macro"
 			secureAttr = "macrotext"
-			-- Prefer the numeric spell ID in conditional /cast lines so ResolveMacroData
-			-- can resolve the icon even when the spell isn't currently known by name
-			-- (e.g. an untalented talent spell that is gated by [combat] or [spec:N]).
-			local castTarget = (castID and castName == fallbackName) and tostring(castID) or castName
-			secureValue = "/cast " .. conditions .. " " .. castTarget
+			-- Conditional /cast lines MUST use the spell NAME, not the numeric ID:
+			-- retail's /cast does not accept a bare spell ID (a line like
+			-- "/cast [cond] 1229376" silently casts nothing — only "/cast [cond] Name"
+			-- works). An earlier version emitted the ID so ResolveMacroData could resolve
+			-- the icon for spells not known by name (e.g. untalented talents); that icon
+			-- need is now met by the node's stored icon, which the runtime carries through
+			-- as a fallback (FilterMacroTextForCharacter's resolvedIcon), so we no longer
+			-- have to sacrifice castability for it.
+			secureValue = "/cast " .. conditions .. " " .. castName
 		else
 			secureType = "spell"
 			secureAttr = "spell"
@@ -4102,8 +4106,29 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			validStates.resetOnCombat = states.resetOnCombat
 			validStates.suppressErrors = states.suppressErrors
 			validStates.pressAndHold = states.pressAndHold
+			-- Tracks the live (per-character) macro text of every graph-compiled step we
+			-- have already accepted for this slot, so two canonical steps that collapse to
+			-- the SAME macro after filtering don't both fire. A multi-spec branching graph
+			-- compiles one canonical step per root-to-leaf path; for a given character many
+			-- of those branches strip down to identical lines (e.g. several branches that
+			-- only leave the shared trinket/item head). Without this, the sequence presses
+			-- through byte-identical clones — the spurious "Step 1/2/3" on a single-shot slot.
+			local seenLiveMacro = {}
 			for _, state in ipairs(states) do
-				if Wise:IsActionAllowed(state) then
+				-- A graph-compiled step (the slot carries a graph) with no pathNodeIds is
+				-- stale pre-pathNodeIds data: it can't be re-filtered per character, so the
+				-- block below would skip filtering and the engine would fire its stored
+				-- macroText with no availability check — leaking an off-spec/off-class cast
+				-- (e.g. a Disc-only Single-Button Assistant firing on a Shadow priest). Drop
+				-- it; the pathNodeIdsRecompileV3 migration rebuilds these on login, but this
+				-- guards any that slip through. Hand-authored macros (no slot graph) are not
+				-- affected and still pass through.
+				local isUnfilterableGraphStep = type(state) == "table"
+					and state.type == "misc"
+					and state.value == "custom_macro"
+					and not state.pathNodeIds
+					and states.graph ~= nil
+				if Wise:IsActionAllowed(state) and not isUnfilterableGraphStep then
 					-- Graph-compiled custom_macro steps store the CANONICAL (all-character)
 					-- macro text. Re-derive a LIVE, per-character macro here so the bar
 					-- fires/shows only spells this character can use (e.g. no Druid lines
@@ -4119,12 +4144,25 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						local liveMacro, liveCond, liveIcon = Wise:FilterMacroTextForCharacter(state, states.graph)
 						-- A step that filters down to no castable line for this character is
 						-- dropped entirely (it would be a dead press / blank icon).
-						if liveMacro:match("\n/cast") or liveMacro:match("\n/use") or liveMacro:match("\n/click") then
+						if
+							not (liveMacro:match("\n/cast") or liveMacro:match("\n/use") or liveMacro:match("\n/click"))
+						then
+							state = nil
+						elseif seenLiveMacro[liveMacro] then
+							-- Identical to an earlier accepted step after filtering — a collapsed
+							-- branch duplicate. Drop it so the sequence doesn't repeat the press.
+							state = nil
+						else
+							seenLiveMacro[liveMacro] = true
 							local copy = {}
 							for k, v in pairs(state) do
 								copy[k] = v
 							end
 							copy.macroText = liveMacro
+							-- Remember this step's castable lines so a post-pass can drop steps
+							-- whose casts are a subset of another step's (a collapsed branch that
+							-- reduces to just the shared trinket/item head — fires nothing distinct).
+							copy._liveCastSet = Wise.GetMacroCastSet and Wise:GetMacroCastSet(liveMacro) or nil
 							-- Carry the node's resolved icon so the bar button renderer can use it
 							-- as a fallback when ResolveMacroData can't resolve the spell by name/ID
 							-- (e.g. an untalented talent spell).
@@ -4138,8 +4176,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								copy.conditions = liveCond
 							end
 							state = copy
-						else
-							state = nil
 						end
 					end
 					if not state then -- step dropped for this character
@@ -4169,6 +4205,51 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							table.insert(validStates, state)
 						end
 					end -- close per-character custom_macro guard
+				end
+			end
+
+			-- Subset-suppression pass over the accepted graph steps: drop any whose
+			-- castable lines are wholly contained in another kept step's. Exact-text
+			-- dedupe above removes byte-identical clones; this additionally removes a
+			-- branch that collapsed to just the shared head (e.g. trinkets + /target with
+			-- no class spell) once its character-specific cast was filtered out. Without
+			-- it the sequence still presses through a step that fires nothing distinct.
+			if Wise.MacroCastSetIsSubset then
+				local removeIdx = {}
+				for i = #validStates, 1, -1 do
+					local si = validStates[i]
+					local setI = type(si) == "table" and si._liveCastSet
+					if setI then
+						for j = 1, #validStates do
+							local sj = validStates[j]
+							local setJ = type(sj) == "table" and sj._liveCastSet
+							if i ~= j and setJ and Wise:MacroCastSetIsSubset(setI, setJ) then
+								local sizeI, sizeJ = 0, 0
+								for _ in pairs(setI) do
+									sizeI = sizeI + 1
+								end
+								for _ in pairs(setJ) do
+									sizeJ = sizeJ + 1
+								end
+								-- Drop i if j fires strictly more; on a tie keep the earlier index.
+								if sizeI < sizeJ or (sizeI == sizeJ and j < i) then
+									removeIdx[i] = true
+									break
+								end
+							end
+						end
+					end
+				end
+				for i = #validStates, 1, -1 do
+					if removeIdx[i] then
+						table.remove(validStates, i)
+					end
+				end
+				-- The transient cast-set must not leak into rendering/secure attributes.
+				for _, s in ipairs(validStates) do
+					if type(s) == "table" then
+						s._liveCastSet = nil
+					end
 				end
 			end
 
@@ -8311,6 +8392,19 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 		then
 			return
 		end
+	end
+	-- Spec and spell changes invalidate IsActionAllowed/IsActionKnown results and
+	-- the per-character filtered macroText baked into graph-compiled slots. The
+	-- snapshot-diff in _dynamicRefresh misses this for static groups and graph-
+	-- compiled slots with no per-step conditions, so force a full UpdateGroupDisplay
+	-- for every active group. UpdateGroupDisplay defers safely when in combat.
+	if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then
+		if Wise.frames then
+			for name in pairs(Wise.frames) do
+				Wise:UpdateGroupDisplay(name)
+			end
+		end
+		return
 	end
 	scheduleDynamicRefresh()
 end)

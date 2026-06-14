@@ -1528,6 +1528,51 @@ function frame:OnEvent(event, arg1)
 						end
 					end
 				end
+
+				-- One-time recompile for slots whose compiled steps predate pathNodeIds.
+				-- Such steps can't be re-filtered per character at runtime, so the engine
+				-- falls back to firing their stored macroText with no availability check —
+				-- meaning an off-spec/off-class step (e.g. a Disc-only Single-Button
+				-- Assistant) fires on a character that should never see it. Recompiling
+				-- from the preserved graph regenerates steps WITH pathNodeIds so live
+				-- filtering applies. Runs independently of the migrations above (their flag
+				-- may already be set on profiles created before this fix existed).
+				if not WiseDB.migrations.pathNodeIdsRecompileV3 then
+					if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+						local fixed = 0
+						for _, g in pairs(WiseDB.groups) do
+							if type(g.actions) == "table" then
+								for slotKey, slotActions in pairs(g.actions) do
+									if type(slotKey) == "number" and type(slotActions) == "table" then
+										-- Only slots that have a graph AND at least one compiled
+										-- step missing pathNodeIds need rebuilding.
+										local needs = false
+										if slotActions.graph then
+											for _, st in ipairs(slotActions) do
+												if
+													type(st) == "table"
+													and st.type == "misc"
+													and st.value == "custom_macro"
+													and not st.pathNodeIds
+												then
+													needs = true
+													break
+												end
+											end
+										end
+										if needs and Wise:RepairCompiledSlotFromGraph(slotActions) then
+											fixed = fixed + 1
+										end
+									end
+								end
+							end
+						end
+						WiseDB.migrations.pathNodeIdsRecompileV3 = true
+						if fixed > 0 then
+							Wise:DebugPrint("Recompiled " .. fixed .. " slot(s) missing pathNodeIds")
+						end
+					end
+				end
 			end
 		end
 		if Wise.Initialize then

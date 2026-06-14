@@ -819,6 +819,37 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 	return table.concat(macroLines, "\n"), slotCond or "", resolvedIcon
 end
 
+-- The set of "castable" lines (/cast, /use, /click) in a per-character macro text,
+-- as a { [line] = true } set. Used to compare steps for redundancy: the #showtooltip
+-- header and pure support lines (/target, #-comments) are ignored because they don't
+-- determine whether a press actually DOES anything distinct.
+function Wise:GetMacroCastSet(macroText)
+	local set = {}
+	if type(macroText) ~= "string" then
+		return set
+	end
+	for line in (macroText .. "\n"):gmatch("(.-)\n") do
+		if line:match("^/cast") or line:match("^/use") or line:match("^/click") then
+			set[line] = true
+		end
+	end
+	return set
+end
+
+-- True when every castable line in `sub` also appears in `super` (sub ⊆ super).
+-- A step whose castable lines are a subset of another kept step's lines is redundant:
+-- it fires nothing the other step doesn't already fire. This is what removes a
+-- collapsed branch that reduces to just the shared trinket/item head once the
+-- character-specific spell on it is filtered out.
+function Wise:MacroCastSetIsSubset(sub, super)
+	for line in pairs(sub) do
+		if not super[line] then
+			return false
+		end
+	end
+	return true
+end
+
 -- Enumerate every distinct root-to-leaf PATH through the graph. Each path is one
 -- compiled step: it replays the shared head and then follows one branch to a leaf.
 -- A node with no outgoing connection ends the path (e.g. a sequence branch like
@@ -1339,41 +1370,81 @@ function Wise:BuildSlotMacroPreview()
 	end
 
 	local compiled = CompileGraphToActions(state.graph, actions)
-	local strategy = compiled.conflictStrategy or "waterfall"
 
-	local stepCount = 0
-	for i = 1, #compiled do
-		if type(compiled[i]) == "table" then
-			stepCount = stepCount + 1
-		end
-	end
-
-	-- All nodes were filtered out by availability rules for the current toon.
-	if stepCount == 0 then
-		return "|cffff8080(nothing castable on this character — all actions filtered out by availability)|r"
-	end
-
-	local lines = {}
-	tinsert(lines, "|cffffd100Strategy:|r " .. strategy .. (stepCount > 1 and (" (" .. stepCount .. " steps)") or ""))
-
-	local stepIdx = 0
+	-- Pre-filter each step for the current character so the preview matches what
+	-- the engine will actually fire. The canonical compiled macro includes nodes for
+	-- every class/spec; nodes that don't apply to this toon are stripped here.
+	--
+	-- A multi-spec branching graph compiles one canonical step per root-to-leaf path,
+	-- and for a given character many of those branches strip down to the SAME macro
+	-- (e.g. several branches that only leave the shared trinket/item head). Reduce the
+	-- filtered steps to the genuinely distinct presses exactly as the live engine does
+	-- (see UpdateGroupDisplay's seenLiveMacro + subset suppression) so the preview
+	-- reflects what the bar actually fires. Two-stage reduction:
+	--   1. Drop empty/#showtooltip-only steps and byte-identical clones.
+	--   2. Drop any step whose castable lines are a subset of another kept step's — a
+	--      collapsed branch that fires nothing distinct (the spurious head-only step).
+	local candidates = {}
+	local seenText = {}
 	for i = 1, #compiled do
 		local st = compiled[i]
 		if type(st) == "table" then
-			stepIdx = stepIdx + 1
-			if stepCount > 1 then
-				tinsert(lines, " ")
-				tinsert(lines, "|cff00ccffStep " .. stepIdx .. ":|r")
+			local macroText = (Wise:FilterMacroTextForCharacter(st, compiled.graph))
+			if macroText ~= "" and macroText ~= "#showtooltip" and not seenText[macroText] then
+				seenText[macroText] = true
+				tinsert(candidates, { text = macroText, cast = Wise:GetMacroCastSet(macroText) })
 			end
-			local macroText = st.macroText or ""
-			if macroText == "" then
-				tinsert(lines, "|cff888888(no castable line)|r")
-			else
-				-- Show the macro verbatim, line by line.
-				for line in (macroText .. "\n"):gmatch("(.-)\n") do
-					tinsert(lines, line)
+		end
+	end
+
+	local filteredSteps = {}
+	for i, cand in ipairs(candidates) do
+		local dominated = false
+		for j, other in ipairs(candidates) do
+			if i ~= j and Wise:MacroCastSetIsSubset(cand.cast, other.cast) then
+				-- cand ⊆ other. Drop cand if other is strictly larger, or (equal sets,
+				-- already byte-distinct text) keep the earlier one to stay deterministic.
+				local sizeC, sizeO = 0, 0
+				for _ in pairs(cand.cast) do
+					sizeC = sizeC + 1
+				end
+				for _ in pairs(other.cast) do
+					sizeO = sizeO + 1
+				end
+				if sizeC < sizeO or (sizeC == sizeO and j < i) then
+					dominated = true
+					break
 				end
 			end
+		end
+		if not dominated then
+			tinsert(filteredSteps, cand.text)
+		end
+	end
+
+	local visibleStepCount = #filteredSteps
+
+	if visibleStepCount == 0 then
+		return "|cffff8080(nothing castable on this character — all actions filtered out by availability)|r"
+	end
+
+	-- A single surviving step fires as a plain single-shot regardless of the canonical
+	-- strategy, so describe it that way to match the bar's behaviour.
+	local strategy = (visibleStepCount > 1) and (compiled.conflictStrategy or "waterfall") or "single"
+
+	local lines = {}
+	tinsert(
+		lines,
+		"|cffffd100Strategy:|r " .. strategy .. (visibleStepCount > 1 and (" (" .. visibleStepCount .. " steps)") or "")
+	)
+
+	for stepIdx, macroText in ipairs(filteredSteps) do
+		if visibleStepCount > 1 then
+			tinsert(lines, " ")
+			tinsert(lines, "|cff00ccffStep " .. stepIdx .. ":|r")
+		end
+		for line in (macroText .. "\n"):gmatch("(.-)\n") do
+			tinsert(lines, line)
 		end
 	end
 
