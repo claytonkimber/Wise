@@ -999,6 +999,10 @@ local function OverlayGlowAnimOutFinished(animGroup)
 	overlay:Hide()
 	table.insert(glowUnusedOverlays, overlay)
 	frame.__WiseOverlay = nil
+	-- Keep the transition cache in sync: if the overlay was torn down by any
+	-- path other than UpdateButtonUsability (e.g. the button hiding), clear the
+	-- flag so a later shouldGlow re-shows it instead of being skipped as "already on".
+	frame._wiseGlowOn = nil
 end
 
 local function OverlayGlow_OnHide(self)
@@ -7981,15 +7985,28 @@ function Wise:UpdateButtonUsability(btn)
 		end
 	end
 
+	-- Only call Show/Hide on an actual state TRANSITION. UpdateButtonUsability is
+	-- driven by UNIT_AURA (fires many times/sec in combat) and the proc check can
+	-- briefly disagree frame-to-frame (e.g. a charge-based proc like Shadow Word:
+	-- Death/Madness as charges/secret-numbers settle). Re-calling Show/Hide every
+	-- pass restarts the animOut→animIn cycle and produces a visible repeated "pop"
+	-- — and churns the glow animation for no reason. Cache the last applied state
+	-- and no-op when it hasn't changed (Rule 12 #6).
 	if shouldGlow then
-		Wise:ShowOverlayGlow(btn)
-		if visualClone then
-			Wise:ShowOverlayGlow(visualClone)
+		if not btn._wiseGlowOn then
+			btn._wiseGlowOn = true
+			Wise:ShowOverlayGlow(btn)
+			if visualClone then
+				Wise:ShowOverlayGlow(visualClone)
+			end
 		end
 	elseif not Wise.isDragging then
-		Wise:HideOverlayGlow(btn)
-		if visualClone then
-			Wise:HideOverlayGlow(visualClone)
+		if btn._wiseGlowOn then
+			btn._wiseGlowOn = nil
+			Wise:HideOverlayGlow(btn)
+			if visualClone then
+				Wise:HideOverlayGlow(visualClone)
+			end
 		end
 	end
 end
@@ -8281,26 +8298,41 @@ local function scheduleChargeUpdate()
 		end)
 	end
 end
+-- Usability/glow refresh is driven by UNIT_AURA (player+target), which fires many
+-- times per second in combat, plus SPELL_UPDATE_USABLE and the glow show/hide
+-- events. Running the full all-button usability+glow pass synchronously per event
+-- is wasted churn (and was re-triggering the proc glow every aura tick). Coalesce
+-- a burst into a single deferred pass (Rule 12 #2), same pattern as cooldowns.
+local pendingUsabilityUpdate = false
+local function scheduleUsabilityUpdate()
+	if not pendingUsabilityUpdate then
+		pendingUsabilityUpdate = true
+		C_Timer.After(0, function()
+			pendingUsabilityUpdate = false
+			Wise:UpdateAllUsability()
+		end)
+	end
+end
 
 eventFrame:SetScript("OnEvent", function(self, event, unit)
 	if event == "UNIT_AURA" then
 		if unit == "target" or unit == "player" then
-			Wise:UpdateAllUsability()
+			scheduleUsabilityUpdate()
 			scheduleCooldownUpdate()
 		end
 		if unit == "player" then
 			Wise:UpdateAllStates()
 		end
 	elseif event == "PLAYER_TARGET_CHANGED" then
-		Wise:UpdateAllUsability()
+		scheduleUsabilityUpdate()
 		scheduleCooldownUpdate()
 	elseif event == "SPELL_UPDATE_USABLE" then
-		Wise:UpdateAllUsability()
+		scheduleUsabilityUpdate()
 	elseif event == "SPELL_UPDATE_ICON" then
 		Wise:UpdateAllOverrideIcons()
-		Wise:UpdateAllUsability()
+		scheduleUsabilityUpdate()
 	elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
-		Wise:UpdateAllUsability()
+		scheduleUsabilityUpdate()
 	elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "ACTIONBAR_UPDATE_STATE" then
 		Wise:UpdateAllStates()
 	elseif event == "SPELL_UPDATE_CHARGES" then
@@ -8347,6 +8379,30 @@ local function scheduleDynamicRefresh()
 end
 Wise.ScheduleDynamicRefresh = scheduleDynamicRefresh
 
+-- Coalesced full rebuild for spec/spell changes. Unlike scheduleDynamicRefresh
+-- (which runs the cheap snapshot-diff closures), this forces a full
+-- UpdateGroupDisplay on every active group — needed because spec/spell changes
+-- invalidate the per-character graph macroText that the snapshot-diff can't see.
+-- SPELLS_CHANGED fires in bursts, so the deferred flag collapses a burst into a
+-- single pass instead of rebuilding every frame N times (Rule 12 #2).
+local pendingFullRebuild = false
+local function scheduleFullRebuild()
+	if not pendingFullRebuild then
+		pendingFullRebuild = true
+		C_Timer.After(0, function()
+			pendingFullRebuild = false
+			if InCombatLockdown() then
+				return -- UpdateGroupDisplay would defer anyway; combat-exit flush catches it
+			end
+			if Wise.frames then
+				for name in pairs(Wise.frames) do
+					Wise:UpdateGroupDisplay(name)
+				end
+			end
+		end)
+	end
+end
+
 local dynEventFrame = CreateFrame("Frame")
 dynEventFrame._wiseProfileName = "DynamicRefreshDriver"
 -- Action-slot texture changes (action / overridebar / possessbar slots)
@@ -8371,7 +8427,12 @@ dynEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 -- Target / mouseover reaction conditions ([harm], [help], [@target,exists])
 dynEventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 dynEventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
-dynEventFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+-- NOTE: Modifier keys ([mod:shift] etc.) are deliberately NOT driven here.
+-- A MODIFIER_STATE_CHANGED driver fires a refresh of EVERY dynamic group on
+-- every shift/ctrl/alt tap (constant in combat), even for groups with no
+-- modifier condition. Modifier-driven slots are served instead by the slow
+-- per-group _needsPoll ticker below (Rule 12 #4), so groups without [mod:*]
+-- poll zero times.
 -- Vehicle/possess transitions
 dynEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 dynEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
@@ -8381,29 +8442,38 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
 		return
 	end
-	-- In combat, only schedule for target, mouseover, modifier, and shapeshift updates to keep icons responsive.
-	-- Layout changes are deferred until PLAYER_REGEN_ENABLED flushes on combat exit.
-	if InCombatLockdown() then
-		if
-			event ~= "MODIFIER_STATE_CHANGED"
-			and event ~= "UPDATE_MOUSEOVER_UNIT"
-			and event ~= "PLAYER_TARGET_CHANGED"
-			and event ~= "UPDATE_SHAPESHIFT_FORM"
-		then
-			return
+	-- Spec/spell changes need a full rebuild (they invalidate the per-character
+	-- graph macroText the snapshot-diff can't see). PLAYER_SPECIALIZATION_CHANGED
+	-- can't fire in combat, but SPELLS_CHANGED can (learning a spell mid-fight,
+	-- pet swaps). If it lands in combat, UpdateGroupDisplay would defer anyway, so
+	-- mark it pending and let PLAYER_REGEN_ENABLED flush one rebuild on exit.
+	local isFullRebuildEvent = (event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED")
+
+	-- In combat the refresh is a no-op: every closure that touches secure
+	-- attributes self-guards on InCombatLockdown(), and cooldown/target events
+	-- fire every GCD — so don't even schedule. PLAYER_REGEN_ENABLED flushes on
+	-- combat exit to catch anything that changed (Rule 12 #3).
+	if event ~= "PLAYER_REGEN_ENABLED" and InCombatLockdown() then
+		if isFullRebuildEvent then
+			dynEventFrame._fullRebuildPending = true
 		end
+		return
 	end
-	-- Spec and spell changes invalidate IsActionAllowed/IsActionKnown results and
-	-- the per-character filtered macroText baked into graph-compiled slots. The
-	-- snapshot-diff in _dynamicRefresh misses this for static groups and graph-
-	-- compiled slots with no per-step conditions, so force a full UpdateGroupDisplay
-	-- for every active group. UpdateGroupDisplay defers safely when in combat.
-	if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED" then
-		if Wise.frames then
-			for name in pairs(Wise.frames) do
-				Wise:UpdateGroupDisplay(name)
-			end
-		end
+
+	-- On combat exit, honor any spec/spell rebuild that was suppressed in combat.
+	if event == "PLAYER_REGEN_ENABLED" and dynEventFrame._fullRebuildPending then
+		dynEventFrame._fullRebuildPending = nil
+		scheduleFullRebuild()
+		-- fall through so the normal combat-exit refresh still runs below
+	end
+
+	-- Spec and spell changes force a full UpdateGroupDisplay on every active group.
+	-- SPELLS_CHANGED is spammy (fires repeatedly on load / talent / book changes)
+	-- and each rebuild runs the O(n^2) graph subset pass, so coalesce a burst into
+	-- ONE rebuild via the deferred flag in scheduleFullRebuild — the per-frame
+	-- C_Timer.After(0) collapses N events into a single all-frames pass (Rule 12 #2).
+	if isFullRebuildEvent then
+		scheduleFullRebuild()
 		return
 	end
 	scheduleDynamicRefresh()

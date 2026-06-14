@@ -291,5 +291,21 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_DynamicRefreshNoCombatSpam" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="DynamicRefreshDriver: No Combat/Modifier Spam" type="string"/>
+            <KeyValue key="instructions" value="Verify the DynamicRefreshDriver does NOT refresh on every modifier press or during combat (Rule 12 #3/#4 regression guard).\n1. Have at least one dynamic interface active with graph slots.\n2. /wise cpu start\n3. Engage a training dummy and play a full rotation for ~30s, tapping shift/ctrl/alt frequently (as in normal play).\n4. Leave combat, then /wise cpu.\n5. Verify 'elsewhere (tickers/handlers)' cost is low and comparable to idle — NOT inflated by per-keypress or per-GCD refreshes.\n6. Out of combat: switch specs and confirm graph slots rebuild correctly (icons/macros track the new spec).\n7. Confirm modifier-conditioned slots ([mod:shift]) still update their icon within ~0.3s of pressing shift (served by the _needsPoll ticker, not the event driver)." type="string"/>
+            <KeyValue key="action" value="print('DynamicRefreshDriver guard: MODIFIER_STATE_CHANGED must NOT be registered on the dynamic event frame; spec/spell rebuilds must be combat-gated and coalesced. Use /wise cpu start ... /wise cpu to measure handler cost across a combat sample.')" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_ProcGlowNoRepeatPop" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Proc Glow: No Repeated Pop" type="string"/>
+            <KeyValue key="instructions" value="Verify a suggested/proc glow shows ONCE and holds steady instead of re-popping every aura tick (e.g. Shadow Word: Death / Madness on a Shadow Priest).\n1. Put the procced spell (Shadow Word: Death) on a Wise slot with glows enabled.\n2. Trigger the proc (Madness) in combat on a dummy.\n3. Verify the glow appears once and stays steady — it must NOT visibly re-animate/pop on every UNIT_AURA tick.\n4. When the proc ends, the glow fades out once and does not reappear.\n5. /wise cpu start during sustained combat, then /wise cpu — confirm UpdateAllUsability handler cost stays low (UNIT_AURA bursts are coalesced to one pass per frame).\n6. Drag a spell onto another slot and confirm legitimate glows are restored afterward (drag does not leave the glow-state cache stuck)." type="string"/>
+            <KeyValue key="action" value="print('Proc glow guard: ShowOverlayGlow/HideOverlayGlow must only fire on a btn._wiseGlowOn transition, and UpdateAllUsability must be coalesced via scheduleUsabilityUpdate. Watch a charge-based proc (SW:Death/Madness) for steady, non-repeating glow.')" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
 
