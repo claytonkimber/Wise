@@ -999,13 +999,24 @@ local function OverlayGlowAnimOutFinished(animGroup)
 	overlay:Hide()
 	table.insert(glowUnusedOverlays, overlay)
 	frame.__WiseOverlay = nil
-	-- Keep the transition cache in sync: if the overlay was torn down by any
-	-- path other than UpdateButtonUsability (e.g. the button hiding), clear the
-	-- flag so a later shouldGlow re-shows it instead of being skipped as "already on".
-	frame._wiseGlowOn = nil
+	-- NOTE: We deliberately do NOT touch frame._wiseGlowOn here. That flag tracks
+	-- the *intent* to glow (the spell is procced), not whether the overlay frame
+	-- currently exists. Clearing it on teardown was the flash bug: when the
+	-- button's region tree transiently hides during a mouse-over-driven refresh,
+	-- the overlay's OnHide tears the overlay down and — if we cleared the flag —
+	-- the very next usability pass saw "intent on, overlay gone" and re-popped a
+	-- fresh animIn. Leaving the flag alone lets the next pass re-attach the
+	-- overlay quietly (or, if shouldGlow has genuinely gone false, the HIDE
+	-- branch clears the flag explicitly). UpdateButtonUsability self-heals a
+	-- flag/overlay mismatch (see the shouldGlow block).
 end
 
 local function OverlayGlow_OnHide(self)
+	-- The overlay frame got hidden (usually because its parent button's region
+	-- tree was transiently hidden by a layout/refresh pass, NOT because the proc
+	-- ended). Finish any in-flight animOut so the overlay returns cleanly to the
+	-- pool, but do NOT clear the glow intent — UpdateButtonUsability re-shows it
+	-- on the next pass while the proc is still active.
 	if self.animOut:IsPlaying() then
 		self.animOut:Stop()
 		OverlayGlowAnimOutFinished(self.animOut)
@@ -1161,6 +1172,9 @@ end
 function Wise:ShowOverlayGlow(frame, targetRegion)
 	targetRegion = targetRegion or frame
 	if frame.__WiseOverlay then
+		-- Already attached. Only re-kick the animation if it was fading out; if it
+		-- is already lit (or animating in), leave it alone so a redundant Show
+		-- (e.g. from a coalesced refresh) does NOT replay the animIn "pop".
 		if frame.__WiseOverlay.animOut:IsPlaying() then
 			frame.__WiseOverlay.animOut:Stop()
 			frame.__WiseOverlay.animIn:Play()
@@ -7970,11 +7984,27 @@ function Wise:UpdateButtonUsability(btn)
 	-- Proc Glow Handling
 	local shouldGlow = false
 	if showGlows and spellID then
-		shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID) or false
+		-- Check the overlay against BOTH the base and the override spell ID.
+		-- WoW registers a proc glow against whichever ID the engine considers
+		-- "active", and for spells with an override relationship (talented /
+		-- spec-modified) that can disagree with our resolved meta.spellID — and
+		-- which one IsSpellOverlayed() returns true for flips frame-to-frame as
+		-- the override state settles. Checking only one ID makes those spells
+		-- flash at ~0.5 Hz (glow tears down and re-pops). Glow if EITHER is
+		-- overlayed so the steady proc state stays steady.
+		local baseSpellID = meta and meta.baseSpellID
+		shouldGlow = (C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(spellID)) or false
+		if not shouldGlow and baseSpellID and baseSpellID ~= spellID then
+			shouldGlow = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed(baseSpellID) or false
+		end
 		if shouldGlow then
 			-- If the spell has charges and current charges is 0, do not glow.
 			-- Use SafeReadField because accessing chargeInfo fields can throw when
 			-- the engine returns secret number values (WoW 12.0+ taint system).
+			-- Note: CleanSecretNumber returns nil for secret values (common in
+			-- combat), so a secret charge count leaves shouldGlow untouched rather
+			-- than flipping it — that is intentional; we only suppress on a
+			-- definitely-zero charge count.
 			local chargeInfo = C_Spell.GetSpellCharges(spellID)
 			if chargeInfo then
 				local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
@@ -7985,15 +8015,23 @@ function Wise:UpdateButtonUsability(btn)
 		end
 	end
 
-	-- Only call Show/Hide on an actual state TRANSITION. UpdateButtonUsability is
-	-- driven by UNIT_AURA (fires many times/sec in combat) and the proc check can
-	-- briefly disagree frame-to-frame (e.g. a charge-based proc like Shadow Word:
-	-- Death/Madness as charges/secret-numbers settle). Re-calling Show/Hide every
-	-- pass restarts the animOut→animIn cycle and produces a visible repeated "pop"
-	-- — and churns the glow animation for no reason. Cache the last applied state
-	-- and no-op when it hasn't changed (Rule 12 #6).
+	-- Hysteresis on the OFF edge. The proc read (IsSpellOverlayed + override-ID
+	-- resolution + charge check) can momentarily report false on a single pass
+	-- while the proc is genuinely still up — the override spell ID is re-resolved
+	-- every pass and can briefly flip, and mouse-over-driven refreshes run this
+	-- pass constantly. A single false used to immediately HideOverlayGlow, which
+	-- played animOut→recycle, and the next true re-played animIn — a visible
+	-- ~0.5 Hz flash. Require TWO consecutive false reads before tearing the glow
+	-- down so a one-pass blip can't restart the animation. A true read clears the
+	-- counter instantly, so a real proc-end still hides within ~2 passes.
 	if shouldGlow then
-		if not btn._wiseGlowOn then
+		btn._wiseGlowOffStreak = nil
+		-- Show on the rising edge OR when intent is already on but the overlay was
+		-- recycled out from under us (a transient parent hide tears the overlay
+		-- frame down via OnHide while the proc is still active). ShowOverlayGlow is
+		-- a no-op when the overlay is already alive and lit, so this re-attach only
+		-- does real work after a genuine teardown — it does not pop every pass.
+		if not btn._wiseGlowOn or not btn.__WiseOverlay or (visualClone and not visualClone.__WiseOverlay) then
 			btn._wiseGlowOn = true
 			Wise:ShowOverlayGlow(btn)
 			if visualClone then
@@ -8002,10 +8040,15 @@ function Wise:UpdateButtonUsability(btn)
 		end
 	elseif not Wise.isDragging then
 		if btn._wiseGlowOn then
-			btn._wiseGlowOn = nil
-			Wise:HideOverlayGlow(btn)
-			if visualClone then
-				Wise:HideOverlayGlow(visualClone)
+			local streak = (btn._wiseGlowOffStreak or 0) + 1
+			btn._wiseGlowOffStreak = streak
+			if streak >= 2 then
+				btn._wiseGlowOffStreak = nil
+				btn._wiseGlowOn = nil
+				Wise:HideOverlayGlow(btn)
+				if visualClone then
+					Wise:HideOverlayGlow(visualClone)
+				end
 			end
 		end
 	end
