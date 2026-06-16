@@ -203,7 +203,7 @@ Insecure UI updates are safe (Rule 10), but a `C_Timer.NewTicker` that re-runs a
 
 6. **Zero-allocation hot loops.** In any per-frame or high-frequency loop, hoist closures out of the loop (reuse one closure with scratch upvalues rather than allocating per iteration); only call `SetTexture`/`SetAttribute`/etc. when the value actually changed (cache the last value and compare). The taint-safe `pcall(closure)` pattern for secret-number arithmetic must reuse a single hoisted closure, never `pcall(function() ... end)` inside a loop.
 
-**Diagnostics:** `/wise cpu start` → wait → `/wise cpu` measures a time-boxed delta of Wise-owned frames (tagged via `_wiseProfileName`), splitting cost into "in frames" vs "elsewhere (tickers/handlers)". Use it before/after any perf change.
+**Diagnostics:** `/wise cpu start` → wait → `/wise cpu` measures a time-boxed delta of Wise-owned frames (tagged via `_wiseProfileName`), splitting cost into "in frames" vs "elsewhere (tickers/handlers)". Use it before/after any perf change. For a one-time hitch the instant combat starts (which a sustained window averages away), `/wise cpu enter` arms a `PLAYER_REGEN_DISABLED` probe that times the combat-enter frame (`debugprofilestop` delta) and ranks per-addon CPU across it, separating Wise's share from Blizzard's unavoidable secure-frame re-eval; re-run it to print the breakdown, `/wise cpu enter clear` to reset. All of this requires `scriptProfile=1` (the command enables it; needs one `/reload` to take effect) and is session-only (no SavedVariables writes).
 
 ### Rule 11: Bindings Must Use Secure Channels
 

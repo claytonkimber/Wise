@@ -146,6 +146,21 @@ function Wise:UpdateAbundanceBorders()
 	-- Resto Druid check: Druid (class) + Restoration (specID 105)
 	local isRestoDruid = Wise.characterInfo and Wise.characterInfo.class == "DRUID" and Wise.characterInfo.specID == 105
 
+	-- Spec gate: the only character that gets ANY visible Abundance UI is a Resto
+	-- Druid. For everyone else this whole O(N) button scan does nothing but hide
+	-- borders that were never created — so skip it entirely. The one exception is
+	-- the transition OUT of Resto (respec): run a single cleanup pass to hide any
+	-- borders/glows we left behind, then latch off. Wise._abundanceActive is set
+	-- true below whenever we actually touch abundance UI, so this stays cheap.
+	if not isRestoDruid then
+		if not Wise._abundanceActive then
+			return
+		end
+		Wise._abundanceActive = false -- this pass clears it; subsequent calls bail above
+	else
+		Wise._abundanceActive = true
+	end
+
 	local settings = GetAbundanceSettings()
 	local rules = settings and settings.rules
 
@@ -470,6 +485,24 @@ function Wise:RenderAbundanceProperties(panel, action, y)
 	return y
 end
 
+-- Coalesced refresh. The hooks below fire PER BUTTON, and UpdateAllCooldowns()
+-- (which re-runs many times per second in combat) calls UpdateButtonCooldown for
+-- every visible button — so calling UpdateAbundanceBorders() directly from each
+-- hook made one cooldown pass cost N full N-button scans (O(N^2)). Instead we set
+-- a dirty flag and run a single scan on the next frame (C_Timer.After(0)), so an
+-- entire burst collapses to one pass. (AGENTS.md Rule 9 #2: coalesce event bursts.)
+local abundanceDirty = false
+function Wise:ScheduleAbundanceUpdate()
+	if abundanceDirty then
+		return
+	end
+	abundanceDirty = true
+	C_Timer.After(0, function()
+		abundanceDirty = false
+		Wise:UpdateAbundanceBorders()
+	end)
+end
+
 -- Event tracking frame
 local abundanceEventFrame = CreateFrame("Frame")
 abundanceEventFrame:RegisterEvent("UNIT_AURA")
@@ -479,14 +512,16 @@ abundanceEventFrame:SetScript("OnEvent", function(self, event, unit)
 	if event == "UNIT_AURA" and unit ~= "player" then
 		return
 	end
-	Wise:UpdateAbundanceBorders()
+	Wise:ScheduleAbundanceUpdate()
 end)
 
--- Hook state/cooldown changes to refresh border on spell swaps
+-- Hook state/cooldown changes to refresh border on spell swaps. Both fire per
+-- button; route them through the coalescer so a full UpdateAllCooldowns pass
+-- triggers exactly one Abundance scan instead of one per button.
 hooksecurefunc(Wise, "UpdateButtonState", function(self, btn)
-	Wise:UpdateAbundanceBorders()
+	Wise:ScheduleAbundanceUpdate()
 end)
 
 hooksecurefunc(Wise, "UpdateButtonCooldown", function(self, btn)
-	Wise:UpdateAbundanceBorders()
+	Wise:ScheduleAbundanceUpdate()
 end)

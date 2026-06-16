@@ -2363,6 +2363,111 @@ SlashCmdList["WISE"] = function(msg)
 			return
 		end
 
+		-- Per-event combat-ENTER spike profiler.
+		--   /wise cpu enter        → arm a PLAYER_REGEN_DISABLED hook + show captured spikes
+		--   /wise cpu enter clear  → wipe captured samples
+		-- A sustained window (the default report) averages a one-time hitch away,
+		-- so a stutter that only happens the instant combat starts is invisible to
+		-- it. This times the single combat-enter frame (debugprofilestop delta) and
+		-- diffs per-addon CPU across that frame to rank who caused the hitch.
+		-- Samples are session-only (not saved) to avoid SavedVariables bloat.
+		if arg == "enter" or arg == "enter clear" then
+			if arg == "enter clear" then
+				Wise._cpuEnterSamples = nil
+				print("|cff00ccff[Wise CPU]|r Combat-enter samples cleared.")
+				return
+			end
+
+			if not Wise._cpuEnterFrame then
+				local ef = CreateFrame("Frame")
+				ef._wiseProfileName = "CpuEnterProbe"
+				ef:RegisterEvent("PLAYER_REGEN_DISABLED")
+				ef:SetScript("OnEvent", function()
+					if GetCVar("scriptProfile") ~= "1" then
+						return
+					end
+					local t0 = debugprofilestop()
+					UpdateAddOnCPUUsage()
+					local before = {}
+					local n = C_AddOns.GetNumAddOns() or 0
+					for i = 1, n do
+						if C_AddOns.IsAddOnLoaded(i) then
+							before[i] = GetAddOnCPUUsage(i) or 0
+						end
+					end
+					-- Next-frame callback runs after this frame's OnEvent handlers and
+					-- Blizzard's secure-frame re-evaluation have executed, so the delta
+					-- captures the whole combat-enter hitch.
+					C_Timer.After(0, function()
+						local frameMs = debugprofilestop() - t0
+						UpdateAddOnCPUUsage()
+						local rows, sum = {}, 0
+						for i = 1, n do
+							if before[i] then
+								local d = (GetAddOnCPUUsage(i) or 0) - before[i]
+								if d > 0 then
+									rows[#rows + 1] = { name = (C_AddOns.GetAddOnInfo(i)), ms = d }
+									sum = sum + d
+								end
+							end
+						end
+						table.sort(rows, function(a, b)
+							return a.ms > b.ms
+						end)
+						Wise._cpuEnterSamples = Wise._cpuEnterSamples or {}
+						local top = {}
+						for i = 1, math.min(6, #rows) do
+							top[i] = rows[i]
+						end
+						table.insert(Wise._cpuEnterSamples, { frameMs = frameMs, addonSum = sum, top = top })
+						while #Wise._cpuEnterSamples > 10 do
+							table.remove(Wise._cpuEnterSamples, 1)
+						end
+					end)
+				end)
+				Wise._cpuEnterFrame = ef
+				print(
+					"|cff00ccff[Wise CPU]|r Combat-enter probe |cff00ff00armed|r. Engage/leave/re-engage a few"
+						.. " times, then run |cffffd700/wise cpu enter|r again to see the spike breakdown."
+				)
+			end
+
+			local samples = Wise._cpuEnterSamples
+			if not samples or #samples == 0 then
+				print("|cff00ccff[Wise CPU]|r No combat-enter samples yet — go into combat, then re-run.")
+				return
+			end
+
+			print(string.format("|cff00ccff[Wise CPU]|r Last %d combat-enter frame(s):", #samples))
+			for i = #samples, math.max(1, #samples - 4), -1 do
+				local s = samples[i]
+				local wiseMs = 0
+				local parts = {}
+				for _, r in ipairs(s.top) do
+					if r.name == "Wise" then
+						wiseMs = r.ms
+					end
+					parts[#parts + 1] = string.format("%s:%.1f", r.name, r.ms)
+				end
+				local blizzMs = s.frameMs - s.addonSum
+				print(
+					string.format(
+						"  |cffffd700%.1f ms|r frame  (Wise |cff00ff00%.2f|r, addons %.1f, Blizz/secure ~%.1f)  %s",
+						s.frameMs,
+						wiseMs,
+						s.addonSum,
+						blizzMs > 0 and blizzMs or 0,
+						table.concat(parts, ", ")
+					)
+				)
+			end
+			print(
+				"  |cff999999Blizz/secure = frame minus addon CPU: WoW re-evaluating secure frames"
+					.. " on combat lockdown (unavoidable, scales with total state drivers).|r"
+			)
+			return
+		end
+
 		local window = Wise._cpuT0 and (GetTime() - Wise._cpuT0) or 0
 		if window < 1 then
 			print("|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu|r.")
@@ -2422,9 +2527,12 @@ SlashCmdList["WISE"] = function(msg)
 		if (total - accounted) / window > 1 then
 			print(
 				"  |cffff5555Most cost is NOT in frames|r → it's in C_Timer tickers or hooked scripts."
-					.. " Likely a NewTicker or a hooked Blizzard frame. Check /wise cputick."
+					.. " Likely a NewTicker or a hooked Blizzard frame."
 			)
 		end
+		print(
+			"  |cff999999For a one-time stutter the instant combat starts, use |cffffd700/wise cpu enter|cff999999.|r"
+		)
 		return
 	end
 
