@@ -2538,6 +2538,46 @@ SlashCmdList["WISE"] = function(msg)
 			return
 		end
 
+		-- Per-FUNCTION breakdown (12.0.7 restored GetFunctionCPUUsage).
+		--   /wise cpu funcs  → rank Wise's own methods (Wise.*) by CPU since start.
+		-- Fills the gap the per-frame report flags: cost in tickers / hooked scripts
+		-- that GetFrameCPUUsage can't see, but which ARE Wise:Method() calls.
+		if arg == "funcs" then
+			if type(GetFunctionCPUUsage) ~= "function" then
+				print("|cff00ccff[Wise CPU]|r GetFunctionCPUUsage unavailable on this client (needs 12.0.7+).")
+				return
+			end
+			local window = Wise._cpuT0 and (GetTime() - Wise._cpuT0) or 0
+			if window < 1 then
+				print("|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu funcs|r.")
+				return
+			end
+			local rows = {}
+			for key, val in pairs(Wise) do
+				if type(val) == "function" then
+					-- GetFunctionCPUUsage(func, includeSubroutines) → totalMs, callCount
+					local ok, ms, calls = pcall(GetFunctionCPUUsage, val, false)
+					if ok and ms and ms > 0 then
+						rows[#rows + 1] = { name = "Wise:" .. key, ms = ms, calls = calls or 0 }
+					end
+				end
+			end
+			table.sort(rows, function(a, b)
+				return a.ms > b.ms
+			end)
+			if #rows == 0 then
+				print("|cff00ccff[Wise CPU]|r No Wise:Method() CPU recorded in this window (cost may be in local closures).")
+				return
+			end
+			print(string.format("|cff00ccff[Wise CPU]|r Top Wise methods over %.0fs (self time, excl. subroutines):", window))
+			for i = 1, math.min(14, #rows) do
+				print(string.format(
+					"  %2d. |cffffd700%.3f ms/s|r  %s  |cff999999(%d calls)|r",
+					i, rows[i].ms / window, rows[i].name, rows[i].calls))
+			end
+			return
+		end
+
 		local window = Wise._cpuT0 and (GetTime() - Wise._cpuT0) or 0
 		if window < 1 then
 			print("|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu|r.")
@@ -2599,6 +2639,11 @@ SlashCmdList["WISE"] = function(msg)
 				"  |cffff5555Most cost is NOT in frames|r → it's in C_Timer tickers or hooked scripts."
 					.. " Likely a NewTicker or a hooked Blizzard frame."
 			)
+			if type(GetFunctionCPUUsage) == "function" then
+				print(
+					"  |cff999999Try |cffffd700/wise cpu funcs|cff999999 to attribute it to specific Wise methods.|r"
+				)
+			end
 		end
 		print(
 			"  |cff999999For a one-time stutter the instant combat starts, use |cffffd700/wise cpu enter|cff999999.|r"

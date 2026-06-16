@@ -10,6 +10,14 @@ local addonName, Wise = ...
 -- ID 6: Bright Green - #9fe870 / RGB: 159, 232, 112
 -- ID 7: Forest Green - #163300 / RGB: 22, 51, 0
 
+-- Capability flags for patch-12.0.5+ cooldown APIs. The `ignoreGCD` second arg on
+-- GetSpellCooldownDuration / GetActionCooldownDuration arrived in interface 120005;
+-- we can't introspect arity, so gate on the interface number (extra arg is ignored
+-- as a no-op on clients that don't support it, but gating keeps intent explicit).
+local INTERFACE_VERSION = select(4, GetBuildInfo()) or 0
+local HAS_IGNORE_GCD = INTERFACE_VERSION >= 120005
+Wise.HAS_IGNORE_GCD = HAS_IGNORE_GCD
+
 -- Helper: Resolve per-group display settings with fallback to global
 local _G = _G
 local GetTime = GetTime
@@ -7295,8 +7303,20 @@ function Wise:UpdateButtonCooldown(btn)
 				clearCD(btn.cooldown)
 			end
 		else
-			-- Normal spell: filter GCD if user doesn't want it
-			if isOnGCD and not showGCD then
+			-- Normal spell. When the user doesn't want the GCD shown, ask Blizzard
+			-- for the GCD-excluded duration directly (12.0.5+ `ignoreGCD` arg). A
+			-- spell that is ONLY on the GCD yields a zero-span object → renders empty
+			-- (same as clearing), but a real cooldown underneath the GCD is preserved
+			-- instead of being wiped — which the old isOnGCD+clearCD branch got wrong.
+			if HAS_IGNORE_GCD and not showGCD then
+				local durObj = C_Spell.GetSpellCooldownDuration(spellID, true)
+				if durObj then
+					applyCDFromDuration(btn.cooldown, durObj, start, duration, cooldownSwipeReverse)
+				else
+					clearCD(btn.cooldown)
+				end
+			elseif isOnGCD and not showGCD then
+				-- Pre-12.0.5 fallback: can't isolate the GCD, so hide the whole sweep.
 				clearCD(btn.cooldown)
 			else
 				local durObj = C_Spell.GetSpellCooldownDuration(spellID)
@@ -7323,6 +7343,13 @@ function Wise:UpdateButtonCooldown(btn)
 				local chargeDurObj = C_Spell.GetSpellChargeDuration(spellID)
 				if chargeDurObj then
 					applyCDFromDuration(visualClone.cooldown, chargeDurObj, start, duration, cooldownSwipeReverse)
+				else
+					clearCD(visualClone.cooldown)
+				end
+			elseif HAS_IGNORE_GCD and not showGCD then
+				local durObj = C_Spell.GetSpellCooldownDuration(spellID, true)
+				if durObj then
+					applyCDFromDuration(visualClone.cooldown, durObj, start, duration, cooldownSwipeReverse)
 				else
 					clearCD(visualClone.cooldown)
 				end
