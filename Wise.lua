@@ -2347,10 +2347,20 @@ SlashCmdList["WISE"] = function(msg)
 		-- Cumulative-since-login is useless for finding live cost (global frames
 		-- like UIParent dominate it), so we always measure a window instead.
 		if GetCVar("scriptProfile") ~= "1" then
+			-- scriptProfile is a CVar that only takes effect after a reload, so the
+			-- best any single command can do is enable it + tell the user to reload
+			-- and re-run the SAME command. Tailor the follow-up to which sub-command
+			-- was asked for so re-enabling is a clean one-liner to repeat.
 			SetCVar("scriptProfile", "1")
+			local again = "/wise cpu"
+			if arg == "enter" or arg == "enter clear" then
+				again = "/wise cpu enter"
+			elseif arg == "start" then
+				again = "/wise cpu start"
+			end
 			print(
-				"|cff00ccff[Wise]|r CPU profiling was OFF. Enabled it — |cffffd700/reload|r,"
-					.. " then |cffffd700/wise cpu start|r, wait ~30s, then |cffffd700/wise cpu|r."
+				"|cff00ccff[Wise]|r CPU profiling was OFF. Enabled it — |cffffd700/reload|r, then run"
+					.. " |cffffd700" .. again .. "|r again."
 			)
 			return
 		end
