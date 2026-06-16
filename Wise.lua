@@ -1900,11 +1900,39 @@ Wise.managedFrames = Wise.managedFrames or {}
 -- Programmatic check for an active puzzle event
 -- Puzzles generally give the player an Override Action Bar but do NOT put them
 -- in a traditional vehicle or possess state.
+-- Auras that put the player into a quest puzzle/minigame that renders its own UI
+-- (UIWidget / fullscreen overlay) WITHOUT triggering an override action bar — so
+-- HasOverrideActionBar() alone misses them. Matched by spellId (locale-independent).
+-- Add more puzzle aura spellIds here as they're found.
+local PUZZLE_AURA_SPELLIDS = {
+	[1293367] = true, -- "Unravel the Magical Ward" — Unraveling quest (Midnight)
+}
+
+local function HasPuzzleAura()
+	for i = 1, 40 do
+		local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+		if not aura then
+			break
+		end
+		if aura.spellId and PUZZLE_AURA_SPELLIDS[aura.spellId] then
+			return true
+		end
+	end
+	return false
+end
+
 local function IsPuzzleActive()
-	local hasOverride = HasOverrideActionBar and HasOverrideActionBar()
 	local inVehicle = UnitInVehicle("player") or UnitHasVehicleUI("player")
+	if inVehicle then
+		return false
+	end
+	local hasOverride = HasOverrideActionBar and HasOverrideActionBar()
 	local isPossess = IsPossessBarVisible and IsPossessBarVisible()
-	return hasOverride and not inVehicle and not isPossess
+	if hasOverride and not isPossess then
+		return true
+	end
+	-- Aura-driven puzzles (no override bar): e.g. "Unravel the Magic Ward".
+	return HasPuzzleAura()
 end
 
 local lastPuzzleState = false
@@ -1916,6 +1944,9 @@ puzzleEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 puzzleEventFrame:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 puzzleEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 puzzleEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+-- Aura-driven puzzles (e.g. "Unravel the Magic Ward") have no override bar, so
+-- watch player auras too. UNIT_AURA fires frequently — gate on a real state change.
+puzzleEventFrame:RegisterUnitEvent("UNIT_AURA", "player")
 puzzleEventFrame:SetScript("OnEvent", function(self, event, ...)
 	local currentState = IsPuzzleActive()
 	local stateChanged = (currentState ~= lastPuzzleState)
@@ -2295,6 +2326,35 @@ SlashCmdList["WISE"] = function(msg)
 		end
 
 		print("|cff00ccff[Wise]|r Blizzard Bars " .. (newState and "Hidden" or "Shown"))
+		return
+	end
+
+	if cmd == "puzzledbg" then
+		-- Diagnostic: dump player buffs + puzzle-detection state so we can see
+		-- exactly why the puzzle hide does/doesn't fire. Run it INSIDE the puzzle.
+		print("|cff00ccff[Wise puzzle]|r --- player HELPFUL auras ---")
+		for i = 1, 40 do
+			local a = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+			if not a then
+				break
+			end
+			print(("  [%d] %s  (spellId=%s)"):format(i, tostring(a.name), tostring(a.spellId)))
+		end
+		local settings = WiseDB.settings.blizzardUI or {}
+		print(("|cff00ccff[Wise puzzle]|r hidePuzzleUI setting = %s"):format(tostring(settings["hidePuzzleUI"])))
+		print(("|cff00ccff[Wise puzzle]|r IsPuzzleActive() = %s"):format(tostring(IsPuzzleActive())))
+		print(("|cff00ccff[Wise puzzle]|r HasOverrideActionBar() = %s"):format(tostring(HasOverrideActionBar and HasOverrideActionBar())))
+		local n = 0
+		if Wise.frames then
+			for _, f in pairs(Wise.frames) do
+				n = n + 1
+				if n <= 3 then
+					print(("  frame[%s] state-wise-hide = %s"):format(
+						tostring(f.GetName and f:GetName()), tostring(f:GetAttribute("state-wise-hide"))))
+				end
+			end
+		end
+		print(("|cff00ccff[Wise puzzle]|r Wise.frames count = %d"):format(n))
 		return
 	end
 

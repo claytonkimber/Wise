@@ -1,4 +1,4 @@
-## Interface: 120000, 120001, 120005
+## Interface: 120000, 120001, 120005, 120007
 ## Title: Wise
 ## Notes: A flexible action bar rework with smart features and account wide settings.
 ## Author: Wise
