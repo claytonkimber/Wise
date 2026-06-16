@@ -1904,17 +1904,21 @@ Wise.managedFrames = Wise.managedFrames or {}
 -- (UIWidget / fullscreen overlay) WITHOUT triggering an override action bar — so
 -- HasOverrideActionBar() alone misses them. Matched by spellId (locale-independent).
 -- Add more puzzle aura spellIds here as they're found.
+--
+-- NOTE: we must NOT read aura.spellId off GetAuraDataByIndex and index a table with
+-- it — in combat that field is a "secret number" and using it as a table key throws
+-- ("cannot be indexed with secret keys"). Instead we query by our OWN constant
+-- spellID via GetPlayerAuraBySpellID, which never touches a secret value.
 local PUZZLE_AURA_SPELLIDS = {
-	[1293367] = true, -- "Unravel the Magical Ward" — Unraveling quest (Midnight)
+	1293367, -- "Unravel the Magical Ward" — Unraveling quest (Midnight)
 }
 
 local function HasPuzzleAura()
-	for i = 1, 40 do
-		local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-		if not aura then
-			break
-		end
-		if aura.spellId and PUZZLE_AURA_SPELLIDS[aura.spellId] then
+	if not C_UnitAuras or not C_UnitAuras.GetPlayerAuraBySpellID then
+		return false
+	end
+	for _, spellID in ipairs(PUZZLE_AURA_SPELLIDS) do
+		if C_UnitAuras.GetPlayerAuraBySpellID(spellID) then
 			return true
 		end
 	end
@@ -2333,12 +2337,21 @@ SlashCmdList["WISE"] = function(msg)
 		-- Diagnostic: dump player buffs + puzzle-detection state so we can see
 		-- exactly why the puzzle hide does/doesn't fire. Run it INSIDE the puzzle.
 		print("|cff00ccff[Wise puzzle]|r --- player HELPFUL auras ---")
+		-- Field reads can be "secret" in combat (tostring may throw); pcall each so
+		-- the diagnostic still runs. Out of combat you get real names + spellIds.
 		for i = 1, 40 do
 			local a = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
 			if not a then
 				break
 			end
-			print(("  [%d] %s  (spellId=%s)"):format(i, tostring(a.name), tostring(a.spellId)))
+			local okN, nm = pcall(function()
+				return tostring(a.name)
+			end)
+			local okS, sid = pcall(function()
+				return tostring(a.spellId)
+			end)
+			print(("  [%d] %s  (spellId=%s)"):format(
+				i, okN and nm or "<secret>", okS and sid or "<secret>"))
 		end
 		local settings = WiseDB.settings.blizzardUI or {}
 		print(("|cff00ccff[Wise puzzle]|r hidePuzzleUI setting = %s"):format(tostring(settings["hidePuzzleUI"])))
