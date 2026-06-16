@@ -61,6 +61,14 @@ return a **zero-span** DurationObject at max charges, and zero-span objects are 
 **Risk:** Low-med. Verify a 2-charge spell at full charges shows no swipe, and a
 partially-recharging one shows the recharge sweep.
 
+**OUTCOME (implemented):** No behavioral change was warranted. The charge branch
+already hands the DurationObject straight to the Cooldown frame, so zero-span-at-max
+renders empty automatically — there was never a manual "fully charged → clear" branch
+to delete. The `SafeReadField`/`CleanSecretNumber` reconstruction is NOT dead: those
+numbers feed the swipe-repaint cache (skips redundant repaints) and the countdown
+tracker, not the render. Removing it would INCREASE repaints. Resolved as a comment
+documenting the zero-span guarantee; code left intact.
+
 ---
 
 ## 3. Native countdown formatters — MED/HIGH value (CPU)
@@ -126,9 +134,21 @@ for minutes) must be verified against current look.
   the values; just confirm nothing keys off the old annotation name.
 - **12.0.7 button-state secrets:** `Button:GetButtonState`/`IsEnabled` gained
   `Enum.SecretAspect.ButtonState`. Audit any non-secure read of a secure button's
-  state in combat. (18 `GetButtonState`/secret hits live in `core/GUI.lua` — audit.)
+  state in combat.
 
 **Risk:** Low. Mostly verification.
+
+**OUTCOME (audited, no changes needed):**
+- `SecretWhen*` annotation names: 0 references in Wise code. Values are read through
+  `SafeReadField` / `CleanSecretNumber`, which are annotation-name-agnostic — the
+  rename is transparent to us.
+- `GetButtonState`: 0 call sites anywhere in Wise.
+- `IsEnabled()`: only 2 hits, both in the exui lib — `DropDown.lua:14` (insecure
+  dropdown widget, mouse-click) and `ScrollBar.lua:197` (a method *definition*).
+  Neither reads a secure action button's state in combat.
+- Net exposure to the 12.0.7 button-state secret change: none. (The earlier "18 hits"
+  estimate was a miscount — it was the combined grep dominated by the safe
+  SafeReadField/CleanSecretNumber wrappers, not real button-state reads.)
 
 ---
 

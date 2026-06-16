@@ -7284,7 +7284,13 @@ function Wise:UpdateButtonCooldown(btn)
 		local isChargeSpell = chargeInfo ~= nil
 
 		if isChargeSpell and C_Spell.GetSpellChargeDuration then
-			-- Override start/duration with recharge timer for countdown text
+			-- Override start/duration with the recharge timer. These numbers feed two
+			-- things: the swipe-repaint cache in applyCDFromDuration (so we skip
+			-- redundant repaints) and the countdown-text tracker — NOT the render
+			-- itself, which uses the DurationObject. As of 12.0.5 the charge
+			-- DurationObject is zero-span at max charges (a fully-elapsed object), so
+			-- the frame renders empty on its own; no explicit "fully charged → clear"
+			-- branch is needed here.
 			if chargeInfo then
 				local cs = SafeReadField(chargeInfo, "cooldownStartTime")
 				local cd = SafeReadField(chargeInfo, "cooldownDuration")
