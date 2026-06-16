@@ -18,6 +18,37 @@ local INTERFACE_VERSION = select(4, GetBuildInfo()) or 0
 local HAS_IGNORE_GCD = INTERFACE_VERSION >= 120005
 Wise.HAS_IGNORE_GCD = HAS_IGNORE_GCD
 
+-- 12.0.5 native countdown formatters: Cooldown:SetCountdownFormatter lets us style
+-- the built-in (combat / secret-mode) countdown text to match Wise's own out-of-
+-- combat format, instead of being stuck with Blizzard's default whole-second look.
+-- Probe by method presence (more robust than a version number for widget methods).
+local HAS_COUNTDOWN_FORMATTER = false
+do
+	local probe = CreateFrame("Cooldown", nil, UIParent, "CooldownFrameTemplate")
+	HAS_COUNTDOWN_FORMATTER = type(probe.SetCountdownFormatter) == "function"
+		and type(C_StringUtil) == "table"
+		and type(C_StringUtil.CreateSecondsFormatter) == "function"
+	probe:Hide()
+	probe:SetParent(nil)
+end
+Wise.HAS_COUNTDOWN_FORMATTER = HAS_COUNTDOWN_FORMATTER
+
+-- Lazily-built shared SecondsFormatter that mirrors Wise's text convention
+-- (Xh / Xm / Xs, no sub-second decimals). One instance, reused across all buttons.
+local _wiseSecondsFormatter
+local function GetWiseCountdownFormatter()
+	if not HAS_COUNTDOWN_FORMATTER then
+		return nil
+	end
+	if _wiseSecondsFormatter == nil then
+		-- CreateSecondsFormatter(approximationSeconds, ...) — defaults give whole
+		-- seconds with H/M/S abbreviations, matching our manual ticker's output.
+		local ok, fmt = pcall(C_StringUtil.CreateSecondsFormatter)
+		_wiseSecondsFormatter = (ok and fmt) or false
+	end
+	return _wiseSecondsFormatter or nil
+end
+
 -- Helper: Resolve per-group display settings with fallback to global
 local _G = _G
 local GetTime = GetTime
@@ -875,6 +906,11 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 			if not btn._wiseBlizzCDActive then
 				btn._wiseBlizzCDActive = true
 				btn.cooldown:SetHideCountdownNumbers(false)
+				-- Match the native countdown text to Wise's own format (12.0.5+).
+				local formatter = GetWiseCountdownFormatter()
+				if formatter then
+					pcall(btn.cooldown.SetCountdownFormatter, btn.cooldown, formatter)
+				end
 				-- Hide our custom countdown to avoid double text
 				if btn.countdown then
 					btn.countdown:Hide()
@@ -899,6 +935,10 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 			if vClone and vClone.cooldown and not vClone._wiseBlizzCDActive then
 				vClone._wiseBlizzCDActive = true
 				vClone.cooldown:SetHideCountdownNumbers(false)
+				local vFormatter = GetWiseCountdownFormatter()
+				if vFormatter then
+					pcall(vClone.cooldown.SetCountdownFormatter, vClone.cooldown, vFormatter)
+				end
 				if vClone.countdown then
 					vClone.countdown:Hide()
 				end

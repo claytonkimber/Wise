@@ -103,6 +103,18 @@ documenting the zero-span guarantee; code left intact.
 flag, and A/B with `/wise cpu`. Visual parity (decimals under N seconds, abbreviation
 for minutes) must be verified against current look.
 
+**OUTCOME (implemented — scoped down deliberately):** Wholesale replacement of the
+manual OnUpdate ticker was rejected: the ticker is still required out-of-combat for
+red-line / list-mode rendering, and Wise's format is whole-seconds (Xh/Xm/Xs, no
+decimals) so there was no formatting deficit to fix there. The real gap was the
+*combat / secret-mode* path, where Wise hands rendering to Blizzard's native countdown
+and previously could not style its text. Now, when that handoff happens, we install a
+shared `C_StringUtil.CreateSecondsFormatter` via `SetCountdownFormatter` on both the
+real button and its visual clone, so the native combat text matches Wise's look.
+Capability-gated on `HAS_COUNTDOWN_FORMATTER` (probed by method presence + a throwaway
+Cooldown frame). One formatter instance, lazily built, reused everywhere. No change to
+the hot loop's per-frame cost; pre-12.0.5 clients are unaffected.
+
 ---
 
 ## 4. Restored CPU profiling functions — LOW effort, dev-only
