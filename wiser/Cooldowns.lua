@@ -100,31 +100,16 @@ function Wise:UpdateCooldownWiser(groupName, viewerName)
 		Wise:HookCooldownViewerLayout(viewerName, groupName)
 	end
 
-	-- If the viewer is hidden (e.g. "Hide Game Interface" is on), we must
-	-- temporarily show it so Blizzard populates its children for the current
-	-- spec, then defer the read to give Layout() a frame to run.
-	local needsTempShow = group.hideNativeInterface and not viewer:IsShown()
-	if needsTempShow and not InCombatLockdown() then
-		viewer:Show()
-		-- Defer: let Blizzard's Layout run, then read children and re-hide
-		C_Timer.After(0, function()
-			Wise:_ReadCooldownViewer(groupName, viewerName)
-			if not InCombatLockdown() and group.hideNativeInterface then
-				viewer:Hide()
-			end
-		end)
-		return
-	end
-
-	if not InCombatLockdown() then
-		if group.hideNativeInterface then
-			viewer:Hide()
-		else
-			viewer:Show()
-		end
-	end
-
+	-- Read the spell list into Wise's mirrored group. Visibility of the native
+	-- viewer is owned separately by Wise:SetViewerVisibility (Edit Mode setting);
+	-- we do NOT show/hide the frame here. Read the children first while they're
+	-- still populated, THEN apply the hide setting so a freshly-hidden viewer
+	-- doesn't blank out before we've mirrored its spells.
 	Wise:_ReadCooldownViewer(groupName, viewerName)
+
+	if Wise.SetViewerVisibility then
+		Wise:SetViewerVisibility(viewerName, group.hideNativeInterface)
+	end
 end
 
 -- Internal: read spells from a Blizzard CooldownViewer and sync to group actions
@@ -150,6 +135,46 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 
 	local spells = {}
 	local seen = {}
+
+	local function addSpell(spellID)
+		if not spellID then
+			return
+		end
+		-- tonumber(tostring(...)) forces a fresh untainted number. Plain tonumber()
+		-- on an already-numeric value returns the same (possibly tainted) value,
+		-- which is why we route through tostring first. Secrets cannot be used as
+		-- table keys or in comparisons, so we skip any value that can't be converted.
+		spellID = tonumber(tostring(spellID))
+		if not spellID then
+			return
+		end
+		-- Normalize to override spell so base+override don't appear as two entries
+		local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
+		resolvedID = tonumber(tostring(resolvedID))
+		if resolvedID and not seen[resolvedID] then
+			seen[resolvedID] = true
+			table.insert(spells, resolvedID)
+		end
+	end
+
+	-- The viewer's CHILDREN are the ground truth of what the Cooldown Manager
+	-- actually DISPLAYS — already excludes the "Not Displayed" spells, off-spec
+	-- spells, etc. The category API (GetCooldownViewerCategorySet) does NOT: it
+	-- returns every cooldown assigned to the category including not-displayed
+	-- ones, with no reliable flag to filter them. So we read the children and
+	-- cache the resulting cooldownID list per character.
+	--
+	-- When the user hides the viewer (Edit Mode VisibleSetting=Hidden), the frame
+	-- is genuinely Hidden and stops populating children. In that case we replay
+	-- the cached cooldownID list through the info API so Wise's own mirror stays
+	-- populated with exactly the displayed set.
+	local function childIsDisplayed(child)
+		-- A laid-out cooldown item; Blizzard hides spare/unused item frames.
+		return child:IsShown() and (child.cooldownID ~= nil or child.spellID ~= nil or child.GetSpellID ~= nil)
+	end
+
+	local displayedCooldownIDs = {}
+	local readFromChildren = false
 	if viewer.GetChildren then
 		local children = { viewer:GetChildren() }
 		table.sort(children, function(a, b)
@@ -159,7 +184,8 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 		end)
 
 		for _, child in ipairs(children) do
-			if child:IsShown() then
+			if childIsDisplayed(child) then
+				readFromChildren = true
 				local spellID = child.spellID
 				if not spellID and child.GetSpellID then
 					spellID = child:GetSpellID()
@@ -175,22 +201,34 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 						spellID = info.spellID
 					end
 				end
-
-				if spellID then
-					-- tonumber(tostring(...)) forces a fresh untainted number. Plain tonumber()
-					-- on an already-numeric value returns the same (possibly tainted) value,
-					-- which is why we route through tostring first. Secrets cannot be used as
-					-- table keys or in comparisons, so we skip any value that can't be converted.
-					spellID = tonumber(tostring(spellID))
-					if spellID then
-						-- Normalize to override spell so base+override don't appear as two entries
-						local resolvedID = Wise:GetOverrideSpellID(spellID) or spellID
-						resolvedID = tonumber(tostring(resolvedID))
-						if resolvedID and not seen[resolvedID] then
-							seen[resolvedID] = true
-							table.insert(spells, resolvedID)
-						end
+				if child.cooldownID then
+					local cid = tonumber(tostring(child.cooldownID))
+					if cid then
+						table.insert(displayedCooldownIDs, cid)
 					end
+				end
+				addSpell(spellID)
+			end
+		end
+	end
+
+	if readFromChildren then
+		-- Persist the displayed cooldownID list (keyed per spec) so we can repopulate
+		-- the mirror after the viewer is hidden — including across logins where the
+		-- viewer loads already-hidden and never populates children.
+		group.displayedCooldownIDs = group.displayedCooldownIDs or {}
+		local specIndex = GetSpecialization()
+		group.displayedCooldownIDs[specIndex or 0] = displayedCooldownIDs
+	elseif C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo and group.displayedCooldownIDs then
+		-- Viewer is hidden — no children. Replay the last-known displayed set for
+		-- this spec. isKnown filters anything no longer valid on the current build.
+		local specIndex = GetSpecialization()
+		local cached = group.displayedCooldownIDs[specIndex or 0]
+		if cached then
+			for _, cid in ipairs(cached) do
+				local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
+				if info and info.isKnown then
+					addSpell(info.spellID)
 				end
 			end
 		end

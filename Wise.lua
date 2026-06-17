@@ -811,14 +811,11 @@ function Wise:Initialize()
 		Wise:InitializeMinimap()
 	end
 
-	-- Fix for the "Hider" Bug in 11.0.1+
-	-- If default Blizzard buff/debuff trackers are hidden, the game stops scanning auras for AddOns.
-	-- We keep them functionally "active" but set Alpha to 0 so they scan invisibly.
-	if BuffIconCooldownViewer then
-		BuffIconCooldownViewer:SetAlpha(WiseDB.settings.hideTrackedBuffs and 0 or 1)
-	end
-	if BuffBarCooldownViewer then
-		BuffBarCooldownViewer:SetAlpha(WiseDB.settings.hideTrackedBars and 0 or 1)
+	-- Apply the four "hide" settings via Blizzard's Edit Mode VisibleSetting
+	-- (always/in-combat/hidden). This is Blizzard's own combat-aware visibility,
+	-- so hidden viewers stay hidden through combat and reloads natively.
+	if Wise.ReapplyAllHiding then
+		Wise:ReapplyAllHiding()
 	end
 
 	if Wise.UpdateMouseWheelState then
@@ -1586,14 +1583,26 @@ function frame:OnEvent(event, arg1)
 			-- Safety-net: Blizzard's Edit Mode layout engine applies layouts
 			-- asynchronously during reload, often AFTER PLAYER_LOGIN. Re-apply
 			-- our hiding after a delay to override any late Blizzard resets.
+			-- The same late pass also resets the tracked buff/bar viewers' alpha,
+			-- so re-apply those here too.
 			C_Timer.After(1, function()
-				if not InCombatLockdown() and Wise.UpdateBlizzardUI then
-					Wise:UpdateBlizzardUI()
+				if not InCombatLockdown() then
+					if Wise.UpdateBlizzardUI then
+						Wise:UpdateBlizzardUI()
+					end
+					if Wise.ReapplyAllHiding then
+						Wise:ReapplyAllHiding()
+					end
 				end
 			end)
 			C_Timer.After(3, function()
-				if not InCombatLockdown() and Wise.UpdateBlizzardUI then
-					Wise:UpdateBlizzardUI()
+				if not InCombatLockdown() then
+					if Wise.UpdateBlizzardUI then
+						Wise:UpdateBlizzardUI()
+					end
+					if Wise.ReapplyAllHiding then
+						Wise:ReapplyAllHiding()
+					end
 				end
 			end)
 		end
@@ -1656,6 +1665,11 @@ function frame:OnEvent(event, arg1)
 			Wise:ForceRefreshAllDisplays()
 			if Wise.UpdateBlizzardUI then
 				Wise:UpdateBlizzardUI()
+			end
+			-- Re-apply the Edit Mode hide settings: spec change / EDIT_MODE_LAYOUTS_UPDATED
+			-- can reset the viewers' VisibleSetting back to Always.
+			if Wise.ReapplyAllHiding then
+				Wise:ReapplyAllHiding()
 			end
 			if Wise.UpdateOptionsUI then
 				Wise:UpdateOptionsUI()
@@ -2140,6 +2154,89 @@ hooksecurefunc("UnregisterStateDriver", function(frame, header)
 		inRegisterHook = false
 	end
 end)
+
+-- Drive a CooldownViewer frame's Edit Mode "Visible Setting" — the same
+-- always/in-combat/hidden dropdown the player sees in Edit Mode. This is
+-- Blizzard's own combat-aware visibility system, so it persists through login,
+-- combat, and reloads natively (no alpha hacks or per-combat re-apply needed).
+--
+-- `hidden` true  -> set VisibleSetting = Hidden
+-- `hidden` false -> set VisibleSetting = Always
+--
+-- Returns true on success. Cannot run during combat lockdown (Edit Mode setting
+-- changes are protected), so callers must apply out of combat.
+function Wise:SetViewerVisibility(viewerName, hidden)
+	if InCombatLockdown() then
+		return false
+	end
+	local viewer = _G[viewerName]
+	if not viewer then
+		return false
+	end
+	if not (Enum and Enum.EditModeCooldownViewerSetting and Enum.CooldownViewerVisibleSetting) then
+		return false
+	end
+
+	local settingKey = Enum.EditModeCooldownViewerSetting.VisibleSetting
+	local value = hidden and Enum.CooldownViewerVisibleSetting.Hidden or Enum.CooldownViewerVisibleSetting.Always
+
+	-- Already at the target value? Nothing to do (avoids redundant layout dirtying).
+	if viewer.GetSettingValue then
+		local ok, cur = pcall(viewer.GetSettingValue, viewer, settingKey)
+		if ok and cur == value then
+			return true
+		end
+	end
+
+	-- Apply the change the way the in-game Edit Mode dropdown does, so it's
+	-- recorded in the active layout and persists. The exact setter has churned
+	-- across patches, so try the known paths in order and verify via
+	-- GetSettingValue (confirmed present on these frames).
+	local applied = false
+	if EditModeManagerFrame and EditModeManagerFrame.OnSystemSettingChange then
+		pcall(EditModeManagerFrame.OnSystemSettingChange, EditModeManagerFrame, viewer, settingKey, value)
+		applied = true
+	end
+	if not applied and viewer.SetSettingValue then
+		pcall(viewer.SetSettingValue, viewer, settingKey, value)
+		applied = true
+	end
+
+	-- Make sure the visual state reflects the new setting immediately.
+	if viewer.UpdateShownState then
+		pcall(viewer.UpdateShownState, viewer)
+	end
+
+	-- Verify it actually took.
+	if viewer.GetSettingValue then
+		local ok, cur = pcall(viewer.GetSettingValue, viewer, settingKey)
+		return ok and cur == value
+	end
+	return applied
+end
+
+-- Apply all four "hide" settings via Edit Mode VisibleSetting. Called at login
+-- and from the post-login safety-net timers (the layout engine settles
+-- asynchronously after PLAYER_LOGIN).
+function Wise:ReapplyAllHiding()
+	if InCombatLockdown() then
+		return
+	end
+	Wise:SetViewerVisibility("BuffIconCooldownViewer", WiseDB.settings.hideTrackedBuffs)
+	Wise:SetViewerVisibility("BuffBarCooldownViewer", WiseDB.settings.hideTrackedBars)
+	if WiseDB.groups["Cooldowns"] then
+		Wise:SetViewerVisibility(
+			WiseDB.groups["Cooldowns"].viewerName or "EssentialCooldownViewer",
+			WiseDB.groups["Cooldowns"].hideNativeInterface
+		)
+	end
+	if WiseDB.groups["Utilities"] then
+		Wise:SetViewerVisibility(
+			WiseDB.groups["Utilities"].viewerName or "UtilityCooldownViewer",
+			WiseDB.groups["Utilities"].hideNativeInterface
+		)
+	end
+end
 
 function Wise:UpdateBlizzardUI()
 	if InCombatLockdown() then
