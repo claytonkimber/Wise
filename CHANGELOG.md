@@ -10,6 +10,7 @@
 
 ### Fixed
 - One-time, idempotent backfill (`scopeWaterfallBackfillV1`) runs every saved interface through the canonical migrator so pre-tag/imported actions gain equivalent scope tags and never break under the new waterfall.
+- The Character filter is now exclusive: it shows only actions explicitly pinned to the current character (`char:` tag or legacy character category) instead of every unrestricted action, so "Char" is no longer a near-duplicate of "All".
 
 ## [1.0.20260423] - 2026-05-31
 

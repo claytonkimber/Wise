@@ -239,101 +239,9 @@ local function Contains(tbl, val)
 	return false
 end
 
--- Helper: check if the current character matches a specific restriction tag
-function Wise:MatchesRestrictionTag(tag)
-	if not tag then
-		return false
-	end
-
-	if tag == "global" then
-		return true
-	elseif tag == "role:TANK" then
-		return self.characterInfo.role == "TANK"
-	elseif tag == "role:HEALER" then
-		return self.characterInfo.role == "HEALER"
-	elseif tag == "role:DAMAGER" then
-		return self.characterInfo.role == "DAMAGER"
-	elseif tag:match("^class:") then
-		local reqClass = tag:sub(7)
-		return self.characterInfo.class == reqClass
-	elseif tag:match("^spec:") then
-		local reqSpec = tonumber(tag:sub(6))
-		return self.characterInfo.specID == reqSpec
-	elseif tag:match("^talent:") then
-		local reqTalent = tonumber(tag:sub(8))
-		return IsPlayerSpell(reqTalent) or IsSpellKnownOrOverridesKnown(reqTalent)
-	elseif tag:match("^build:") then
-		-- A build: tag binds an action to one specific talent loadout (config ID).
-		-- Visible only while that exact loadout is the active one.
-		local reqConfig = tonumber(tag:sub(7))
-		if not reqConfig then
-			return false
-		end
-		local active = self.characterInfo and self.characterInfo.talentConfigID
-		if active == nil and C_ClassTalents and C_ClassTalents.GetActiveConfigID then
-			active = C_ClassTalents.GetActiveConfigID()
-		end
-		return active ~= nil and active == reqConfig
-	elseif tag:match("^char:") then
-		local reqChar = tag:sub(6)
-		local charKey = UnitName("player") .. "-" .. GetRealmName()
-		return charKey == reqChar
-	end
-	return false
-end
-
-function Wise:IsActionAllowed(action)
-	local enables = action.visibilityEnable or {}
-	local disables = action.visibilityDisable or {}
-	local isAllowed = false
-
-	-- If there are ANY enables, default to false. Must match one to become true.
-	-- If NO enables, default to true.
-	if #enables > 0 then
-		-- Group enables by prefix
-		local catEnables = {}
-		for _, tag in ipairs(enables) do
-			local prefix = tag:match("^([^:]+):") or tag
-			catEnables[prefix] = catEnables[prefix] or {}
-			table.insert(catEnables[prefix], tag)
-		end
-
-		isAllowed = true
-		for prefix, tags in pairs(catEnables) do
-			local prefixMatched = false
-
-			if prefix == "global" then
-				prefixMatched = true
-			else
-				for _, tag in ipairs(tags) do
-					if self:MatchesRestrictionTag(tag) then
-						prefixMatched = true
-						break
-					end
-				end
-			end
-
-			if not prefixMatched then
-				isAllowed = false
-				break
-			end
-		end
-	else
-		isAllowed = true
-	end
-
-	-- If allowed so far, check disables. Any match makes it false.
-	if isAllowed and #disables > 0 then
-		for _, tag in ipairs(disables) do
-			if self:MatchesRestrictionTag(tag) then
-				isAllowed = false
-				break
-			end
-		end
-	end
-
-	return isAllowed
-end
+-- NOTE: Action visibility/filtering (MatchesRestrictionTag, IsActionAllowed,
+-- ShouldLoadAction, GetFilteredActions, and the editor scope waterfall) lives in
+-- core/Filters.lua, loaded immediately after this file.
 
 -- Helper: Check if interface is "Disabled" (no user-configured visibility settings)
 -- Nested children whose only visibility comes from nesting inheritance are still disabled.
@@ -362,25 +270,6 @@ function Wise:IsGroupDisabled(group, groupName)
 	end
 
 	return false
-end
-
-function Wise:ShouldLoadAction(action, group)
-	-- If not dynamic, load all actions
-	if not group.dynamic then
-		return true
-	end
-
-	return self:IsActionAllowed(action)
-end
-
-function Wise:GetFilteredActions(group)
-	local filtered = {}
-	for i, action in ipairs(group.buttons) do
-		if Wise:ShouldLoadAction(action, group) then
-			table.insert(filtered, { index = i, action = action })
-		end
-	end
-	return filtered
 end
 
 -- Update Wiser Interfaces

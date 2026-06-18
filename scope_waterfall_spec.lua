@@ -1,6 +1,7 @@
--- Unit tests for the scope-waterfall filter primitives:
---   * Wise:GetActionScopeRank  (Actions.lua) — pure tag->rank mapping
---   * the build: branch of Wise:MatchesRestrictionTag (Wise.lua)
+-- Unit tests for the scope-waterfall filter primitives (all in core/Filters.lua):
+--   * Wise:GetActionScopeRank — pure tag->rank mapping
+--   * the build: branch of Wise:MatchesRestrictionTag
+--   * Wise:ShouldShowAction character-filter exclusivity
 --
 -- The addon files use the `local addonName, addon = ...` bootstrap, so we load
 -- each real source via loadfile(...)(addonName, Wise) against a stubbed WoW
@@ -70,7 +71,7 @@ describe("GetActionScopeRank", function()
 	local Wise
 	before_each(function()
 		Wise = makeWise()
-		loadRealAddon(Wise, { "Wise.lua", "modules/Actions.lua" })
+		loadRealAddon(Wise, { "Wise.lua", "core/Filters.lua" })
 	end)
 
 	it("ships the expected scope-rank tables", function()
@@ -120,7 +121,7 @@ describe("MatchesRestrictionTag build: branch", function()
 	before_each(function()
 		Wise = makeWise()
 		installGlobals(7, {})
-		loadRealAddon(Wise, { "Wise.lua" })
+		loadRealAddon(Wise, { "Wise.lua", "core/Filters.lua" })
 	end)
 
 	it("registers the build: tag handler (smoke)", function()
@@ -147,5 +148,58 @@ describe("MatchesRestrictionTag build: branch", function()
 		Wise.characterInfo.talentConfigID = 7
 		assert.is_false(Wise:MatchesRestrictionTag("build:"))
 		assert.is_false(Wise:MatchesRestrictionTag("build:abc"))
+	end)
+end)
+
+describe("ShouldShowAction character filter (exclusive)", function()
+	local Wise
+	before_each(function()
+		Wise = makeWise()
+		installGlobals(7, {})
+		Wise.characterInfo.class = "PRIEST"
+		Wise.characterInfo.specID = 258 -- Shadow
+		Wise.characterInfo.role = "DAMAGER"
+		loadRealAddon(Wise, { "Wise.lua", "core/Filters.lua" })
+		Wise.ActionFilter = "character"
+	end)
+
+	it("shows an action pinned to THIS character", function()
+		assert.is_true(Wise:ShouldShowAction({
+			type = "spell",
+			value = 1,
+			visibilityEnable = { "char:Tester-Realm" },
+		}))
+	end)
+
+	it("hides an action pinned to a DIFFERENT character", function()
+		assert.is_false(Wise:ShouldShowAction({
+			type = "spell",
+			value = 1,
+			visibilityEnable = { "char:Someone-Else" },
+		}))
+	end)
+
+	it("hides actions with no character restriction (the Char != All fix)", function()
+		assert.is_false(Wise:ShouldShowAction({ type = "spell", value = 1, visibilityEnable = {} }))
+		assert.is_false(Wise:ShouldShowAction({
+			type = "spell",
+			value = 1,
+			visibilityEnable = { "class:PRIEST", "spec:258" },
+		}))
+	end)
+
+	it("honors the legacy character category pinned to this toon", function()
+		assert.is_true(Wise:ShouldShowAction({
+			type = "spell",
+			value = 1,
+			category = "character",
+			addedByCharacter = "Tester-Realm",
+		}))
+		assert.is_false(Wise:ShouldShowAction({
+			type = "spell",
+			value = 1,
+			category = "character",
+			addedByCharacter = "Someone-Else",
+		}))
 	end)
 end)
