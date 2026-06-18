@@ -115,6 +115,31 @@ Capability-gated on `HAS_COUNTDOWN_FORMATTER` (probed by method presence + a thr
 Cooldown frame). One formatter instance, lazily built, reused everywhere. No change to
 the hot loop's per-frame cost; pre-12.0.5 clients are unaffected.
 
+**FOLLOW-UP (user-facing format choice):** Exposed the format as a configurable
+`countdownFormat` setting — `"short"` (bare number: `9 / 30 / 5 / 1`, the default) vs
+`"extended"` (number + unit: `9s / 30s / 5m / 1h`). Resolved per group with global
+fallback in `GetGroupDisplaySettings` (now returns it as the 26th value), so it honours
+the same global-default / per-interface-override pattern as `showCountdownText`. Applied
+consistently to both render paths: the out-of-combat numeric path formats via the shared
+`Wise.FormatWiseCountdownText` helper (format cached on the per-button `info` table at
+cooldown registration to keep the hot loop allocation-free), and the combat / secret path
+selects between an `Enum.SecondsFormatterAbbreviation.OneLetter` formatter (extended) and
+the native default (short, `nil` formatter). UI: a Short/Extended toggle in the global
+Settings "Countdown Text Display" section, and a Short/Extended/Global selector per
+interface in Properties (nil = inherit global), wired into the section's (Custom) label
+and the reset-to-global logic.
+
+**FOLLOW-UP 2 (sub-second fluidity):** The countdown previously only ever showed whole
+seconds (`ceil`), so it jumped a second at a time and looked choppier than Blizzard's
+native cooldown text. Now, below a `COUNTDOWN_DECIMAL_THRESHOLD` (3s, matching Blizzard's
+default), the out-of-combat numeric path renders one decimal place (`2.9 / 0.4`, or
+`2.9s` in extended). The per-frame `info.lastText` gate means this only repaints when the
+`%.1f` value actually changes (~10 Hz), so it's smooth without adding hot-loop cost. The
+combat / secret path mirrors it by calling `Cooldown:SetCountdownMillisecondsThreshold`
+on the native countdown (capability-gated on `HAS_COUNTDOWN_MS_THRESHOLD`, pcall-wrapped
+since the method is protected). List mode keeps its `M:SS` clock format (decimals there
+would be wrong; the red-line bar already provides smoothness).
+
 ---
 
 ## 4. Restored CPU profiling functions — LOW effort, dev-only

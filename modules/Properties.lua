@@ -3131,6 +3131,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 				or group.chargeTextPosition
 				or group.countdownTextSize
 				or group.countdownTextPosition
+				or group.countdownFormat
 				or (group.activeOpacity ~= nil)
 				or (group.inactiveOpacity ~= nil)
 				or (group.showGCD ~= nil)
@@ -3947,7 +3948,12 @@ function Wise:RenderGroupProperties(panel, group, y)
 		piCountdownLabel:SetText(
 			"Countdown Text:"
 				.. (
-					(group.countdownTextSize or group.countdownTextPosition or group.showCountdownText ~= nil)
+					(
+							group.countdownTextSize
+							or group.countdownTextPosition
+							or group.countdownFormat
+							or group.showCountdownText ~= nil
+						)
 						and " |cffff8800(Custom)|r"
 					or ""
 				)
@@ -3984,6 +3990,44 @@ function Wise:RenderGroupProperties(panel, group, y)
 		tinsert(panel.controls, piShowCountdown.text)
 
 		y = y - 30
+
+		-- Format: Short / Extended / Global (inherit). nil on the group = inherit
+		-- the global setting; an explicit value overrides it for this interface.
+		local globalFormat = WiseDB.settings.countdownFormat or (Wise.COUNTDOWN_FORMAT_DEFAULT or "short")
+		local piCountdownFmtLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		piCountdownFmtLabel:SetPoint("TOPLEFT", 10, y)
+		piCountdownFmtLabel:SetText(
+			"Format: " .. (group.countdownFormat and group.countdownFormat or (globalFormat .. " |cff888888(global)|r"))
+		)
+		tinsert(panel.controls, piCountdownFmtLabel)
+		y = y - 22
+
+		local piCountdownFormats = {
+			{ val = "short", text = "Short" },
+			{ val = "extended", text = "Extended" },
+			{ val = nil, text = "Global" },
+		}
+		for i, fmtMode in ipairs(piCountdownFormats) do
+			local radio = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+			radio:SetPoint("TOPLEFT", 10 + ((i - 1) * 80), y)
+			radio:SetChecked(group.countdownFormat == fmtMode.val)
+			radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			radio.text:SetPoint("LEFT", radio, "RIGHT", 3, 0)
+			radio.text:SetText(fmtMode.text)
+			radio:SetScript("OnClick", function()
+				group.countdownFormat = fmtMode.val
+				UpdateDisplayStatus() -- Updates Reset Button
+				Wise:RefreshPropertiesPanel() -- update label/checks
+				C_Timer.After(0.1, function()
+					if not InCombatLockdown() and Wise.UpdateAllCooldowns then
+						Wise:UpdateAllCooldowns()
+					end
+				end)
+			end)
+			tinsert(panel.controls, radio)
+			tinsert(panel.controls, radio.text)
+		end
+		y = y - 28
 
 		-- Position
 		local piCountdownPosLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -4263,6 +4307,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 			and not group.chargeTextPosition
 			and not group.countdownTextSize
 			and not group.countdownTextPosition
+			and not group.countdownFormat
 			and group.activeOpacity == nil
 			and group.inactiveOpacity == nil
 			and group.showGCD == nil
@@ -4287,6 +4332,7 @@ function Wise:RenderGroupProperties(panel, group, y)
 			group.showCountdownText = nil
 			group.countdownTextSize = nil
 			group.countdownTextPosition = nil
+			group.countdownFormat = nil
 			group.activeOpacity = nil
 			group.inactiveOpacity = nil
 			group.showGCD = nil

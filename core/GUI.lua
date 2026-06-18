@@ -23,31 +23,23 @@ Wise.HAS_IGNORE_GCD = HAS_IGNORE_GCD
 -- combat format, instead of being stuck with Blizzard's default whole-second look.
 -- Probe by method presence (more robust than a version number for widget methods).
 local HAS_COUNTDOWN_FORMATTER = false
+-- 12.0.5 Cooldown:SetCountdownMillisecondsThreshold(seconds): below the given
+-- remaining time, Blizzard's native countdown text shows one decimal place.
+-- We use it on the combat / secret-mode path so the built-in text ticks as
+-- smoothly as our out-of-combat decimal format. Method is protected; probe by
+-- presence and always pcall the call site.
+local HAS_COUNTDOWN_MS_THRESHOLD = false
 do
 	local probe = CreateFrame("Cooldown", nil, UIParent, "CooldownFrameTemplate")
 	HAS_COUNTDOWN_FORMATTER = type(probe.SetCountdownFormatter) == "function"
 		and type(C_StringUtil) == "table"
 		and type(C_StringUtil.CreateSecondsFormatter) == "function"
+	HAS_COUNTDOWN_MS_THRESHOLD = type(probe.SetCountdownMillisecondsThreshold) == "function"
 	probe:Hide()
 	probe:SetParent(nil)
 end
 Wise.HAS_COUNTDOWN_FORMATTER = HAS_COUNTDOWN_FORMATTER
-
--- Lazily-built shared SecondsFormatter that mirrors Wise's text convention
--- (Xh / Xm / Xs, no sub-second decimals). One instance, reused across all buttons.
-local _wiseSecondsFormatter
-local function GetWiseCountdownFormatter()
-	if not HAS_COUNTDOWN_FORMATTER then
-		return nil
-	end
-	if _wiseSecondsFormatter == nil then
-		-- CreateSecondsFormatter(approximationSeconds, ...) — defaults give whole
-		-- seconds with H/M/S abbreviations, matching our manual ticker's output.
-		local ok, fmt = pcall(C_StringUtil.CreateSecondsFormatter)
-		_wiseSecondsFormatter = (ok and fmt) or false
-	end
-	return _wiseSecondsFormatter or nil
-end
+Wise.HAS_COUNTDOWN_MS_THRESHOLD = HAS_COUNTDOWN_MS_THRESHOLD
 
 -- Helper: Resolve per-group display settings with fallback to global
 local _G = _G
@@ -69,6 +61,99 @@ local C_Item = C_Item
 local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
+
+-- Countdown text format. The 12.0.5 patch can render cooldown text in two styles:
+--   "short"    — bare number, no unit   (9, 30, 5, 1)   [default]
+--   "extended" — number + 1-letter unit (9s, 30s, 5m, 1h)
+-- This is resolved per group (with global fallback) via GetGroupDisplaySettings,
+-- and the same convention is applied to both the out-of-combat numeric path (where
+-- Wise writes its own text) and the combat / secret-mode path (where Blizzard's
+-- native countdown drives the text via SetCountdownFormatter).
+local COUNTDOWN_FORMAT_DEFAULT = "short"
+Wise.COUNTDOWN_FORMAT_DEFAULT = COUNTDOWN_FORMAT_DEFAULT
+
+-- Below this many seconds remaining, the countdown shows one decimal place
+-- (e.g. 2.9, 0.4) so it ticks smoothly like Blizzard's native cooldown text,
+-- instead of jumping a whole second at a time. Matches Blizzard's default
+-- decimal threshold. The combat / secret-mode path mirrors this via
+-- Cooldown:SetCountdownMillisecondsThreshold (see below).
+local COUNTDOWN_DECIMAL_THRESHOLD = 3
+Wise.COUNTDOWN_DECIMAL_THRESHOLD = COUNTDOWN_DECIMAL_THRESHOLD
+
+-- Shared text helper for the out-of-combat numeric path. `rem` is a plain number
+-- of seconds remaining; `format` is "short" or "extended".
+local function FormatWiseCountdownText(rem, format)
+	-- Sub-threshold: one decimal place for a smooth, native-feeling tick.
+	-- Clamp at 0 so we never print "-0.0" on the frame the cooldown expires.
+	if rem < COUNTDOWN_DECIMAL_THRESHOLD then
+		if rem < 0 then
+			rem = 0
+		end
+		if format == "extended" then
+			return strformat("%.1fs", rem)
+		end
+		return strformat("%.1f", rem)
+	end
+	if format == "extended" then
+		if rem >= 3600 then
+			return strformat("%dh", ceil(rem / 3600))
+		elseif rem >= 60 then
+			return strformat("%dm", ceil(rem / 60))
+		else
+			return strformat("%ds", ceil(rem))
+		end
+	end
+	-- "short": bare number, no unit.
+	if rem >= 3600 then
+		return strformat("%d", ceil(rem / 3600))
+	elseif rem >= 60 then
+		return strformat("%d", ceil(rem / 60))
+	else
+		return strformat("%d", ceil(rem))
+	end
+end
+Wise.FormatWiseCountdownText = FormatWiseCountdownText
+
+-- Lazily-built shared SecondsFormatter objects for the combat / secret-mode path,
+-- one per format style, reused across all buttons. We can't compute remaining time
+-- in combat (secret numbers), so we hand Blizzard's native countdown a formatter
+-- that mirrors our own text convention.
+--   extended → Enum.SecondsFormatterAbbreviation.OneLetter (9s / 5m / 1h)
+--   short    → nil formatter (Blizzard default: whole seconds, no unit) — matches
+--              our bare-number look for the sub-minute durations that dominate the
+--              combat/secret path. (longer combat cooldowns are rare; best-effort.)
+local _wiseSecondsFormatters = {}
+local function GetWiseCountdownFormatter(format)
+	if not HAS_COUNTDOWN_FORMATTER then
+		return nil
+	end
+	if format ~= "extended" then
+		-- "short" maps to the native default formatter (nil).
+		return nil
+	end
+	local cached = _wiseSecondsFormatters[format]
+	if cached == nil then
+		local ok, fmt = pcall(C_StringUtil.CreateSecondsFormatter)
+		if ok and fmt then
+			-- OneLetter abbreviation → "9s" / "5m" / "1h", matching the extended
+			-- numeric path. Guard each setter: the method set has shifted between
+			-- builds, and a missing one shouldn't nil out the whole formatter.
+			local abbrev = _G.Enum and _G.Enum.SecondsFormatterAbbreviation
+			if abbrev and abbrev.OneLetter ~= nil and fmt.SetDefaultAbbreviation then
+				pcall(fmt.SetDefaultAbbreviation, fmt, abbrev.OneLetter)
+			end
+			if fmt.SetStripIntervalWhitespace then
+				local ws = _G.Enum and _G.Enum.SecondsFormatterIntervalWhitespace
+				if ws and ws.StripIgnoreLocale ~= nil then
+					pcall(fmt.SetStripIntervalWhitespace, fmt, ws.StripIgnoreLocale)
+				end
+			end
+		end
+		cached = (ok and fmt) or false
+		_wiseSecondsFormatters[format] = cached
+	end
+	return cached or nil
+end
 
 local issecretvalue = issecretvalue or (_G and _G.issecretvalue)
 
@@ -494,6 +579,10 @@ function Wise:GetGroupDisplaySettings(groupName)
 	local countdownTextSize = (group and group.countdownTextSize) or settings.countdownTextSize or 12
 	local countdownTextPosition = (group and group.countdownTextPosition) or settings.countdownTextPosition or "CENTER"
 
+	-- Countdown text format: "short" (bare number) or "extended" (number + unit).
+	-- Per-group override falls back to the global setting, then the hard default.
+	local countdownFormat = (group and group.countdownFormat) or settings.countdownFormat or COUNTDOWN_FORMAT_DEFAULT
+
 	-- Tri-state logic for overrides: nil = global, true/false = override
 	local showGlows = settings.showGlows
 	if group and group.showGlows ~= nil then
@@ -621,7 +710,8 @@ function Wise:GetGroupDisplaySettings(groupName)
 		buffStackTextSize,
 		cooldownSwipeReverse,
 		buffSwipeReverse,
-		debuffSwipeReverse
+		debuffSwipeReverse,
+		countdownFormat
 end
 
 function Wise:CreateGroup(name, type)
@@ -906,10 +996,18 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 			if not btn._wiseBlizzCDActive then
 				btn._wiseBlizzCDActive = true
 				btn.cooldown:SetHideCountdownNumbers(false)
+				local ds = { Wise:GetGroupDisplaySettings(groupName) }
+				local fontPath, countdownTextSize, countdownFormat = ds[3], ds[9], ds[26]
 				-- Match the native countdown text to Wise's own format (12.0.5+).
-				local formatter = GetWiseCountdownFormatter()
-				if formatter then
-					pcall(btn.cooldown.SetCountdownFormatter, btn.cooldown, formatter)
+				local formatter = GetWiseCountdownFormatter(countdownFormat)
+				-- Reapply unconditionally: a nil formatter clears any previously set
+				-- one (so "short" reverts to Blizzard's default look) rather than
+				-- leaving a stale "extended" formatter from a prior cooldown.
+				pcall(btn.cooldown.SetCountdownFormatter, btn.cooldown, formatter)
+				-- Show decimals under the threshold so the native combat text ticks
+				-- as smoothly as our out-of-combat decimal format.
+				if HAS_COUNTDOWN_MS_THRESHOLD then
+					pcall(btn.cooldown.SetCountdownMillisecondsThreshold, btn.cooldown, COUNTDOWN_DECIMAL_THRESHOLD)
 				end
 				-- Hide our custom countdown to avoid double text
 				if btn.countdown then
@@ -918,7 +1016,6 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 				-- Style Blizzard's countdown FontString to match our look
 				local fs = btn.cooldown.GetCountdownFontString and btn.cooldown:GetCountdownFontString()
 				if fs then
-					local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
 					if fontPath and countdownTextSize then
 						pcall(fs.SetFont, fs, fontPath, countdownTextSize, "OUTLINE")
 					end
@@ -935,16 +1032,18 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 			if vClone and vClone.cooldown and not vClone._wiseBlizzCDActive then
 				vClone._wiseBlizzCDActive = true
 				vClone.cooldown:SetHideCountdownNumbers(false)
-				local vFormatter = GetWiseCountdownFormatter()
-				if vFormatter then
-					pcall(vClone.cooldown.SetCountdownFormatter, vClone.cooldown, vFormatter)
+				local ds = { Wise:GetGroupDisplaySettings(groupName) }
+				local fontPath, countdownTextSize, countdownFormat = ds[3], ds[9], ds[26]
+				local vFormatter = GetWiseCountdownFormatter(countdownFormat)
+				pcall(vClone.cooldown.SetCountdownFormatter, vClone.cooldown, vFormatter)
+				if HAS_COUNTDOWN_MS_THRESHOLD then
+					pcall(vClone.cooldown.SetCountdownMillisecondsThreshold, vClone.cooldown, COUNTDOWN_DECIMAL_THRESHOLD)
 				end
 				if vClone.countdown then
 					vClone.countdown:Hide()
 				end
 				local vfs = vClone.cooldown.GetCountdownFontString and vClone.cooldown:GetCountdownFontString()
 				if vfs then
-					local _, _, fontPath, _, _, _, _, _, countdownTextSize = Wise:GetGroupDisplaySettings(groupName)
 					if fontPath and countdownTextSize then
 						pcall(vfs.SetFont, vfs, fontPath, countdownTextSize, "OUTLINE")
 					end
@@ -1008,14 +1107,7 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 				end
 			else
 				-- Standard Mode
-				local text = ""
-				if rem >= 3600 then
-					text = strformat("%dh", ceil(rem / 3600))
-				elseif rem >= 60 then
-					text = strformat("%dm", ceil(rem / 60))
-				else
-					text = strformat("%d", ceil(rem))
-				end
+				local text = FormatWiseCountdownText(rem, info.countdownFormat)
 
 				if info.lastText ~= text then
 					Wise:Text_UpdateCountdown(btn, groupName, text)
@@ -7726,6 +7818,10 @@ function Wise:UpdateButtonCooldown(btn)
 	btn:SetScript("OnUpdate", nil)
 
 	if isActive then
+		-- Resolve the countdown text format ("short"/"extended") once at registration
+		-- so the per-frame hot loop stays allocation-free. Re-runs (and thus picks up
+		-- option changes) whenever UpdateButtonCooldown fires for this button.
+		local countdownFormat = select(26, Wise:GetGroupDisplaySettings(groupName))
 		Wise.ActiveCooldownButtons[btn] = {
 			start = start,
 			duration = duration,
@@ -7734,6 +7830,7 @@ function Wise:UpdateButtonCooldown(btn)
 			isBuffActive = isBuffActive,
 			isDebuffActive = isDebuffActive,
 			scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil,
+			countdownFormat = countdownFormat,
 			lastText = "",
 		}
 		Wise.CooldownUpdateFrame:Show()

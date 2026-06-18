@@ -1017,6 +1017,45 @@ function Wise:PopulateSettingsView(panel)
 	table.insert(panel.children, showCountdownText.text)
 	ry = ry - 30
 
+	-- Countdown format: Short (bare number) vs Extended (number + unit).
+	local cdFormatLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	AddToContent(rightContent, cdFormatLabel, rx, ry)
+	cdFormatLabel:SetText("Format:")
+	ry = ry - 20
+
+	local cdFormats = {
+		{ val = "short", text = "Short", tooltip = "Bare number: 9, 30, 5, 1" },
+		{ val = "extended", text = "Extended", tooltip = "Number + unit: 9s, 30s, 5m, 1h" },
+	}
+	local cdFormatCurrent = WiseDB.settings.countdownFormat or (Wise.COUNTDOWN_FORMAT_DEFAULT or "short")
+	for i, fmtMode in ipairs(cdFormats) do
+		local radio = CreateFrame("CheckButton", nil, rightContent, "UIRadioButtonTemplate")
+		AddToContent(rightContent, radio, rx + ((i - 1) * 90), ry)
+		radio:SetChecked(cdFormatCurrent == fmtMode.val)
+		radio.text = radio:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		radio.text:SetPoint("LEFT", radio, "RIGHT", 2, 0)
+		radio.text:SetText(fmtMode.text)
+		radio:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(fmtMode.tooltip, nil, nil, nil, nil, true)
+			GameTooltip:Show()
+		end)
+		radio:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
+		radio:SetScript("OnClick", function()
+			WiseDB.settings.countdownFormat = fmtMode.val
+			Wise:PopulateSettingsView(panel)
+			C_Timer.After(0.1, function()
+				if not InCombatLockdown() and Wise.UpdateAllCooldowns then
+					Wise:UpdateAllCooldowns()
+				end
+			end)
+		end)
+		table.insert(panel.children, radio.text)
+	end
+	ry = ry - 28
+
 	local cdPosLabel = rightContent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	AddToContent(rightContent, cdPosLabel, rx, ry)
 	cdPosLabel:SetText("Position:")
