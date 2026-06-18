@@ -132,9 +132,12 @@ function Wise:CreateOptionsFrame()
 	-- f.Middle is an InsetFrame. We anchor to its TOPLEFT but shift up.
 	-- Parent to f so they aren't clipped or inside the inset.
 
-	local filters = { "global", "class", "role", "spec", "talent", "character" }
+	-- Scope waterfall (All > Class > Spec > Build > Character), with Role as an
+	-- orthogonal cross-cutting filter. Internal ids match the visibility-tag
+	-- prefixes; "build" replaced the legacy "talent" filter.
+	local filters = { "global", "class", "role", "spec", "build", "character" }
 	local labels =
-		{ global = "All", class = "Class", role = "Role", spec = "Spec", talent = "Talents", character = "Char" }
+		{ global = "All", class = "Class", role = "Role", spec = "Spec", build = "Build", character = "Char" }
 	local btnWidth = filterWidth / #filters
 
 	for i, filter in ipairs(filters) do

@@ -208,7 +208,9 @@ function Wise:UpdateAbundanceBorders()
 					local visualClone = meta and meta.visualClone or btn.visualClone
 
 					local function applyCount(b)
-						if not b then return end
+						if not b then
+							return
+						end
 						if not b.abundanceCount then
 							b.abundanceCount = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 							b.abundanceCount:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -2, 2)

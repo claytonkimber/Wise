@@ -93,10 +93,15 @@ function Wise:UpdateCharacterInfo(sourceEvent)
 		self.characterInfo.role = role
 	end
 
-	-- Get active talent loadout name
+	-- Get active talent loadout name + config ID. The config ID is the stable
+	-- key the build: visibility tag matches against (see MatchesRestrictionTag).
+	self.characterInfo.talentConfigID = nil
 	if C_ClassTalents and C_ClassTalents.GetActiveConfigID then
 		if C_ClassTalents.GetStarterBuildActive and C_ClassTalents.GetStarterBuildActive() then
 			self.characterInfo.talentBuild = "Starter Build"
+			-- Starter builds have no saved config of their own; the active config
+			-- ID still identifies "the build I'm currently running" for tagging.
+			self.characterInfo.talentConfigID = C_ClassTalents.GetActiveConfigID()
 		else
 			local specID = GetSpecialization()
 			local specInfoID = specID and GetSpecializationInfo(specID)
@@ -116,6 +121,7 @@ function Wise:UpdateCharacterInfo(sourceEvent)
 			end
 
 			if configID then
+				self.characterInfo.talentConfigID = configID
 				local configInfo = C_Traits.GetConfigInfo(configID)
 				if configInfo and configInfo.name then
 					self.characterInfo.talentBuild = configInfo.name
@@ -256,6 +262,18 @@ function Wise:MatchesRestrictionTag(tag)
 	elseif tag:match("^talent:") then
 		local reqTalent = tonumber(tag:sub(8))
 		return IsPlayerSpell(reqTalent) or IsSpellKnownOrOverridesKnown(reqTalent)
+	elseif tag:match("^build:") then
+		-- A build: tag binds an action to one specific talent loadout (config ID).
+		-- Visible only while that exact loadout is the active one.
+		local reqConfig = tonumber(tag:sub(7))
+		if not reqConfig then
+			return false
+		end
+		local active = self.characterInfo and self.characterInfo.talentConfigID
+		if active == nil and C_ClassTalents and C_ClassTalents.GetActiveConfigID then
+			active = C_ClassTalents.GetActiveConfigID()
+		end
+		return active ~= nil and active == reqConfig
 	elseif tag:match("^char:") then
 		local reqChar = tag:sub(6)
 		local charKey = UnitName("player") .. "-" .. GetRealmName()
@@ -1571,6 +1589,41 @@ function frame:OnEvent(event, arg1)
 					end
 				end
 			end
+
+			-- Scope-waterfall backfill: the All/Class/Spec/Build/Character filter
+			-- derives an action's scope purely from its visibilityEnable tags. Older
+			-- (or imported) configs may hold a legacy `category` string with no tags,
+			-- or be missing the visibility arrays entirely. Run every group through
+			-- the canonical migrator once so those legacy actions gain the equivalent
+			-- class:/spec:/char: tags and the arrays the new filter reads. This never
+			-- rewrites already-tagged actions, so prior builds keep working unchanged.
+			-- Runs independently of the migrations above (their flags may already be
+			-- set on profiles created before this fix existed).
+			if not WiseDB.migrations.scopeWaterfallBackfillV1 then
+				if Wise.MigrateGroupToActions and WiseDB.groups then
+					local checked = 0
+					for _, group in pairs(WiseDB.groups) do
+						Wise:MigrateGroupToActions(group)
+						for _, slotStates in pairs(group.actions or {}) do
+							for _, action in ipairs(slotStates) do
+								-- Belt-and-suspenders: guarantee the arrays the
+								-- waterfall reads exist, even for hand-imported data.
+								if type(action) == "table" then
+									if action.visibilityEnable == nil then
+										action.visibilityEnable = {}
+									end
+									if action.visibilityDisable == nil then
+										action.visibilityDisable = {}
+									end
+									checked = checked + 1
+								end
+							end
+						end
+					end
+					WiseDB.migrations.scopeWaterfallBackfillV1 = true
+					Wise:DebugPrint("Scope-waterfall backfill checked " .. checked .. " action(s)")
+				end
+			end
 		end
 		if Wise.Initialize then
 			Wise:Initialize()
@@ -2447,20 +2500,27 @@ SlashCmdList["WISE"] = function(msg)
 			local okS, sid = pcall(function()
 				return tostring(a.spellId)
 			end)
-			print(("  [%d] %s  (spellId=%s)"):format(
-				i, okN and nm or "<secret>", okS and sid or "<secret>"))
+			print(("  [%d] %s  (spellId=%s)"):format(i, okN and nm or "<secret>", okS and sid or "<secret>"))
 		end
 		local settings = WiseDB.settings.blizzardUI or {}
 		print(("|cff00ccff[Wise puzzle]|r hidePuzzleUI setting = %s"):format(tostring(settings["hidePuzzleUI"])))
 		print(("|cff00ccff[Wise puzzle]|r IsPuzzleActive() = %s"):format(tostring(IsPuzzleActive())))
-		print(("|cff00ccff[Wise puzzle]|r HasOverrideActionBar() = %s"):format(tostring(HasOverrideActionBar and HasOverrideActionBar())))
+		print(
+			("|cff00ccff[Wise puzzle]|r HasOverrideActionBar() = %s"):format(
+				tostring(HasOverrideActionBar and HasOverrideActionBar())
+			)
+		)
 		local n = 0
 		if Wise.frames then
 			for _, f in pairs(Wise.frames) do
 				n = n + 1
 				if n <= 3 then
-					print(("  frame[%s] state-wise-hide = %s"):format(
-						tostring(f.GetName and f:GetName()), tostring(f:GetAttribute("state-wise-hide"))))
+					print(
+						("  frame[%s] state-wise-hide = %s"):format(
+							tostring(f.GetName and f:GetName()),
+							tostring(f:GetAttribute("state-wise-hide"))
+						)
+					)
 				end
 			end
 		end
@@ -2530,7 +2590,9 @@ SlashCmdList["WISE"] = function(msg)
 			end
 			print(
 				"|cff00ccff[Wise]|r CPU profiling was OFF. Enabled it — |cffffd700/reload|r, then run"
-					.. " |cffffd700" .. again .. "|r again."
+					.. " |cffffd700"
+					.. again
+					.. "|r again."
 			)
 			return
 		end
@@ -2659,7 +2721,9 @@ SlashCmdList["WISE"] = function(msg)
 			end
 			local window = Wise._cpuT0 and (GetTime() - Wise._cpuT0) or 0
 			if window < 1 then
-				print("|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu funcs|r.")
+				print(
+					"|cff00ccff[Wise CPU]|r Run |cffffd700/wise cpu start|r first, wait, then |cffffd700/wise cpu funcs|r."
+				)
 				return
 			end
 			local rows = {}
@@ -2676,14 +2740,27 @@ SlashCmdList["WISE"] = function(msg)
 				return a.ms > b.ms
 			end)
 			if #rows == 0 then
-				print("|cff00ccff[Wise CPU]|r No Wise:Method() CPU recorded in this window (cost may be in local closures).")
+				print(
+					"|cff00ccff[Wise CPU]|r No Wise:Method() CPU recorded in this window (cost may be in local closures)."
+				)
 				return
 			end
-			print(string.format("|cff00ccff[Wise CPU]|r Top Wise methods over %.0fs (self time, excl. subroutines):", window))
+			print(
+				string.format(
+					"|cff00ccff[Wise CPU]|r Top Wise methods over %.0fs (self time, excl. subroutines):",
+					window
+				)
+			)
 			for i = 1, math.min(14, #rows) do
-				print(string.format(
-					"  %2d. |cffffd700%.3f ms/s|r  %s  |cff999999(%d calls)|r",
-					i, rows[i].ms / window, rows[i].name, rows[i].calls))
+				print(
+					string.format(
+						"  %2d. |cffffd700%.3f ms/s|r  %s  |cff999999(%d calls)|r",
+						i,
+						rows[i].ms / window,
+						rows[i].name,
+						rows[i].calls
+					)
+				)
 			end
 			return
 		end
@@ -2750,9 +2827,7 @@ SlashCmdList["WISE"] = function(msg)
 					.. " Likely a NewTicker or a hooked Blizzard frame."
 			)
 			if type(GetFunctionCPUUsage) == "function" then
-				print(
-					"  |cff999999Try |cffffd700/wise cpu funcs|cff999999 to attribute it to specific Wise methods.|r"
-				)
+				print("  |cff999999Try |cffffd700/wise cpu funcs|cff999999 to attribute it to specific Wise methods.|r")
 			end
 		end
 		print(

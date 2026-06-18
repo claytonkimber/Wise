@@ -646,8 +646,43 @@ end
 -- End Drag-to-Reorder Infrastructure
 -- ═══════════════════════════════════════════════════════════════
 
+-- The scope ladder. Each rung is strictly NARROWER than the one before it:
+-- global (anyone) > class > spec > build (talent loadout) > char (one toon).
+-- role: is orthogonal (it crosses classes/specs) and is NOT a rung — it is
+-- handled by its own filter and ignored when computing scope rank.
+-- talent: (per-talent-spell restriction) is loadout-dependent, so it ranks at
+-- the build tier alongside build: (per-loadout) restrictions.
+Wise.SCOPE_RANK = { global = 1, class = 2, spec = 3, talent = 4, build = 4, char = 5 }
+-- Maps the UI filter id to the broadest rung it should reveal. The waterfall is
+-- cumulative: selecting "spec" shows everything ranked spec-or-broader.
+Wise.SCOPE_FILTER_RANK = { global = 1, class = 2, spec = 3, build = 4, character = 5 }
+
+-- The narrowest scope an action is restricted to ("home tier"), derived purely
+-- from its visibilityEnable tags. An action with no scoping tags is global (1).
+-- role: tags do not narrow scope, so they never raise the rank.
+function Wise:GetActionScopeRank(action)
+	local rank = 1 -- global
+	local enables = (type(action) == "table" and action.visibilityEnable) or nil
+	if not enables then
+		return rank
+	end
+	for _, tag in ipairs(enables) do
+		local prefix = tag:match("^([^:]+)") or tag
+		local r = Wise.SCOPE_RANK[prefix]
+		if r and r > rank then
+			rank = r
+		end
+	end
+	return rank
+end
+
 function Wise:ShouldShowAction(action)
 	local filter = Wise.ActionFilter
+
+	-- Legacy alias: the scope rung formerly called "talent" is now "build".
+	if filter == "talent" then
+		filter = "build"
+	end
 
 	-- "All" filter -> Show everything (including actions disabled for this toon —
 	-- the user is asking to see the full configured set).
@@ -835,9 +870,33 @@ function Wise:ShouldShowAction(action)
 			return Wise:IsActionKnown(aType, action.value)
 		end
 		return true
-	elseif filter == "talent" then
-		-- Show actions that the player currently knows (i.e., available through current talents)
-		-- This is the broadest "what can I use right now" filter
+	elseif filter == "build" then
+		-- Build = the active talent loadout rung. Cumulative: show everything
+		-- ranked build-or-broader (global/class/spec/build) that applies to this
+		-- toon. Build-tier tags are build: (pinned to a saved loadout's config ID)
+		-- and talent: (pinned to a specific talent spell being active). Either, when
+		-- present, is authoritative: the action shows only if it currently applies.
+		local sawBuildTier = false
+		for _, tag in ipairs(enables) do
+			if tag:match("^build:") or tag:match("^talent:") then
+				sawBuildTier = true
+				if Wise:MatchesRestrictionTag(tag) then
+					return true
+				end
+			end
+		end
+		if sawBuildTier then
+			return false
+		end
+		-- No build-tier tag — fall back to spec-rung applicability (broader scopes
+		-- are always active within the current build), then known-state for spells.
+		local matched, decision = specTagDecision()
+		if matched then
+			if not isActionGlobal() and action.addedByClass and action.addedByClass ~= Wise.characterInfo.class then
+				return false
+			end
+			return decision
+		end
 		return Wise:IsActionKnown(aType, action.value)
 	elseif filter == "character" then
 		-- Show only actions added by/restricted to THIS character
@@ -890,13 +949,14 @@ Wise.ActionTypes = {
 }
 
 -- Category constants
-Wise.Categories = { "global", "class", "role", "spec", "talent", "character" }
+Wise.Categories = { "global", "class", "role", "spec", "build", "character" }
 Wise.CategoryLabels = {
 	global = "All",
 	class = "Class",
 	role = "Role",
 	spec = "Spec",
-	talent = "Talents",
+	build = "Build",
+	talent = "Build", -- legacy alias: pre-waterfall configs called this "Talents"
 	character = "Character",
 }
 Wise.RoleLabels = {
@@ -4568,6 +4628,9 @@ function Wise:GetActionVisibilitySummary(action)
 		elseif prefix == "talent" then
 			local spellInfo = C_Spell.GetSpellInfo(tonumber(val))
 			return spellInfo and spellInfo.name or val
+		elseif prefix == "build" then
+			local configInfo = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(tonumber(val))
+			return (configInfo and configInfo.name and configInfo.name ~= "" and configInfo.name) or "Build"
 		elseif prefix == "char" then
 			local name = strsplit("-", val)
 			return name or val

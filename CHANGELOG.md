@@ -1,4 +1,16 @@
 # Changelog
+## [1.0.20260618] - 2026-06-18
+
+### Changed
+- Reworked the action filter into a cumulative scope waterfall: **All → Class → Spec → Build → Character**. Each level shows everything usable at that scope or broader, mirroring runtime visibility (Role remains as an orthogonal cross-cutting filter). The former "Talents" filter is now "Build".
+
+### Added
+- New `build:<configID>` visibility tag binding an action to a specific talent loadout; visible only while that loadout is the active config (`Wise:MatchesRestrictionTag`).
+- `Wise:GetActionScopeRank` derives an action's scope tier purely from its `visibilityEnable` tags, so legacy configs sort correctly with no data rewrite.
+
+### Fixed
+- One-time, idempotent backfill (`scopeWaterfallBackfillV1`) runs every saved interface through the canonical migrator so pre-tag/imported actions gain equivalent scope tags and never break under the new waterfall.
+
 ## [1.0.20260423] - 2026-05-31
 
 ### Fixed
