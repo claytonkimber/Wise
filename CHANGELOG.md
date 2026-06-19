@@ -1,4 +1,9 @@
 # Changelog
+## [1.0.20260619] - 2026-06-19
+
+### Changed
+- Slot configurator (Nodes view): connecting two action nodes is now **click-to-connect** instead of drag-and-drop. Click a node's connection dot to arm it (a line follows the cursor), then click the target card to connect. Click empty canvas — or the armed dot again — to cancel. This prevents the previous issue where a mid-drag release could strand a connection off-screen.
+
 ## [1.0.20260618] - 2026-06-18
 
 ### Changed

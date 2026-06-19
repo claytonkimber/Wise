@@ -1965,11 +1965,9 @@ local function shouldHideAB1()
 	return settings["hideActionBar1"] or not not puzzleActive
 end
 
-local function shouldHidePet()
-	local settings = WiseDB and WiseDB.settings and WiseDB.settings.blizzardUI or {}
-	local puzzleActive = settings["hidePuzzleUI"] and IsPuzzleActive and IsPuzzleActive()
-	return settings["hidePetBar"] or not not puzzleActive
-end
+-- (Pet bar hide decision is handled inline where it's applied — it now goes
+-- through Edit Mode VisibleSetting, not the SetParent hooks, so no shared
+-- shouldHidePet helper is needed.)
 
 local function shouldHideOverride()
 	local settings = WiseDB and WiseDB.settings and WiseDB.settings.blizzardUI or {}
@@ -1990,18 +1988,11 @@ function Wise:RegisterBlizzardUIHooks()
 		end
 	end
 
-	if PetActionBar then
-		HookSetParent(PetActionBar, shouldHidePet)
-		PetActionBar:HookScript("OnShow", function(self)
-			if InCombatLockdown() then
-				return
-			end
-			if shouldHidePet() then
-				self:SetParent(hiddenParent)
-				self:SetAlpha(0)
-			end
-		end)
-	end
+	-- PetActionBar is intentionally NOT hooked here. Reparenting/alpha-hacking the
+	-- secure pet bar taints it (blocking PetActionBar:Update -> SetShownBase on a
+	-- /target macro). It is hidden via Blizzard's Edit Mode VisibleSetting in
+	-- Wise:SetActionBarVisibility (driven from UpdateBlizzardUI / ReapplyAllHiding),
+	-- which is combat-aware and taint-free, so no OnShow re-assert hook is needed.
 
 	if OverrideActionBar then
 		HookSetParent(OverrideActionBar, shouldHideOverride)
@@ -2020,9 +2011,17 @@ end
 -- Frames that taint when hidden via RegisterStateDriver (e.g. PetActionBar calls SetShownBase)
 -- OverrideActionBar has its own show/hide animations and state driver that conflict with RegisterStateDriver,
 -- causing a pulsing effect. Reparenting avoids this.
+-- NOTE: PetActionBar is NOT here — reparenting/alpha-hacking it still taints the secure
+-- frame (blocking PetActionBar:Update -> SetShownBase on e.g. a /target macro). It is
+-- hidden via Blizzard's Edit Mode VisibleSetting instead (Wise:SetActionBarVisibility).
 local reparentFrames = {
-	PetActionBar = true,
 	OverrideActionBar = true,
+}
+
+-- Frames hidden through Blizzard's Edit Mode VisibleSetting (taint-free) rather
+-- than reparenting or a visibility state driver. See Wise:SetActionBarVisibility.
+local editModeBarFrames = {
+	PetActionBar = true,
 }
 
 -- Determine whether a given frame name should currently be hidden based on user settings.
@@ -2157,6 +2156,68 @@ function Wise:SetViewerVisibility(viewerName, hidden)
 	return applied
 end
 
+-- Drive an Edit Mode action bar's "Visible Setting" — the action-bar analog of
+-- SetViewerVisibility above. Used instead of reparenting/alpha-hacking the secure
+-- bar frame, which permanently taints it (an insecure SetParent/SetAlpha on e.g.
+-- PetActionBar makes Blizzard's later protected PetActionBar:Update -> Hide ->
+-- SetShownBase get blocked, e.g. on a /target macro). Edit Mode visibility is
+-- Blizzard's own combat-aware system, so it persists through login/combat/reload
+-- and never taints the frame.
+--
+-- `hidden` true  -> VisibleSetting = Hidden
+-- `hidden` false -> VisibleSetting = Always
+--
+-- Cannot run during combat lockdown (Edit Mode changes are protected), so callers
+-- must apply out of combat. Returns true on success.
+function Wise:SetActionBarVisibility(barName, hidden)
+	if InCombatLockdown() then
+		return false
+	end
+	local bar = _G[barName]
+	if not bar then
+		return false
+	end
+	if not (Enum and Enum.EditModeActionBarSetting and Enum.ActionBarVisibleSetting) then
+		return false
+	end
+
+	local settingKey = Enum.EditModeActionBarSetting.VisibleSetting
+	local value = hidden and Enum.ActionBarVisibleSetting.Hidden or Enum.ActionBarVisibleSetting.Always
+
+	-- Already at the target value? Nothing to do (avoids redundant layout dirtying).
+	if bar.GetSettingValue then
+		local ok, cur = pcall(bar.GetSettingValue, bar, settingKey)
+		if ok and cur == value then
+			return true
+		end
+	end
+
+	-- Apply it the way the in-game Edit Mode dropdown does, so it's recorded in
+	-- the active layout and persists.
+	local applied = false
+	if EditModeManagerFrame and EditModeManagerFrame.OnSystemSettingChange then
+		pcall(EditModeManagerFrame.OnSystemSettingChange, EditModeManagerFrame, bar, settingKey, value)
+		applied = true
+	end
+	if not applied and bar.SetSettingValue then
+		pcall(bar.SetSettingValue, bar, settingKey, value)
+		applied = true
+	end
+
+	-- Refresh visual state immediately. Action bars don't all expose
+	-- UpdateShownState (PetActionBar does not), so call it only if present.
+	if bar.UpdateShownState then
+		pcall(bar.UpdateShownState, bar)
+	end
+
+	-- Verify it actually took.
+	if bar.GetSettingValue then
+		local ok, cur = pcall(bar.GetSettingValue, bar, settingKey)
+		return ok and cur == value
+	end
+	return applied
+end
+
 -- Apply all four "hide" settings via Edit Mode VisibleSetting. Called at login
 -- and from the post-login safety-net timers (the layout engine settles
 -- asynchronously after PLAYER_LOGIN).
@@ -2166,6 +2227,13 @@ function Wise:ReapplyAllHiding()
 	end
 	Wise:SetViewerVisibility("BuffIconCooldownViewer", WiseDB.settings.hideTrackedBuffs)
 	Wise:SetViewerVisibility("BuffBarCooldownViewer", WiseDB.settings.hideTrackedBars)
+	-- Pet bar: same Edit Mode path (taint-free). Honour hidePetBar + puzzle-hide.
+	do
+		local blizz = WiseDB.settings.blizzardUI or {}
+		local petHidden = blizz["hidePetBar"]
+			or (blizz["hidePuzzleUI"] and IsPuzzleActive and IsPuzzleActive())
+		Wise:SetActionBarVisibility("PetActionBar", petHidden)
+	end
 	if WiseDB.groups["Cooldowns"] then
 		Wise:SetViewerVisibility(
 			WiseDB.groups["Cooldowns"].viewerName or "EssentialCooldownViewer",
@@ -2214,7 +2282,10 @@ function Wise:UpdateBlizzardUI()
 		for _, frameName in ipairs(info.frames) do
 			local frame = _G[frameName]
 			if frame then
-				if reparentFrames[frameName] then
+				if editModeBarFrames[frameName] then
+					-- Hide via Blizzard's Edit Mode VisibleSetting (taint-free).
+					Wise:SetActionBarVisibility(frameName, shouldHide)
+				elseif reparentFrames[frameName] then
 					-- Reparent to hidden frame to avoid taint from RegisterStateDriver
 					if shouldHide then
 						if not Wise.managedFrames[frame] then

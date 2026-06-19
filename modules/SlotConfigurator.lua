@@ -2589,6 +2589,7 @@ local function GetOrCreateNodeCard(parent, index)
 		})
 		dot:SetBackdropColor(0.2, 0.7, 1, 0.9)
 		dot:SetBackdropBorderColor(1, 1, 1, 1)
+		dot:RegisterForClicks("LeftButtonUp")
 
 		local highlight = dot:CreateTexture(nil, "HIGHLIGHT")
 		highlight:SetAllPoints()
@@ -2762,6 +2763,18 @@ RenderNodesCanvas = function()
 	local canvas = sc.nodesCanvas
 	local state = configuratorState
 
+	-- A full re-render replaces every card/dot frame, so any in-progress
+	-- click-to-connect would be left pointing at a stale (pooled) source dot.
+	-- Reset it cleanly up front; the rubber-band OnUpdate and temp line below
+	-- are torn down with the rest of the pooled visuals.
+	if drawState.active then
+		drawState.active = false
+		drawState.fromNode = nil
+		drawState.fromDot = nil
+		drawState.hoveredNode = nil
+		canvas:SetScript("OnUpdate", nil)
+	end
+
 	HideAllNodePooled()
 	for _, line in pairs(nodeLinePool) do
 		line:Hide()
@@ -2792,6 +2805,16 @@ RenderNodesCanvas = function()
 				ClearCursor()
 				RenderNodesCanvas()
 			end
+		end
+	end)
+
+	-- Clicking empty canvas cancels an in-progress click-to-connect. Cards and dots
+	-- sit above the canvas, so a click that reaches the background missed every
+	-- node — treat it as "cancel" so the armed line doesn't get stranded.
+	canvas:EnableMouse(true)
+	canvas:SetScript("OnMouseDown", function()
+		if drawState.active and state._cancelPendingConnection then
+			state._cancelPendingConnection()
 		end
 	end)
 
@@ -3011,6 +3034,81 @@ RenderNodesCanvas = function()
 	local cardIdx = 1
 	local cardFrames = {} -- map of nodeId -> card frame
 
+	-- ── Click-to-connect interaction ─────────────────────────────────
+	-- Connecting two nodes is two clicks, not a drag: click a connection dot to
+	-- ARM (a rubber-band line then follows the cursor), then click the target
+	-- card (or one of its dots) to COMPLETE. Click empty canvas, or click the
+	-- armed source again, to CANCEL. Drag-and-drop was removed because, mid-drag,
+	-- a card could be dropped off-screen with no way to recover.
+
+	-- Tear down any in-progress connection: stop the rubber-band OnUpdate, hide
+	-- the temp line, clear drop-target highlights, and reset drawState.
+	local function CancelConnection()
+		drawState.active = false
+		drawState.fromNode = nil
+		drawState.fromDot = nil
+		drawState.hoveredNode = nil
+		canvas:SetScript("OnUpdate", nil)
+		local tempLine = nodeLinePool[9999]
+		if tempLine then
+			tempLine:Hide()
+		end
+		for _, cardFrame in pairs(cardFrames) do
+			if cardFrame.dragHighlight then
+				cardFrame.dragHighlight:Hide()
+			end
+			if cardFrame._origBorder then
+				cardFrame:SetBackdropBorderColor(
+					cardFrame._origBorder[1],
+					cardFrame._origBorder[2],
+					cardFrame._origBorder[3],
+					cardFrame._origBorder[4]
+				)
+			end
+		end
+	end
+
+	-- Commit a connection from the armed source node to targetNodeId, honoring the
+	-- armed dot's direction (top/left dots make the target the SOURCE of the edge),
+	-- then tear down and re-render. No-op if not armed or target is the source.
+	local function CompleteConnection(targetNodeId)
+		if not drawState.active or not targetNodeId or targetNodeId == drawState.fromNode then
+			return
+		end
+		local finalFrom, finalTo
+		local dotName = drawState.fromDot and drawState.fromDot.name
+		if dotName == "left" or dotName == "top" then
+			finalFrom = targetNodeId
+			finalTo = drawState.fromNode
+		else
+			finalFrom = drawState.fromNode
+			finalTo = targetNodeId
+		end
+
+		-- Prevent duplicate connection
+		local exists = false
+		for _, c in ipairs(state.graph.connections) do
+			if c.from == finalFrom and c.to == finalTo and c.type == drawState.fromType then
+				exists = true
+				break
+			end
+		end
+		if not exists then
+			tinsert(state.graph.connections, {
+				from = finalFrom,
+				to = finalTo,
+				type = drawState.fromType,
+			})
+			state.isDirty = true
+		end
+
+		CancelConnection()
+		RenderNodesCanvas()
+	end
+
+	-- Expose the cancel so the canvas background click handler can reach it.
+	state._cancelPendingConnection = CancelConnection
+
 	-- Draw Cards
 	for _, node in ipairs(displayGraph.nodes) do
 		local card = GetOrCreateNodeCard(canvas, cardIdx)
@@ -3068,7 +3166,17 @@ RenderNodesCanvas = function()
 		-- Clicking the card body opens this action's Availability Filtering panel
 		-- (Class/Spec/Talent/Role/Character) on the right, the same restrictions
 		-- editor that drives the +(Spec)/+(Class) tags in the Slots and Actions list.
+		-- BUT while a connection is armed (click-to-connect), a click on a card body
+		-- completes the connection to this node rather than opening the panel.
 		card:SetScript("OnClick", function()
+			if drawState.active then
+				if node.id == drawState.fromNode then
+					CancelConnection()
+				else
+					CompleteConnection(node.id)
+				end
+				return
+			end
 			Wise.pickingRestrictions = true
 			Wise.pickingRestrictionsAction = node.action
 			Wise:RefreshPropertiesPanel()
@@ -3112,21 +3220,14 @@ RenderNodesCanvas = function()
 			RenderNodesCanvas()
 		end)
 
-		-- Connection Dots Drag Handlers
+		-- Connection Dots: click to arm, click again to connect.
 		local function SetupDot(dot, typeName)
-			dot:SetScript("OnMouseDown", function()
-				if InCombatLockdown() then
-					return
-				end
-				-- Start drawing
-				drawState.active = true
-				drawState.fromNode = node.id
-				drawState.fromType = typeName
-				drawState.fromDot = dot
-				drawState.hoveredNode = nil
-
+			-- Drive the rubber-band line + drop-target highlight from the cursor while
+			-- a connection is armed. Captures `dot`/`node` for the armed source's
+			-- start point; runs only while drawState stays active for THIS source.
+			local function StartRubberBand()
 				canvas:SetScript("OnUpdate", function()
-					if not drawState.active then
+					if not drawState.active or drawState.fromDot ~= dot then
 						canvas:SetScript("OnUpdate", nil)
 						return
 					end
@@ -3177,10 +3278,10 @@ RenderNodesCanvas = function()
 					for id, cardFrame in pairs(cardFrames) do
 						if id ~= drawState.fromNode then
 							local l, b, w, h = cardFrame:GetRect()
-							local scale = cardFrame:GetEffectiveScale()
-							if l and scale then
-								local cx = cursorX / scale
-								local cy = cursorY / scale
+							local cardScale = cardFrame:GetEffectiveScale()
+							if l and cardScale and cursorX then
+								local cx = cursorX / cardScale
+								local cy = cursorY / cardScale
 								if cx >= l - 20 and cx <= l + w + 20 and cy >= b - 20 and cy <= b + h + 20 then
 									bestHoverId = id
 									break
@@ -3212,63 +3313,34 @@ RenderNodesCanvas = function()
 					end
 					drawState.hoveredNode = bestHoverId
 				end)
-			end)
+			end
 
-			dot:SetScript("OnMouseUp", function()
-				if not drawState.active then
+			dot:SetScript("OnClick", function()
+				if InCombatLockdown() then
 					return
 				end
-				drawState.active = false
-				canvas:SetScript("OnUpdate", nil)
-				local tempLine = nodeLinePool[9999]
-				if tempLine then
-					tempLine:Hide()
-				end
-
-				-- Hide all highlights
-				for _, cardFrame in pairs(cardFrames) do
-					if cardFrame.dragHighlight then
-						cardFrame.dragHighlight:Hide()
-					end
-				end
-
-				-- Complete connection
-				local target = drawState.hoveredNode
-				if target and target ~= drawState.fromNode then
-					local finalFrom, finalTo
-					local dotName = drawState.fromDot and drawState.fromDot.name
-					if dotName == "left" or dotName == "top" then
-						finalFrom = target
-						finalTo = drawState.fromNode
+				if drawState.active then
+					-- A connection is already armed. Clicking this node's dot completes
+					-- it (unless it's the armed source's own dot, which cancels).
+					if node.id == drawState.fromNode then
+						CancelConnection()
 					else
-						finalFrom = drawState.fromNode
-						finalTo = target
+						CompleteConnection(node.id)
 					end
-
-					-- Prevent duplicate connection
-					local exists = false
-					for _, c in ipairs(state.graph.connections) do
-						if c.from == finalFrom and c.to == finalTo and c.type == drawState.fromType then
-							exists = true
-							break
-						end
-					end
-					if not exists then
-						tinsert(state.graph.connections, {
-							from = finalFrom,
-							to = finalTo,
-							type = drawState.fromType,
-						})
-						state.isDirty = true
-					end
+					return
 				end
-
+				-- Arm a new connection from this dot; the rubber-band line now follows
+				-- the cursor until the next click lands on a target (or cancels).
+				drawState.active = true
+				drawState.fromNode = node.id
+				drawState.fromType = typeName
+				drawState.fromDot = dot
 				drawState.hoveredNode = nil
-				RenderNodesCanvas()
+				StartRubberBand()
 			end)
 		end
 
-		-- Only top/bottom dots are wired for dragging now. All edges are "waterfall".
+		-- Only top/bottom dots are wired for connecting now. All edges are "waterfall".
 		SetupDot(card.dotBottom, "waterfall")
 		SetupDot(card.dotTop, "waterfall")
 
