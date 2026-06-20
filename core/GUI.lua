@@ -5101,7 +5101,22 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					elseif sType == "click" and type(sValue) == "string" then
 						cbName = sValue
 					end
-					local _, _, isOffGcd = Wise:GetCastTimeText(stateAction.type, stateAction.value)
+					-- Off-GCD stacking lets a genuinely off-GCD atomic action (item,
+					-- shapeshift, /target …) ride along in the SAME press as the next
+					-- step instead of consuming a sequence advance on its own. It must
+					-- NOT apply to configurator-compiled steps: each compiled step
+					-- (type "misc"/value "custom_macro") is its own discrete press, so
+					-- the sequence advances one step at a time no matter what the
+					-- embedded spell's GCD is. Resolving its macro body here (as the
+					-- display readout does) made off-GCD-casting steps stack and
+					-- collapse the sequence onto its first GCD spell. Treat every
+					-- compiled step as on-GCD so stepping is purely positional; the
+					-- GCD colour the configurator shows stays a display-only hint.
+					local isCompiledStep = stateAction.type == "misc" and stateAction.value == "custom_macro"
+					local isOffGcd = false
+					if not isCompiledStep then
+						isOffGcd = select(3, Wise:GetCastTimeText(stateAction.type, stateAction.value, stateAction))
+					end
 					btn:SetAttribute("isa_type_" .. sIdx, sType)
 					btn:SetAttribute("isa_spell_" .. sIdx, spellVal)
 					btn:SetAttribute("isa_item_" .. sIdx, itemVal)

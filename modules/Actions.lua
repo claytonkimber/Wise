@@ -2339,8 +2339,59 @@ function Wise:IsActionOnCooldown(actionType, value, actionData)
 	return false
 end
 
-function Wise:GetCastTimeText(actionType, value)
+-- Extract the runnable macro body for an action so its GCD can be judged by what
+-- it actually casts. Handles saved WoW macros (type "macro", value = index) and
+-- the configurator's inline macros (type "misc"/value "custom_macro", or any
+-- action carrying a .macroText). Returns "" when there's no body to inspect.
+local function GetActionMacroBody(actionType, value, actionData)
+	if actionData and type(actionData.macroText) == "string" and actionData.macroText ~= "" then
+		return actionData.macroText
+	end
+	if actionType == "macro" then
+		local idx = tonumber(value)
+		if idx and GetMacroBody then
+			local body = GetMacroBody(idx)
+			if body and body ~= "" then
+				return body
+			end
+		end
+		if idx and GetMacroInfo then
+			local _, _, body = GetMacroInfo(idx)
+			if body and body ~= "" then
+				return body
+			end
+		end
+	end
+	return ""
+end
+
+-- actionData (optional) is the full action record; it lets macro-type actions be
+-- judged by their actual /cast or /use line rather than assumed off-GCD. A macro
+-- that only targets/focuses/stops-casting stays off-GCD; one that casts a spell
+-- inherits that spell's GCD.
+function Wise:GetCastTimeText(actionType, value, actionData)
 	local spellID
+
+	-- Resolve macros (saved or inline) down to the spell/item they actually
+	-- cast, if any, so the GCD reflects the embedded action. A macro with no
+	-- castable line falls through and is treated as off-GCD below.
+	local isMacroAction = actionType == "macro"
+		or (actionType == "misc" and value == "custom_macro")
+		or (actionData and type(actionData.macroText) == "string" and actionData.macroText ~= "")
+	if isMacroAction then
+		local body = GetActionMacroBody(actionType, value, actionData)
+		if body ~= "" then
+			local rType, rID = Wise:ResolveMacroData(body)
+			if rType == "spell" then
+				-- Recurse with the resolved spell so cast time + GCD come from it.
+				return Wise:GetCastTimeText("spell", rID)
+			elseif rType == "item" then
+				return Wise:GetCastTimeText("item", rID)
+			end
+		end
+		-- No castable line (pure /target, /focus, /stopcasting, …): off-GCD.
+		return "Inst", "Off-GCD", true
+	end
 
 	if actionType == "spell" then
 		-- Resolve overrides for accurate cast time (e.g. Maul -> Raze)
@@ -2387,10 +2438,6 @@ function Wise:GetCastTimeText(actionType, value)
 	end
 
 	if not spellID then
-		-- Macros (target, focus, stopcasting, etc.) never trigger the GCD
-		if actionType == "macro" then
-			return "Inst", "Off-GCD", true
-		end
 		-- Items/equipped/toys without a resolvable spell (trinkets, engineering tools, etc.)
 		-- are typically off-GCD on-use effects
 		if actionType == "item" or actionType == "toy" or actionType == "equipped" then
@@ -2465,8 +2512,8 @@ function Wise:CreateCastReadout(parent)
 	return f
 end
 
-function Wise:SetCastReadout(f, actionType, value, groupName)
-	local castText, gcdText, isOffGCD = Wise:GetCastTimeText(actionType, value)
+function Wise:SetCastReadout(f, actionType, value, groupName, actionData)
+	local castText, gcdText, isOffGCD = Wise:GetCastTimeText(actionType, value, actionData)
 
 	local showGCD = true
 	if Wise.GetGroupDisplaySettings then
@@ -3211,7 +3258,7 @@ function Wise:PickerRefresh(filter)
 			end
 		end
 
-		local hasReadout = Wise:SetCastReadout(btn.castReadout, data.type, data.value, Wise.selectedGroup)
+		local hasReadout = Wise:SetCastReadout(btn.castReadout, data.type, data.value, Wise.selectedGroup, data)
 		btn.label:ClearAllPoints()
 		btn.label:SetPoint("LEFT", btn.iconFrame, "RIGHT", 8, 0)
 		if hasReadout then
@@ -4406,10 +4453,13 @@ function Wise:RefreshActionsView(container)
 			-- State container
 			slotFrame.ActionButtons = {}
 
-			-- Add State Button
+			-- Add State Button (deprecated): all action editing now happens in the
+			-- slot configurator, so this "+" is hidden. The frame is still created so
+			-- the cached OnClick/OnReceiveDrag handlers below have a valid target.
 			slotFrame.AddStateBtn = CreateFrame("Button", nil, slotFrame, "GameMenuButtonTemplate")
 			slotFrame.AddStateBtn:SetSize(20, 20)
 			slotFrame.AddStateBtn:SetText("+")
+			slotFrame.AddStateBtn:Hide()
 
 			tinsert(container.slots, slotFrame)
 		end
@@ -4648,7 +4698,7 @@ function Wise:RefreshActionsView(container)
 				btn.label:ClearAllPoints()
 				btn.label:SetPoint("TOPLEFT", btn.iconFrame, "TOPRIGHT", 5, -2)
 
-				local hasReadout = Wise:SetCastReadout(btn.castReadout, action.type, action.value, groupName)
+				local hasReadout = Wise:SetCastReadout(btn.castReadout, action.type, action.value, groupName, action)
 				local rightOffset = -15
 
 				if hasReadout then
@@ -4774,10 +4824,9 @@ function Wise:RefreshActionsView(container)
 			end
 		end
 
-		-- "+" Button at bottom of slot
-		slotFrame.AddStateBtn:ClearAllPoints()
-		slotFrame.AddStateBtn:SetPoint("TOP", 0, innerY)
-		innerY = innerY - 25
+		-- The per-slot "+" (add action) button is intentionally not laid out here;
+		-- it stays hidden because action editing now lives in the slot configurator.
+		slotFrame.AddStateBtn:Hide()
 
 		-- Sizing
 		local slotHeight = math.abs(innerY) + 5

@@ -47,6 +47,13 @@ local MOD_COLORS = {
 	ctrl = { r = 0.2, g = 0.45, b = 0.85 },
 }
 
+-- GCD status border colors for node cards. Off-GCD actions can stack in a
+-- waterfall without being sequenced, so they're flagged light green; actions
+-- that trigger the GCD are flagged light red. Mirrors the GCD readout the skills
+-- picker shows (Wise:GetCastTimeText's isOffGCD return). r,g,b,a tuples.
+local GCD_BORDER_OFF = { 0.45, 0.85, 0.4, 1 } -- light green: off-GCD (stacks freely)
+local GCD_BORDER_ON = { 0.9, 0.4, 0.4, 1 } -- light red: triggers the GCD
+
 -- ═══════════════════════════════════════════════════════════════
 -- Internal State
 -- ═══════════════════════════════════════════════════════════════
@@ -3154,6 +3161,12 @@ RenderNodesCanvas = function()
 					prevNode.condition = BuildConditionString(Wise._conditionPickerState.groups)
 				end
 			end
+			-- The condition picker is its own overlay — close any other overlay
+			-- (node Properties / availability) so only one occupies the popup area.
+			Wise.editingNodeProperties = false
+			Wise.editingNodePropertiesNode = nil
+			Wise.pickingRestrictions = false
+			Wise.pickingRestrictionsAction = nil
 			Wise._conditionPickerState = {
 				groups = ParseConditionString(node.condition or ""),
 				activeGroup = 1,
@@ -3163,9 +3176,10 @@ RenderNodesCanvas = function()
 			Wise:RefreshPropertiesPanel()
 		end)
 
-		-- Clicking the card body opens this action's Availability Filtering panel
-		-- (Class/Spec/Talent/Role/Character) on the right, the same restrictions
-		-- editor that drives the +(Spec)/+(Class) tags in the Slots and Actions list.
+		-- Clicking the card body opens this action's Properties panel (macro text,
+		-- conditions, change action) on the right half of the configurator. From
+		-- there the user can drill into Availability Filtering. This replaces the
+		-- old behaviour of jumping straight into the restrictions editor.
 		-- BUT while a connection is armed (click-to-connect), a click on a card body
 		-- completes the connection to this node rather than opening the panel.
 		card:SetScript("OnClick", function()
@@ -3177,22 +3191,38 @@ RenderNodesCanvas = function()
 				end
 				return
 			end
-			Wise.pickingRestrictions = true
-			Wise.pickingRestrictionsAction = node.action
+			-- Properties is its own overlay — close any other overlay (condition
+			-- picker / availability) so only one occupies the popup area.
+			Wise.editingNodeProperties = true
+			Wise.editingNodePropertiesNode = node
+			Wise.pickingRestrictions = false
+			Wise.pickingRestrictionsAction = nil
+			Wise.pickingCondition = false
+			Wise._conditionPickerState = nil
+			Wise._configuratorConditionNode = nil
 			Wise:RefreshPropertiesPanel()
 		end)
 
-		local br, bg, bb, ba
+		-- The border encodes GCD status: light green when the action is off-GCD
+		-- (it can stack in a waterfall without being sequenced) and light red when
+		-- it triggers the GCD. Availability (filtered / not-live) is shown by
+		-- dimming the whole card so the GCD signal is preserved either way.
+		local hidden = IsFilterHiding(a)
+		local live = IsActionLive(a)
+		local _, _, isOffGCD = Wise:GetCastTimeText(a.type, a.value, a)
+		local gcdColor = isOffGCD and GCD_BORDER_OFF or GCD_BORDER_ON
+		local br, bg, bb = gcdColor[1], gcdColor[2], gcdColor[3]
+		local ba = gcdColor[4]
+
 		if hidden then
 			card:SetAlpha(0.4)
-			br, bg, bb, ba = 0.5, 0.2, 0.2, 0.8
+			ba = 0.8
 			card.nameLabel:SetText(name .. " |cffFF3333[Filtered]|r")
 		elseif not live then
 			card:SetAlpha(0.65)
-			br, bg, bb, ba = 0.3, 0.3, 0.35, 0.6
+			ba = 0.6
 		else
 			card:SetAlpha(1)
-			br, bg, bb, ba = 0.45, 0.45, 0.55, 1
 		end
 		card:SetBackdropBorderColor(br, bg, bb, ba)
 		card._origBorder = { br, bg, bb, ba }
@@ -4378,6 +4408,203 @@ RenderConditionalList = function(pickerFrame, listType)
 	content:SetHeight(math.abs(yOff) + 8)
 end
 
+-- Close the embedded node Properties panel, committing the configurator graph
+-- back to slot data so the edits made here (macro text, name, icon, change
+-- action) survive. Called by the panel's "< Back" button.
+local function CloseNodeProperties()
+	Wise.editingNodeProperties = false
+	Wise.editingNodePropertiesNode = nil
+	configuratorState.isDirty = true
+	if Wise.ExportSlotConfiguratorData then
+		Wise:ExportSlotConfiguratorData()
+	end
+	RenderNodesCanvas()
+	Wise:RefreshPropertiesPanel()
+end
+
+-- Node Properties panel (embedded in the configurator, right half). Clicking an
+-- action card opens this: it edits the configurator node IN PLACE (node.action /
+-- node.condition), then drills into Availability Filtering via the existing
+-- restriction picker. Edits are committed back to slot data on close (and on
+-- Availability "< Back") through ExportSlotConfiguratorData.
+function Wise:CreateNodePropertiesPanel(host)
+	local node = Wise.editingNodePropertiesNode
+	if not node then
+		return
+	end
+	local action = node.action
+
+	host.controls = host.controls or {}
+	for _, ctrl in ipairs(host.controls) do
+		ctrl:Hide()
+	end
+	host.controls = {}
+
+	-- Re-render the canvas + commit graph, used after in-place edits below.
+	local function CommitEdit()
+		configuratorState.isDirty = true
+		if Wise.ExportSlotConfiguratorData then
+			Wise:ExportSlotConfiguratorData()
+		end
+		RenderNodesCanvas()
+	end
+
+	-- Back button → return to the configurator canvas.
+	local backBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+	backBtn:SetSize(70, 22)
+	backBtn:SetPoint("TOPLEFT", 8, -8)
+	backBtn:SetText("< Back")
+	backBtn:SetScript("OnClick", function()
+		CloseNodeProperties()
+	end)
+	tinsert(host.controls, backBtn)
+
+	local titleLabel = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	titleLabel:SetPoint("LEFT", backBtn, "RIGHT", 8, 0)
+	titleLabel:SetText("Properties")
+	tinsert(host.controls, titleLabel)
+
+	-- Scroll container so taller property sets (custom macro editor) fit.
+	local scroll = host.npScroll
+	if not scroll then
+		scroll = CreateFrame("ScrollFrame", nil, host, "UIPanelScrollFrameTemplate")
+		host.npScroll = scroll
+		scroll.content = CreateFrame("Frame", nil, scroll)
+		scroll:SetScrollChild(scroll.content)
+	end
+	scroll:ClearAllPoints()
+	scroll:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -10)
+	scroll:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -28, 10)
+	scroll:Show()
+
+	local panel = scroll.content
+	panel:SetWidth(scroll:GetWidth() > 50 and scroll:GetWidth() or 280)
+	panel.controls = panel.controls or {}
+	for _, ctrl in ipairs(panel.controls) do
+		ctrl:Hide()
+	end
+	panel.controls = {}
+
+	local y = -8
+
+	-- Action name + Change Action
+	local nameLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	nameLabel:SetPoint("TOPLEFT", 10, y)
+	nameLabel:SetText("Action:")
+	tinsert(panel.controls, nameLabel)
+	y = y - 20
+
+	local valueLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	valueLabel:SetPoint("TOPLEFT", 10, y)
+	valueLabel:SetWidth(220)
+	valueLabel:SetJustifyH("LEFT")
+	valueLabel:SetText(Wise:GetActionName(action.type, action.value, action) or "Unknown")
+	tinsert(panel.controls, valueLabel)
+	y = y - 25
+
+	local changeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	changeBtn:SetSize(140, 22)
+	changeBtn:SetPoint("TOPLEFT", 10, y)
+	changeBtn:SetText("Change Action")
+	changeBtn:SetScript("OnClick", function()
+		Wise.pickingAction = true
+		Wise.PickerCallback = function(actionType, value, extra)
+			local record = Wise:BuildActionRecord(actionType, value, extra and extra.category, extra)
+			-- Preserve any availability filtering already set on this node.
+			record.visibilityEnable = action.visibilityEnable or record.visibilityEnable
+			record.visibilityDisable = action.visibilityDisable or record.visibilityDisable
+			node.action = record
+			action = record
+			valueLabel:SetText(Wise:GetActionName(record.type, record.value, record) or "Unknown")
+			CommitEdit()
+			Wise:RefreshPropertiesPanel()
+		end
+		Wise.PickerCurrentCategory = "Spell"
+		Wise:RefreshPropertiesPanel()
+	end)
+	tinsert(panel.controls, changeBtn)
+	y = y - 35
+
+	-- Conditions (per-node macro conditional)
+	local condLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	condLabel:SetPoint("TOPLEFT", 10, y)
+	condLabel:SetText("Conditions (e.g. [combat]):")
+	tinsert(panel.controls, condLabel)
+	y = y - 20
+
+	local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	condEdit:SetSize(220, 20)
+	condEdit:SetPoint("TOPLEFT", 14, y)
+	condEdit:SetAutoFocus(false)
+	condEdit:SetText(node.condition or "")
+	condEdit:SetCursorPosition(0)
+	condEdit:SetScript("OnTextChanged", function(self)
+		node.condition = self:GetText()
+	end)
+	condEdit:SetScript("OnEnterPressed", function(self)
+		self:ClearFocus()
+	end)
+	condEdit:SetScript("OnEditFocusLost", function(self)
+		node.condition = self:GetText()
+		CommitEdit()
+	end)
+	condEdit:SetScript("OnEscapePressed", function(self)
+		self:SetText(node.condition or "")
+		self:ClearFocus()
+	end)
+	tinsert(panel.controls, condEdit)
+	if Wise.CreateConditionValidator then
+		tinsert(panel.controls, Wise:CreateConditionValidator(condEdit, panel))
+	end
+	y = y - 25
+
+	local condNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	condNote:SetPoint("TOPLEFT", 10, y)
+	condNote:SetWidth(240)
+	condNote:SetJustifyH("LEFT")
+	condNote:SetText("Leave empty for 'always active'. Uses WoW macro conditionals.")
+	tinsert(panel.controls, condNote)
+	y = y - 35
+
+	-- Availability Filtering — drill into the existing restriction picker, keeping
+	-- editingNodeProperties set so its "< Back" returns here.
+	local restrictBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	restrictBtn:SetSize(180, 22)
+	restrictBtn:SetPoint("TOPLEFT", 10, y)
+	restrictBtn:SetText("Availability Filtering")
+	restrictBtn:SetScript("OnClick", function()
+		Wise.pickingRestrictions = true
+		Wise.pickingRestrictionsAction = action
+		Wise:RefreshPropertiesPanel()
+	end)
+	tinsert(panel.controls, restrictBtn)
+	y = y - 28
+
+	local restrictDesc = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	restrictDesc:SetPoint("TOPLEFT", 10, y)
+	restrictDesc:SetWidth(240)
+	restrictDesc:SetJustifyH("LEFT")
+	restrictDesc:SetText(
+		"Control exactly when this action appears based on Class, Spec, Talent, Role, or Character."
+	)
+	tinsert(panel.controls, restrictDesc)
+	y = y - 45
+
+	-- Custom Macro editor (only for configurator-authored custom macros).
+	if action.type == "misc" and action.value == "custom_macro" and Wise.CreateMacroEditor then
+		local line = panel:CreateTexture(nil, "OVERLAY")
+		line:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+		line:SetHeight(1)
+		line:SetPoint("TOPLEFT", 10, y)
+		line:SetPoint("RIGHT", -10, y)
+		tinsert(panel.controls, line)
+		y = y - 15
+		y = Wise:CreateMacroEditor(panel, action, y)
+	end
+
+	panel:SetHeight(math.abs(y) + 20)
+end
+
 function Wise:CreateConditionPickerUI(host)
 	local cp = Wise.ConditionPicker
 	local ps = Wise._conditionPickerState
@@ -4415,10 +4642,13 @@ function Wise:CreateConditionPickerUI(host)
 	cp.frame = host
 	cp._activeTab = "builtin"
 
-	-- Picker is anchored to host's TOPLEFT and constrained to a fixed width so the
-	-- list/headers only span what the content needs (name + description columns +
-	-- scrollbar) instead of stretching across the whole options frame.
-	local PICKER_WIDTH = 600
+	-- Picker is anchored to host's TOPLEFT. The host now occupies only the right
+	-- half of the configurator, so size the layout to the host's actual width
+	-- (minus a small inset) instead of a fixed 600 that would overflow the popup.
+	-- Clamped to a usable minimum and a sensible maximum (the content is just a
+	-- name + description column, so it needn't span an entire maximized window).
+	local hostW = host:GetWidth() or 0
+	local PICKER_WIDTH = math.max(240, math.min(600, hostW - 16))
 
 	-- Back button
 	cp.backBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
@@ -4592,6 +4822,30 @@ local function SyncSlotToggleControls()
 	if not sc or not sc.suppressCheck then
 		return
 	end
+	-- While a right-half overlay (condition picker / node Properties / availability
+	-- filter) owns the popup area, the configurator chrome is hidden — keep the slot
+	-- toggle row hidden too so it doesn't bleed under the popup or reappear here.
+	if Wise.pickingCondition or Wise.editingNodeProperties or Wise.pickingRestrictions then
+		sc.suppressCheck:Hide()
+		if sc.suppressCheck.Text then
+			sc.suppressCheck.Text:Hide()
+		end
+		sc.resetCheck:Hide()
+		if sc.resetCheck.Text then
+			sc.resetCheck.Text:Hide()
+		end
+		if sc.holdCheck then
+			sc.holdCheck:Hide()
+			if sc.holdCheck.Text then
+				sc.holdCheck.Text:Hide()
+			end
+		end
+		return
+	end
+	sc.suppressCheck:Show()
+	if sc.suppressCheck.Text then
+		sc.suppressCheck.Text:Show()
+	end
 	local slot = GetCurrentSlotActions()
 	sc.suppressCheck:SetChecked(slot and slot.suppressErrors or false)
 	sc.resetCheck:SetChecked(slot and slot.resetOnCombat or false)
@@ -4662,6 +4916,30 @@ local function ApplyTabVisibility()
 		end
 	end
 
+	-- When a right-half overlay is open the canvas keeps the LEFT half. Pull its
+	-- right edge in to the popup's left edge (same width math as AnchorRightHalf)
+	-- so the canvas and its vertical scrollbar sit entirely left of the popup —
+	-- otherwise the scrollbar/edge lands on the seam and reads as a stray grey
+	-- line. Restored to the full-width right inset when no overlay is open.
+	if sc.nodesCanvasScroll and sc.host then
+		local overlayActive = Wise.pickingCondition
+			or Wise.editingNodeProperties
+			or Wise.pickingRestrictions
+		local rightInset = -28
+		if overlayActive then
+			local hostW = sc.host:GetWidth() or 0
+			local popupW = math.max(260, hostW * 0.5)
+			if popupW > hostW then
+				popupW = hostW
+			end
+			-- Leave an 8px gutter between the canvas and the popup's left edge.
+			rightInset = -(popupW + 8)
+		end
+		sc.nodesCanvasScroll:ClearAllPoints()
+		sc.nodesCanvasScroll:SetPoint("TOPLEFT", sc.suppressCheck, "BOTTOMLEFT", 0, -6)
+		sc.nodesCanvasScroll:SetPoint("BOTTOMRIGHT", sc.host, "BOTTOMRIGHT", rightInset, 8 + 18)
+	end
+
 	SyncSlotToggleControls()
 	RenderActiveTab()
 end
@@ -4671,15 +4949,22 @@ function Wise:CreateSlotConfiguratorUI(host)
 	if sc and sc.host == host then
 		-- Reuse existing UI. The Grid/Nodes tabs and "< Back" button are retired
 		-- (ApplyTabVisibility keeps them hidden); only refresh the live chrome.
-		sc.titleLabel:Show()
-		sc.divider:Show()
-		if sc.suppressCheck then
-			sc.suppressCheck:Show()
-		end
-		-- Hide toolbar items when condition picker is open (they'd overlap)
-		if Wise.pickingCondition then
+		-- An overlay (condition picker / node Properties / availability filter / node
+		-- icon picker) owns the right-half popup area, so the configurator chrome —
+		-- including its header divider — is hidden while one is open. Otherwise the
+		-- full-width divider/toolbar bleed under and around the popup, and the divider
+		-- appears to "persist" relative to the right-half popup.
+		local overlayActive = Wise.pickingCondition
+			or Wise.editingNodeProperties
+			or Wise.pickingRestrictions
+		if overlayActive then
+			sc.titleLabel:Hide()
+			sc.divider:Hide()
 			sc.applyBtn:Hide()
 			sc.infoLabel:Hide()
+			if sc.suppressCheck then
+				sc.suppressCheck:Hide()
+			end
 			if sc.macroViewBtn then
 				sc.macroViewBtn:Hide()
 			end
@@ -4687,8 +4972,13 @@ function Wise:CreateSlotConfiguratorUI(host)
 				sc.nodesAddBtn:Hide()
 			end
 		else
+			sc.titleLabel:Show()
+			sc.divider:Show()
 			sc.applyBtn:Show()
 			sc.infoLabel:Show()
+			if sc.suppressCheck then
+				sc.suppressCheck:Show()
+			end
 			if sc.macroViewBtn then
 				sc.macroViewBtn:Show()
 			end
@@ -5081,6 +5371,22 @@ end
 -- tool templates (Smart Item / Bar Copy), the Addons wiser slash-command flow,
 -- and invalid groups (handled by their own property views).
 function Wise:MaybeEnterEmbeddedConfigurator()
+	-- Editing a node's Properties pins the configurator to its current slot. If the
+	-- selection has since moved to a different slot/group (e.g. the user clicked
+	-- another slot in the Middle list), abandon the node edit so the configurator
+	-- can follow the new selection rather than getting stuck on the old node.
+	if Wise.editingNodeProperties then
+		local sameSlot = Wise.configuringSlot
+			and Wise.configuringSlotGroup == Wise.selectedGroup
+			and Wise.configuringSlotIdx == Wise.selectedSlot
+			and not Wise.selectedState
+		if sameSlot then
+			return
+		end
+		Wise.editingNodeProperties = false
+		Wise.editingNodePropertiesNode = nil
+	end
+
 	-- A picker overlay is mid-flow on top of the configurator — keep state as-is.
 	if Wise.pickingAction or Wise.pickingCondition then
 		return
@@ -5184,6 +5490,8 @@ function Wise:CloseSlotConfigurator(discard)
 	Wise.pickingCondition = false
 	Wise._conditionPickerState = nil
 	Wise._configuratorConditionRow = nil
+	Wise.editingNodeProperties = false
+	Wise.editingNodePropertiesNode = nil
 	Wise.configuringSlot = false
 	Wise.configuringSlotGroup = nil
 	Wise.configuringSlotIdx = nil

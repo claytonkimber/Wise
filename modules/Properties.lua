@@ -308,8 +308,53 @@ function Wise:RefreshPropertiesPanel()
 		-- Surface any grid→node migration problem for this slot.
 		Wise:RenderConfiguratorMigrationWarning(host)
 
-		-- Condition picker open: render it confined to the Right panel, overlaying
-		-- the configurator.
+		-- Helper: lay a host frame over the RIGHT HALF of the Right panel, so the
+		-- node canvas stays visible on the left half while a popup occupies the
+		-- right half. The Properties/condition forms need a usable minimum width, so
+		-- when the Right panel is narrow (default, un-maximized window) the popup
+		-- widens past the midpoint rather than clipping; on a maximized window it
+		-- sits at the true half. The left edge is inset from Right's TOPLEFT by that
+		-- width. Shared by the condition picker, restriction picker, node Properties
+		-- and node icon-picker overlays so they all occupy the same area.
+		local MIN_POPUP_WIDTH = 260
+		local function AnchorRightHalf(hostFrame)
+			local rightW = Wise.OptionsFrame.Right:GetWidth() or 0
+			local popupW = math.max(MIN_POPUP_WIDTH, rightW * 0.5)
+			if popupW > rightW then
+				popupW = rightW
+			end
+			local leftInset = rightW - popupW
+			hostFrame:ClearAllPoints()
+			hostFrame:SetPoint("TOPLEFT", Wise.OptionsFrame.Right, "TOPLEFT", leftInset, 0)
+			hostFrame:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+		end
+
+		-- Only ONE overlay may occupy the right-half popup area at a time. Hide every
+		-- overlay host up front; the active block below then shows exactly one. This
+		-- prevents a stale host (e.g. node Properties) lingering behind a newly opened
+		-- one (e.g. the condition picker), which overlaps and breaks the layout.
+		local function HideAllConfiguratorOverlays()
+			local of = Wise.OptionsFrame
+			if of.ConditionPickerHost then
+				of.ConditionPickerHost:Hide()
+			end
+			if of.NodePropertiesHost then
+				of.NodePropertiesHost:Hide()
+			end
+			if of.NodeIconPickerHost then
+				of.NodeIconPickerHost:Hide()
+			end
+			if of.Right.PickerHost then
+				of.Right.PickerHost:Hide()
+				if of.Right.PickerHost.bg then
+					of.Right.PickerHost.bg:Hide()
+				end
+			end
+		end
+		HideAllConfiguratorOverlays()
+
+		-- Condition picker open: render it confined to the right half of the Right
+		-- panel, overlaying the configurator (same area as the Properties popup).
 		if Wise.pickingCondition then
 			if Wise.OptionsFrame.Right.Scroll then
 				Wise.OptionsFrame.Right.Scroll:Hide()
@@ -319,12 +364,14 @@ function Wise:RefreshPropertiesPanel()
 			if not Wise.OptionsFrame.ConditionPickerHost then
 				local cpHost = CreateFrame("Frame", nil, Wise.OptionsFrame)
 				cpHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 10)
+				-- Capture clicks so they don't fall through to the node canvas still
+				-- visible on the left half behind this right-half overlay.
+				cpHost:EnableMouse(true)
 				Wise.OptionsFrame.ConditionPickerHost = cpHost
 			end
 			local cpHost = Wise.OptionsFrame.ConditionPickerHost
-			cpHost:ClearAllPoints()
-			cpHost:SetPoint("TOPLEFT", Wise.OptionsFrame.Right, "TOPLEFT", 0, 0)
-			cpHost:SetPoint("BOTTOMRIGHT", Wise.OptionsFrame.Right, "BOTTOMRIGHT", 0, 0)
+			cpHost:EnableMouse(true)
+			AnchorRightHalf(cpHost)
 			cpHost:Show()
 
 			if not cpHost.bg then
@@ -347,9 +394,10 @@ function Wise:RefreshPropertiesPanel()
 			Wise.OptionsFrame.ConditionPickerHost:Hide()
 		end
 
-		-- Availability Filtering open (clicked a node card): render the restriction
-		-- picker confined to the Right panel, overlaying the configurator — same
-		-- placement as the condition picker.
+		-- Availability Filtering open: render the restriction picker confined to the
+		-- right half of the Right panel, overlaying the configurator. This is the
+		-- deepest overlay — it can sit on top of the node Properties panel (reached
+		-- via its "Availability Filtering" button), so it is checked first.
 		if Wise.pickingRestrictions then
 			if Wise.OptionsFrame.Right.Scroll then
 				Wise.OptionsFrame.Right.Scroll:Hide()
@@ -360,6 +408,9 @@ function Wise:RefreshPropertiesPanel()
 				local pHost = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
 				pHost:SetAllPoints(Wise.OptionsFrame.Right)
 				pHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 12)
+				-- Capture clicks (in configurator mode this host covers only the right
+				-- half, with the node canvas still visible behind the left half).
+				pHost:EnableMouse(true)
 				pHost.controls = {}
 				Wise.OptionsFrame.Right.PickerHost = pHost
 			end
@@ -372,8 +423,8 @@ function Wise:RefreshPropertiesPanel()
 			else
 				pHost.controls = {}
 			end
-			pHost:ClearAllPoints()
-			pHost:SetAllPoints(Wise.OptionsFrame.Right)
+			pHost:EnableMouse(true)
+			AnchorRightHalf(pHost)
 			pHost:Show()
 
 			if not pHost.bg then
@@ -387,14 +438,93 @@ function Wise:RefreshPropertiesPanel()
 			return
 		end
 
+		-- Hide the restriction picker host when not filtering.
+		if Wise.OptionsFrame.Right.PickerHost and not Wise.pickingAction then
+			Wise.OptionsFrame.Right.PickerHost:Hide()
+			if Wise.OptionsFrame.Right.PickerHost.bg then
+				Wise.OptionsFrame.Right.PickerHost.bg:Hide()
+			end
+		end
+
+		-- Icon picker open while editing a node's custom-macro icon: render it in the
+		-- right half, overlaying the node Properties panel. (Reached from the macro
+		-- editor's icon button via OpenIconPicker, which sets pickingIcon.)
+		if Wise.editingNodeProperties and Wise.pickingIcon then
+			Wise.OptionsFrame.Right.Title:SetText("")
+			if Wise.OptionsFrame.Right.Scroll then
+				Wise.OptionsFrame.Right.Scroll:Hide()
+			end
+
+			if not Wise.OptionsFrame.NodeIconPickerHost then
+				local ipHost = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
+				ipHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 13)
+				-- Capture clicks (the node canvas is still visible behind it).
+				ipHost:EnableMouse(true)
+				Wise.OptionsFrame.NodeIconPickerHost = ipHost
+			end
+			local ipHost = Wise.OptionsFrame.NodeIconPickerHost
+			AnchorRightHalf(ipHost)
+			ipHost:Show()
+
+			if not ipHost.bg then
+				ipHost.bg = ipHost:CreateTexture(nil, "BACKGROUND")
+				ipHost.bg:SetAllPoints()
+				ipHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+			end
+			ipHost.bg:Show()
+
+			Wise:CreateIconPicker(ipHost)
+			return
+		end
+
+		-- Hide the node icon-picker host when not picking an icon for a node.
+		if Wise.OptionsFrame.NodeIconPickerHost then
+			Wise.OptionsFrame.NodeIconPickerHost:Hide()
+		end
+
+		-- Node Properties open (clicked an action card): render the focused
+		-- Properties panel (macro text, conditions, change action, Availability
+		-- Filtering button) confined to the right half of the Right panel.
+		-- When pickingAction is active (the node's "Change Action" flow), fall
+		-- through to the action-picker block below instead.
+		if Wise.editingNodeProperties and not Wise.pickingAction then
+			if Wise.OptionsFrame.Right.Scroll then
+				Wise.OptionsFrame.Right.Scroll:Hide()
+			end
+			Wise.OptionsFrame.Right.Title:SetText("")
+
+			if not Wise.OptionsFrame.NodePropertiesHost then
+				local npHost = CreateFrame("Frame", nil, Wise.OptionsFrame.Right)
+				npHost:SetFrameLevel(Wise.OptionsFrame.Right:GetFrameLevel() + 11)
+				-- Capture clicks so they don't fall through to the node canvas that
+				-- is still visible on the left half behind this right-half overlay.
+				npHost:EnableMouse(true)
+				npHost.controls = {}
+				Wise.OptionsFrame.NodePropertiesHost = npHost
+			end
+
+			local npHost = Wise.OptionsFrame.NodePropertiesHost
+			AnchorRightHalf(npHost)
+			npHost:Show()
+
+			if not npHost.bg then
+				npHost.bg = npHost:CreateTexture(nil, "BACKGROUND")
+				npHost.bg:SetAllPoints()
+				npHost.bg:SetColorTexture(0.08, 0.08, 0.08, 1)
+			end
+			npHost.bg:Show()
+
+			Wise:CreateNodePropertiesPanel(npHost)
+			return
+		end
+
+		-- Hide node Properties host when not editing a node.
+		if Wise.OptionsFrame.NodePropertiesHost then
+			Wise.OptionsFrame.NodePropertiesHost:Hide()
+		end
+
 		-- If also picking action, fall through to show picker in the Right column
 		if not Wise.pickingAction then
-			if Wise.OptionsFrame.Right.PickerHost then
-				Wise.OptionsFrame.Right.PickerHost:Hide()
-				if Wise.OptionsFrame.Right.PickerHost.bg then
-					Wise.OptionsFrame.Right.PickerHost.bg:Hide()
-				end
-			end
 			return
 		end
 	else
@@ -500,6 +630,9 @@ function Wise:RefreshPropertiesPanel()
 			if Wise.OptionsFrame.Right.PickerHost.bg then
 				Wise.OptionsFrame.Right.PickerHost.bg:Hide()
 			end
+		end
+		if Wise.OptionsFrame.NodePropertiesHost then
+			Wise.OptionsFrame.NodePropertiesHost:Hide()
 		end
 		-- Only restore sidebar/middle if configurator is NOT active
 		-- (configurator hides them and manages its own restoration)
