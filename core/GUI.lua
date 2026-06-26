@@ -477,6 +477,62 @@ local function EvalFullConditionString(str)
 	return false
 end
 
+-- Exact insecure evaluation of a full condition string, mixing native and custom tokens.
+-- Within each bracket group (AND), native tokens (combat, mod, stealth, …) are evaluated
+-- via SecureCmdOptionParse and Wise custom tokens (zoneability, bank, undermouse, …) via
+-- EvalCustomToken; groups are OR'd together — matching WoW macro semantics. Unlike
+-- EvalFullConditionString (which assumes native tokens match, for in-combat layout), this
+-- reflects the CURRENT state and is used to pick which icon a multi-state slot shows.
+-- It also keeps raw custom tokens out of SecureCmdOptionParse, which would otherwise make
+-- the client print "unknown macro option: <name>".
+local function EvalConditionExact(str)
+	if not str or str == "" then
+		return true -- No condition = always matches
+	end
+
+	for block in str:gmatch("%[([^%]]*)%]") do
+		local secureTokens = {}
+		local groupMatch = true
+
+		for token in block:gmatch("[^,]+") do
+			local trimmed = token:match("^%s*(.-)%s*$")
+			local check = trimmed:lower()
+			-- Determine the base name, tolerating a leading 'no' negation on custom tokens.
+			local lookupBase = check
+			if lookupBase:sub(1, 2) == "no" then
+				local stripped = lookupBase:sub(3)
+				local stripBase = stripped:match("^([^:]+)") or stripped
+				if CUSTOM_VIS_CONDITIONALS[stripBase] then
+					lookupBase = stripped
+				end
+			end
+			local baseToken = lookupBase:match("^([^:]+)") or lookupBase
+
+			if CUSTOM_VIS_CONDITIONALS[baseToken] then
+				if not EvalCustomToken(trimmed) then
+					groupMatch = false
+					break
+				end
+			else
+				table.insert(secureTokens, trimmed)
+			end
+		end
+
+		if groupMatch and #secureTokens > 0 then
+			local secureStr = "[" .. table.concat(secureTokens, ",") .. "] true; false"
+			if SecureCmdOptionParse(secureStr) ~= "true" then
+				groupMatch = false
+			end
+		end
+
+		if groupMatch then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
 -- Returns true if ANY bracket group containing a custom conditional matches (OR across groups).
 -- Bracket groups with ONLY built-in conditionals are skipped (secure driver handles those).
@@ -2803,6 +2859,14 @@ function Wise:GetSecureAttributes(actionData, conditions)
 
 	if hasCond then
 		conditions = Wise:SanitizeMacroCondition(conditions)
+		-- Strip Wise custom conditionals (zoneability, bank, undermouse, …) before they
+		-- get baked into a /cast|/use macrotext below. WoW's macro engine only knows
+		-- native options, so a leaked custom token makes the client print
+		-- "unknown macro option: <name>" when the macro is parsed (notably on reload).
+		-- SanitizeCustom rewrites any bracket carrying a custom token to [actionbar:99]
+		-- (always-false in the secure context); these conditions are resolved insecurely
+		-- for display instead.
+		conditions = SanitizeCustom(conditions)
 		-- If our sanitization wiped it out or replaced it, update hasCond
 		-- "[]" is technically still a condition, but we want it to apply as unconditional
 		if conditions == "[]" then
@@ -3322,13 +3386,12 @@ function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
 	local matches = {}
 	for i, state in ipairs(states) do
 		local cond = Wise:ComputeEffectiveConditions(states, i)
-		if cond == "" then
+		-- EvalConditionExact evaluates native tokens (combat, mod, …) via
+		-- SecureCmdOptionParse AND Wise custom tokens (zoneability, bank, …) insecurely.
+		-- Passing a raw custom token straight to SecureCmdOptionParse made the client
+		-- print "unknown macro option: <name>" on every display refresh, including reload.
+		if EvalConditionExact(cond) then
 			tinsert(matches, i)
-		else
-			local result = SecureCmdOptionParse(cond .. " true; false")
-			if result == "true" then
-				tinsert(matches, i)
-			end
 		end
 	end
 
@@ -3465,7 +3528,9 @@ function Wise:StoreChildActionsOnButton(btn, childGroupName, nestMode)
 			btn:SetAttribute("isa_nest_item_" .. nestIdx, itemVal)
 			btn:SetAttribute("isa_nest_macrotext_" .. nestIdx, macroVal)
 			btn:SetAttribute("isa_nest_clickbutton_name_" .. nestIdx, cbName)
-			btn:SetAttribute("isa_nest_cond_" .. nestIdx, action.conditions or "")
+			-- isa_nest_cond_N is fed to SecureCmdOptionParse in the secure RESOLVE_BLOCK,
+			-- so strip Wise custom conditionals (else WoW prints "unknown macro option").
+			btn:SetAttribute("isa_nest_cond_" .. nestIdx, SanitizeCustom(action.conditions or ""))
 		end
 	end
 	btn:SetAttribute("isa_nest_count", nestIdx)
@@ -3515,18 +3580,13 @@ function Wise:GetRotationIcon(btn, childGroupName, nestMode)
 
 	local chosen = nil
 	if nestMode == "priority" then
-		-- Show first action whose conditions match
+		-- Show first action whose conditions match. EvalConditionExact evaluates native
+		-- tokens securely and Wise custom tokens insecurely; feeding a raw custom token to
+		-- SecureCmdOptionParse printed "unknown macro option" on every refresh.
 		for _, action in ipairs(actions) do
-			local cond = action.conditions or ""
-			if cond == "" then
+			if EvalConditionExact(action.conditions or "") then
 				chosen = action
 				break
-			else
-				local result = SecureCmdOptionParse(cond .. " true; false")
-				if result == "true" then
-					chosen = action
-					break
-				end
 			end
 		end
 		if not chosen then
@@ -5076,6 +5136,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				local stateAction = allStates[sIdx]
 				if stateAction then
 					local computedCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
+					-- isa_cond_N is fed to SecureCmdOptionParse inside the secure
+					-- RESOLVE_BLOCK (both to pick a state and to build the firing
+					-- /cast [cond] line). WoW only understands native macro options there, so
+					-- strip Wise custom conditionals (zoneability, bank, undermouse, …) first
+					-- — otherwise the client prints "unknown macro option: <name>" on every
+					-- secure re-evaluation, notably on reload. SanitizeCustom rewrites any
+					-- bracket carrying a custom token to [actionbar:99] (always-false in the
+					-- secure context); custom conditionals are resolved insecurely for display.
+					local secureCond = SanitizeCustom(computedCond)
 					local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond)
 					-- Only store string-safe values for secure snippets (clickbutton is a frame ref)
 					-- For spell type, build subtext-qualified name for /cast in RESOLVE_BLOCK
@@ -5122,7 +5191,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					btn:SetAttribute("isa_item_" .. sIdx, itemVal)
 					btn:SetAttribute("isa_macrotext_" .. sIdx, macroVal)
 					btn:SetAttribute("isa_clickbutton_name_" .. sIdx, cbName)
-					btn:SetAttribute("isa_cond_" .. sIdx, computedCond)
+					btn:SetAttribute("isa_cond_" .. sIdx, secureCond)
 					btn:SetAttribute("isa_offgcd_" .. sIdx, isOffGcd and 1 or 0)
 				end
 			end
