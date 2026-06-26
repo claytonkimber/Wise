@@ -1,5 +1,25 @@
 local addonName, Wise = ...
 
+-- Bit set in a cooldown's `flags` (CooldownViewerCooldownInfo) when the Cooldown
+-- Manager treats it as "not displayed" — i.e. assigned to the category but hidden
+-- from the actual bar by default (maintenance/rotational abilities like Moonfire,
+-- Prowl, Regrowth, Rake, Ironfur). The category set (GetCooldownViewerCategorySet)
+-- returns these alongside the displayed ones, so the hidden-viewer fallback must
+-- filter them out to mirror the CDM exactly. Enum.CooldownViewerCooldownFlag is not
+-- exposed to addons, so we test the literal bit (verified live: every default-hidden
+-- ability reports flags=2, every displayed cooldown reports flags=0).
+local COOLDOWN_FLAG_HIDDEN = 0x2
+
+-- True when the cooldown info marks the spell as not-displayed in the CDM. Uses
+-- bit.band so additional flag bits (e.g. flags=2 is "hidden"; other bits may appear)
+-- don't break the test.
+local function isCooldownHidden(info)
+	if not info or not info.flags then
+		return false
+	end
+	return bit.band(info.flags, COOLDOWN_FLAG_HIDDEN) ~= 0
+end
+
 -- Register property hook for CooldownWiser interfaces
 function Wise:InitializeCooldownWiser()
 	-- Initialize hook for CooldownWiser
@@ -244,7 +264,10 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 		-- Prefer the CATEGORY SET. It's independent of viewer visibility AND always
 		-- reflects the CURRENT character: GetCooldownViewerCategorySet(cat, false)
 		-- returns the learned cooldowns for this character's spec, and isKnown drops
-		-- the rest. We deliberately do NOT use the per-spec displayedCooldownIDs cache
+		-- the rest. The set also includes cooldowns the CDM hides by default (flags
+		-- bit 0x2 — Moonfire, Prowl, Ironfur, ...), which the visible viewer's children
+		-- never show, so we additionally drop isCooldownHidden() to mirror the CDM 1:1.
+		-- We deliberately do NOT use the per-spec displayedCooldownIDs cache
 		-- as the primary source here — it is keyed by spec INDEX only, so a Guardian
 		-- Druid (spec 3) and a Shadow Priest (spec 3) collide and the cache leaks the
 		-- wrong class's cooldowns into the other (this is exactly the FSK-on-Druid /
@@ -262,7 +285,7 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 					readFromCategory = true
 					for _, cid in ipairs(ids) do
 						local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
-						if info and info.isKnown then
+						if info and info.isKnown and not isCooldownHidden(info) then
 							addSpell(info.overrideSpellID or info.spellID)
 						end
 					end
@@ -279,7 +302,7 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 			if cached then
 				for _, cid in ipairs(cached) do
 					local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
-					if info and info.isKnown then
+					if info and info.isKnown and not isCooldownHidden(info) then
 						addSpell(info.overrideSpellID or info.spellID)
 					end
 				end
