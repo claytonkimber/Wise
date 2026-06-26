@@ -160,20 +160,26 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 	-- The viewer's CHILDREN are the ground truth of what the Cooldown Manager
 	-- actually DISPLAYS — already excludes the "Not Displayed" spells, off-spec
 	-- spells, etc. The category API (GetCooldownViewerCategorySet) does NOT: it
-	-- returns every cooldown assigned to the category including not-displayed
-	-- ones, with no reliable flag to filter them. So we read the children and
-	-- cache the resulting cooldownID list per character.
+	-- returns every cooldown assigned to the category including not-displayed ones.
+	-- So we prefer the children and cache the resulting cooldownID list per spec,
+	-- falling back to the cache (then the category set) only when no children are
+	-- readable — see the readFromChildren branch below.
 	--
-	-- When the user hides the viewer (Edit Mode VisibleSetting=Hidden), the frame
-	-- is genuinely Hidden and stops populating children. In that case we replay
-	-- the cached cooldownID list through the info API so Wise's own mirror stays
-	-- populated with exactly the displayed set.
+	-- A laid-out cooldown item carries a stable cooldownID. NOTE (12.0.7): when the
+	-- viewer is hidden (hideNativeInterface), Blizzard now CLEARS the children's
+	-- cooldownID (and IsShown() goes false), so a hidden viewer yields no readable
+	-- children at all — we must fall back to the cached cooldownID list below. We key
+	-- "this child is a real item" off cooldownID rather than IsShown()/GetSpellID
+	-- (the GetSpellID method exists on spare frames too, which previously made every
+	-- frame look displayed and suppressed the cache fallback).
 	local function childIsDisplayed(child)
-		-- A laid-out cooldown item; Blizzard hides spare/unused item frames.
-		return child:IsShown() and (child.cooldownID ~= nil or child.spellID ~= nil or child.GetSpellID ~= nil)
+		return child.cooldownID ~= nil
 	end
 
 	local displayedCooldownIDs = {}
+	-- True only when the children actually yielded at least one usable spell, so an
+	-- empty/hidden viewer (no readable children) correctly falls through to the cache
+	-- replay instead of overwriting the persisted set with nothing.
 	local readFromChildren = false
 	if viewer.GetChildren then
 		local children = { viewer:GetChildren() }
@@ -185,27 +191,39 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 
 		for _, child in ipairs(children) do
 			if childIsDisplayed(child) then
-				readFromChildren = true
-				local spellID = child.spellID
-				if not spellID and child.GetSpellID then
-					spellID = child:GetSpellID()
-				end
+				local spellID
+
+				-- Prefer the cooldown-info's representative spell over child:GetSpellID().
+				-- "System dynamic" cooldowns (Flying Serpent Kick, Wild Charge, ...) carry
+				-- a linkedSpellIDs array of per-form/context variants; child:GetSpellID()
+				-- returns whichever ONE is active right now, so it bakes an arbitrary
+				-- variant into the slot. info.overrideSpellID/spellID is the stable spell
+				-- the Cooldown Manager treats as the slot's identity, so we use that.
 				if
-					not spellID
-					and child.cooldownID
+					child.cooldownID
 					and C_CooldownViewer
 					and C_CooldownViewer.GetCooldownViewerCooldownInfo
 				then
 					local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(child.cooldownID)
 					if info then
-						spellID = info.spellID
+						spellID = info.overrideSpellID or info.spellID
 					end
 				end
-				if child.cooldownID then
-					local cid = tonumber(tostring(child.cooldownID))
-					if cid then
-						table.insert(displayedCooldownIDs, cid)
-					end
+
+				-- Fallbacks for entries with no cooldownID (older clients / static slots).
+				if not spellID then
+					spellID = child.spellID
+				end
+				if not spellID and child.GetSpellID then
+					spellID = child:GetSpellID()
+				end
+
+				local cid = tonumber(tostring(child.cooldownID))
+				if cid then
+					table.insert(displayedCooldownIDs, cid)
+				end
+				if spellID then
+					readFromChildren = true
 				end
 				addSpell(spellID)
 			end
@@ -219,16 +237,51 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 		group.displayedCooldownIDs = group.displayedCooldownIDs or {}
 		local specIndex = GetSpecialization()
 		group.displayedCooldownIDs[specIndex or 0] = displayedCooldownIDs
-	elseif C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo and group.displayedCooldownIDs then
-		-- Viewer is hidden — no children. Replay the last-known displayed set for
-		-- this spec. isKnown filters anything no longer valid on the current build.
-		local specIndex = GetSpecialization()
-		local cached = group.displayedCooldownIDs[specIndex or 0]
-		if cached then
-			for _, cid in ipairs(cached) do
-				local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
-				if info and info.isKnown then
-					addSpell(info.spellID)
+	elseif C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
+		-- Children yielded nothing — the viewer is hidden (12.0.7 clears children's
+		-- cooldownID when hidden) or not laid out yet.
+		--
+		-- Prefer the CATEGORY SET. It's independent of viewer visibility AND always
+		-- reflects the CURRENT character: GetCooldownViewerCategorySet(cat, false)
+		-- returns the learned cooldowns for this character's spec, and isKnown drops
+		-- the rest. We deliberately do NOT use the per-spec displayedCooldownIDs cache
+		-- as the primary source here — it is keyed by spec INDEX only, so a Guardian
+		-- Druid (spec 3) and a Shadow Priest (spec 3) collide and the cache leaks the
+		-- wrong class's cooldowns into the other (this is exactly the FSK-on-Druid /
+		-- stale-Utilities bug). The category set has no such ambiguity.
+		local readFromCategory = false
+		if C_CooldownViewer.GetCooldownViewerCategorySet and Enum and Enum.CooldownViewerCategory then
+			local categoryByViewer = {
+				EssentialCooldownViewer = Enum.CooldownViewerCategory.Essential,
+				UtilityCooldownViewer = Enum.CooldownViewerCategory.Utility,
+			}
+			local category = categoryByViewer[viewerName]
+			if category then
+				local ok, ids = pcall(C_CooldownViewer.GetCooldownViewerCategorySet, category, false)
+				if ok and ids then
+					readFromCategory = true
+					for _, cid in ipairs(ids) do
+						local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
+						if info and info.isKnown then
+							addSpell(info.overrideSpellID or info.spellID)
+						end
+					end
+				end
+			end
+		end
+
+		-- Last resort (pre-12.0.5 clients with no category API): replay this spec's
+		-- cached displayed set. Subject to the spec-index collision noted above, so
+		-- only used when the category API is entirely unavailable.
+		if not readFromCategory and group.displayedCooldownIDs then
+			local specIndex = GetSpecialization() or 0
+			local cached = group.displayedCooldownIDs[specIndex]
+			if cached then
+				for _, cid in ipairs(cached) do
+					local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(cid)
+					if info and info.isKnown then
+						addSpell(info.overrideSpellID or info.spellID)
+					end
 				end
 			end
 		end
@@ -246,6 +299,18 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 	-- (spec/talent swap re-runs this function and rewrites integer slots).
 	group.dynamic = false
 	group.propertyType = "CooldownWiser"
+
+	-- Bail out of the destructive rewrite if we resolved NO spells. At login the
+	-- Blizzard viewer's children are often not laid out yet (readFromChildren=false)
+	-- and the per-spec cache may be empty, so `spells` comes back empty. Wiping the
+	-- integer slots here would blank the interface (it then looks like it "didn't
+	-- show up"). Instead, leave the existing slots untouched and schedule a retry —
+	-- the viewer's Layout hook will also fire once it populates. This is the 12.0.7
+	-- login-timing regression fix.
+	if #spells == 0 then
+		Wise:_RetryCooldownViewerSync(groupName, viewerName)
+		return
+	end
 
 	-- Replace all integer (auto-loaded) slots with the viewer's current spells 1:1.
 	-- Viewer spell 1 → Slot 1, viewer spell 2 → Slot 2, etc.
@@ -270,7 +335,34 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 		}
 	end
 
+	-- A successful read clears any pending retry for this group.
+	if Wise._cooldownSyncRetry then
+		Wise._cooldownSyncRetry[groupName] = nil
+	end
+
 	if Wise.UpdateGroupDisplay and Wise.frames[groupName] then
 		Wise:UpdateGroupDisplay(groupName)
 	end
+end
+
+-- Retry a viewer sync a few times after an empty read (viewer children not laid out
+-- yet at login). Bounded so we don't spin forever if the viewer is legitimately empty
+-- (e.g. a spec with no utility cooldowns). Combat is skipped — the spell list can't
+-- change mid-fight and secret frame values would crash table ops.
+function Wise:_RetryCooldownViewerSync(groupName, viewerName)
+	Wise._cooldownSyncRetry = Wise._cooldownSyncRetry or {}
+	local attempts = (Wise._cooldownSyncRetry[groupName] or 0) + 1
+	Wise._cooldownSyncRetry[groupName] = attempts
+	if attempts > 5 then
+		return
+	end
+	C_Timer.After(0.5 * attempts, function()
+		if InCombatLockdown() then
+			return
+		end
+		local group = WiseDB and WiseDB.groups and WiseDB.groups[groupName]
+		if group and group.viewerName then
+			Wise:_ReadCooldownViewer(groupName, group.viewerName)
+		end
+	end)
 end
