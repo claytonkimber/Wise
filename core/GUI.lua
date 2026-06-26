@@ -5826,6 +5826,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					needsTicker = true
 					break
 				end
+				-- Single-state slots that carry a condition (e.g. a lone [combat]
+				-- potion) still need refreshing: the condition is only evaluated at
+				-- build time, so without a ticker an out-of-combat-built [combat] slot
+				-- stays greyed forever once combat starts. Multi-state slots are caught
+				-- above; this catches the single-state conditional case.
+				if meta.states and #meta.states == 1 then
+					local only = meta.states[1]
+					if only and only.conditions and only.conditions ~= "" then
+						needsTicker = true
+						break
+					end
+				end
 				if
 					(
 						meta.actionType == "misc"
@@ -6164,7 +6176,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						if canSetAttrs and nestMode ~= "jump" then
 							Wise:StoreChildActionsOnButton(btn, meta.actionValue, nestMode)
 						end
-					elseif meta.states and #meta.states > 1 then
+					elseif (meta.states and #meta.states > 1)
+						or (meta.states and #meta.states == 1 and meta.states[1] and meta.states[1].conditions and meta.states[1].conditions ~= "")
+					then
 						local chosen, hadMatch = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
 						-- Grey the icon when nothing currently matches: the displayed state is
 						-- only a placeholder and a click would cast nothing. Update desaturation
@@ -6183,6 +6197,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							if vc and vc.icon then
 								vc.icon:SetDesaturated(not hadMatch)
 								vc.icon:SetAlpha(hadMatch and 1 or 0.5)
+							end
+							-- Now that the slot matches, let usability coloring (usable /
+							-- OOM / on-cooldown) take over instead of leaving it flat-saturated.
+							-- Skipped while unmatched (the usability early-return guards isValid==false).
+							if hadMatch then
+								Wise:UpdateButtonUsability(btn)
 							end
 						end
 						if chosen and chosen ~= meta.activeState then
@@ -8665,6 +8685,7 @@ dynEventFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 dynEventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 dynEventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
 dynEventFrame:RegisterEvent("PLAYER_REGEN_ENABLED") -- flush after leaving combat
+dynEventFrame:RegisterEvent("PLAYER_REGEN_DISABLED") -- resaturate [combat] slots on combat enter
 dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- UNIT_*_VEHICLE fire for every unit; only the player matters here.
 	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
@@ -8681,7 +8702,12 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- attributes self-guards on InCombatLockdown(), and cooldown/target events
 	-- fire every GCD — so don't even schedule. PLAYER_REGEN_ENABLED flushes on
 	-- combat exit to catch anything that changed (Rule 12 #3).
-	if event ~= "PLAYER_REGEN_ENABLED" and InCombatLockdown() then
+	-- PLAYER_REGEN_DISABLED is the exception: it fires AT combat start (when
+	-- InCombatLockdown() is already true) and is the only trigger for [combat]
+	-- conditional slots flipping to matched. The refresh it runs is visual-only
+	-- in combat (secure writes self-guard on canSetAttrs), so it's safe to let
+	-- through — without it a [combat] potion stays greyed for the whole fight.
+	if event ~= "PLAYER_REGEN_ENABLED" and event ~= "PLAYER_REGEN_DISABLED" and InCombatLockdown() then
 		if isFullRebuildEvent then
 			dynEventFrame._fullRebuildPending = true
 		end
