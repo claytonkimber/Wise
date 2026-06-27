@@ -2050,23 +2050,60 @@ local function shouldHideFrame(frameName)
 	return false
 end
 
+-- Set of EVERY frame name Wise ever manages via a visibility state driver.
+-- The global RegisterStateDriver/UnregisterStateDriver hooks below fire on EVERY
+-- such call in the entire game — including Blizzard's own churn on compact party/
+-- raid unit frames during GROUP_ROSTER_UPDATE. Executing Wise's Lua closure inside
+-- that secure call stack taints the execution path, and that taint then bleeds into
+-- CompactUnitFrame_UpdateHealthColor, which reads "secret" health-bar colors and
+-- errors comparing them ("compare local 'oldR' (a secret number value, while
+-- execution tainted by 'Wise')"). To avoid touching that path at all, the hooks
+-- early-out via a single hash lookup BEFORE calling any frame method or secure API
+-- for any frame Wise does not manage. This set is the union of:
+--   * every frame listed in Wise.BlizzardFrames (excluding reparent frames, which
+--     use SetParent rather than state drivers)
+--   * ActionButton1..12 (hidden individually for hideActionBar1)
+local managedDriverNames = {}
+for _, info in ipairs(Wise.BlizzardFrames) do
+	for _, fn in ipairs(info.frames) do
+		if not reparentFrames[fn] then
+			managedDriverNames[fn] = true
+		end
+	end
+end
+for i = 1, 12 do
+	managedDriverNames["ActionButton" .. i] = true
+end
+
 -- Global hooks to intercept Blizzard (or other addons) resetting our visibility state drivers.
 -- Edit Mode applies layouts asynchronously during reload, clearing drivers we set.
 -- These hooks re-assert "hide" on any managed frame whose driver is being changed.
 local inRegisterHook = false
-hooksecurefunc("RegisterStateDriver", function(frame, header, state)
-	if inRegisterHook or InCombatLockdown() then
-		return
+
+-- Cheap, taint-safe early-out shared by both hooks. Returns the frame's name only
+-- when the frame is one Wise manages; otherwise returns nil so the caller bails
+-- immediately without touching secure APIs (InCombatLockdown, RegisterStateDriver)
+-- or running shouldHideFrame on frames we don't own (e.g. compact unit frames).
+local function managedDriverFrameName(frame, header)
+	if inRegisterHook then
+		return nil
 	end
 	if header ~= "visibility" then
-		return
+		return nil
 	end
 	local frameName = frame and frame.GetName and frame:GetName()
+	if not frameName or not managedDriverNames[frameName] then
+		return nil
+	end
+	return frameName
+end
+
+hooksecurefunc("RegisterStateDriver", function(frame, header, state)
+	local frameName = managedDriverFrameName(frame, header)
 	if not frameName then
 		return
 	end
-	-- Only intercept non-reparent frames (reparent frames use SetParent instead)
-	if reparentFrames[frameName] then
+	if InCombatLockdown() then
 		return
 	end
 	if shouldHideFrame(frameName) and state ~= "hide" then
@@ -2077,17 +2114,11 @@ hooksecurefunc("RegisterStateDriver", function(frame, header, state)
 end)
 
 hooksecurefunc("UnregisterStateDriver", function(frame, header)
-	if inRegisterHook or InCombatLockdown() then
-		return
-	end
-	if header ~= "visibility" then
-		return
-	end
-	local frameName = frame and frame.GetName and frame:GetName()
+	local frameName = managedDriverFrameName(frame, header)
 	if not frameName then
 		return
 	end
-	if reparentFrames[frameName] then
+	if InCombatLockdown() then
 		return
 	end
 	if shouldHideFrame(frameName) then
