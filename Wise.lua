@@ -1886,12 +1886,13 @@ local function IsPuzzleActive()
 	if inVehicle then
 		return false
 	end
-	local hasOverride = HasOverrideActionBar and HasOverrideActionBar()
-	local isPossess = IsPossessBarVisible and IsPossessBarVisible()
-	if hasOverride and not isPossess then
-		return true
-	end
-	-- Aura-driven puzzles (no override bar): e.g. "Unravel the Magic Ward".
+	-- A puzzle is identified ONLY by a known puzzle aura (locale-independent).
+	-- We previously treated *any* override action bar as a puzzle, but that is wrong:
+	-- ordinary override-bar events (e.g. the Stormwind "Torch Tossing" world quest)
+	-- raise [overridebar] without being a fullscreen/UIWidget puzzle, and the blanket
+	-- rule hid every Wise interface — including override-bar replacement bars the user
+	-- WANTS visible during override. Match by aura instead; add new puzzle spellIds to
+	-- PUZZLE_AURA_SPELLIDS as they're found. See memory: override_bar_torch_event_127.
 	return HasPuzzleAura()
 end
 
@@ -2485,6 +2486,93 @@ SlashCmdList["WISE"] = function(msg)
 			end
 		end
 		print(("|cff00ccff[Wise puzzle]|r Wise.frames count = %d"):format(n))
+		return
+	end
+
+	if cmd == "overridedbg" or cmd == "ovrdbg" then
+		-- Diagnostic for the override-bar replacement (e.g. Stormwind torches event).
+		-- Run it INSIDE the event with the override bar up. Captures bar conditions,
+		-- override slots, and (crucially) the PARENT interface's resolved game driver
+		-- + why it is shown/hidden. Every line is mirrored to WiseDB.lastOverrideDbg
+		-- so the full output can be read straight from SavedVariables after /reload —
+		-- no need to fit it all in the chat frame.
+		local log = {}
+		local function out(s)
+			log[#log + 1] = s
+			print(s)
+		end
+		out("|cff00ccff[Wise override]|r ===== override diagnostic start =====")
+		local P = SecureCmdOptionParse
+		local function cond(c)
+			-- pcall so a "secret"/protected parse in combat can't abort the dump
+			local ok, res = pcall(P, c .. " 1; 0")
+			return ok and tostring(res) or "<err>"
+		end
+		out("--- live bar conditions ---")
+		out(("  [overridebar] = %s"):format(cond("[overridebar]")))
+		out(("  [possessbar]  = %s"):format(cond("[possessbar]")))
+		out(("  [vehicleui]   = %s"):format(cond("[vehicleui]")))
+		out(("  [bonusbar:1..5] = %s"):format(cond("[bonusbar:1][bonusbar:2][bonusbar:3][bonusbar:4][bonusbar:5]")))
+		out(("  [extrabar]    = %s"):format(cond("[extrabar]")))
+		out(("  GetActionBarPage() = %s"):format(tostring(GetActionBarPage and GetActionBarPage())))
+		out(("  GetBonusBarIndex() = %s"):format(tostring(C_ActionBar and C_ActionBar.GetBonusBarIndex and C_ActionBar.GetBonusBarIndex())))
+		out(("  HasOverrideActionBar() = %s"):format(tostring(HasOverrideActionBar and HasOverrideActionBar())))
+		out(("  HasVehicleActionBar()  = %s"):format(tostring(HasVehicleActionBar and HasVehicleActionBar())))
+
+		out("--- override slots 133-144 (Bar 11 copy source) ---")
+		local anySlot = false
+		for slot = 133, 144 do
+			local aType, id, sub = GetActionInfo(slot)
+			if aType then
+				anySlot = true
+				out(("  slot %d: %s id=%s sub=%s"):format(slot, tostring(aType), tostring(id), tostring(sub)))
+			end
+		end
+		if not anySlot then
+			out("  (all 12 override slots are EMPTY right now)")
+		end
+
+		-- Auto-discover interfaces whose buttons carry an [overridebar] condition,
+		-- or the one named explicitly. Report the PARENT frame's resolved visibility
+		-- (this is what actually decides whether the bar appears) plus each button.
+		out("--- Wise interfaces with override buttons ---")
+		local found = 0
+		for name, f in pairs(Wise.frames or {}) do
+			if not arg or arg == "" or name == arg then
+				local matchButtons = {}
+				for i, btn in ipairs(f.buttons or {}) do
+					local c = btn.actionData and btn.actionData.conditions
+					if (arg and arg ~= "" and name == arg) or (c and c:lower():find("overridebar")) then
+						matchButtons[#matchButtons + 1] = { i = i, btn = btn, c = c }
+					end
+				end
+				if #matchButtons > 0 then
+					found = found + 1
+					local g = WiseDB.groups and WiseDB.groups[name]
+					local vs = g and g.visibilitySettings or {}
+					local gameAttr = f.GetAttribute and f:GetAttribute("state-game")
+					local p = f:GetParent()
+					out(("  interface '%s':"):format(name))
+					out(("    frame: shown=%s visible=%s alpha=%.2f"):format(
+						tostring(f:IsShown()), tostring(f:IsVisible()), f:GetAlpha() or -1))
+					out(("    parent=%s parentShown=%s"):format(
+						tostring(p and p.GetName and p:GetName() or p),
+						tostring(p and p.IsShown and p:IsShown())))
+					out(("    state-game(live)=%s   customShow=%q customHide=%q base=%s"):format(
+						tostring(gameAttr), tostring(vs.customShow), tostring(vs.customHide), tostring(vs.baseVisibility)))
+					for _, m in ipairs(matchButtons) do
+						local vis = m.btn.GetAttribute and m.btn:GetAttribute("_state-visibility")
+						out(("    btn[%d] cond=%s shown=%s driver=%s"):format(
+							m.i, tostring(m.c), tostring(m.btn:IsShown()), tostring(vis)))
+					end
+				end
+			end
+		end
+		if found == 0 then
+			out("  (no interface found with [overridebar] buttons; pass exact name: /wise ovrdbg <name>)")
+		end
+		out("|cff00ccff[Wise override]|r ===== override diagnostic end (full text in WiseDB.lastOverrideDbg) =====")
+		WiseDB.lastOverrideDbg = table.concat(log, "\n")
 		return
 	end
 

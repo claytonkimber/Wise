@@ -6075,8 +6075,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- Update Custom Macro
 						local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
 
-						-- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark
-						local displayIcon = meta.actionData.icon or mIcon or 134400
+						-- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark.
+						-- The stored icon is only a real "user override" when it isn't the question
+						-- mark placeholder. A graph-compiled override/possess step can carry the
+						-- placeholder (numeric 134400 or the "INV_Misc_QuestionMark" path string) as
+						-- its icon; if we let that win, a static interface stays locked to a question
+						-- mark after the override bar ends instead of re-resolving to the live spec
+						-- spell. Treat the placeholder as "no override" so mIcon (resolved from the
+						-- per-character macro) takes over. See memory: override_bar_torch_event_127.
+						local storedIcon = meta.actionData.icon
+						local storedIsPlaceholder = (storedIcon == 134400)
+							or (type(storedIcon) == "string" and storedIcon:lower():find("inv_misc_questionmark", 1, true))
+						local displayIcon = (not storedIsPlaceholder and storedIcon) or mIcon or 134400
 						btn.icon:SetTexture(displayIcon)
 						local vClone = meta.visualClone or btn.visualClone
 						if vClone and vClone.icon then

@@ -803,8 +803,19 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 			-- Capture icon from the first allowed node for callers that need a fallback.
 			if not resolvedIcon then
 				resolvedIcon = Wise:GetActionIcon(a.type, a.value, a)
-				if resolvedIcon == 134400 then
-					resolvedIcon = nil -- question mark is not useful as a fallback
+				-- The question mark is a placeholder, never a useful fallback. It can
+				-- arrive as the numeric fileID (134400) OR as the texture PATH string
+				-- "Interface\Icons\INV_Misc_QuestionMark" (e.g. an override/possess bar
+				-- node stores the string in its action.icon, and GetActionIcon returns
+				-- that stored icon verbatim for non-spell types). Reject BOTH forms so
+				-- resolvedIcon falls through to the next allowed node — the real spec
+				-- spell — instead of locking the slot to a question mark. See memory:
+				-- override_bar_torch_event_127.
+				if
+					resolvedIcon == 134400
+					or (type(resolvedIcon) == "string" and resolvedIcon:lower():find("inv_misc_questionmark", 1, true))
+				then
+					resolvedIcon = nil
 				end
 			end
 			-- Track shared condition across the allowed nodes only.
