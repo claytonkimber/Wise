@@ -244,6 +244,47 @@ local function ApplyModifierMirrors(frame, key, target, mouseBtn)
 	end
 end
 
+-- Returns a lookup set { [spellID] = true } of the zone abilities the game
+-- currently considers active for this zone, via C_ZoneAbility.GetActiveAbilities().
+-- This is the AUTHORITATIVE signal: the SpellButtonContainer's child buttons retain
+-- a stale .spellID and stay :IsShown() after the zone ability goes away (e.g. exiting
+-- the G-99 Breakneck in Undermine), so checking the button alone leaves the Wise slot
+-- stuck visible. GetActiveAbilities drops the ability the moment it's no longer
+-- available. canBeSecret=false, so it's safe to read in combat. Returns nil if the
+-- API is unavailable (older client) — callers then fall back to the button check.
+local function GetActiveZoneAbilitySet()
+	if not (C_ZoneAbility and C_ZoneAbility.GetActiveAbilities) then
+		return nil
+	end
+	local active = C_ZoneAbility.GetActiveAbilities()
+	if not active then
+		return nil
+	end
+	local set = {}
+	for _, info in ipairs(active) do
+		if info and info.spellID then
+			set[info.spellID] = true
+		end
+	end
+	return set
+end
+
+-- True if `child` is a zone-ability button whose spell is genuinely active right now.
+-- Combines the button's own shown state (so a ZoneAbilityFrame hidden by Wise's
+-- "Hide Zone Ability" setting still counts — children keep IsShown()) with the
+-- authoritative active-ability set (so a stale child from a previous zone does NOT).
+-- `activeSet` is the result of GetActiveZoneAbilitySet(); when nil (API missing) we
+-- fall back to the legacy shown-only behavior.
+local function IsZoneAbilityButtonActive(child, activeSet)
+	if not (child and child.spellID and child:IsShown()) then
+		return false
+	end
+	if activeSet then
+		return activeSet[child.spellID] == true
+	end
+	return true
+end
+
 -- Helper: Get the first active spell button from ZoneAbilityFrame.
 -- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
 -- instead of a direct .SpellButton child.
@@ -334,29 +375,37 @@ end
 local EXTRA_ACTION_BUTTON_SLOT = 1 + (GetExtraBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
 Wise.EXTRA_ACTION_BUTTON_SLOT = EXTRA_ACTION_BUTTON_SLOT
 
--- Returns true if a zone ability is genuinely active (has a valid spell AND is shown).
--- Checks the spell button's visibility directly, since child buttons can retain a stale
--- .spellID from a previous zone even when the zone ability is no longer available.
--- Note: Wise's "Hide Zone Ability" setting hides ZoneAbilityFrame itself, but the
--- spell button children inside SpellButtonContainer retain their shown state, so this
--- still returns true when the user has hidden the Blizzard frame via Wise settings.
+-- Returns true if a zone ability is genuinely active (has a valid, currently-active
+-- spell AND its button is shown). The shown check alone is NOT enough: child buttons
+-- retain a stale .spellID and stay :IsShown() after the zone ability goes away (e.g.
+-- exiting the G-99 Breakneck), so we cross-check against C_ZoneAbility's authoritative
+-- active set via IsZoneAbilityButtonActive. We deliberately keep IsShown() (not
+-- IsVisible()) so Wise's "Hide Zone Ability" setting — which hides ZoneAbilityFrame
+-- itself while the child keeps its shown flag — still reports the ability as active.
 local function IsZoneAbilityActive()
 	local zoneFrame = _G["ZoneAbilityFrame"]
 	if not zoneFrame then
 		return false
 	end
+	local activeSet = GetActiveZoneAbilitySet()
 	if zoneFrame.SpellButtonContainer then
 		local children = { zoneFrame.SpellButtonContainer:GetChildren() }
 		for _, child in ipairs(children) do
-			if child.spellID and child:IsShown() then
+			if IsZoneAbilityButtonActive(child, activeSet) then
 				return true
 			end
 		end
 	end
-	if zoneFrame.SpellButton and zoneFrame.SpellButton.spellID then
-		return zoneFrame.SpellButton:IsShown()
+	if zoneFrame.SpellButton then
+		return IsZoneAbilityButtonActive(zoneFrame.SpellButton, activeSet)
 	end
 	return false
+end
+
+-- Exposed for other modules (Actions.lua IsActionKnown) so the dynamic-availability
+-- snapshot uses the same authoritative C_ZoneAbility-backed check as everything else.
+function Wise:IsZoneAbilityActive()
+	return IsZoneAbilityActive()
 end
 
 -- All custom conditionals that are NOT understood by WoW's secure state driver.
@@ -7487,6 +7536,21 @@ function Wise:UpdateButtonCooldown(btn)
 		cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
 	end
 
+	-- GetActionCooldown (and C_Item.GetItemCooldown) return "secret numbers" in
+	-- combat on retail 11.1+. The legacy path below compares those values
+	-- (start > 0) and passes them to the PLAIN Cooldown:SetCooldown(start, duration),
+	-- which rejects secret args while execution is tainted ("Secret values are only
+	-- allowed during untainted execution for this argument."). Unlike the
+	-- DurationObject path, plain SetCooldown can't take secrets — so force-strip the
+	-- taint at the read. tonumber(tostring(v)) round-trips through a string, which
+	-- yields a plain number and severs the secret/taint flag. See memory:
+	-- wow_taint_stripping. Falls back to 0 if the value isn't representable.
+	local function stripCooldown(start, duration)
+		local s = tonumber(tostring(start)) or 0
+		local d = tonumber(tostring(duration)) or 0
+		return s, d
+	end
+
 	-- Apply cooldown swipe direction (default: non-reversed). Overlays below
 	-- may override this before calling SetCooldown with their own direction.
 	if btn.cooldown.SetReverse then
@@ -7625,14 +7689,10 @@ function Wise:UpdateButtonCooldown(btn)
 	if not usedDurationObject then
 		if actionType == "action" and tonumber(actionValue) then
 			local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-			start, duration = GetActionCooldown(realID)
-			start = start or 0
-			duration = duration or 0
+			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif actionType == "misc" and actionValue == "extrabutton" then
 			if HasExtraActionBar and HasExtraActionBar() then
-				start, duration = GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT)
-				start = start or 0
-				duration = duration or 0
+				start, duration = stripCooldown(GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT))
 			end
 		elseif actionType == "misc" and actionValue == "zoneability" then
 			local zoneBtn = GetZoneAbilitySpellButton()
@@ -7655,25 +7715,18 @@ function Wise:UpdateButtonCooldown(btn)
 				if not usedDurationObject then
 					local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
 					if cooldownInfo then
-						start = cooldownInfo.startTime or 0
-						duration = cooldownInfo.duration or 0
+						start, duration = stripCooldown(cooldownInfo.startTime, cooldownInfo.duration)
 					end
 				end
 			end
 		elseif actionType == "misc" and actionValue == "overridebar" then
 			local realID = Wise:ResolveBarActionID(133)
-			start, duration = GetActionCooldown(realID)
-			start = start or 0
-			duration = duration or 0
+			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif actionType == "misc" and actionValue == "possessbar" then
 			local realID = Wise:ResolveBarActionID(121)
-			start, duration = GetActionCooldown(realID)
-			start = start or 0
-			duration = duration or 0
+			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif itemID then
-			start, duration = C_Item.GetItemCooldown(itemID)
-			start = start or 0
-			duration = duration or 0
+			start, duration = stripCooldown(C_Item.GetItemCooldown(itemID))
 		end
 
 		if not usedDurationObject then
@@ -8180,9 +8233,15 @@ function Wise:UpdateButtonUsability(btn)
 			isUsable, noMana = IsUsableAction(EXTRA_ACTION_BUTTON_SLOT)
 		end
 	elseif actionType == "misc" and actionValue == "zoneability" then
+		-- Only usable when the zone ability is genuinely active. GetZoneAbilitySpellButton
+		-- can return a stale child (kept .spellID + IsShown after the zone ability went
+		-- away, e.g. G-99 Breakneck exit); IsZoneAbilityActive cross-checks C_ZoneAbility,
+		-- so a stale slot greys out instead of looking usable.
 		local zoneBtn = GetZoneAbilitySpellButton()
-		if zoneBtn and zoneBtn.spellID then
+		if zoneBtn and zoneBtn.spellID and IsZoneAbilityActive() then
 			isUsable, noMana = Wise:IsSpellUsable(zoneBtn.spellID)
+		else
+			isUsable = false
 		end
 	elseif actionType == "misc" and actionValue == "overridebar" then
 		local realID = Wise:ResolveBarActionID(133)

@@ -2231,6 +2231,14 @@ function Wise:IsActionKnown(actionType, value)
 		if value == "extrabutton" then
 			return HasExtraActionBar and HasExtraActionBar() or false
 		elseif value == "zoneability" then
+			-- Use the shared, C_ZoneAbility-backed check. The button alone is unreliable:
+			-- child buttons keep a stale .spellID and stay :IsShown() after the zone
+			-- ability goes away (e.g. exiting the G-99 Breakneck), which left this slot
+			-- stuck visible. Wise:IsZoneAbilityActive cross-checks GetActiveAbilities().
+			if Wise.IsZoneAbilityActive then
+				return Wise:IsZoneAbilityActive()
+			end
+			-- Fallback (shouldn't happen — GUI.lua defines it): legacy shown-only check.
 			local zoneFrame = _G["ZoneAbilityFrame"]
 			if not zoneFrame or not zoneFrame.SpellButtonContainer then
 				return false
