@@ -219,11 +219,7 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 				-- returns whichever ONE is active right now, so it bakes an arbitrary
 				-- variant into the slot. info.overrideSpellID/spellID is the stable spell
 				-- the Cooldown Manager treats as the slot's identity, so we use that.
-				if
-					child.cooldownID
-					and C_CooldownViewer
-					and C_CooldownViewer.GetCooldownViewerCooldownInfo
-				then
+				if child.cooldownID and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
 					local info = C_CooldownViewer.GetCooldownViewerCooldownInfo(child.cooldownID)
 					if info then
 						spellID = info.overrideSpellID or info.spellID

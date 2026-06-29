@@ -307,5 +307,13 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_OverrideBarDynamicIcons" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Override Bar Dynamic Icons" type="string"/>
+            <KeyValue key="instructions" value="Verify that the Override Bar buttons (slots 133-144) and the 'overridebar' / 'possessbar' special actions display the correct icons and update dynamically when entering/exiting an override bar, vehicle, or possess bar.\n1. Create a Wise interface bar and configure its buttons to use the 'Override Bar' category buttons or the 'Override Bar' special action.\n2. Enter the Torch Tossing event in Stormwind, the G-99 Landshark vehicle, or any other vehicle/override.\n3. Verify that the icons update to show the vehicle/override spells (e.g. Throw Torch) rather than staying blank/hidden or showing a question mark.\n4. Verify that the tooltips are displayed correctly when hovering over the buttons.\n5. Exit the override/vehicle, and verify that the icons revert back or hide correctly." type="string"/>
+            <KeyValue key="action" value="print('Override Bar Dynamic Icons test: ResolveBarActionID must map override (133-144), possess (145-156), and vehicle/dragonriding (121-132) slots to the active special page returned by GetOverrideBarIndex(), GetVehicleBarIndex(), or GetTempShapeshiftBarIndex().')" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
 

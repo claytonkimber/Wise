@@ -50,7 +50,10 @@ modules\Info.lua
 modules\Minimap.lua
 modules\Demo.lua
 modules\BugReport.lua
+modules\Audio.lua
 modules\AbundanceTest.lua
+modules\AudioCues.lua
+modules\IndicatorRules.lua
 
 # Wiser
 wiser\Cooldowns.lua

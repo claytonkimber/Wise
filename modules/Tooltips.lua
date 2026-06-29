@@ -145,7 +145,32 @@ function Wise:AddInterfaceTooltip(btn)
 			GameTooltip:SetText("Toggle " .. label, 1, 1, 1)
 		elseif type == "misc" then
 			local hasAction = false
-			if value == "extrabutton" and data and data.showTooltip then
+			if value == "custom_macro" then
+				-- Multi-action / graph slot: resolve the live (per-character) macro to
+				-- the spell/item/action it currently evaluates to so the tooltip shows
+				-- the real ability instead of the literal "custom_macro" placeholder.
+				local mText = (data and data.macroText) or (meta and meta.actionData and meta.actionData.macroText)
+				local rType, rVal = Wise:ResolveMacroData(mText)
+				if rType == "spell" and rVal then
+					GameTooltip:SetSpellByID(rVal)
+					hasAction = true
+				elseif rType == "item" and rVal then
+					GameTooltip:SetItemByID(rVal)
+					hasAction = true
+				elseif rType == "action" and rVal then
+					GameTooltip:SetAction(Wise:ResolveBarActionID(rVal))
+					hasAction = true
+				end
+				if not hasAction then
+					-- Nothing resolvable (e.g. all lines off-spec / off-cooldown gated):
+					-- show the macro body rather than the internal token.
+					GameTooltip:SetText((data and data.name) or "Macro", 1, 1, 1)
+					if mText and mText ~= "" then
+						GameTooltip:AddLine(mText, 0.8, 0.8, 0.8, true)
+					end
+					hasAction = true
+				end
+			elseif value == "extrabutton" and data and data.showTooltip then
 				if HasExtraActionBar and HasExtraActionBar() then
 					GameTooltip:SetAction(Wise.EXTRA_ACTION_BUTTON_SLOT)
 					hasAction = true
@@ -158,15 +183,20 @@ function Wise:AddInterfaceTooltip(btn)
 				end
 			elseif value == "overridebar" and data and data.showTooltip then
 				local realID = Wise:ResolveBarActionID(133)
-				if HasOverrideActionBar and HasOverrideActionBar() then
+				if
+					(HasOverrideActionBar and HasOverrideActionBar())
+					or (HasVehicleActionBar and HasVehicleActionBar())
+					or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+				then
 					GameTooltip:SetAction(realID)
 					hasAction = true
 				end
 			elseif value == "possessbar" and data and data.showTooltip then
 				local realID = Wise:ResolveBarActionID(121)
 				if
-					HasTempShapeshiftActionBar and HasTempShapeshiftActionBar()
-					or HasVehicleActionBar and HasVehicleActionBar()
+					(HasOverrideActionBar and HasOverrideActionBar())
+					or (HasVehicleActionBar and HasVehicleActionBar())
+					or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
 				then
 					GameTooltip:SetAction(realID)
 					hasAction = true

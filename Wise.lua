@@ -2262,8 +2262,7 @@ function Wise:ReapplyAllHiding()
 	-- Pet bar: same Edit Mode path (taint-free). Honour hidePetBar + puzzle-hide.
 	do
 		local blizz = WiseDB.settings.blizzardUI or {}
-		local petHidden = blizz["hidePetBar"]
-			or (blizz["hidePuzzleUI"] and IsPuzzleActive and IsPuzzleActive())
+		local petHidden = blizz["hidePetBar"] or (blizz["hidePuzzleUI"] and IsPuzzleActive and IsPuzzleActive())
 		Wise:SetActionBarVisibility("PetActionBar", petHidden)
 	end
 	if WiseDB.groups["Cooldowns"] then
@@ -2546,21 +2545,65 @@ SlashCmdList["WISE"] = function(msg)
 		out(("  [bonusbar:1..5] = %s"):format(cond("[bonusbar:1][bonusbar:2][bonusbar:3][bonusbar:4][bonusbar:5]")))
 		out(("  [extrabar]    = %s"):format(cond("[extrabar]")))
 		out(("  GetActionBarPage() = %s"):format(tostring(GetActionBarPage and GetActionBarPage())))
-		out(("  GetBonusBarIndex() = %s"):format(tostring(C_ActionBar and C_ActionBar.GetBonusBarIndex and C_ActionBar.GetBonusBarIndex())))
+		out(
+			("  GetBonusBarIndex() = %s"):format(
+				tostring(C_ActionBar and C_ActionBar.GetBonusBarIndex and C_ActionBar.GetBonusBarIndex())
+			)
+		)
 		out(("  HasOverrideActionBar() = %s"):format(tostring(HasOverrideActionBar and HasOverrideActionBar())))
 		out(("  HasVehicleActionBar()  = %s"):format(tostring(HasVehicleActionBar and HasVehicleActionBar())))
+		out(
+			("  C_ActionBar.GetOverrideBarIndex() = %s"):format(
+				tostring(C_ActionBar and C_ActionBar.GetOverrideBarIndex and C_ActionBar.GetOverrideBarIndex())
+			)
+		)
+		out(
+			("  C_ActionBar.GetVehicleBarIndex()  = %s"):format(
+				tostring(C_ActionBar and C_ActionBar.GetVehicleBarIndex and C_ActionBar.GetVehicleBarIndex())
+			)
+		)
 
-		out("--- override slots 133-144 (Bar 11 copy source) ---")
+		local overBtn = _G["OverrideActionBarButton1"]
+		if overBtn then
+			out(
+				("  OverrideActionBarButton1: action=%s attr_action=%s"):format(
+					tostring(overBtn.action),
+					tostring(overBtn:GetAttribute("action"))
+				)
+			)
+			local act = overBtn.action or overBtn:GetAttribute("action")
+			if act then
+				out(
+					("  OverrideActionBarButton1 action info: type=%s id=%s tex=%s"):format(
+						tostring(select(1, GetActionInfo(act))),
+						tostring(select(2, GetActionInfo(act))),
+						tostring(GetActionTexture(act))
+					)
+				)
+			end
+		else
+			out("  OverrideActionBarButton1 frame is NOT found")
+		end
+
+		out("--- override slots scan (121-180) ---")
 		local anySlot = false
-		for slot = 133, 144 do
+		for slot = 121, 180 do
 			local aType, id, sub = GetActionInfo(slot)
 			if aType then
 				anySlot = true
-				out(("  slot %d: %s id=%s sub=%s"):format(slot, tostring(aType), tostring(id), tostring(sub)))
+				out(
+					("  slot %d: %s id=%s sub=%s tex=%s"):format(
+						slot,
+						tostring(aType),
+						tostring(id),
+						tostring(sub),
+						tostring(GetActionTexture(slot))
+					)
+				)
 			end
 		end
 		if not anySlot then
-			out("  (all 12 override slots are EMPTY right now)")
+			out("  (all scanned override slots 121-180 are EMPTY right now)")
 		end
 
 		-- Auto-discover interfaces whose buttons carry an [overridebar] condition,
@@ -2584,17 +2627,37 @@ SlashCmdList["WISE"] = function(msg)
 					local gameAttr = f.GetAttribute and f:GetAttribute("state-game")
 					local p = f:GetParent()
 					out(("  interface '%s':"):format(name))
-					out(("    frame: shown=%s visible=%s alpha=%.2f"):format(
-						tostring(f:IsShown()), tostring(f:IsVisible()), f:GetAlpha() or -1))
-					out(("    parent=%s parentShown=%s"):format(
-						tostring(p and p.GetName and p:GetName() or p),
-						tostring(p and p.IsShown and p:IsShown())))
-					out(("    state-game(live)=%s   customShow=%q customHide=%q base=%s"):format(
-						tostring(gameAttr), tostring(vs.customShow), tostring(vs.customHide), tostring(vs.baseVisibility)))
+					out(
+						("    frame: shown=%s visible=%s alpha=%.2f"):format(
+							tostring(f:IsShown()),
+							tostring(f:IsVisible()),
+							f:GetAlpha() or -1
+						)
+					)
+					out(
+						("    parent=%s parentShown=%s"):format(
+							tostring(p and p.GetName and p:GetName() or p),
+							tostring(p and p.IsShown and p:IsShown())
+						)
+					)
+					out(
+						("    state-game(live)=%s   customShow=%q customHide=%q base=%s"):format(
+							tostring(gameAttr),
+							tostring(vs.customShow),
+							tostring(vs.customHide),
+							tostring(vs.baseVisibility)
+						)
+					)
 					for _, m in ipairs(matchButtons) do
 						local vis = m.btn.GetAttribute and m.btn:GetAttribute("_state-visibility")
-						out(("    btn[%d] cond=%s shown=%s driver=%s"):format(
-							m.i, tostring(m.c), tostring(m.btn:IsShown()), tostring(vis)))
+						out(
+							("    btn[%d] cond=%s shown=%s driver=%s"):format(
+								m.i,
+								tostring(m.c),
+								tostring(m.btn:IsShown()),
+								tostring(vis)
+							)
+						)
 					end
 				end
 			end

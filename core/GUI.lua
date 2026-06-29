@@ -353,19 +353,34 @@ end
 -- (same approach as EXTRA_ACTION_BUTTON_SLOT) instead of reading .action from
 -- Blizzard's protected ActionButton frames which would spread taint.
 function Wise:ResolveBarActionID(aID)
+	local buttonIndex
 	if aID >= 133 and aID <= 144 then
-		local buttonIndex = aID - 132
-		if HasOverrideActionBar and HasOverrideActionBar() and GetOverrideBarIndex then
-			return buttonIndex + (GetOverrideBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
-		end
+		buttonIndex = aID - 132
 	elseif aID >= 121 and aID <= 132 then
-		local buttonIndex = aID - 120
-		if HasVehicleActionBar and HasVehicleActionBar() and GetVehicleBarIndex then
-			return buttonIndex + (GetVehicleBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
-		elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and GetTempShapeshiftBarIndex then
-			return buttonIndex + (GetTempShapeshiftBarIndex() - 1) * NUM_ACTIONBAR_BUTTONS
+		buttonIndex = aID - 120
+	elseif aID >= 145 and aID <= 156 then
+		buttonIndex = aID - 144
+	end
+
+	if buttonIndex then
+		local specialPage
+		local getOverride = C_ActionBar and C_ActionBar.GetOverrideBarIndex or GetOverrideBarIndex
+		local getVehicle = C_ActionBar and C_ActionBar.GetVehicleBarIndex or GetVehicleBarIndex
+		local getShapeshift = C_ActionBar and C_ActionBar.GetTempShapeshiftBarIndex or GetTempShapeshiftBarIndex
+
+		if HasOverrideActionBar and HasOverrideActionBar() and getOverride then
+			specialPage = getOverride()
+		elseif HasVehicleActionBar and HasVehicleActionBar() and getVehicle then
+			specialPage = getVehicle()
+		elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and getShapeshift then
+			specialPage = getShapeshift()
+		end
+
+		if specialPage then
+			return buttonIndex + (specialPage - 1) * NUM_ACTIONBAR_BUTTONS
 		end
 	end
+
 	return aID
 end
 
@@ -580,6 +595,14 @@ local function EvalConditionExact(str)
 	end
 
 	return false
+end
+
+-- Public wrapper so other modules (e.g. IndicatorRules) can evaluate a macro
+-- condition the SAME way the slot engine does — native tokens via
+-- SecureCmdOptionParse + Wise custom tokens, OR'd across bracket groups, reflecting
+-- the CURRENT state. Empty/nil condition = true (always).
+function Wise:EvalConditionExact(str)
+	return EvalConditionExact(str)
 end
 
 -- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
@@ -1142,7 +1165,11 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 				local vFormatter = GetWiseCountdownFormatter(countdownFormat)
 				pcall(vClone.cooldown.SetCountdownFormatter, vClone.cooldown, vFormatter)
 				if HAS_COUNTDOWN_MS_THRESHOLD then
-					pcall(vClone.cooldown.SetCountdownMillisecondsThreshold, vClone.cooldown, COUNTDOWN_DECIMAL_THRESHOLD)
+					pcall(
+						vClone.cooldown.SetCountdownMillisecondsThreshold,
+						vClone.cooldown,
+						COUNTDOWN_DECIMAL_THRESHOLD
+					)
 				end
 				if vClone.countdown then
 					vClone.countdown:Hide()
@@ -3020,7 +3047,7 @@ function Wise:GetSecureAttributes(actionData, conditions)
 	elseif aType == "action" then
 		local aNum = tonumber(aValue)
 		local isOverride = aNum and aNum >= 133 and aNum <= 144
-		local isPossess = aNum and aNum >= 121 and aNum <= 132
+		local isPossess = aNum and (aNum >= 121 and aNum <= 132 or aNum >= 145 and aNum <= 156)
 
 		if isOverride or isPossess then
 			secureType = "macro"
@@ -3076,14 +3103,15 @@ function Wise:GetSecureAttributes(actionData, conditions)
 				local condVehicle = table.concat(vehicleParts)
 				local condPossess = table.concat(possessParts)
 
+				local offset = (aNum >= 145 and aNum <= 156) and 144 or 120
 				secureValue = "/click "
 					.. condVehicle
 					.. " OverrideActionBarButton"
-					.. (aNum - 120)
+					.. (aNum - offset)
 					.. "\n/click "
 					.. condPossess
 					.. " ActionButton"
-					.. (aNum - 120)
+					.. (aNum - offset)
 			else
 				if resolvedCond == "" then
 					resolvedCond = "[overridebar]"
@@ -5340,10 +5368,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		local resolvedType, resolvedValue, resolvedIcon
 		if aType == "misc" and aValue == "custom_macro" then
 			resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
-			-- Priority: manual icon override > dynamic resolution > stored node icon > question mark
-			if actionData.icon then
+			-- Priority: stored icon (user override, OR the build-pass fallback icon a graph step
+			-- carries for spells ResolveMacroData can't resolve by name, e.g. /cast Abundance) >
+			-- dynamic resolution (#showtooltip) > question mark. The placeholder "?" (numeric
+			-- 134400 or the INV_Misc_QuestionMark path) is never a real icon — skip it at each
+			-- rung so an override/possess step that stores "?" falls through to live resolution
+			-- instead of locking on. Mirrors the dynamic-refresh closure below. See memory:
+			-- override_bar_torch_event_127.
+			local function isPlaceholderIcon(ic)
+				return not ic
+					or ic == 134400
+					or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
+			end
+			if not isPlaceholderIcon(actionData.icon) then
 				texture = actionData.icon
-			elseif resolvedIcon then
+			elseif not isPlaceholderIcon(resolvedIcon) then
 				texture = resolvedIcon
 			end
 		end
@@ -5908,21 +5947,18 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		for _, states in pairs(group.actions) do
 			if type(states) == "table" then
 				for _, state in ipairs(states) do
-					-- Slot-count resize inputs — only matter for dynamic-style interfaces.
-					if isDynamic then
-						if
-							(state.conditions and state.conditions ~= "")
-							or (state.type == "misc" and AVAILABILITY_MISC[state.value])
-						then
-							hasDynamicConditions = true
-						end
-						-- Track cooldown-filterable action types for dynamic groups
-						if
-							group.propertyType ~= "CooldownWiser"
-							and (state.type == "spell" or state.type == "item" or state.type == "toy")
-						then
-							hasDynamicCooldowns = true
-						end
+					if state.conditions and state.conditions ~= "" then
+						hasDynamicConditions = true
+					elseif isDynamic and (state.type == "misc" and AVAILABILITY_MISC[state.value]) then
+						hasDynamicConditions = true
+					end
+
+					if
+						isDynamic
+						and group.propertyType ~= "CooldownWiser"
+						and (state.type == "spell" or state.type == "item" or state.type == "toy")
+					then
+						hasDynamicCooldowns = true
 					end
 					-- Event-less modifier conditions need polling in any style so the
 					-- displayed icon stays in sync with the modifier key.
@@ -5980,11 +6016,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		if group.actions then
 			for slotIdx, states in pairs(group.actions) do
 				if type(states) == "table" then
-					for _, state in ipairs(states) do
+					condSnapshot[slotIdx] = {}
+					for sIdx, state in ipairs(states) do
 						if state.conditions and state.conditions ~= "" then
-							condSnapshot[slotIdx] = EvalFullConditionString(state.conditions)
+							condSnapshot[slotIdx][sIdx] = EvalConditionExact(state.conditions)
 						elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
-							condSnapshot[slotIdx] = Wise:IsActionKnown(state.type, state.value)
+							condSnapshot[slotIdx][sIdx] = Wise:IsActionKnown(state.type, state.value)
 						end
 					end
 				end
@@ -6028,15 +6065,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				local changed = false
 				if group.actions then
 					for slotIdx, states in pairs(group.actions) do
-						if type(states) == "table" then
-							for _, state in ipairs(states) do
+						if type(states) == "table" and f._dynamicCondSnapshot[slotIdx] then
+							for sIdx, state in ipairs(states) do
 								local now
 								if state.conditions and state.conditions ~= "" then
-									now = EvalFullConditionString(state.conditions)
+									now = EvalConditionExact(state.conditions)
 								elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
 									now = Wise:IsActionKnown(state.type, state.value)
 								end
-								if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx] then
+								if now ~= nil and now ~= f._dynamicCondSnapshot[slotIdx][sIdx] then
 									changed = true
 									break
 								end
@@ -6093,8 +6130,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						if aID then
 							local realID = Wise:ResolveBarActionID(aID)
 							local tex = GetActionTexture(realID)
-							local isBarSlot = (aID >= 121 and aID <= 144)
+							local isBarSlot = (aID >= 121 and aID <= 156)
 							if tex then
+								f._retryCount = 0
 								btn.icon:SetTexture(tex)
 								btn.icon:Show()
 								local vClone = meta.visualClone or btn.visualClone
@@ -6102,19 +6140,36 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 									vClone.icon:SetTexture(tex)
 									vClone.icon:Show()
 								end
-							elseif isBarSlot then
-								btn.icon:Hide()
-								local vClone = meta.visualClone or btn.visualClone
-								if vClone and vClone.icon then
-									vClone.icon:Hide()
-								end
 							else
-								btn.icon:SetTexture(134400)
-								btn.icon:Show()
-								local vClone = meta.visualClone or btn.visualClone
-								if vClone and vClone.icon then
-									vClone.icon:SetTexture(134400)
-									vClone.icon:Show()
+								local overrideActive = HasOverrideActionBar and HasOverrideActionBar()
+								local vehicleActive = HasVehicleActionBar and HasVehicleActionBar()
+								if isBarSlot and (overrideActive or vehicleActive) then
+									f._retryCount = (f._retryCount or 0) + 1
+									if f._retryCount <= 5 and not f._retryTimerScheduled then
+										f._retryTimerScheduled = true
+										C_Timer.After(0.2, function()
+											f._retryTimerScheduled = false
+											if f._dynamicRefresh then
+												f._dynamicRefresh()
+											end
+										end)
+									end
+								end
+
+								if isBarSlot then
+									btn.icon:Hide()
+									local vClone = meta.visualClone or btn.visualClone
+									if vClone and vClone.icon then
+										vClone.icon:Hide()
+									end
+								else
+									btn.icon:SetTexture(134400)
+									btn.icon:Show()
+									local vClone = meta.visualClone or btn.visualClone
+									if vClone and vClone.icon then
+										vClone.icon:SetTexture(134400)
+										vClone.icon:Show()
+									end
 								end
 							end
 							Wise:UpdateButtonCooldown(btn)
@@ -6124,18 +6179,69 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- Update Custom Macro
 						local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
 
-						-- Priority: User Override > Dynamic Resolution (e.g. #showtooltip) > Question Mark.
-						-- The stored icon is only a real "user override" when it isn't the question
-						-- mark placeholder. A graph-compiled override/possess step can carry the
-						-- placeholder (numeric 134400 or the "INV_Misc_QuestionMark" path string) as
-						-- its icon; if we let that win, a static interface stays locked to a question
-						-- mark after the override bar ends instead of re-resolving to the live spec
-						-- spell. Treat the placeholder as "no override" so mIcon (resolved from the
-						-- per-character macro) takes over. See memory: override_bar_torch_event_127.
-						local storedIcon = meta.actionData.icon
-						local storedIsPlaceholder = (storedIcon == 134400)
-							or (type(storedIcon) == "string" and storedIcon:lower():find("inv_misc_questionmark", 1, true))
-						local displayIcon = (not storedIsPlaceholder and storedIcon) or mIcon or 134400
+						-- Priority: stored icon (user override OR the build-pass fallback icon a graph
+						-- step carries for spells ResolveMacroData can't resolve by NAME — e.g. /cast
+						-- Abundance, where C_Spell.GetSpellInfo("Abundance") returns nil because the
+						-- name isn't an exact spellbook match; without it the slot locks to "?") >
+						-- dynamic resolution (#showtooltip / mIcon) > question mark. The placeholder
+						-- "?" (numeric 134400 or the "INV_Misc_QuestionMark" path string) is never a
+						-- real icon: a graph-compiled override/possess step stores it, and letting it
+						-- win would keep a static interface stuck on "?" after the override bar ends.
+						-- Skip the placeholder at each rung so mIcon (resolved from the per-character
+						-- macro / live /click) takes over. Mirrors the initial icon path above.
+						-- See memory: override_bar_torch_event_127.
+						local function isPlaceholderIcon(ic)
+							return not ic
+								or ic == 134400
+								or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
+						end
+						local displayIcon
+						if not isPlaceholderIcon(meta.actionData.icon) then
+							displayIcon = meta.actionData.icon
+						elseif not isPlaceholderIcon(mIcon) then
+							displayIcon = mIcon
+						else
+							displayIcon = 134400
+						end
+
+						local overrideActive = HasOverrideActionBar and HasOverrideActionBar()
+						local vehicleActive = HasVehicleActionBar and HasVehicleActionBar()
+						local needsRetry = false
+						if (not mIcon or mIcon == 134400) and (overrideActive or vehicleActive) then
+							needsRetry = true
+						elseif
+							overrideActive
+							and meta.actionData
+							and meta.actionData.macroText
+							and meta.actionData.macroText:find("overridebar", 1, true)
+							and mType ~= "action"
+						then
+							needsRetry = true
+						elseif
+							vehicleActive
+							and meta.actionData
+							and meta.actionData.macroText
+							and meta.actionData.macroText:find("vehicleui", 1, true)
+							and mType ~= "action"
+						then
+							needsRetry = true
+						end
+
+						if needsRetry then
+							f._retryCount = (f._retryCount or 0) + 1
+							if f._retryCount <= 5 and not f._retryTimerScheduled then
+								f._retryTimerScheduled = true
+								C_Timer.After(0.2, function()
+									f._retryTimerScheduled = false
+									if f._dynamicRefresh then
+										f._dynamicRefresh()
+									end
+								end)
+							end
+						else
+							f._retryCount = 0
+						end
+
 						btn.icon:SetTexture(displayIcon)
 						local vClone = meta.visualClone or btn.visualClone
 						if vClone and vClone.icon then
@@ -6304,8 +6410,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						if canSetAttrs and nestMode ~= "jump" then
 							Wise:StoreChildActionsOnButton(btn, meta.actionValue, nestMode)
 						end
-					elseif (meta.states and #meta.states > 1)
-						or (meta.states and #meta.states == 1 and meta.states[1] and meta.states[1].conditions and meta.states[1].conditions ~= "")
+					elseif
+						(meta.states and #meta.states > 1)
+						or (
+							meta.states
+							and #meta.states == 1
+							and meta.states[1]
+							and meta.states[1].conditions
+							and meta.states[1].conditions ~= ""
+						)
 					then
 						local chosen, hadMatch = Wise:EvaluateSlotConditions(meta.states, meta.conflictStrategy, btn)
 						-- Grey the icon when nothing currently matches: the displayed state is

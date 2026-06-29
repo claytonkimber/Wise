@@ -4595,9 +4595,7 @@ function Wise:CreateNodePropertiesPanel(host)
 	restrictDesc:SetPoint("TOPLEFT", 10, y)
 	restrictDesc:SetWidth(240)
 	restrictDesc:SetJustifyH("LEFT")
-	restrictDesc:SetText(
-		"Control exactly when this action appears based on Class, Spec, Talent, Role, or Character."
-	)
+	restrictDesc:SetText("Control exactly when this action appears based on Class, Spec, Talent, Role, or Character.")
 	tinsert(panel.controls, restrictDesc)
 	y = y - 45
 
@@ -4611,6 +4609,20 @@ function Wise:CreateNodePropertiesPanel(host)
 		tinsert(panel.controls, line)
 		y = y - 15
 		y = Wise:CreateMacroEditor(panel, action, y)
+	end
+
+	-- Colors, Glows & Sounds — per-action border/glow/sound rules driven by this
+	-- spell's aura stack count. Persists on action.indicatorRules; runtime in
+	-- modules/IndicatorRules.lua. Only meaningful for spell actions (needs an aura).
+	if Wise.RenderIndicatorRules and action.type == "spell" then
+		y = Wise:RenderIndicatorRules(panel, action, y, CommitEdit)
+	end
+
+	-- Audio Cue — play an Oxed sound when a per-node condition becomes true
+	-- (proc gained, spell ready, threshold, buff missing). Persists on
+	-- action.audioCue; the runtime evaluator lives in modules/AudioCues.lua.
+	if Wise.RenderAudioCueProperties then
+		y = Wise:RenderAudioCueProperties(panel, action, y, CommitEdit)
 	end
 
 	panel:SetHeight(math.abs(y) + 20)
@@ -4933,9 +4945,7 @@ local function ApplyTabVisibility()
 	-- otherwise the scrollbar/edge lands on the seam and reads as a stray grey
 	-- line. Restored to the full-width right inset when no overlay is open.
 	if sc.nodesCanvasScroll and sc.host then
-		local overlayActive = Wise.pickingCondition
-			or Wise.editingNodeProperties
-			or Wise.pickingRestrictions
+		local overlayActive = Wise.pickingCondition or Wise.editingNodeProperties or Wise.pickingRestrictions
 		local rightInset = -28
 		if overlayActive then
 			local hostW = sc.host:GetWidth() or 0
@@ -4965,9 +4975,7 @@ function Wise:CreateSlotConfiguratorUI(host)
 		-- including its header divider — is hidden while one is open. Otherwise the
 		-- full-width divider/toolbar bleed under and around the popup, and the divider
 		-- appears to "persist" relative to the right-half popup.
-		local overlayActive = Wise.pickingCondition
-			or Wise.editingNodeProperties
-			or Wise.pickingRestrictions
+		local overlayActive = Wise.pickingCondition or Wise.editingNodeProperties or Wise.pickingRestrictions
 		if overlayActive then
 			sc.titleLabel:Hide()
 			sc.divider:Hide()

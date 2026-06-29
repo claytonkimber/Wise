@@ -938,36 +938,9 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		tinsert(panel.controls, openBtn)
 		y = y - 30
 
-		-- Check if any node in this graph slot casts Abundance, and if so render its config panel.
-		local graphIsAbundance = false
-		for _, node in pairs(actions.graph.nodes) do
-			local na = node.action
-			if na then
-				if na.type == "spell" and na.value then
-					local valNum = tonumber(na.value)
-					local spellName
-					if valNum then
-						local spellInfo = C_Spell.GetSpellInfo(valNum)
-						spellName = spellInfo and spellInfo.name
-					else
-						spellName = na.value
-					end
-					if spellName == "Abundance" then
-						graphIsAbundance = true
-						break
-					end
-				elseif na.type == "misc" and na.value == "custom_macro" and na.macroText then
-					if na.macroText:find("Abundance", 1, true) then
-						graphIsAbundance = true
-						break
-					end
-				end
-			end
-		end
-		if graphIsAbundance and Wise.RenderAbundanceProperties then
-			-- Pass the graph-level compiled state so RenderAbundanceProperties can read/write SV keys.
-			y = Wise:RenderAbundanceProperties(panel, actions, y)
-		end
+		-- Per-action color/glow/sound rules are authored in the Slot Configurator's
+		-- node properties window (Open Slot Configurator → click the node), alongside
+		-- Conditions / Availability / Audio Cue. Nothing rendered here.
 
 		return y
 	end
@@ -1916,31 +1889,15 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		y = Wise:CreateMacroEditor(panel, action, y)
 	end
 
-	-- Abundance Spell Experiment Settings. Detect BOTH a plain Abundance spell slot
-	-- AND a graph-compiled custom_macro slot that casts Abundance (the configurator
-	-- emits custom_macro, type "misc", not "spell"), so the color/glow config panel
-	-- still appears for it.
-	local isAbundance = false
-	if action.type == "spell" and action.value then
-		local spellName
-		local valNum = tonumber(action.value)
-		if valNum then
-			local spellInfo = C_Spell.GetSpellInfo(valNum)
-			spellName = spellInfo and spellInfo.name
-		else
-			spellName = action.value
-		end
-		if spellName == "Abundance" then
-			isAbundance = true
-		end
-	elseif action.type == "misc" and action.value == "custom_macro" and action.macroText then
-		if action.macroText:find("Abundance", 1, true) then
-			isAbundance = true
-		end
-	end
-
-	if isAbundance and Wise.RenderAbundanceProperties then
-		y = Wise:RenderAbundanceProperties(panel, action, y)
+	-- Per-action color/glow/sound rules (driven by this spell's aura stacks). Plain
+	-- spell slots are edited here (they have no node-graph window), so render the
+	-- rules editor inline. Graph-slot nodes get it in the Slot Configurator instead.
+	if Wise.RenderIndicatorRules and action.type == "spell" then
+		y = Wise:RenderIndicatorRules(panel, action, y, function()
+			if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+				Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+			end
+		end)
 	end
 
 	return y

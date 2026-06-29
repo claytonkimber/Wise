@@ -1405,96 +1405,42 @@ end
 -- Helper Functions (Ported from Action.lua)
 -- ============================================================================
 
-function Wise:ResolveMacroData(macroText)
-	if not macroText or macroText == "" then
-		return nil, nil, nil
-	end
-
-	local targetLine = nil
-
-	-- Pass 1: Check for #showtooltip or #show
-	for line in string.gmatch(macroText, "[^\r\n]+") do
-		local clean = strtrim(line)
-		if clean:match("^#showtooltip") then
-			local args = clean:match("^#showtooltip%s+(.*)")
-			if args then
-				targetLine = args
-				break
-			end
-			-- If #showtooltip has no args, we fall through to find the first cast/use
-		elseif clean:match("^#show") then
-			local args = clean:match("^#show%s+(.*)")
-			if args then
-				targetLine = args
-				break
-			end
-		end
-	end
-
-	-- Pass 2: If no explicit #show arg found, find first cast/use
-	if not targetLine then
-		for line in string.gmatch(macroText, "[^\r\n]+") do
-			local clean = strtrim(line)
-			local cmd, args = clean:match("^(%S+)%s+(.*)")
-			if cmd then
-				cmd = string.lower(cmd)
-				-- /cast, /use, /castsequence, /randomcast, /castrandom
-				if
-					(
-						cmd == "/cast"
-						or cmd == "/use"
-						or cmd == "/castsequence"
-						or cmd == "/randomcast"
-						or cmd == "/castrandom"
-					) and args
-				then
-					targetLine = args
-					break
-				end
-			end
-		end
-	end
-
-	if not targetLine then
-		return nil, nil, nil
-	end
-
-	-- Evaluate Conditional
-	local result = SecureCmdOptionParse(targetLine)
+-- Resolve a single macro target token (the part after "/cast", "/use", or a
+-- "/click <button>") into a (type, value, icon) triple for DISPLAY. Handles the
+-- /click override/possess action buttons so an override-bar macro line shows the
+-- live encounter ability's icon (e.g. Throw Torch), then falls back to spell, item,
+-- and numeric-ID resolution. Returns nil when the token resolves to nothing.
+local function ResolveMacroTarget(result)
 	if not result or result == "" then
-		-- The conditional did not currently match (e.g. "[combat] Abundance" while
-		-- out of combat). For DISPLAY purposes we still want the button to show the
-		-- intended spell's icon rather than going blank — mirroring how a real macro
-		-- with #showtooltip still shows the spell. Strip the [conditions] from each
-		-- clause and use the first resolvable spell/item as the icon source.
-		for clause in string.gmatch(targetLine, "[^;]+") do
-			local stripped = strtrim((clause:gsub("%b[]", "")))
-			if stripped ~= "" then
-				result = stripped
-				break
-			end
-		end
-		if not result or result == "" then
-			return nil, nil, nil
-		end
+		return nil
 	end
 
-	-- Clean up castsequence reset rules and comma lists
-	local cleanResult = result
-	if cleanResult:match("^reset=") then
-		cleanResult = cleanResult:gsub("^reset=%S+%s*", "")
+	-- /click of an override/possess action button: resolve the live paged slot so
+	-- the icon reflects the current encounter ability rather than the empty 133/121
+	-- base slot. ResolveBarActionID maps to the active override/vehicle/shapeshift page.
+	local overrideIdx = result:match("OverrideActionBarButton(%d+)")
+	if overrideIdx then
+		local actionID = 132 + tonumber(overrideIdx)
+		local realID = Wise:ResolveBarActionID(actionID)
+		local icon = GetActionTexture(realID)
+		if icon then
+			return "action", actionID, icon
+		end
+		-- No texture on the resolved slot (override bar not up / empty): let the
+		-- caller fall through to the next macro line for a usable icon.
+		return nil
 	end
-	if cleanResult:match(",") then
-		cleanResult = cleanResult:match("^([^,]+)")
-	end
-	if cleanResult then
-		result = strtrim(cleanResult)
-	end
-	if not result or result == "" then
-		return nil, nil, nil
+	local actionIdx = result:match("^ActionButton(%d+)$")
+	if actionIdx then
+		local actionID = tonumber(actionIdx)
+		local realID = Wise:ResolveBarActionID(actionID)
+		local icon = GetActionTexture(realID)
+		if icon then
+			return "action", actionID, icon
+		end
+		return nil
 	end
 
-	-- Resolve Result (Item or Spell?)
 	-- Try Spell first (most common)
 	local sInfo = C_Spell.GetSpellInfo(result)
 	if sInfo then
@@ -1502,26 +1448,112 @@ function Wise:ResolveMacroData(macroText)
 	end
 
 	-- Try Item
-	local iName, iLink, iRarity, iLevel, iMinLevel, iType, iSubType, iStackCount, iEquipLoc, iIcon, iSellPrice, iClassID, iSubClassID, bindType, expacID, iSetID, isCraftingReagent =
-		C_Item.GetItemInfo(result)
+	local iIcon = select(10, C_Item.GetItemInfo(result))
 	if iIcon then
 		local iID = C_Item.GetItemInfoInstant(result) -- Get ID reliably
 		return "item", iID, iIcon
 	end
 
-	-- Fallback: Check if it's a numeric ID directly
+	-- Fallback: numeric ID (spell or item)
 	local id = tonumber(result)
 	if id then
-		-- Check Spell ID
 		sInfo = C_Spell.GetSpellInfo(id)
 		if sInfo then
 			return "spell", sInfo.spellID, sInfo.iconID
 		end
-
-		-- Check Item ID
 		local icon = C_Item.GetItemIconByID(id)
 		if icon then
 			return "item", id, icon
+		end
+	end
+
+	return nil
+end
+
+function Wise:ResolveMacroData(macroText)
+	if not macroText or macroText == "" then
+		return nil, nil, nil
+	end
+
+	-- Collect candidate target lines in priority order: an explicit #show(tooltip)
+	-- argument first, otherwise every castable line (/cast, /use, /click, …). We try
+	-- each in turn and return the FIRST that resolves to a real spell/item/action —
+	-- this matches how a real macro picks its #showtooltip icon and is the behavior
+	-- normal slots (e.g. [combat] Abundance) and override /click lines both rely on.
+	local candidates = {}
+	local explicitTarget = nil
+
+	for line in string.gmatch(macroText, "[^\r\n]+") do
+		local clean = strtrim(line)
+		if clean:match("^#showtooltip") then
+			local args = clean:match("^#showtooltip%s+(.*)")
+			if args then
+				explicitTarget = args
+				break
+			end
+			-- #showtooltip with no args: fall through to the first castable line
+		elseif clean:match("^#show") then
+			local args = clean:match("^#show%s+(.*)")
+			if args then
+				explicitTarget = args
+				break
+			end
+		end
+	end
+
+	if explicitTarget then
+		candidates[1] = explicitTarget
+	else
+		for line in string.gmatch(macroText, "[^\r\n]+") do
+			local clean = strtrim(line)
+			local cmd, args = clean:match("^(%S+)%s+(.*)")
+			if cmd then
+				cmd = string.lower(cmd)
+				if
+					(
+						cmd == "/cast"
+						or cmd == "/use"
+						or cmd == "/castsequence"
+						or cmd == "/randomcast"
+						or cmd == "/castrandom"
+						or cmd == "/click"
+					) and args
+				then
+					candidates[#candidates + 1] = args
+				end
+			end
+		end
+	end
+
+	for _, targetLine in ipairs(candidates) do
+		-- Evaluate the live conditional. If nothing currently matches (e.g.
+		-- "[combat] Abundance" out of combat), strip [conditions] and use the first
+		-- clause so the button still shows the intended icon. Mirrors a real macro.
+		local result = SecureCmdOptionParse(targetLine)
+		if not result or result == "" then
+			for clause in string.gmatch(targetLine, "[^;]+") do
+				local stripped = strtrim((clause:gsub("%b[]", "")))
+				if stripped ~= "" then
+					result = stripped
+					break
+				end
+			end
+		end
+
+		if result and result ~= "" then
+			-- Clean up castsequence reset rules and comma lists
+			if result:match("^reset=") then
+				result = result:gsub("^reset=%S+%s*", "")
+			end
+			if result:match(",") then
+				result = result:match("^([^,]+)")
+			end
+			result = strtrim(result)
+
+			local rType, rVal, rIcon = ResolveMacroTarget(result)
+			if rType then
+				return rType, rVal, rIcon
+			end
 		end
 	end
 
@@ -2250,11 +2282,10 @@ function Wise:IsActionKnown(actionType, value)
 				end
 			end
 			return false
-		elseif value == "overridebar" then
-			return HasOverrideActionBar and HasOverrideActionBar() or false
-		elseif value == "possessbar" then
-			return (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+		elseif value == "overridebar" or value == "possessbar" then
+			return (HasOverrideActionBar and HasOverrideActionBar())
 				or (HasVehicleActionBar and HasVehicleActionBar())
+				or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
 				or false
 		elseif type(value) == "string" and string.sub(value, 1, 11) == "spec_equip_" then
 			local slotIdx = tonumber(string.sub(value, 12))
