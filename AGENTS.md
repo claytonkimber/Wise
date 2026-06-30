@@ -8,7 +8,7 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - Framework:
 - IDE: Antigravity 2026
 - Agent Trio: Claude Code (Logic), Jules (Background Ops), Gemini (Arch)
-- Tooling: Mechanic MCP (addon lifecycle automation); CodeSight MCP (codebase structure / blast-radius analysis)
+- Tooling: Mechanic MCP (addon lifecycle automation); CodeSight MCP (codebase structure / blast-radius analysis); wow-ui-sim (headless WoW client for UI-layout & visual verification — see its own section)
 
 ### Mechanic Usage Policy (token cost)
 
@@ -18,6 +18,61 @@ Mechanic tool calls return very large outputs and burn context tokens fast. **Us
 - Reserve Mechanic for what only it can do: in-game execution (`lua-queue`/`lua-results`/`addon-output`), sandbox runs with WoW API stubs, and the security/deprecation scanners before a release.
 - Run the heavy scanners (`addon-security`, `addon-deprecations`, `addon-deadcode`, `addon-complexity`) once per change-set as a pre-merge gate, not after every edit.
 - Never call Mechanic tools speculatively or "just to check" — each call should answer a specific question you cannot answer locally.
+
+### UI & Visual Verification (wow-ui-sim)
+
+`wow-ui-sim` is a headless WoW UI client (Rust) that loads the real Blizzard base UI plus Wise and renders/inspects frames **without launching the game**. It lives at `Interface/_dev_/wow-ui-sim` and runs as a Docker image (`wow-ui-sim:12.0.7`). It is the only tool in this stack that can observe **actual frame geometry and rendered pixels** out-of-client.
+
+**Use it ONLY when a task needs out-of-client UI ground truth, specifically:**
+- **UI placement / anchoring** — verifying a frame's resolved position, size, anchor point, strata, or parent after an edit-mode / layout change (`dump-tree` returns the computed frame tree with coordinates).
+- **Graphics / visual issues** — confirming a texture, mask, atlas crop, color, or layer order actually renders as intended (`screenshot` produces a `.webp` of the rendered UI).
+- **Layout refinements** — before/after comparison of a positioning or sizing tweak, where "does it look right" can't be answered by reading Lua.
+- **Headless regression of load-time behavior** — `run-tests Wise` runs `Wise/tests/smoke.lua` (addon loads clean, globals present); `lua-errors` dumps unique Lua errors as JSON.
+
+**Do NOT invoke it unless the task is in that scope.** It is a multi-second Docker run (and `screenshot` renders a full frame), far heavier than reading code or running luacheck. Logic, API-signature, taint, and dependency questions never need it — answer those locally or with Mechanic. If a change is purely non-visual (a conditional, a data structure, an event wiring), there is no reason to start the simulator.
+
+**How to run** (Bash tool; PowerShell is unavailable in-session):
+```bash
+DOCKER="/c/Program Files/Docker/Docker/resources/bin/docker.exe"
+WISE="C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\Wise"
+
+# tests / frame geometry / lua errors (no extra mounts)
+MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
+  -v "${WISE}:/app/Interface/AddOns/Wise" \
+  wow-ui-sim:12.0.7 <command>      # run-tests Wise | dump-tree [-f Filter] | lua-errors
+
+# screenshot — also mount a host output dir, then Read the .webp back
+OUTDIR="<some scratch dir>"; mkdir -p "$OUTDIR"
+MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
+  -v "${WISE}:/app/Interface/AddOns/Wise" \
+  -v "${OUTDIR}:/out" \
+  wow-ui-sim:12.0.7 screenshot -o /out/wise.webp
+```
+- `MSYS_NO_PATHCONV=1` stops git-bash mangling the `:/app/...` mount path.
+- **`screenshot` renders via software Vulkan (Mesa lavapipe) baked into the image** — no GPU/`--gpus` needed, deterministic, ~1600x1200 `.webp`. The `XDG_RUNTIME_DIR is invalid` warning it prints is harmless (offscreen render, no Wayland session). Read the resulting `.webp` to see the rendered UI.
+- New UI test cases go in `Wise/tests/*.lua` using the simulator's `test(...)`/`async_test(...)` + `assertEquals` framework — this is separate from the in-client `tests.xml` QA checklist.
+
+### Choosing the tool: wow-ui-sim vs Mechanic (token efficiency)
+
+These two are **complementary, not overlapping** — they answer different questions, so pick by what you actually need and don't run both for one question:
+
+| Question you have | Tool | Why |
+|---|---|---|
+| Where does this frame end up? What's its anchor/size/strata after my change? | **wow-ui-sim** `dump-tree` | Only it computes real resolved frame geometry from the loaded UI. |
+| Does this texture/mask/atlas/color render correctly? | **wow-ui-sim** `screenshot` | Only it produces actual rendered pixels. |
+| Does the addon load without Lua errors at startup? | **wow-ui-sim** `run-tests`/`lua-errors` | Real Blizzard base UI + full load sequence, no game client. |
+| Is this WoW API real / what's its signature / is it deprecated? | **Mechanic** `api-search`/`api-info`/`addon-deprecations` | Mechanic owns the version-pinned API + deprecation DB; the sim doesn't answer API-shape questions. |
+| Does this isolated Lua logic behave correctly (no rendering)? | **Mechanic** `sandbox-exec` | Quick API-stubbed logic check; far lighter than booting the sim. |
+| Run a snippet inside my **actual** running game and read output? | **Mechanic** `lua-queue`/`lua-results`/`addon-output` | In-client execution — the sim is out-of-client, it can't see live game state. |
+| Taint / combat-lockdown / security audit; dead code; complexity; format/lint. | **Mechanic** scanners | Static analyzers; nothing visual, no sim needed. |
+
+**Strong points.** Mechanic = the *static + in-client + API-knowledge* layer (API DB, deprecations, security/taint/dead-code/complexity scanners, sandbox logic runs, real-game execution & output capture, asset/atlas pipeline). wow-ui-sim = the *out-of-client rendering + real-frame-geometry* layer (computed layout, rendered pixels, full base-UI load).
+
+**Rules of thumb for a robust, token-cheap workflow:**
+1. **Default to neither** — Read/Grep/Glob + your WoW knowledge + shell `luacheck`/`stylua` answer most questions for free.
+2. **Reach for Mechanic** for API truth, in-game runs, and pre-merge static scans (used sparingly per the policy above).
+3. **Reach for wow-ui-sim** only for the UI-layout / visual / load-time questions in its scope — when "does it look/sit right" genuinely can't be read from the code.
+4. **Never run both for the same question.** If you can answer it statically or via API lookup, don't boot the sim; if you need pixels or resolved geometry, the sim is the *only* answer and Mechanic won't help.
 
 ## Taint Avoidance (MANDATORY)
 
@@ -284,6 +339,7 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - **Unit Testing:** Unit tests that mock core APIs via monkey-patching should be excluded from `Wise.toc` and should always restore the original functions immediately after execution to prevent side effects in the production environment.
 - **Sandbox Testing:** Use `mcp__mechanic__sandbox-exec` to test Lua code with WoW API stubs without launching the game. This is the preferred method for quick validation of logic.
 - **In-Game Testing:** Use `mcp__mechanic__lua-queue` to queue Lua snippets for in-game execution (requires `/reload` in WoW), then `mcp__mechanic__lua-results` to read the output. Use `mcp__mechanic__addon-output` to get the latest errors, test results, and console output from the game.
+- **UI-Layout / Visual Verification:** For out-of-client checks of frame placement, anchoring, or rendered graphics (and headless load-time regression), use the `wow-ui-sim` Docker image — see "UI & Visual Verification (wow-ui-sim)" above for when (UI placement / graphics / refinements only) and how. Do not invoke it for non-visual logic, API, or taint questions.
 
 ## Textures and Media
 - **TGA Format:** Custom `.tga` mask textures for WoW must be saved as uncompressed 32-bit TGA files with an 8-bit alpha channel (RGBA), where the mask shape is opaque white and the background is transparent black.
