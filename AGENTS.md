@@ -209,6 +209,11 @@ btn:SetAttribute(newAttr, newValue)
 - **No reading** of protected frame properties (e.g., iterating `ActionBarFrame` children) — this spreads taint to your addon's call stack.
 - **No `getglobal()`** on Blizzard frame names during combat — use `_G[name]` only out of combat and cache the reference.
 - **No overwriting** Blizzard globals or metatable methods.
+- **A *global* secure hook (e.g. `hooksecurefunc("RegisterStateDriver", ...)`) fires for every caller in the game, not just Wise's own frames.** Running Wise's closure inside Blizzard's own secure call stack (e.g. compact unit-frame health-color updates during `GROUP_ROSTER_UPDATE`) taints frames Wise never manages, surfacing as `"secret number value"` compare errors deep in Blizzard code. Any global secure hook MUST early-out via a cheap name/identity check (e.g. a precomputed `managedDriverNames` hash set) **before** touching any secure API or doing real work — never run the hook body "just to check" on every frame.
+
+### Numeric Taint Stripping
+
+`tonumber(n)` on an already-numeric tainted value is an **identity operation — it does NOT strip taint.** Only a string→number round-trip or arithmetic produces a fresh, untainted value. When a number originates from a secure frame/API (CooldownViewer children, action bar buttons, spec info, `C_Spell` override/lookup results) and will be used as a table key, in a comparison, or passed back through user code, route it through **`tonumber(tostring(value))`**, not plain `tonumber(value)` — and guard against `nil` since true secrets won't convert.
 
 ### Rule 9: Use `SecureCmdOptionParse()` for Condition Evaluation in Restricted Context
 
@@ -355,6 +360,7 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - **Secure Custom Actions:** To execute arbitrary Lua code securely for custom actions in `core/GUI.lua`, they are implemented as macros by setting `secureType = "macro"`, `secureAttr = "macrotext"`, and using a `/run` command in `secureValue`.
 - **Edit Mode Positioning:** When dynamically changing a frame's anchor point during edit mode in `modules/editmode.lua`, the x/y offsets must be recalculated using `GetEffectiveScale()` relative to `UIParent`. Position calculations must use the proxy anchor's center (`f.Anchor:GetCenter()`) rather than the frame's geometric center.
 - **Main Options Frame:** `WiseOptionsFrame` is explicitly excluded from `UISpecialFrames` to ensure it remains open when other standard WoW panels are opened. Elements reacting to its visibility should utilize `HookScript("OnShow")` and `HookScript("OnHide")` on the frame directly.
+- **Slot Configurator overlay invariant:** the embedded slot configurator (`modules/Properties.lua`/`modules/SlotConfigurator.lua`) renders popups (condition picker, node properties, availability filter, icon picker) as separate right-half overlay hosts. **Exactly one overlay host may be visible at a time**, enforced by (1) a `HideAllConfiguratorOverlays()` helper called before any overlay shows itself, and (2) each popup opener clearing the *other* overlays' flags. The configurator's own chrome (header divider, toolbar) must also hide whenever any overlay flag is set, or it visually bleeds around the popup. When adding a new overlay, wire it into both mechanisms.
 
 ## Addon Specifics
 - **Conditionals Validation:** `Wise:ValidateVisibilityCondition` in core/Conditionals.lua enforces security by disallowing newline (\n) and carriage return (\r) characters to prevent macro command injection.
@@ -362,6 +368,24 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - **Interface Conditionals:** Interface conditionals (e.g., `[wise:groupName]`) and Addon Loading Magic conditionals (e.g., `[aml:slotname]`) are dynamically generated and evaluated in `core/Conditionals.lua`.
 - **Specializations:** Action visibility based on specializations uses the 'spec' category. The `action.specRequirements` field stores a table of required spec IDs.
 - **Nesting Cycles:** `Wise:WouldCreateNestingCycle` in `modules/Nesting.lua` proactively prevents circular interface nesting by traversing the hierarchy via `Wise:GetParentInfo`.
+
+### Graph Slots / Compiled `custom_macro` Steps
+
+Slot Configurator "graph" nodes (`type="spell"`, `value=spellID`, `icon=textureID`) get compiled into bar-ready `type="misc"`, `value="custom_macro"` entries with a `macroText` body. Several non-obvious rules govern this pipeline — violating any of them reintroduces bugs that have already shipped and been fixed once:
+
+- **`/cast` does not accept a bare numeric spell ID in retail.** `/cast [cond] 12345` parses without error but **casts nothing** — only `/cast [cond] SpellName` fires. This only bites the *conditional* branch of compiled macro text (the unconditional branch uses `type="spell"`, which does accept IDs). Any code generating conditional `/cast` lines must emit the resolved spell **name**, not the ID.
+- **Compiled `custom_macro` steps MUST carry `pathNodeIds`.** `UpdateGroupDisplay` (`core/GUI.lua`) only re-filters a step per-character when `pathNodeIds` is present; without it the step fires its canonical macro text verbatim with no availability check, which can leak an off-spec/off-class cast. A step with no `pathNodeIds` but whose slot has a `graph` key is dropped at runtime rather than trusted (hand-authored Custom Macros are exempt — their slot has no `graph` key).
+- **Icon resolution priority:** the bar button icon comes from `ResolveMacroData`/`GetActionIcon`, which can return `nil` for untalented/unknown spells (`C_Spell.GetSpellInfo` fails) — the stored **node icon is the ground-truth fallback** and must be carried through `FilterMacroTextForCharacter` (as `liveIcon`/`copy.icon`) to the button renderer, which prefers `actionData.icon` over the live-resolved icon.
+- **Override/possess-bar action nodes (`type="action"`, `value` = a raw slot number 121-156) store a literal placeholder icon** (`"Interface\Icons\INV_Misc_QuestionMark"`, numeric `134400`) because the real icon can only be known at runtime via `GetActionTexture()` once `HasOverrideActionBar()`/`HasVehicleActionBar()`/`HasTempShapeshiftActionBar()` is true (see `Wise:ResolveBarActionID`, `core/GUI.lua`). Any icon-priority code must treat this placeholder (both the numeric `134400` AND the `inv_misc_questionmark` path-string form) as "no real icon" and fall through to the next candidate — checking only one form re-introduces a `?` icon bug.
+- **GCD display coloring must never influence the secure sequencer.** Every configurator-compiled step is on-GCD by construction (one action per press); a shared helper that resolves "what does this macro actually cast" for GCD-color display purposes must not also feed the secure `isa_offgcd_*` attribute that drives multi-step stacking, or steps silently collapse/stop advancing.
+
+### CooldownViewer Integration (`wiser/Cooldowns.lua`)
+
+- **`C_CooldownViewer` child frames do not reliably expose `cooldownID`** when the native Cooldown Manager viewer is hidden (`hideNativeInterface=true`) — as of 12.0.7, hidden children report `cooldownID=nil`. Detect "did this child actually yield a spell" by checking `child.cooldownID ~= nil`, never by the mere presence of a `GetSpellID` method (every frame has one).
+- **The hidden-viewer fallback must filter on the `flags` bit, not just `isKnown`.** `C_CooldownViewer.GetCooldownViewerCategorySet(cat, false)` returns every learned in-spec cooldown, including ones the user/CDM marked "Not Displayed" — `info.isKnown` does not exclude them. `Enum.CooldownViewerCooldownFlag` isn't addon-exposed; test the literal bit (`bit.band(info.flags, 0x2) ~= 0` = hidden).
+- **A cache keyed only by spec *index*** (not spec ID) **collides across classes** that share an index (e.g. Guardian Druid and Shadow Priest are both spec-index 3) — key any per-spec cooldown cache by spec ID.
+- **Dynamic/linked cooldowns** (`linkedSpellIDs` non-empty, e.g. Flying Serpent Kick / Wild Charge) represent several per-form spell variants; resolving via the child frame's `GetSpellID()` returns one arbitrary currently-active variant. Prefer the cooldown info's `overrideSpellID or spellID` as the representative spell.
+- Never let an empty read (0 spells) destructively overwrite an existing populated interface — guard with a `#spells==0` check and a bounded retry before wiping.
 
 ## Performance
 - **In-game profiler:** `/wise cpu start`, play/idle ~30s, then `/wise cpu` reports a time-boxed CPU delta for Wise-owned frames (split into "in frames" vs "elsewhere"). Requires the `scriptProfile` CVar (the command enables it + prompts a reload on first use). This is the source of truth for idle cost — addon-CPU displays misattribute `UIParent`/child time to whichever addon parents those frames.
