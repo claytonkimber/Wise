@@ -5538,7 +5538,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				if chargeInfo then
 					local maxCharges = CleanSecretNumber(SafeReadField(chargeInfo, "maxCharges"))
 					local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
-					if maxCharges and maxCharges >= 1 then
+					-- Only treat as a charge spell when it can hold >1 charge.
+					-- Single-charge spells (e.g. Mangle) would otherwise show a
+					-- meaningless "1" that can never increase.
+					if maxCharges and maxCharges > 1 then
 						count = currentCharges
 						isChargeSpell = true
 					end
@@ -5555,7 +5558,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			local charges, maxCharges, chargeStart, chargeDuration, chargeModRate = GetActionCharges(tonumber(aValue))
 			charges = CleanSecretNumber(charges)
 			maxCharges = CleanSecretNumber(maxCharges)
-			if maxCharges and maxCharges >= 1 then
+			if maxCharges and maxCharges > 1 then
 				count = charges
 				isChargeSpell = true
 			end
@@ -8237,7 +8240,10 @@ function Wise:UpdateButtonCharges(btn)
 			if chargeInfo then
 				local maxCharges = CleanSecretNumber(SafeReadField(chargeInfo, "maxCharges"))
 				local currentCharges = CleanSecretNumber(SafeReadField(chargeInfo, "currentCharges"))
-				if maxCharges and maxCharges >= 1 then
+				-- Only treat as a charge spell when it can hold >1 charge.
+				-- Single-charge spells (e.g. Mangle) would otherwise show a
+				-- meaningless "1" that can never increase.
+				if maxCharges and maxCharges > 1 then
 					count = currentCharges
 					isChargeSpell = true
 					hasCount = true
@@ -8257,7 +8263,7 @@ function Wise:UpdateButtonCharges(btn)
 		local charges, maxCharges = GetActionCharges(aVal)
 		charges = CleanSecretNumber(charges)
 		maxCharges = CleanSecretNumber(maxCharges)
-		if maxCharges and maxCharges >= 1 then
+		if maxCharges and maxCharges > 1 then
 			count = charges
 			isChargeSpell = true
 			hasCount = true

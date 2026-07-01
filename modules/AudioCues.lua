@@ -290,6 +290,19 @@ function EvaluateCue(entry)
 		if not Wise:IsActionKnown("spell", spellID) then
 			return false
 		end
+		-- "Ready" must mean actually castable, not merely off cooldown. IsSpellUsable
+		-- accounts for the live proc/override state and resources: a proc-gated
+		-- override like Maul→Raze reports NOT usable while the proc is down (the
+		-- button is still Maul), even though the base spell is technically off
+		-- cooldown — so an off-CD-only check would fire this cue almost constantly.
+		-- This mirrors how IndicatorRules resolves its "available" metric. We still
+		-- AND in the cooldown check as a guard, and fall back to cooldown-only if the
+		-- usable API is unavailable.
+		if C_Spell and C_Spell.IsSpellUsable then
+			if not C_Spell.IsSpellUsable(spellID) then
+				return false
+			end
+		end
 		return not Wise:IsActionOnCooldown("spell", spellID, entry.action)
 	elseif trigger == "buff_gained" then
 		if not spellID then

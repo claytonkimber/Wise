@@ -1,4 +1,10 @@
 # Changelog
+## [1.0.20260702] - 2026-07-02
+
+### Fixed
+- Audio Cue "Spell ready" trigger now gates on `C_Spell.IsSpellUsable` (matching the IndicatorRules "available" metric) instead of an off-cooldown-only check. A proc-gated override like Maul→Raze reports not-usable while its proc is down, so the cue no longer fires almost constantly on the low-cooldown base spell.
+- Charge count text no longer shows a permanent "1" on single-charge spells (e.g. Mangle). Spells are only treated as charge spells when `maxCharges > 1`, matching Blizzard's default action-button convention.
+
 ## [1.0.20260619] - 2026-06-19
 
 ### Changed
