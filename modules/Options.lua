@@ -6,7 +6,10 @@ local EnsureCreateGroupPopup
 function Wise:CreateOptionsFrame()
 	local f = CreateFrame("Frame", "WiseOptionsFrame", UIParent, "PortraitFrameTemplate")
 	f:Hide()
-	f:SetSize(930, 500)
+	do
+		local parentWidth, parentHeight = UIParent:GetSize()
+		f:SetSize(parentWidth * 0.95, parentHeight * 0.90)
+	end
 	f:SetPoint("CENTER")
 	f:SetFrameStrata("HIGH")
 	f:SetMovable(true)
@@ -26,12 +29,13 @@ function Wise:CreateOptionsFrame()
 		maxBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -4)
 		maxBtn:SetFrameLevel(f:GetFrameLevel() + 20)
 	end
-	maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
-	maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+	-- Window opens maximized by default, so the button starts as "Smaller" (shrink).
+	maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+	maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
 	maxBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
 	Wise:AddTooltip(maxBtn, "Maximize / Minimize Options Window")
 
-	local maximized = false
+	local maximized = true
 	maxBtn:SetScript("OnClick", function()
 		maximized = not maximized
 		if maximized then

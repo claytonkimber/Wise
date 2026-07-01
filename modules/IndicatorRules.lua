@@ -67,6 +67,22 @@ local function IsNumericMetric(metricKey)
 	return METRIC_IS_NUMERIC[metricKey] == true
 end
 
+local _scdStart, _scdDuration, _scdNow
+local function SafeCheckCD()
+	if _scdDuration and _scdDuration > 1.5 then
+		local rem = (_scdStart + _scdDuration) - _scdNow
+		if rem > 0 then
+			return rem
+		end
+	end
+	return nil
+end
+
+local _recastCdStart, _recastLastCdStart
+local function SafeCheckRecast()
+	return _recastCdStart > _recastLastCdStart
+end
+
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
 -- spell. The buff is read by spellID first, then by NAME — many spells apply an
 -- aura with a DIFFERENT id than the cast spell (Abundance casts 207383 but its buff
@@ -100,11 +116,10 @@ local function ResolveSpellState(spellID, name, action)
 		local ci = C_Spell.GetSpellCooldown(spellID)
 		if ci and ci.startTime then
 			cdStart = ci.startTime
-			if ci.duration and ci.duration > 1.5 then
-				local rem = (ci.startTime + ci.duration) - GetTime()
-				if rem > 0 then
-					cdRemaining = rem
-				end
+			_scdStart, _scdDuration, _scdNow = ci.startTime, ci.duration, GetTime()
+			local ok, rem = pcall(SafeCheckCD)
+			if ok and rem then
+				cdRemaining = rem
 			end
 		end
 	end
@@ -712,7 +727,15 @@ function Wise:UpdateIndicatorRules()
 		-- trough our sampling collapsed — without it, a frequently-recast spell like
 		-- Raze only sounds on its first availability, then stays "matched" and silent.
 		cdStart = cdStart or 0
-		local recast = matched and cdStart > (lastCdStartByEntry[entry] or 0)
+		local lastStart = lastCdStartByEntry[entry] or 0
+		local recast = false
+		if matched then
+			_recastCdStart, _recastLastCdStart = cdStart, lastStart
+			local ok, res = pcall(SafeCheckRecast)
+			if ok then
+				recast = res
+			end
+		end
 		if matched ~= lastMatchByEntry[entry] or recast then
 			lastMatchByEntry[entry] = matched
 			lastCdStartByEntry[entry] = cdStart
