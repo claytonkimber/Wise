@@ -1,4 +1,7 @@
 # Changelog
+
+Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
+
 ## [1.0.20260722] - 2026-07-22
 
 ### Fixed
