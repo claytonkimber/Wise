@@ -85,6 +85,7 @@ end
 function Wise:UpdateCharacterInfo(sourceEvent)
 	local _, className = UnitClass("player")
 	self.characterInfo.class = className
+	self.characterInfo.charKey = UnitName("player") .. "-" .. GetRealmName()
 
 	local specIndex = GetSpecialization()
 	if specIndex then
@@ -258,8 +259,7 @@ function Wise:MatchesRestrictionTag(tag)
 		return IsPlayerSpell(reqTalent) or IsSpellKnownOrOverridesKnown(reqTalent)
 	elseif tag:match("^char:") then
 		local reqChar = tag:sub(6)
-		local charKey = UnitName("player") .. "-" .. GetRealmName()
-		return charKey == reqChar
+		return self.characterInfo.charKey == reqChar
 	end
 	return false
 end
