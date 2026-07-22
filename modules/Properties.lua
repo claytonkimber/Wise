@@ -1,6 +1,8 @@
 local addonName, Wise = ...
 local tinsert = table.insert
 
+local cachedPlayerCharKey = nil
+
 local function EnsureBindingErrorPopup()
 	if not StaticPopupDialogs["WISE_BINDING_ERROR"] then
 		StaticPopupDialogs["WISE_BINDING_ERROR"] = {
@@ -920,7 +922,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 			-- Reset/Update Class/Char info
 			local _, pClass = UnitClass("player")
 			action.addedByClass = pClass
-			action.addedByCharacter = UnitName("player") .. "-" .. GetRealmName()
+			cachedPlayerCharKey = cachedPlayerCharKey or (UnitName("player") .. "-" .. GetRealmName())
+			action.addedByCharacter = cachedPlayerCharKey
 
 			if extra then
 				if extra.icon then
@@ -6359,7 +6362,8 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 				table.insert(chars, charKey)
 			end
 		end
-		local currentKey = UnitName("player") .. "-" .. GetRealmName()
+		cachedPlayerCharKey = cachedPlayerCharKey or (UnitName("player") .. "-" .. GetRealmName())
+		local currentKey = cachedPlayerCharKey
 		if not HasTag(chars, currentKey) then
 			table.insert(chars, currentKey)
 		end
