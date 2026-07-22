@@ -1260,175 +1260,129 @@ Wise.CooldownUpdateFrame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================================
--- Glow Overlay Implementation (Adapted from LibButtonGlow-1.0)
+-- Glow Overlay Implementation (modern proc glow)
+-- Mirrors Blizzard's ActionButtonSpellAlertTemplate: a one-shot "start burst"
+-- flipbook that hands off to a 1s looping flipbook — the exact visual the
+-- default action bars show for spell-activation procs.
+--
+-- Ownership: TWO independent systems drive glows on the same button — the
+-- proc engine (UpdateButtonUsability / IsSpellOverlayed) and the indicator
+-- rules engine (modules/IndicatorRules.lua, per-rule "Glow" flag). Every
+-- Show/Hide therefore carries an owner tag, and the overlay is only torn
+-- down when NO owner still wants it. Without this, the rules engine's
+-- unconditional per-pass HideOverlayGlow destroyed the proc engine's glow on
+-- every event burst and the re-shown overlay replayed its entrance animation
+-- — a constant, oversized ~1 Hz pulse instead of a steady glow.
 -- ============================================================================
 local glowUnusedOverlays = {}
 local glowNumOverlays = 0
 
-local function OverlayGlowAnimOutFinished(animGroup)
-	local overlay = animGroup:GetParent()
-	local frame = overlay:GetParent()
-	overlay:Hide()
-	table.insert(glowUnusedOverlays, overlay)
-	frame.__WiseOverlay = nil
-	-- NOTE: We deliberately do NOT touch frame._wiseGlowOn here. That flag tracks
-	-- the *intent* to glow (the spell is procced), not whether the overlay frame
-	-- currently exists. Clearing it on teardown was the flash bug: when the
-	-- button's region tree transiently hides during a mouse-over-driven refresh,
-	-- the overlay's OnHide tears the overlay down and — if we cleared the flag —
-	-- the very next usability pass saw "intent on, overlay gone" and re-popped a
-	-- fresh animIn. Leaving the flag alone lets the next pass re-attach the
-	-- overlay quietly (or, if shouldGlow has genuinely gone false, the HIDE
-	-- branch clears the flag explicitly). UpdateButtonUsability self-heals a
-	-- flag/overlay mismatch (see the shouldGlow block).
+local function OverlayGlow_OnShow(self)
+	-- Fresh attach plays the entrance burst; a re-show after a transient parent
+	-- hide (layout refresh / ring close) resumes the steady loop instead —
+	-- _burstPending is consumed by the first play so the burst can't re-pop.
+	-- NOTE: frame._wiseGlowOn on the BUTTON still tracks the proc engine's
+	-- intent to glow and is managed only by UpdateButtonUsability.
+	if self.ProcStartAnim:IsPlaying() or self.ProcLoopAnim:IsPlaying() then
+		return
+	end
+	if self._burstPending then
+		self._burstPending = nil
+		self.ProcStart:Show()
+		self.ProcLoop:Hide()
+		self.ProcStartAnim:Play()
+	else
+		self.ProcStart:Hide()
+		self.ProcLoop:Show()
+		self.ProcLoopAnim:Play()
+	end
 end
 
 local function OverlayGlow_OnHide(self)
-	-- The overlay frame got hidden (usually because its parent button's region
-	-- tree was transiently hidden by a layout/refresh pass, NOT because the proc
-	-- ended). Finish any in-flight animOut so the overlay returns cleanly to the
-	-- pool, but do NOT clear the glow intent — UpdateButtonUsability re-shows it
-	-- on the next pass while the proc is still active.
-	if self.animOut:IsPlaying() then
-		self.animOut:Stop()
-		OverlayGlowAnimOutFinished(self.animOut)
+	-- Transient parent hide (layout/refresh pass), NOT proc end: stop (don't
+	-- finish) the animations and keep the overlay attached — OnShow resumes the
+	-- loop. No teardown here means no entrance-animation replay when the button
+	-- comes back.
+	if self.ProcStartAnim:IsPlaying() then
+		self.ProcStartAnim:Stop()
 	end
-end
-
-local function OverlayGlow_OnUpdate(self, elapsed)
-	AnimateTexCoords(self.ants, 256, 256, 48, 48, 22, elapsed, 0.01)
-	-- we need some threshold to avoid dimming the glow during the gdc
-	-- (removed cooldown check to avoid taint error "attempt to compare secret number")
-	self:SetAlpha(1.0)
-end
-
-local function CreateScaleAnim(group, target, order, duration, x, y, delay)
-	local scale = group:CreateAnimation("Scale")
-	scale:SetTarget(target)
-	scale:SetOrder(order)
-	scale:SetDuration(duration)
-	scale:SetScale(x, y)
-	if delay then
-		scale:SetStartDelay(delay)
+	if self.ProcLoopAnim:IsPlaying() then
+		self.ProcLoopAnim:Stop()
 	end
-end
-
-local function CreateAlphaAnim(group, target, order, duration, fromAlpha, toAlpha, delay)
-	local alpha = group:CreateAnimation("Alpha")
-	alpha:SetTarget(target)
-	alpha:SetOrder(order)
-	alpha:SetDuration(duration)
-	alpha:SetFromAlpha(fromAlpha)
-	alpha:SetToAlpha(toAlpha)
-	if delay then
-		alpha:SetStartDelay(delay)
-	end
-end
-
-local function AnimIn_OnPlay(group)
-	local frame = group:GetParent()
-	local frameWidth, frameHeight = frame:GetSize()
-	frame.spark:SetSize(frameWidth, frameHeight)
-	frame.spark:SetAlpha(0.3)
-	frame.innerGlow:SetSize(frameWidth / 2, frameHeight / 2)
-	frame.innerGlow:SetAlpha(1.0)
-	frame.innerGlowOver:SetAlpha(1.0)
-	frame.outerGlow:SetSize(frameWidth * 2, frameHeight * 2)
-	frame.outerGlow:SetAlpha(1.0)
-	frame.outerGlowOver:SetAlpha(1.0)
-	frame.ants:SetSize(frameWidth * 0.85, frameHeight * 0.85)
-	frame.ants:SetAlpha(0)
-	frame:Show()
-end
-
-local function AnimIn_OnFinished(group)
-	local frame = group:GetParent()
-	local frameWidth, frameHeight = frame:GetSize()
-	frame.spark:SetAlpha(0)
-	frame.innerGlow:SetAlpha(0)
-	frame.innerGlow:SetSize(frameWidth, frameHeight)
-	frame.innerGlowOver:SetAlpha(0.0)
-	frame.outerGlow:SetSize(frameWidth, frameHeight)
-	frame.outerGlowOver:SetAlpha(0.0)
-	frame.outerGlowOver:SetSize(frameWidth, frameHeight)
-	frame.ants:SetAlpha(1.0)
 end
 
 local function CreateOverlayGlow()
 	glowNumOverlays = glowNumOverlays + 1
-	local name = "WiseButtonGlowOverlay" .. tostring(glowNumOverlays)
-	local overlay = CreateFrame("Frame", name, UIParent)
+	local overlay = CreateFrame("Frame", "WiseButtonGlowOverlay" .. glowNumOverlays, UIParent)
 
-	-- spark
-	overlay.spark = overlay:CreateTexture(name .. "Spark", "BACKGROUND")
-	overlay.spark:SetPoint("CENTER")
-	overlay.spark:SetAlpha(0)
-	overlay.spark:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-	overlay.spark:SetTexCoord(0.00781250, 0.61718750, 0.00390625, 0.26953125)
+	-- One-shot entrance burst. Blizzard authors this art 150px against a 42px
+	-- button; ShowOverlayGlow sizes it with the same ratio.
+	overlay.ProcStart = overlay:CreateTexture(nil, "ARTWORK")
+	overlay.ProcStart:SetBlendMode("ADD")
+	overlay.ProcStart:SetAtlas("UI-HUD-ActionBar-Proc-Start-Flipbook")
+	overlay.ProcStart:SetPoint("CENTER")
 
-	-- inner glow
-	overlay.innerGlow = overlay:CreateTexture(name .. "InnerGlow", "ARTWORK")
-	overlay.innerGlow:SetPoint("CENTER")
-	overlay.innerGlow:SetAlpha(0)
-	overlay.innerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-	overlay.innerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	-- Steady looping glow filling the overlay (1.4x the button, the same
+	-- footprint as Blizzard's SpellActivationAlert).
+	overlay.ProcLoop = overlay:CreateTexture(nil, "ARTWORK")
+	overlay.ProcLoop:SetAtlas("UI-HUD-ActionBar-Proc-Loop-Flipbook")
+	overlay.ProcLoop:SetAlpha(0)
+	overlay.ProcLoop:SetAllPoints()
 
-	-- inner glow over
-	overlay.innerGlowOver = overlay:CreateTexture(name .. "InnerGlowOver", "ARTWORK")
-	overlay.innerGlowOver:SetPoint("TOPLEFT", overlay.innerGlow, "TOPLEFT")
-	overlay.innerGlowOver:SetPoint("BOTTOMRIGHT", overlay.innerGlow, "BOTTOMRIGHT")
-	overlay.innerGlowOver:SetAlpha(0)
-	overlay.innerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-	overlay.innerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
+	overlay.ProcLoopAnim = overlay:CreateAnimationGroup()
+	overlay.ProcLoopAnim:SetLooping("REPEAT")
+	overlay.ProcLoopAnim:SetToFinalAlpha(true)
+	local loopAlpha = overlay.ProcLoopAnim:CreateAnimation("Alpha")
+	loopAlpha:SetChildKey("ProcLoop")
+	loopAlpha:SetFromAlpha(1)
+	loopAlpha:SetToAlpha(1)
+	loopAlpha:SetDuration(0.001)
+	loopAlpha:SetOrder(0)
+	local loopFlipbook = overlay.ProcLoopAnim:CreateAnimation("FlipBook")
+	loopFlipbook:SetChildKey("ProcLoop")
+	loopFlipbook:SetDuration(1)
+	loopFlipbook:SetOrder(0)
+	loopFlipbook:SetFlipBookRows(6)
+	loopFlipbook:SetFlipBookColumns(5)
+	loopFlipbook:SetFlipBookFrames(30)
+	loopFlipbook:SetFlipBookFrameWidth(0)
+	loopFlipbook:SetFlipBookFrameHeight(0)
 
-	-- outer glow
-	overlay.outerGlow = overlay:CreateTexture(name .. "OuterGlow", "ARTWORK")
-	overlay.outerGlow:SetPoint("CENTER")
-	overlay.outerGlow:SetAlpha(0)
-	overlay.outerGlow:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-	overlay.outerGlow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+	overlay.ProcStartAnim = overlay:CreateAnimationGroup()
+	overlay.ProcStartAnim:SetToFinalAlpha(true)
+	-- The 1→1 alpha looks pointless but is load-bearing: with SetToFinalAlpha
+	-- the burst texture would otherwise stay at its finished alpha (0) on every
+	-- replay; the explicit from-alpha reapplies at Play().
+	local startAlphaIn = overlay.ProcStartAnim:CreateAnimation("Alpha")
+	startAlphaIn:SetChildKey("ProcStart")
+	startAlphaIn:SetDuration(0.001)
+	startAlphaIn:SetOrder(0)
+	startAlphaIn:SetFromAlpha(1)
+	startAlphaIn:SetToAlpha(1)
+	local startFlipbook = overlay.ProcStartAnim:CreateAnimation("FlipBook")
+	startFlipbook:SetChildKey("ProcStart")
+	startFlipbook:SetDuration(0.7)
+	startFlipbook:SetOrder(1)
+	startFlipbook:SetFlipBookRows(6)
+	startFlipbook:SetFlipBookColumns(5)
+	startFlipbook:SetFlipBookFrames(30)
+	startFlipbook:SetFlipBookFrameWidth(0)
+	startFlipbook:SetFlipBookFrameHeight(0)
+	local startAlphaOut = overlay.ProcStartAnim:CreateAnimation("Alpha")
+	startAlphaOut:SetChildKey("ProcStart")
+	startAlphaOut:SetDuration(0.001)
+	startAlphaOut:SetOrder(2)
+	startAlphaOut:SetFromAlpha(1)
+	startAlphaOut:SetToAlpha(0)
+	overlay.ProcStartAnim:SetScript("OnFinished", function(group)
+		local f = group:GetParent()
+		f.ProcLoop:Show()
+		f.ProcLoopAnim:Play()
+	end)
 
-	-- outer glow over
-	overlay.outerGlowOver = overlay:CreateTexture(name .. "OuterGlowOver", "ARTWORK")
-	overlay.outerGlowOver:SetPoint("TOPLEFT", overlay.outerGlow, "TOPLEFT")
-	overlay.outerGlowOver:SetPoint("BOTTOMRIGHT", overlay.outerGlow, "BOTTOMRIGHT")
-	overlay.outerGlowOver:SetAlpha(0)
-	overlay.outerGlowOver:SetTexture([[Interface\SpellActivationOverlay\IconAlert]])
-	overlay.outerGlowOver:SetTexCoord(0.00781250, 0.50781250, 0.53515625, 0.78515625)
-
-	-- ants
-	overlay.ants = overlay:CreateTexture(name .. "Ants", "OVERLAY")
-	overlay.ants:SetPoint("CENTER")
-	overlay.ants:SetAlpha(0)
-	overlay.ants:SetTexture([[Interface\SpellActivationOverlay\IconAlertAnts]])
-
-	-- setup antimations
-	overlay.animIn = overlay:CreateAnimationGroup()
-	CreateScaleAnim(overlay.animIn, overlay.spark, 1, 0.2, 1.5, 1.5)
-	CreateAlphaAnim(overlay.animIn, overlay.spark, 1, 0.2, 0, 1)
-	CreateScaleAnim(overlay.animIn, overlay.innerGlow, 1, 0.3, 2, 2)
-	CreateScaleAnim(overlay.animIn, overlay.innerGlowOver, 1, 0.3, 2, 2)
-	CreateAlphaAnim(overlay.animIn, overlay.innerGlowOver, 1, 0.3, 1, 0)
-	CreateScaleAnim(overlay.animIn, overlay.outerGlow, 1, 0.3, 0.5, 0.5)
-	CreateScaleAnim(overlay.animIn, overlay.outerGlowOver, 1, 0.3, 0.5, 0.5)
-	CreateAlphaAnim(overlay.animIn, overlay.outerGlowOver, 1, 0.3, 1, 0)
-	CreateScaleAnim(overlay.animIn, overlay.spark, 1, 0.2, 2 / 3, 2 / 3, 0.2)
-	CreateAlphaAnim(overlay.animIn, overlay.spark, 1, 0.2, 1, 0, 0.2)
-	CreateAlphaAnim(overlay.animIn, overlay.innerGlow, 1, 0.2, 1, 0, 0.3)
-	CreateAlphaAnim(overlay.animIn, overlay.ants, 1, 0.2, 0, 1, 0.3)
-	overlay.animIn:SetScript("OnPlay", AnimIn_OnPlay)
-	overlay.animIn:SetScript("OnFinished", AnimIn_OnFinished)
-
-	overlay.animOut = overlay:CreateAnimationGroup()
-	CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 1, 0.2, 0, 1)
-	CreateAlphaAnim(overlay.animOut, overlay.ants, 1, 0.2, 1, 0)
-	CreateAlphaAnim(overlay.animOut, overlay.outerGlowOver, 2, 0.2, 1, 0)
-	CreateAlphaAnim(overlay.animOut, overlay.outerGlow, 2, 0.2, 1, 0)
-	overlay.animOut:SetScript("OnFinished", OverlayGlowAnimOutFinished)
-
-	-- scripts
-	overlay:SetScript("OnUpdate", OverlayGlow_OnUpdate)
+	overlay:SetScript("OnShow", OverlayGlow_OnShow)
 	overlay:SetScript("OnHide", OverlayGlow_OnHide)
+	overlay:Hide()
 
 	return overlay
 end
@@ -1441,41 +1395,54 @@ local function GetOverlayGlow()
 	return overlay
 end
 
-function Wise:ShowOverlayGlow(frame, targetRegion)
-	targetRegion = targetRegion or frame
-	if frame.__WiseOverlay then
-		-- Already attached. Only re-kick the animation if it was fading out; if it
-		-- is already lit (or animating in), leave it alone so a redundant Show
-		-- (e.g. from a coalesced refresh) does NOT replay the animIn "pop".
-		if frame.__WiseOverlay.animOut:IsPlaying() then
-			frame.__WiseOverlay.animOut:Stop()
-			frame.__WiseOverlay.animIn:Play()
-		end
-	else
-		local overlay = GetOverlayGlow()
-		local targetWidth, targetHeight = targetRegion:GetSize()
-		overlay:SetParent(frame)
-		overlay:SetFrameLevel(frame:GetFrameLevel() + 5)
-		overlay:ClearAllPoints()
-		--Make the height/width available before the next frame:
-		overlay:SetSize(targetWidth * 1.4, targetHeight * 1.4)
-		overlay:SetPoint("TOPLEFT", targetRegion, "TOPLEFT", -targetWidth * 0.2, targetHeight * 0.2)
-		overlay:SetPoint("BOTTOMRIGHT", targetRegion, "BOTTOMRIGHT", targetWidth * 0.2, -targetHeight * 0.2)
-		overlay.animIn:Play()
-		frame.__WiseOverlay = overlay
+-- owner names the driver ("proc", "rule"; nil = "generic" for config-time UI
+-- like drag-and-drop and the settings demo). Show records the owner; Hide
+-- removes it and only tears the overlay down once no owner wants the glow.
+function Wise:ShowOverlayGlow(frame, targetRegion, owner)
+	local owners = frame.__WiseGlowOwners
+	if not owners then
+		owners = {}
+		frame.__WiseGlowOwners = owners
 	end
+	owners[owner or "generic"] = true
+	if frame.__WiseOverlay then
+		return -- already lit; a redundant Show must not replay any animation
+	end
+	targetRegion = targetRegion or frame
+	local overlay = GetOverlayGlow()
+	local targetWidth, targetHeight = targetRegion:GetSize()
+	overlay:SetParent(frame)
+	overlay:SetFrameLevel(frame:GetFrameLevel() + 5)
+	overlay:ClearAllPoints()
+	-- 1.4x the button, matching Blizzard's spell alert footprint. SetSize makes
+	-- the dimensions available before the anchors resolve on the next frame.
+	overlay:SetSize(targetWidth * 1.4, targetHeight * 1.4)
+	overlay:SetPoint("TOPLEFT", targetRegion, "TOPLEFT", -targetWidth * 0.2, targetHeight * 0.2)
+	overlay:SetPoint("BOTTOMRIGHT", targetRegion, "BOTTOMRIGHT", targetWidth * 0.2, -targetHeight * 0.2)
+	overlay.ProcStart:SetSize(targetWidth * 150 / 42, targetHeight * 150 / 42)
+	overlay._burstPending = true
+	frame.__WiseOverlay = overlay
+	overlay:Show()
 end
 
-function Wise:HideOverlayGlow(frame)
-	if frame.__WiseOverlay then
-		if frame.__WiseOverlay.animIn:IsPlaying() then
-			frame.__WiseOverlay.animIn:Stop()
+function Wise:HideOverlayGlow(frame, owner)
+	local owners = frame.__WiseGlowOwners
+	if owners then
+		owners[owner or "generic"] = nil
+		if next(owners) then
+			return -- another driver still wants this glow lit
 		end
-		if frame:IsVisible() then
-			frame.__WiseOverlay.animOut:Play()
-		else
-			OverlayGlowAnimOutFinished(frame.__WiseOverlay.animOut)
-		end
+	end
+	local overlay = frame.__WiseOverlay
+	if overlay then
+		-- Blizzard hides the spell alert instantly on proc end; matching that
+		-- also leaves no fade-out window for a re-Show to race against.
+		overlay:Hide()
+		overlay:ClearAllPoints()
+		overlay:SetParent(UIParent)
+		overlay._burstPending = nil
+		frame.__WiseOverlay = nil
+		table.insert(glowUnusedOverlays, overlay)
 	end
 end
 -- ============================================================================
@@ -3310,6 +3277,7 @@ function Wise:GetSecureAttributes(actionData, conditions)
 				map_zone = "if ToggleBattlefieldMap then ToggleBattlefieldMap() end",
 				map_minimap = "if Minimap then if Minimap:IsShown() then Minimap:Hide() else Minimap:Show() end end",
 				garrison = "if ExpansionLandingPageMinimapButton then ExpansionLandingPageMinimapButton.Click(ExpansionLandingPageMinimapButton) elseif GarrisonLandingPageMinimapButton then GarrisonLandingPageMinimapButton.Click(GarrisonLandingPageMinimapButton) end",
+				omnium_folio = "if ToggleExpansionLandingPage then ToggleExpansionLandingPage() end",
 			}
 			if scripts[aValue] then
 				secureValue = "/run " .. scripts[aValue]
@@ -5332,6 +5300,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end)
 				btn:HookScript("PostClick", function(self)
+					-- Multi-state sequence/waterfall: the secure PreClick just advanced the
+					-- state pointer (isa_seq) / picked the firing state, but the event
+					-- dispatcher deliberately schedules NO dynamic refresh in combat (perf),
+					-- which froze these icons for entire fights (regressed in 1ac54d4; the
+					-- press itself still cast correctly). This press-scoped resync is the
+					-- exact-event replacement: it runs only when THIS button is clicked, and
+					-- the refresh closure self-guards every secure write on canSetAttrs, so
+					-- it is combat-safe (same class as the REGEN_DISABLED refresh).
+					local meta = Wise.buttonMeta and Wise.buttonMeta[self]
+					if
+						meta
+						and meta.states
+						and #meta.states > 1
+						and (meta.conflictStrategy == "sequence" or meta.conflictStrategy == "waterfall")
+					then
+						local f = self.groupName and Wise.frames and Wise.frames[self.groupName]
+						local refresh = f and f._dynamicRefresh
+						if refresh then
+							C_Timer.After(0, function()
+								-- Guard: group may have been rebuilt between press and next frame.
+								if f._dynamicRefresh == refresh then
+									refresh()
+								end
+							end)
+						end
+					end
 					if Wise.debugResolve and self._resolveTime then
 						local elapsed = debugprofilestop() - self._resolveTime
 						print(
@@ -5438,6 +5432,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end
 			end
+		end
+
+		-- Graph-compiled macro whose text ResolveMacroData could not resolve (12.0.7
+		-- name lookups fail for talent/passive spells): fall back to the SOURCE graph
+		-- node's numeric spell id so cooldown/usability tracking still works.
+		if aType == "misc" and aValue == "custom_macro" and not spellID and not itemID then
+			spellID = Wise:ResolveCompiledStateSpellID(actionData, group.actions and group.actions[actionInfo.slot])
 		end
 
 		-- Store in metadata (safe for combat)
@@ -6527,6 +6528,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								elseif state.type == "mount" and C_MountJournal then
 									local _, mSpellID = C_MountJournal.GetMountInfoByID(state.value)
 									spellID = mSpellID
+								elseif state.type == "misc" and state.value == "custom_macro" then
+									-- Graph-compiled step: resolve from the source node's numeric
+									-- id (12.0.7 name lookups can't parse it out of the macro text).
+									spellID = Wise:ResolveCompiledStateSpellID(
+										state,
+										group.actions and btn.slot and group.actions[btn.slot]
+									)
 								end
 								meta.baseSpellID = spellID
 								meta.spellID = Wise:GetOverrideSpellID(spellID)
@@ -8488,16 +8496,15 @@ function Wise:UpdateButtonUsability(btn)
 	-- counter instantly, so a real proc-end still hides within ~2 passes.
 	if shouldGlow then
 		btn._wiseGlowOffStreak = nil
-		-- Show on the rising edge OR when intent is already on but the overlay was
-		-- recycled out from under us (a transient parent hide tears the overlay
-		-- frame down via OnHide while the proc is still active). ShowOverlayGlow is
-		-- a no-op when the overlay is already alive and lit, so this re-attach only
-		-- does real work after a genuine teardown — it does not pop every pass.
+		-- Show on the rising edge OR when intent is on but the overlay is gone
+		-- (self-heal after any teardown). ShowOverlayGlow is idempotent while the
+		-- overlay is attached, so this never replays the entrance burst on a
+		-- steady proc; transient parent hides pause/resume the overlay in place.
 		if not btn._wiseGlowOn or not btn.__WiseOverlay or (visualClone and not visualClone.__WiseOverlay) then
 			btn._wiseGlowOn = true
-			Wise:ShowOverlayGlow(btn)
+			Wise:ShowOverlayGlow(btn, nil, "proc")
 			if visualClone then
-				Wise:ShowOverlayGlow(visualClone)
+				Wise:ShowOverlayGlow(visualClone, nil, "proc")
 			end
 		end
 	elseif not Wise.isDragging then
@@ -8507,9 +8514,9 @@ function Wise:UpdateButtonUsability(btn)
 			if streak >= 2 then
 				btn._wiseGlowOffStreak = nil
 				btn._wiseGlowOn = nil
-				Wise:HideOverlayGlow(btn)
+				Wise:HideOverlayGlow(btn, "proc")
 				if visualClone then
-					Wise:HideOverlayGlow(visualClone)
+					Wise:HideOverlayGlow(visualClone, "proc")
 				end
 			end
 		end

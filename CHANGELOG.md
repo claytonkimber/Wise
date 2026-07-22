@@ -1,4 +1,26 @@
 # Changelog
+## [1.0.20260722] - 2026-07-22
+
+### Fixed
+- **Proc glows no longer pulse oversized — and now look exactly like Blizzard's.** Two systems shared one glow overlay per button with no ownership: the indicator-rules engine called `HideOverlayGlow` unconditionally on every coalesced pass (any button without a matching rule — e.g. Regrowth on a Guardian, whose Abundance rule never matches in bear form), destroying the proc engine's glow on every aura/cooldown event; the proc engine then re-attached it and replayed the entrance animation, whose outer glow starts at ~2.8x the button. Show/Hide now carry an owner tag (`proc`/`rule`/`generic`) and the overlay is only torn down when no owner still wants it.
+- **Glow visual modernized** from the legacy Wrath-era spark/ants overlay (LibButtonGlow adaptation) to Blizzard's current `ActionButtonSpellAlertTemplate` flipbook: one start burst, then a steady 1s loop at 1.4x button size — identical to the default action bars. Proc end hides instantly (as Blizzard does) instead of fading, and transient parent hides pause/resume the loop in place instead of tearing down and re-popping. Also removes the per-frame `OnUpdate` ants animation per active glow (small combat CPU win).
+
+## [1.0.20260707] - 2026-07-07
+
+### Fixed
+- **Cooldown swipes / usability tint restored on graph-compiled buttons.** 12.0.7 broke name-based spell resolution for talent/passive spells, so `ResolveMacroData` returned nothing for compiled macros and `meta.spellID` was nil on every slot-configurator button — no cooldown swipe, no usable/OOM tint on the whole kit. Compiled states now resolve their spell from the SOURCE graph node's numeric id (`Wise:ResolveCompiledStateSpellID`, walking the step's path leaf→root) whenever macro-text resolution fails.
+- **Sequence/waterfall slot icons no longer freeze during combat.** The event dispatcher deliberately schedules no dynamic refresh in combat (perf, `1ac54d4`), so a sequence slot's icon stopped tracking the secure `isa_seq` pointer mid-fight — the press cast the RIGHT next spell but the button showed a stale one all fight. A press-scoped PostClick hook now resyncs that button's group on the next frame; all secure writes stay self-guarded (`canSetAttrs`), so this is combat-safe and costs nothing while not pressing.
+- **Indicator rules stopped lying in combat.** 12.0.7 hides rotationally-relevant player auras (e.g. Abundance's buff 207640) from ALL addon reads during combat — by id, by name, and from enumeration (verified live 2026-07-05). Stacks were silently read as 0, which lit the `<=N` rule red for entire fights and made `>=N` sounds impossible. Hidden now means UNKNOWN: numeric stack rules and buff-missing rules no longer match on unreadable data.
+- **In-combat Abundance counter via the sanctioned display API (experimental).** The buff's `auraInstanceID` is learned while it is visible (prehot Rejuvs before the pull) and kept for the fight; in combat the counter is driven by `C_UnitAuras.GetAuraApplicationDisplayCount` — whose secret string goes straight into `SetText` — and rule thresholds by its `minDisplayCount` nil/non-nil signal (self-validated once per session with an impossible `min=999` probe; disabled if the API misbehaves). Every step is pcall-guarded and degrades to the previous hide-the-count behavior. The `>=8` stack sound can fire in combat again **if** the live client honors these APIs — pending the armed Mechanic probe run.
+- Corrected the Abundance cast→buff seed to the live client's buff id **207640** (the old `203864` was stale data from an older client and never matched).
+
+## [1.0.20260705] - 2026-07-05
+
+### Fixed
+- Action picker usage dots: spells used on slot-configurator graph nodes now clear their dot again. Graph-authored slots compile every node into `misc/custom_macro` states, so `GetActiveRotationSpells` never saw them as plain spell states — every used spell showed the yellow "referenced in a macro" dot (or red when the compiled macro line didn't name-match). The collector now also walks `slotStates.graph.nodes` and registers node spells as bound.
+- Indicator rules button matching hardened: `ButtonEntry` also scans a multi-state slot's sibling states (spell value and macro text), so an indicator stays bound if the shown state flips to a step whose macro doesn't mention the ruled spell.
+- Indicator rules learn the buff's real aura id from the first successful lookup (persisted as `action.trackedAuraID`) instead of querying the CAST spell id (Abundance casts 207383; the buff is a different id). This restored the counter **out of combat** — in-combat reads turned out to be blocked entirely by 12.0.7 (see 1.0.20260707 above).
+
 ## [1.0.20260702] - 2026-07-02
 
 ### Fixed

@@ -12,6 +12,10 @@ local addonName, Wise = ...
 local tinsert = table.insert
 local OXED_SOUND_NONE = Wise.OXED_SOUND_NONE
 
+-- Bumped on behavior changes so live diagnostics can confirm which revision the
+-- client actually loaded (see the abundance-combat-probe in MechanicQueue).
+Wise.INDICATOR_RULES_REV = 4
+
 local BOLD_COLORS = {
 	{ name = "Red", r = 1, g = 0, b = 0 },
 	{ name = "Green", r = 0, g = 1, b = 0 },
@@ -83,26 +87,205 @@ local function SafeCheckRecast()
 	return _recastCdStart > _recastLastCdStart
 end
 
+local _usableSpellID
+local function SafeCheckUsable()
+	return (C_Spell.IsSpellUsable(_usableSpellID)) and true or false
+end
+
+-- ---- 12.0.7 sanctioned display-count machinery -------------------------------
+-- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, minDisplayCount)
+-- is the one API Blizzard left for showing a hidden aura's stack count in combat:
+-- it returns a (possibly secret) STRING meant to be handed straight to
+-- FontString:SetText, and returns nil while applications < minDisplayCount — which
+-- doubles as a plain threshold signal we can drive rules with. Semantics are
+-- self-validated once per session: dc(min=999) must come back nil for a real aura
+-- (nothing stacks to 999); if it doesn't, min is being ignored and threshold
+-- inference would be garbage, so it stays disabled.
+local dcSemanticsValid = nil -- nil = untested, true = usable, false = broken
+local _dcInst, _dcMin
+local function DcAtLeastProbe()
+	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _dcInst, _dcMin)
+	if c == nil then
+		return false
+	end
+	return true
+end
+
+-- Plain true/false when the API answered; nil when unknown/unavailable/refused.
+local function StacksAtLeast(instID, n)
+	if not (instID and C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount) then
+		return nil
+	end
+	if n <= 0 then
+		return true
+	end
+	if dcSemanticsValid == nil then
+		_dcInst, _dcMin = instID, 999
+		local ok, res = pcall(DcAtLeastProbe)
+		if ok then
+			dcSemanticsValid = (res == false)
+		end
+		-- On a refused probe (error), leave nil so a later pass can retry.
+	end
+	if dcSemanticsValid ~= true then
+		return nil
+	end
+	_dcInst, _dcMin = instID, n
+	local ok, res = pcall(DcAtLeastProbe)
+	if ok then
+		return res
+	end
+	return nil
+end
+
+-- Evaluate a numeric stacks rule against a hidden aura purely through >=-threshold
+-- probes. Returns true/false when decidable, nil when the API can't answer.
+local function MatchStacksRuleViaDisplayCount(rule, instID)
+	local v = tonumber(rule.value) or 0
+	local op = rule.operator
+	if op == ">=" then
+		return StacksAtLeast(instID, v)
+	elseif op == ">" then
+		return StacksAtLeast(instID, v + 1)
+	elseif op == "<" then
+		local r = StacksAtLeast(instID, v)
+		if r == nil then
+			return nil
+		end
+		return not r
+	elseif op == "<=" then
+		local r = StacksAtLeast(instID, v + 1)
+		if r == nil then
+			return nil
+		end
+		return not r
+	elseif op == "=" or op == "!=" then
+		local a = StacksAtLeast(instID, v)
+		local b = StacksAtLeast(instID, v + 1)
+		if a == nil or b == nil then
+			return nil
+		end
+		local eq = (a and not b) and true or false
+		if op == "=" then
+			return eq
+		end
+		return not eq
+	end
+	return nil
+end
+
+-- Cast spell -> buff aura id seeds for spells whose buff has a DIFFERENT id than
+-- the cast. Learned mappings are persisted per-action as action.trackedAuraID, so
+-- this table only needs the ids we already know. NOTE: the Abundance buff id in
+-- the live 12.0.7 client is 207640, CONFIRMED by the Mechanic probe on 2026-07-05
+-- ("byTracked=hit apps=12 name=Abundance" out of combat, and 207640 appearing in
+-- the full player-aura enumeration). The 203864 id the retired Abundance module
+-- used was stale data from an older client and never matched anything here.
+local KNOWN_AURA_IDS = {
+	[207383] = 207640, -- Abundance
+}
+
+-- Runtime-only memory of a tracked buff's live auraInstanceID, learned whenever an
+-- out-of-combat read succeeds (weak keys: entries die with their action tables).
+-- WHY: 12.0.7 hides rotationally-relevant player auras from ALL C_UnitAuras
+-- lookups during combat — by aura id, by cast id, by name, and even from full
+-- enumeration (Mechanic probe 2026-07-05: every path nil / "tracked NOT in list"
+-- while 12 Abundance stacks were visibly up). No lookup strategy can recover the
+-- stacks mid-combat; the only sanctioned window Blizzard left is through the aura
+-- INSTANCE id learned while the aura was still visible (pre-pull), fed to
+-- GetAuraDataByAuraInstanceID / GetAuraApplicationDisplayCount. Instance ids die
+-- with the aura instance, so they must NOT be persisted (unlike trackedAuraID).
+local liveAuraInstance = setmetatable({}, { __mode = "k" })
+
+-- Plain number from a possibly-secret value; nil when truly secret/unreadable.
+-- tostring->tonumber round-trips sever the secret flag, and throw on values that
+-- can't be represented — hence the pcall (hoisted closure, AGENTS.md Rule on
+-- zero-alloc hot loops).
+local _ssnVal
+local function SecretSafeNumberProbe()
+	return tonumber(tostring(_ssnVal))
+end
+local function SecretSafeNumber(v)
+	-- No direct nil/type checks on v here: even `v == nil` is a comparison a true
+	-- secret may refuse. The pcall'd round-trip handles every case — nil converts
+	-- to nil, plain numbers convert to themselves, secrets either throw (caught)
+	-- or fail tonumber (nil).
+	_ssnVal = v
+	local ok, n = pcall(SecretSafeNumberProbe)
+	_ssnVal = nil
+	if ok then
+		return n
+	end
+	return nil
+end
+
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
--- spell. The buff is read by spellID first, then by NAME — many spells apply an
--- aura with a DIFFERENT id than the cast spell (Abundance casts 207383 but its buff
--- is 203864), and the aura name matches the spell name, so name resolves both.
+-- spell. Read order: learned/seeded buff aura id, then cast id, then name (the
+-- name path only resolves out of combat). When EVERY read fails IN combat, the
+-- aura may be hidden rather than missing — stacks/buff state become UNKNOWN
+-- (stacksKnown=false) instead of a false "0", and the instance handle learned
+-- out of combat is exposed for the sanctioned display-count path.
 local function ResolveSpellState(spellID, name, action)
 	local stacks = 0
 	local buffActive = false
-	local aura = spellID and C_UnitAuras.GetPlayerAuraBySpellID(spellID)
+	local stacksKnown = true
+	local countInstID = nil
+	local auraID = (action and tonumber(action.trackedAuraID)) or (spellID and KNOWN_AURA_IDS[spellID])
+	local aura = auraID and C_UnitAuras.GetPlayerAuraBySpellID(auraID)
+	if not aura and spellID then
+		aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
+	end
 	if not aura and name and C_UnitAuras.GetAuraDataBySpellName then
 		aura = C_UnitAuras.GetAuraDataBySpellName("player", name)
 	end
 	if aura then
 		buffActive = true
-		stacks = aura.applications or aura.charges or 1
+		stacks = SecretSafeNumber(aura.applications) or SecretSafeNumber(aura.charges) or 1
+		if action then
+			if not action.trackedAuraID then
+				local id = SecretSafeNumber(aura.spellId)
+				if id then
+					action.trackedAuraID = id
+				end
+			end
+			-- Learn the live instance id while the aura is visible (e.g. prehotting
+			-- before the pull) so combat still has a handle once 12.0.7 hides it.
+			local inst = SecretSafeNumber(aura.auraInstanceID)
+			if inst then
+				liveAuraInstance[action] = inst
+			end
+		end
+	elseif InCombatLockdown() then
+		-- Every direct read failed in combat: hidden-vs-missing is undecidable, so
+		-- stack/buff state is NOT authoritative this pass. Offer the learned
+		-- instance handle to the display/threshold paths regardless of whether the
+		-- data read below succeeds — GetAuraApplicationDisplayCount is a separate,
+		-- independently-sanctioned API.
+		stacksKnown = false
+		local inst = action and liveAuraInstance[action]
+		if inst then
+			countInstID = inst
+			if C_UnitAuras.GetAuraDataByAuraInstanceID then
+				local ok, ai = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "player", inst)
+				if ok and ai then
+					buffActive = true
+					local apps = SecretSafeNumber(ai.applications)
+					if apps then
+						stacks = apps
+						stacksKnown = true
+					end
+				end
+			end
+		end
 	end
 	local charges = 0
 	if spellID and C_Spell and C_Spell.GetSpellCharges then
 		local info = C_Spell.GetSpellCharges(spellID)
-		if info and info.currentCharges then
-			charges = info.currentCharges
+		if info then
+			-- Charge counts are secret in combat; a raw secret stored here would
+			-- blow up the bare comparisons in EvaluateNumericRule. (No direct nil
+			-- check on the field — SecretSafeNumber handles nil and secrets alike.)
+			charges = SecretSafeNumber(info.currentCharges) or 0
 		end
 	end
 	local known = spellID and Wise:IsActionKnown("spell", spellID) or false
@@ -125,15 +308,27 @@ local function ResolveSpellState(spellID, name, action)
 	end
 	-- "Usable right now" via the API that also accounts for resources (rage/etc.), not
 	-- just cooldown — so a rage-gated spell isn't reported "available" when it can't
-	-- actually be cast. Falls back to the cooldown-only check if the API is missing.
+	-- actually be cast. IsSpellUsable can return a secret in combat, and even taking
+	-- the truthiness of a secret can throw — probe inside a pcall'd closure and fall
+	-- back to the cooldown-only check when the read is refused or the API is missing.
 	local usable
+	local probedUsable = false
 	if spellID and C_Spell and C_Spell.IsSpellUsable then
-		usable = (C_Spell.IsSpellUsable(spellID)) and true or false
-	else
+		_usableSpellID = spellID
+		local ok, u = pcall(SafeCheckUsable)
+		_usableSpellID = nil
+		if ok then
+			usable = u
+			probedUsable = true
+		end
+	end
+	if not probedUsable then
 		usable = known and not onCooldown
 	end
 	return {
 		stacks = stacks,
+		stacksKnown = stacksKnown,
+		countInstID = countInstID,
 		charges = charges,
 		buffActive = buffActive,
 		onCooldown = onCooldown,
@@ -147,7 +342,14 @@ end
 local function RuleMatches(rule, st)
 	local metric = RuleMetric(rule)
 	if metric == "stacks" then
-		return Wise:EvaluateNumericRule(st.stacks, rule.operator, rule.value)
+		if st.stacksKnown then
+			return Wise:EvaluateNumericRule(st.stacks, rule.operator, rule.value)
+		end
+		-- Aura hidden by 12.0.7 combat secrecy: the count is unreadable, but the
+		-- sanctioned display-count API can still answer >=-threshold questions.
+		-- Rules the API can't decide simply don't match — never treat "hidden" as
+		-- 0 stacks (that lit the <=N red border for entire fights).
+		return MatchStacksRuleViaDisplayCount(rule, st.countInstID) == true
 	elseif metric == "charges" then
 		return Wise:EvaluateNumericRule(st.charges, rule.operator, rule.value)
 	elseif metric == "available" then
@@ -155,8 +357,13 @@ local function RuleMatches(rule, st)
 	elseif metric == "cooldown" then
 		return st.onCooldown == true
 	elseif metric == "buff_active" then
+		-- buffActive=true is provable even for a hidden aura (instance read hit);
+		-- when state is unknown (hidden, no handle) this stays false — unprovable.
 		return st.buffActive == true
 	elseif metric == "buff_missing" then
+		if not st.stacksKnown and not st.buffActive then
+			return false -- hidden-vs-missing undecidable: don't claim "missing"
+		end
 		return st.buffActive == false
 	end
 	return false
@@ -171,6 +378,18 @@ end
 local function RuleDistance(rule, st)
 	local metric = RuleMetric(rule)
 	if metric == "stacks" then
+		if not st.stacksKnown then
+			-- Hidden-aura matches come from >=-threshold probes, not a readable
+			-- count: a HIGHER >= threshold is strictly more specific (12 stacks
+			-- satisfies both >=3 and >=8; the >=8 rule must win, mirroring the
+			-- closest-threshold logic used when the count is visible).
+			local v = tonumber(rule.value) or 0
+			local op = rule.operator
+			if op == ">=" or op == ">" then
+				return -v
+			end
+			return v
+		end
 		return math.abs(st.stacks - (tonumber(rule.value) or 0))
 	elseif metric == "charges" then
 		return math.abs(st.charges - (tonumber(rule.value) or 0))
@@ -194,21 +413,16 @@ local function FindMatchedRule(rules, st)
 	return best
 end
 
--- Stack count to DISPLAY on the button (the little corner number). Only meaningful
--- for stacking auras; hidden (0) otherwise.
-local function GetDisplayStacks(st)
-	return st and st.stacks or 0
-end
-
--- Resolve an entry's current (matchedRule, displayStacks, cdRemaining, cdStart).
--- Honors the node's macro condition (e.g. [combat]) — when it isn't met the indicator
--- is inert (no match → no border/sound), so the cue tracks the slot's own gating.
+-- Resolve an entry's current (matchedRule, spellState). Honors the node's macro
+-- condition (e.g. [combat]) — when it isn't met the indicator is inert (no match →
+-- no border/sound), so the cue tracks the slot's own gating. Returns (nil, nil)
+-- when gated; callers must treat a nil state as "no data this pass".
 local function ResolveEntry(entry)
 	if entry.condition and Wise.EvalConditionExact and not Wise:EvalConditionExact(entry.condition) then
-		return nil, 0, nil, 0
+		return nil, nil
 	end
 	local st = ResolveSpellState(entry.spellID, entry.name, entry.action)
-	return FindMatchedRule(entry.rules, st), GetDisplayStacks(st), st.cdRemaining, st.cdStart
+	return FindMatchedRule(entry.rules, st), st
 end
 
 -- Best default metric for a NEW rule on this action, so the user rarely has to
@@ -573,9 +787,9 @@ function Wise:RebuildIndicatorRules()
 	wipe(lastMatchByEntry)
 	wipe(lastCdStartByEntry)
 	for _, entry in pairs(rulesBySpell) do
-		local matched, _, _, cdStart = ResolveEntry(entry)
+		local matched, st = ResolveEntry(entry)
 		lastMatchByEntry[entry] = matched
-		lastCdStartByEntry[entry] = cdStart or 0
+		lastCdStartByEntry[entry] = (st and st.cdStart) or 0
 	end
 end
 
@@ -583,6 +797,33 @@ end
 -- spellID first, then by spell NAME — a /cast Abundance custom_macro button has no
 -- resolved spellID (the name doesn't resolve via C_Spell), so fall back to scanning
 -- its live macro text / action value for a ruled spell name.
+local function StateEntry(state)
+	if type(state) ~= "table" then
+		return nil
+	end
+	if state.type == "spell" and state.value then
+		local sid = tonumber(state.value)
+		if sid and rulesBySpell[sid] then
+			return rulesBySpell[sid]
+		end
+		if type(state.value) == "string" then
+			local e = rulesByName[state.value:lower()]
+			if e then
+				return e
+			end
+		end
+	end
+	if next(rulesByName) and type(state.macroText) == "string" then
+		local lower = state.macroText:lower()
+		for nameLower, entry in pairs(rulesByName) do
+			if lower:find(nameLower, 1, true) then
+				return entry
+			end
+		end
+	end
+	return nil
+end
+
 local function ButtonEntry(meta)
 	if not meta then
 		return nil
@@ -609,6 +850,20 @@ local function ButtonEntry(meta)
 			end
 		end
 	end
+	-- A multi-state slot displays only ONE state at a time (meta.actionData), but
+	-- the ruled action may live on a sibling state. E.g. AtMouse compiles to a
+	-- "[combat] Survival Instincts" step plus an "Abundance" step: entering combat
+	-- flips the shown state to the first, and matching only the active state would
+	-- detach the Abundance indicator exactly when its stacks matter. Scan every
+	-- state so the indicator stays bound to the slot that can cast the spell.
+	if type(meta.states) == "table" then
+		for _, state in ipairs(meta.states) do
+			local e = StateEntry(state)
+			if e then
+				return e
+			end
+		end
+	end
 	return nil
 end
 
@@ -620,7 +875,9 @@ local function ApplyBorder(b, matchedRule)
 		if b.indicatorBorder then
 			b.indicatorBorder:Hide()
 		end
-		Wise:HideOverlayGlow(b)
+		-- "rule" owner: releases only this engine's claim on the glow — a proc
+		-- glow owned by UpdateButtonUsability stays lit (no per-pass teardown).
+		Wise:HideOverlayGlow(b, "rule")
 		return
 	end
 	if not b.indicatorBorder then
@@ -645,13 +902,24 @@ local function ApplyBorder(b, matchedRule)
 	b.indicatorBorder:SetVertexColor(r, g, bc, 1)
 	b.indicatorBorder:Show()
 	if matchedRule.glow then
-		Wise:ShowOverlayGlow(b)
+		Wise:ShowOverlayGlow(b, nil, "rule")
 	else
-		Wise:HideOverlayGlow(b)
+		Wise:HideOverlayGlow(b, "rule")
 	end
 end
 
-local function ApplyCount(b, count)
+-- Hoisted closure for the secret-count display path (fetch + SetText must share
+-- one pcall: any step may refuse a secret value).
+local _secretCountFS, _secretCountInst
+local function SecretCountProbe()
+	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _secretCountInst, 1)
+	if c == nil then
+		error("no-display-count", 0)
+	end
+	_secretCountFS:SetText(c)
+end
+
+local function ApplyCount(b, count, instID)
 	if not b then
 		return
 	end
@@ -663,6 +931,20 @@ local function ApplyCount(b, count)
 	if count and count > 0 then
 		b.indicatorCount:SetText(tostring(count))
 		b.indicatorCount:Show()
+	elseif instID and C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount then
+		-- 12.0.7 sanctioned display path for a combat-hidden aura: the count string
+		-- may be SECRET — readable by nothing, but designed to be handed straight to
+		-- FontString:SetText. Fetch + set inside ONE pcall'd closure; any refusal
+		-- (aura gone, API blocked, SetText rejecting the value) falls back to hiding
+		-- the count — exactly the old behavior.
+		_secretCountFS, _secretCountInst = b.indicatorCount, instID
+		local ok = pcall(SecretCountProbe)
+		_secretCountFS, _secretCountInst = nil, nil
+		if ok then
+			b.indicatorCount:Show()
+		else
+			b.indicatorCount:Hide()
+		end
 	else
 		b.indicatorCount:Hide()
 	end
@@ -678,7 +960,7 @@ local function ClearButton(b)
 	if b.indicatorCount then
 		b.indicatorCount:Hide()
 	end
-	Wise:HideOverlayGlow(b)
+	Wise:HideOverlayGlow(b, "rule")
 end
 
 -- One-shot wake-up that fires shortly after the soonest tracked cooldown expires,
@@ -712,9 +994,15 @@ function Wise:UpdateIndicatorRules()
 	local seen = {}
 	local soonestCd = nil
 	for _, entry in pairs(rulesBySpell) do
-		local matched, stacks, cdRemaining, cdStart = ResolveEntry(entry)
+		local matched, st = ResolveEntry(entry)
+		local cdRemaining = st and st.cdRemaining
+		local cdStart = st and st.cdStart
 		entry._matched = matched
-		entry._stacks = stacks
+		-- Corner-number inputs: a readable count when we have one, otherwise the
+		-- instance handle so ApplyCount can route through the sanctioned
+		-- display-count API (12.0.7 hides the aura itself in combat).
+		entry._stacks = (st and st.stacksKnown and st.stacks) or 0
+		entry._countInstID = st and not st.stacksKnown and st.countInstID or nil
 		seen[entry] = true
 		-- Track the soonest cooldown expiry so we can wake exactly when a spell comes
 		-- off cooldown (SPELL_UPDATE_COOLDOWN doesn't reliably fire at cooldown END).
@@ -769,10 +1057,10 @@ function Wise:UpdateIndicatorRules()
 				local visualClone = meta and meta.visualClone or btn.visualClone
 				if entry then
 					ApplyBorder(btn, entry._matched)
-					ApplyCount(btn, entry._stacks or 0)
+					ApplyCount(btn, entry._stacks or 0, entry._countInstID)
 					if visualClone then
 						ApplyBorder(visualClone, entry._matched)
-						ApplyCount(visualClone, entry._stacks or 0)
+						ApplyCount(visualClone, entry._stacks or 0, entry._countInstID)
 					end
 				else
 					ClearButton(btn)

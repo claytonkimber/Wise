@@ -1418,20 +1418,41 @@ local function ResolveMacroTarget(result)
 	-- /click of an override/possess action button: resolve the live paged slot so
 	-- the icon reflects the current encounter ability rather than the empty 133/121
 	-- base slot. ResolveBarActionID maps to the active override/vehicle/shapeshift page.
+	-- ONLY while such a bar is actually up: these /click lines are conditional
+	-- ([overridebar]/[vehicleui]/[possessbar]) and the caller's strip-conditions
+	-- fallback hands us the bare token even when the condition failed. Resolving the
+	-- base slot then reads whatever ordinarily lives at that action id — on druids
+	-- the FORM bars occupy those slots (e.g. slot 134 = Moonfire on the bear page),
+	-- which put a Moonfire tooltip/cooldown on the Skull Bash interrupt slot. With
+	-- no special bar up, fall through to the macro's next line instead.
 	local overrideIdx = result:match("OverrideActionBarButton(%d+)")
 	if overrideIdx then
+		local barUp = (HasOverrideActionBar and HasOverrideActionBar())
+			or (HasVehicleActionBar and HasVehicleActionBar())
+		if not barUp then
+			return nil
+		end
 		local actionID = 132 + tonumber(overrideIdx)
 		local realID = Wise:ResolveBarActionID(actionID)
 		local icon = GetActionTexture(realID)
 		if icon then
 			return "action", actionID, icon
 		end
-		-- No texture on the resolved slot (override bar not up / empty): let the
-		-- caller fall through to the next macro line for a usable icon.
+		-- No texture on the resolved slot (empty): let the caller fall through to
+		-- the next macro line for a usable icon.
 		return nil
 	end
 	local actionIdx = result:match("^ActionButton(%d+)$")
 	if actionIdx then
+		-- Same gate: a "/click [possessbar] ActionButtonN" line is only meaningful
+		-- while a possess/temp-shapeshift bar is up; otherwise ActionButtonN is just
+		-- the player's own main bar and must not hijack the slot's display.
+		local barUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (HasVehicleActionBar and HasVehicleActionBar())
+			or (HasOverrideActionBar and HasOverrideActionBar())
+		if not barUp then
+			return nil
+		end
 		local actionID = tonumber(actionIdx)
 		local realID = Wise:ResolveBarActionID(actionID)
 		local icon = GetActionTexture(realID)
@@ -1558,6 +1579,66 @@ function Wise:ResolveMacroData(macroText)
 	end
 
 	return nil, nil, nil
+end
+
+-- Resolve the primary spell of a graph-compiled custom_macro state from its SOURCE
+-- graph nodes, for display metadata (cooldown swipe, usability tint, charges).
+-- ResolveMacroData can't always be relied on for this: it re-resolves spell NAMES
+-- out of the macro text via C_Spell.GetSpellInfo, which fails for names outside
+-- this character's spellbook (live probe: RMD -> type=nil for "/cast Abundance"),
+-- leaving meta.spellID nil — no cooldown swipe or usability feedback. The graph
+-- node stores the numeric spell id the user picked; trust it directly.
+--
+-- MUST mirror macro execution order: walk the path ROOT -> LEAF (macro lines are
+-- emitted in that order) over spell nodes this character can actually use
+-- (IsActionAllowed), preferring the first whose macro condition currently passes
+-- (EvalConditionExact) — that is the line a press would fire. Falls back to the
+-- first allowed spell node when no condition matches right now. (A leaf-first
+-- walk picked the wrong spell on stacked multi-line paths: the multi-class
+-- interrupt slot tracked its LAST line, Ursol's Vortex, instead of the Skull Bash
+-- line that fires on a Guardian.)
+function Wise:ResolveCompiledStateSpellID(state, slotStates)
+	if type(state) ~= "table" or type(state.pathNodeIds) ~= "table" then
+		return nil
+	end
+	local graph = (slotStates and slotStates.graph) or state.graph
+	if not graph or type(graph.nodes) ~= "table" then
+		return nil
+	end
+	local byId = {}
+	for _, n in ipairs(graph.nodes) do
+		if n.id ~= nil then
+			byId[n.id] = n
+		end
+	end
+	local function nodeSpellID(a)
+		local sid = tonumber(a.value)
+		if sid then
+			return sid
+		end
+		local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(a.value)
+		return info and info.spellID or nil
+	end
+	local firstAllowed = nil
+	for i = 1, #state.pathNodeIds do
+		local node = byId[state.pathNodeIds[i]]
+		local a = node and node.action
+		if a and a.type == "spell" and a.value and (not Wise.IsActionAllowed or Wise:IsActionAllowed(a)) then
+			local sid = nodeSpellID(a)
+			if sid then
+				firstAllowed = firstAllowed or sid
+				local cond = node.condition
+				if type(cond) ~= "string" or cond == "" then
+					-- Unconditional line: this is what fires. Done.
+					return sid
+				end
+				if Wise.EvalConditionExact and Wise:EvalConditionExact(cond) then
+					return sid
+				end
+			end
+		end
+	end
+	return firstAllowed
 end
 
 function Wise:GetActionName(actionType, value, extraData)
@@ -1779,6 +1860,7 @@ function Wise:GetActionName(actionType, value, extraData)
 			map_zone = "Zone Map",
 			map_minimap = "Toggle Minimap",
 			garrison = "Garrison Report",
+			omnium_folio = "Omnium Folio",
 		}
 		return names[value] or value
 	elseif actionType == "interface" then
@@ -1984,6 +2066,7 @@ function Wise:GetActionIcon(actionType, value, extraData)
 			map_zone = "Interface\\Icons\\INV_Misc_Map02",
 			map_minimap = "Interface\\Icons\\INV_Misc_Spyglass_03",
 			garrison = "Interface\\Icons\\Achievement_Garrison_Horde_PVE",
+			omnium_folio = "Interface\\Icons\\INV_Misc_Book_17",
 		}
 		if icons[value] then
 			texture = icons[value]
@@ -2649,6 +2732,24 @@ function Wise:GetActiveRotationSpells()
 		return boundSpells, boundSpellIDs, activeMacroTexts
 	end
 
+	local function AddBoundSpell(value)
+		local spellID = tonumber(value)
+		local spellName
+		if spellID then
+			boundSpellIDs[spellID] = true
+			spellName = C_Spell.GetSpellName(spellID)
+		else
+			spellName = value
+			local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(value)
+			if info and info.spellID then
+				boundSpellIDs[info.spellID] = true
+			end
+		end
+		if spellName then
+			boundSpells[string.lower(spellName)] = true
+		end
+	end
+
 	for groupName, group in pairs(WiseDB.groups) do
 		if Wise:IsGroupAvailable(groupName) and not group.isWiser then
 			if Wise.MigrateGroupToActions then
@@ -2657,24 +2758,22 @@ function Wise:GetActiveRotationSpells()
 
 			if group.actions then
 				for _, slotStates in pairs(group.actions) do
+					-- Graph-authored slots (slot configurator) compile every node into
+					-- misc/custom_macro states, so their spells never appear as plain
+					-- spell states below. Walk the source graph so a spell placed on a
+					-- node registers as bound (directly used), not merely macro-referenced.
+					if type(slotStates) == "table" and slotStates.graph and type(slotStates.graph.nodes) == "table" then
+						for _, node in ipairs(slotStates.graph.nodes) do
+							local a = node.action
+							if a and a.type == "spell" and a.value and Wise:ShouldLoadAction(a, group) then
+								AddBoundSpell(a.value)
+							end
+						end
+					end
 					for _, action in ipairs(slotStates) do
 						if Wise:ShouldLoadAction(action, group) then
 							if action.type == "spell" and action.value then
-								local spellID = tonumber(action.value)
-								local spellName
-								if spellID then
-									boundSpellIDs[spellID] = true
-									spellName = C_Spell.GetSpellName(spellID)
-								else
-									spellName = action.value
-									local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(action.value)
-									if info and info.spellID then
-										boundSpellIDs[info.spellID] = true
-									end
-								end
-								if spellName then
-									boundSpells[string.lower(spellName)] = true
-								end
+								AddBoundSpell(action.value)
 							elseif
 								action.type == "macro" or (action.type == "misc" and action.value == "custom_macro")
 							then
@@ -3877,6 +3976,8 @@ function Wise:GetUIpanel(filter)
 		{ name = "Toggle Minimap", val = "map_minimap", icon = "Interface\\Icons\\INV_Misc_Spyglass_03" },
 		-- Garrison / Mission Report
 		{ name = "Garrison Report", val = "garrison", icon = "Interface\\Icons\\Achievement_Garrison_Horde_PVE" },
+		-- Omnium Folio
+		{ name = "Omnium Folio", val = "omnium_folio", icon = "Interface\\Icons\\INV_Misc_Book_17" },
 	}
 	for _, p in ipairs(panels) do
 		if not filter or string.find(string.lower(p.name), filter, 1, true) then
