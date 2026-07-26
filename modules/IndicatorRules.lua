@@ -92,49 +92,37 @@ local function SafeCheckUsable()
 	return (C_Spell.IsSpellUsable(_usableSpellID)) and true or false
 end
 
--- ---- 12.0.7 sanctioned display-count machinery -------------------------------
+-- ---- 12.0.7 display-count machinery ------------------------------------------
 -- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, minDisplayCount)
--- is the one API Blizzard left for showing a hidden aura's stack count in combat:
--- it returns a (possibly secret) STRING meant to be handed straight to
--- FontString:SetText, and returns nil while applications < minDisplayCount — which
--- doubles as a plain threshold signal we can drive rules with. Semantics are
--- self-validated once per session: dc(min=999) must come back nil for a real aura
--- (nothing stacks to 999); if it doesn't, min is being ignored and threshold
--- inference would be garbage, so it stays disabled.
-local dcSemanticsValid = nil -- nil = untested, true = usable, false = broken
-local _dcInst, _dcMin
-local function DcAtLeastProbe()
-	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _dcInst, _dcMin)
-	if c == nil then
-		return false
-	end
-	return true
-end
-
--- Plain true/false when the API answered; nil when unknown/unavailable/refused.
+-- returns a STRING meant to be handed straight to FontString:SetText.
+--
+-- MEASURED 2026-07-26 (Mechanic probes v1-v3, live 12.0.7 build 68887) — the
+-- previous comment here described behaviour the client does NOT have:
+--
+--   1. minDisplayCount does NOT gate the return. A 1-stack Rejuvenation queried
+--      with min=999 still came back non-nil ("m999=plain-str:"). There is no
+--      threshold signal to infer from, so >=-probing CANNOT work.
+--   2. The return is EMPTY STRING ("") when the threshold is unmet on a plain
+--      aura — not nil. `c == nil` is therefore false and every probe read as a
+--      hit, which is why all colour rules matched at once and the first rule
+--      won the border permanently.
+--   3. For rotationally-relevant auras (Abundance included) the return is a
+--      SECRET string. Comparing it AT ALL throws — `c == nil` inside a pcall
+--      swallows the error and yields a silent nil, so the failure was invisible.
+--
+-- Net effect: threshold inference is impossible via this API. Stacks in combat
+-- are DISPLAYABLE (SetText accepts the secret — that path works today and is
+-- untouched here) but not INSPECTABLE. StacksAtLeast is retained as an explicit
+-- "cannot answer" so callers degrade to UNKNOWN instead of a confident wrong
+-- colour. See ResolveSpellState / MatchStacksRuleViaDisplayCount.
 local function StacksAtLeast(instID, n)
-	if not (instID and C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount) then
-		return nil
+	if n and n <= 0 then
+		-- ">= 0" is true for any existing aura and needs no secret read.
+		return instID and true or nil
 	end
-	if n <= 0 then
-		return true
-	end
-	if dcSemanticsValid == nil then
-		_dcInst, _dcMin = instID, 999
-		local ok, res = pcall(DcAtLeastProbe)
-		if ok then
-			dcSemanticsValid = (res == false)
-		end
-		-- On a refused probe (error), leave nil so a later pass can retry.
-	end
-	if dcSemanticsValid ~= true then
-		return nil
-	end
-	_dcInst, _dcMin = instID, n
-	local ok, res = pcall(DcAtLeastProbe)
-	if ok then
-		return res
-	end
+	-- Deliberately no API call: every return shape this API produces is either
+	-- ungated (useless) or secret (unreadable). Answering "unknown" is the only
+	-- honest result, and it keeps callers on their existing nil-handling path.
 	return nil
 end
 
@@ -345,10 +333,13 @@ local function RuleMatches(rule, st)
 		if st.stacksKnown then
 			return Wise:EvaluateNumericRule(st.stacks, rule.operator, rule.value)
 		end
-		-- Aura hidden by 12.0.7 combat secrecy: the count is unreadable, but the
-		-- sanctioned display-count API can still answer >=-threshold questions.
-		-- Rules the API can't decide simply don't match — never treat "hidden" as
-		-- 0 stacks (that lit the <=N red border for entire fights).
+		-- Stack count is secret under 12.0.7 combat secrecy. Measured: NO API can
+		-- answer a threshold question about it (minDisplayCount does not gate;
+		-- the return is secret and uncomparable). So this always yields false —
+		-- stack rules simply do not match in combat, and the border stays clear
+		-- rather than showing a confidently wrong colour. Never treat "unknown"
+		-- as 0 stacks (that lit the <=N red border for entire fights).
+		-- The COUNT ITSELF still displays via ApplyCount's SetText path.
 		return MatchStacksRuleViaDisplayCount(rule, st.countInstID) == true
 	elseif metric == "charges" then
 		return Wise:EvaluateNumericRule(st.charges, rule.operator, rule.value)
@@ -910,10 +901,17 @@ end
 
 -- Hoisted closure for the secret-count display path (fetch + SetText must share
 -- one pcall: any step may refuse a secret value).
+--
+-- NOTE: `c == nil` here would be a bug, not a guard. For a secret return the
+-- comparison itself throws, the pcall swallows it, and the count silently hides
+-- — the exact opposite of what the check intends. type() is safe on secrets
+-- (it reports the underlying type without reading the value), so it is the only
+-- way to reject a genuine absence while letting a secret through to SetText.
+-- Measured against live 12.0.7 build 68887; see the StacksAtLeast header.
 local _secretCountFS, _secretCountInst
 local function SecretCountProbe()
 	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _secretCountInst, 1)
-	if c == nil then
+	if type(c) == "nil" then
 		error("no-display-count", 0)
 	end
 	_secretCountFS:SetText(c)

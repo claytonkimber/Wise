@@ -247,12 +247,15 @@ test("IndicatorRules: hidden in-combat aura matches no stack rule (no false red)
 	assertTrue(not borderShown)
 end)
 
--- Sanctioned in-combat path: with the auraInstanceID learned while the buff was
--- visible (prehot before the pull), the counter and >=N thresholds are driven by
--- GetAuraApplicationDisplayCount — its string goes straight into SetText, and its
--- minDisplayCount nil/non-nil return answers threshold questions (validated by an
--- impossible min=999 probe first).
-test("IndicatorRules: hidden in-combat aura counts + matches via display-count API", function()
+-- In-combat display path, modelled on MEASURED 12.0.7 behaviour (Mechanic probes
+-- v1-v3, build 68887) rather than on the API docs, which are wrong here:
+--   * minDisplayCount does NOT gate the return (min=999 on a 1-stack aura still
+--     returns non-nil), so >=N threshold inference is impossible.
+--   * the return for a rotationally-relevant aura is a SECRET string: it can be
+--     passed to SetText but comparing it throws.
+-- So the contract under test is: the COUNT DISPLAYS, and stack-threshold colour
+-- rules match NOTHING (clear border) rather than matching everything at once.
+test("IndicatorRules: in-combat secret aura displays count but matches no stack rule", function()
 	local CAST_ID, AURA_ID, INST_ID, LIVE_STACKS = 999021, 999022, 4242, 12
 	local CU = _G.C_UnitAuras or {}
 	_G.C_UnitAuras = CU
@@ -278,14 +281,21 @@ test("IndicatorRules: hidden in-combat aura counts + matches via display-count A
 	CU.GetAuraDataByAuraInstanceID = function()
 		return nil -- data read blocked in combat too; only the display API answers
 	end
+	-- Live-client model. The sim cannot represent a true secret (SetText demands a
+	-- real string, and a proxy table hard-errors at file scope), so this models
+	-- the OTHER half of the measured behaviour, which is equally fatal to
+	-- threshold inference and IS expressible here: minDisplayCount is IGNORED, so
+	-- every probe returns a value no matter how large the threshold. Any >=N
+	-- inference therefore reads "true" at every N.
+	--
+	-- The secret-comparison half is covered by construction instead: StacksAtLeast
+	-- no longer calls the API at all, so there is no comparison left to throw.
 	CU.GetAuraApplicationDisplayCount = function(unit, instID, minCount)
 		if instID ~= INST_ID then
 			return nil
 		end
-		if (minCount or 1) <= LIVE_STACKS then
-			return tostring(LIVE_STACKS)
-		end
-		return nil
+		-- NOTE: minCount deliberately ignored — that is what the client does.
+		return tostring(LIVE_STACKS)
 	end
 	_G.InCombatLockdown = function()
 		return inCombat
@@ -355,10 +365,13 @@ test("IndicatorRules: hidden in-combat aura counts + matches via display-count A
 	_G.InCombatLockdown = savedICL
 	Wise:RebuildIndicatorRules()
 
+	-- The count still displays: SetText accepts the secret.
 	assertTrue(countShown)
 	assertEquals(tostring(LIVE_STACKS), countText)
-	-- The >=8 White rule must win (12 stacks) — not the <=2 Red one.
-	-- White = (1,1,1); Red = (1,0,0) — the green channel tells them apart.
-	assertTrue(borderShown)
-	assertEquals(1, borderG)
+	-- ...but NO stack-threshold rule may match. Previously the <=2 Red rule and
+	-- the >=8 White rule both "matched" (the nil-check misread every return as a
+	-- hit) and Red won by rule order — a confidently wrong border for the whole
+	-- fight. Unknown stacks must leave the border clear instead.
+	assertFalse(borderShown)
+	assertEquals(nil, borderG)
 end)
