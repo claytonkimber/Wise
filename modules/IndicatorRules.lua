@@ -41,8 +41,16 @@ end
 -- What a rule WATCHES. Numeric metrics use operator+value; boolean metrics match
 -- when their state is true (no operator/value). Order here is the dropdown order.
 -- `numeric` decides whether the operator+value controls show in the UI.
+--
+-- "Aura stacks" is DELIBERATELY ABSENT. Under 12.0.7 combat secrecy a stack count
+-- is displayable but not inspectable (see the Combat Aura Secrecy section in
+-- AGENTS.md), so a stacks-driven colour/glow/sound can never fire in combat —
+-- which is the only time it would matter. Offering it produces an indicator that
+-- silently does nothing in a raid, so the option is withdrawn rather than shipped
+-- broken. The stack COUNT still displays on the button corner; only branching on
+-- it is gone. Everything cooldown- or usability-derived is unaffected: those read
+-- fine in combat.
 local METRICS = {
-	{ key = "stacks", label = "Aura stacks", numeric = true },
 	{ key = "charges", label = "Charges", numeric = true },
 	{ key = "available", label = "Available (off CD)", numeric = false },
 	{ key = "cooldown", label = "On cooldown", numeric = false },
@@ -55,13 +63,24 @@ for _, m in ipairs(METRICS) do
 	METRIC_LABELS[m.key] = m.label
 	METRIC_IS_NUMERIC[m.key] = m.numeric
 end
--- Legacy rules (and the Abundance migration) have no metric → treat as stacks,
--- which is the behavior they were authored against.
-local DEFAULT_METRIC = "stacks"
+local DEFAULT_METRIC = "available"
+
+-- Rules authored against the withdrawn "stacks" metric — either explicitly, or
+-- as the legacy shape that carried NO metric field and meant stacks by default.
+-- These must go INERT, not fall through to DEFAULT_METRIC: silently re-reading
+-- an "Abundance <= 2" rule as "available <= 2" would colour the button off an
+-- unrelated condition, which is worse than the rule simply not firing.
+local function IsRetiredRule(rule)
+	local m = rule.metric
+	if m == nil or m == "stacks" then
+		return true
+	end
+	return METRIC_LABELS[m] == nil
+end
 
 local function RuleMetric(rule)
-	local m = rule.metric or DEFAULT_METRIC
-	if METRIC_LABELS[m] then
+	local m = rule.metric
+	if m and METRIC_LABELS[m] then
 		return m
 	end
 	return DEFAULT_METRIC
@@ -93,74 +112,15 @@ local function SafeCheckUsable()
 end
 
 -- ---- 12.0.7 display-count machinery ------------------------------------------
--- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, minDisplayCount)
+-- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, min, max)
 -- returns a STRING meant to be handed straight to FontString:SetText.
 --
--- MEASURED 2026-07-26 (Mechanic probes v1-v3, live 12.0.7 build 68887) — the
--- previous comment here described behaviour the client does NOT have:
---
---   1. minDisplayCount does NOT gate the return. A 1-stack Rejuvenation queried
---      with min=999 still came back non-nil ("m999=plain-str:"). There is no
---      threshold signal to infer from, so >=-probing CANNOT work.
---   2. The return is EMPTY STRING ("") when the threshold is unmet on a plain
---      aura — not nil. `c == nil` is therefore false and every probe read as a
---      hit, which is why all colour rules matched at once and the first rule
---      won the border permanently.
---   3. For rotationally-relevant auras (Abundance included) the return is a
---      SECRET string. Comparing it AT ALL throws — `c == nil` inside a pcall
---      swallows the error and yields a silent nil, so the failure was invisible.
---
--- Net effect: threshold inference is impossible via this API. Stacks in combat
--- are DISPLAYABLE (SetText accepts the secret — that path works today and is
--- untouched here) but not INSPECTABLE. StacksAtLeast is retained as an explicit
--- "cannot answer" so callers degrade to UNKNOWN instead of a confident wrong
--- colour. See ResolveSpellState / MatchStacksRuleViaDisplayCount.
-local function StacksAtLeast(instID, n)
-	if n and n <= 0 then
-		-- ">= 0" is true for any existing aura and needs no secret read.
-		return instID and true or nil
-	end
-	-- Deliberately no API call: every return shape this API produces is either
-	-- ungated (useless) or secret (unreadable). Answering "unknown" is the only
-	-- honest result, and it keeps callers on their existing nil-handling path.
-	return nil
-end
-
--- Evaluate a numeric stacks rule against a hidden aura purely through >=-threshold
--- probes. Returns true/false when decidable, nil when the API can't answer.
-local function MatchStacksRuleViaDisplayCount(rule, instID)
-	local v = tonumber(rule.value) or 0
-	local op = rule.operator
-	if op == ">=" then
-		return StacksAtLeast(instID, v)
-	elseif op == ">" then
-		return StacksAtLeast(instID, v + 1)
-	elseif op == "<" then
-		local r = StacksAtLeast(instID, v)
-		if r == nil then
-			return nil
-		end
-		return not r
-	elseif op == "<=" then
-		local r = StacksAtLeast(instID, v + 1)
-		if r == nil then
-			return nil
-		end
-		return not r
-	elseif op == "=" or op == "!=" then
-		local a = StacksAtLeast(instID, v)
-		local b = StacksAtLeast(instID, v + 1)
-		if a == nil or b == nil then
-			return nil
-		end
-		local eq = (a and not b) and true or false
-		if op == "=" then
-			return eq
-		end
-		return not eq
-	end
-	return nil
-end
+-- It is used ONLY to display the count. Threshold inference from it is
+-- impossible and the machinery that attempted it has been removed: measured on
+-- live 12.0.7 (build 68887), in combat the return is a SECRET string for every
+-- value of minDisplayCount, and comparing a secret throws. Out of combat it
+-- gates correctly, but a rule that only works out of combat is worse than none.
+-- Hence "Aura stacks" is no longer an offerable metric; see METRICS above.
 
 -- Cast spell -> buff aura id seeds for spells whose buff has a DIFFERENT id than
 -- the cast. Learned mappings are persisted per-action as action.trackedAuraID, so
@@ -403,20 +363,11 @@ end
 
 -- Does one rule match the current spell state?
 local function RuleMatches(rule, st)
+	if IsRetiredRule(rule) then
+		return false
+	end
 	local metric = RuleMetric(rule)
-	if metric == "stacks" then
-		if st.stacksKnown then
-			return Wise:EvaluateNumericRule(st.stacks, rule.operator, rule.value)
-		end
-		-- Stack count is secret under 12.0.7 combat secrecy. Measured: NO API can
-		-- answer a threshold question about it (minDisplayCount does not gate;
-		-- the return is secret and uncomparable). So this always yields false —
-		-- stack rules simply do not match in combat, and the border stays clear
-		-- rather than showing a confidently wrong colour. Never treat "unknown"
-		-- as 0 stacks (that lit the <=N red border for entire fights).
-		-- The COUNT ITSELF still displays via ApplyCount's SetText path.
-		return MatchStacksRuleViaDisplayCount(rule, st.countInstID) == true
-	elseif metric == "charges" then
+	if metric == "charges" then
 		return Wise:EvaluateNumericRule(st.charges, rule.operator, rule.value)
 	elseif metric == "available" then
 		return st.available == true
@@ -443,21 +394,7 @@ end
 -- override.
 local function RuleDistance(rule, st)
 	local metric = RuleMetric(rule)
-	if metric == "stacks" then
-		if not st.stacksKnown then
-			-- Hidden-aura matches come from >=-threshold probes, not a readable
-			-- count: a HIGHER >= threshold is strictly more specific (12 stacks
-			-- satisfies both >=3 and >=8; the >=8 rule must win, mirroring the
-			-- closest-threshold logic used when the count is visible).
-			local v = tonumber(rule.value) or 0
-			local op = rule.operator
-			if op == ">=" or op == ">" then
-				return -v
-			end
-			return v
-		end
-		return math.abs(st.stacks - (tonumber(rule.value) or 0))
-	elseif metric == "charges" then
+	if metric == "charges" then
 		return math.abs(st.charges - (tonumber(rule.value) or 0))
 	end
 	return 0
@@ -492,9 +429,9 @@ local function ResolveEntry(entry)
 end
 
 -- Best default metric for a NEW rule on this action, so the user rarely has to
--- change it: a spell that currently shows a stacking aura → "stacks"; a charge
--- spell → "charges"; everything else (most spells, e.g. Raze) → "available", which
--- is the universally-meaningful "off cooldown / usable" state. The metric is still
+-- change it: a charge spell → "charges"; everything else (most spells, e.g. Raze)
+-- → "available", which is the universally-meaningful "off cooldown / usable"
+-- state and reads correctly in combat. The metric is still
 -- a per-rule dropdown the user can change.
 local function DefaultMetricForAction(action)
 	if not action or action.type ~= "spell" then
@@ -508,14 +445,9 @@ local function DefaultMetricForAction(action)
 	if not sid then
 		return "available"
 	end
-	-- Currently-applied stacking aura (>1 application) → it's a stacking spell.
-	local aura = C_UnitAuras.GetPlayerAuraBySpellID(sid)
-	if not aura and action.name and C_UnitAuras.GetAuraDataBySpellName then
-		aura = C_UnitAuras.GetAuraDataBySpellName("player", action.name)
-	end
-	if aura and (aura.applications or 0) > 1 then
-		return "stacks"
-	end
+	-- NOTE: no stacking-aura branch here any more. "Aura stacks" was withdrawn as
+	-- a metric (it cannot be evaluated in combat), so suggesting it would hand the
+	-- user a rule that never fires.
 	-- Multi-charge spell → charges is the natural numeric metric.
 	if C_Spell and C_Spell.GetSpellCharges then
 		local ci = C_Spell.GetSpellCharges(sid)
@@ -602,7 +534,7 @@ function Wise:RenderIndicatorRules(panel, action, y, commit)
 		if Wise.AddTooltip then
 			Wise:AddTooltip(
 				metricBtn,
-				"What this rule watches on this spell (stacks, charges, availability, buff state)."
+				"What this rule watches on this spell (charges, availability, buff state)."
 			)
 		end
 
