@@ -185,15 +185,41 @@ local KNOWN_AURA_IDS = {
 -- with the aura instance, so they must NOT be persisted (unlike trackedAuraID).
 local liveAuraInstance = setmetatable({}, { __mode = "k" })
 
+-- 12.0 secret-value primitives. `issecretvalue` / `issecrettable` are real
+-- client globals (they sit beside issecure/issecurevalue in the API list) and
+-- answer "is this readable?" directly, returning a plain boolean. Guarded so a
+-- client without them falls back to the round-trip below.
+local _issecretvalue = _G.issecretvalue
+
+-- Is this value unreadable? Plain true/false; treats a refusal as secret.
+local function IsSecretValue(v)
+	if _issecretvalue then
+		local ok, res = pcall(_issecretvalue, v)
+		if ok then
+			return res and true or false
+		end
+		return true
+	end
+	return nil -- unknown: caller falls through to the round-trip
+end
+
 -- Plain number from a possibly-secret value; nil when truly secret/unreadable.
--- tostring->tonumber round-trips sever the secret flag, and throw on values that
--- can't be represented — hence the pcall (hoisted closure, AGENTS.md Rule on
--- zero-alloc hot loops).
+--
+-- WHY NOT tostring alone: tostring(secret) does NOT throw — it returns a SECRET
+-- STRING, which then explodes on the next comparison. Three separate probe
+-- crashes during the 12.0.7 investigation came from trusting the round-trip to
+-- surface secrets. tonumber() is what actually collapses one to nil, and
+-- issecretvalue() short-circuits the whole dance when available.
 local _ssnVal
 local function SecretSafeNumberProbe()
 	return tonumber(tostring(_ssnVal))
 end
 local function SecretSafeNumber(v)
+	-- Ask the client first when it can answer.
+	local secret = IsSecretValue(v)
+	if secret == true then
+		return nil
+	end
 	-- No direct nil/type checks on v here: even `v == nil` is a comparison a true
 	-- secret may refuse. The pcall'd round-trip handles every case — nil converts
 	-- to nil, plain numbers convert to themselves, secrets either throw (caught)
@@ -206,6 +232,13 @@ local function SecretSafeNumber(v)
 	end
 	return nil
 end
+
+-- NOTE: no nested-field helper here on purpose. Indexing a SECRET TABLE (e.g.
+-- aura.points[1]) throws outright, and issecretvalue cannot catch that — it
+-- reports on values, not on whether their container can be indexed. That is
+-- what `issecrettable` is for. Wise currently reads no such field, so adding
+-- the helper now would be dead code; if one is ever read, guard it with
+-- `issecrettable` BEFORE indexing rather than pcall'ing after the fact.
 
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
 -- spell. Read order: learned/seeded buff aura id, then cast id, then name (the
