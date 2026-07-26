@@ -213,7 +213,11 @@ btn:SetAttribute(newAttr, newValue)
 
 ### Numeric Taint Stripping
 
-`tonumber(n)` on an already-numeric tainted value is an **identity operation — it does NOT strip taint.** Only a string→number round-trip or arithmetic produces a fresh, untainted value. When a number originates from a secure frame/API (CooldownViewer children, action bar buttons, spec info, `C_Spell` override/lookup results) and will be used as a table key, in a comparison, or passed back through user code, route it through **`tonumber(tostring(value))`**, not plain `tonumber(value)` — and guard against `nil` since true secrets won't convert.
+`tonumber(n)` on an already-numeric tainted value is an **identity operation — it does NOT strip taint.** Only a string→number round-trip or arithmetic produces a fresh, untainted value. When a number originates from a secure frame/API (CooldownViewer children, action bar buttons, spec info, `C_Spell` override/lookup results) and will be used as a table key, in a comparison, or passed back through user code, route it through **`tonumber(tostring(value))`**, not plain `tonumber(value)`.
+
+**Taint ≠ secrecy, and the round-trip does NOT reliably detect a secret.** `tostring(secret)` does *not* throw — it returns a **secret string**, which survives the round-trip and only explodes on the *next* comparison, far from the real cause. Verified in isolation: given a secret, `tonumber(tostring(v))` alone yields a readable number; only `issecretvalue` rejects it.
+
+Use the client primitives instead — **`issecretvalue(v)`** for values, **`issecrettable(t)` before indexing** a possibly-secret table (indexing one throws, and `issecretvalue` cannot catch that). Both are real 12.0 globals, beside `issecure`/`issecurevalue`. Guard for their absence and keep the round-trip as fallback. See `SecretSafeNumber` in `modules/IndicatorRules.lua`.
 
 ### Rule 9: Use `SecureCmdOptionParse()` for Condition Evaluation in Restricted Context
 
@@ -378,6 +382,45 @@ Slot Configurator "graph" nodes (`type="spell"`, `value=spellID`, `icon=textureI
 - **Icon resolution priority:** the bar button icon comes from `ResolveMacroData`/`GetActionIcon`, which can return `nil` for untalented/unknown spells (`C_Spell.GetSpellInfo` fails) — the stored **node icon is the ground-truth fallback** and must be carried through `FilterMacroTextForCharacter` (as `liveIcon`/`copy.icon`) to the button renderer, which prefers `actionData.icon` over the live-resolved icon.
 - **Override/possess-bar action nodes (`type="action"`, `value` = a raw slot number 121-156) store a literal placeholder icon** (`"Interface\Icons\INV_Misc_QuestionMark"`, numeric `134400`) because the real icon can only be known at runtime via `GetActionTexture()` once `HasOverrideActionBar()`/`HasVehicleActionBar()`/`HasTempShapeshiftActionBar()` is true (see `Wise:ResolveBarActionID`, `core/GUI.lua`). Any icon-priority code must treat this placeholder (both the numeric `134400` AND the `inv_misc_questionmark` path-string form) as "no real icon" and fall through to the next candidate — checking only one form re-introduces a `?` icon bug.
 - **GCD display coloring must never influence the secure sequencer.** Every configurator-compiled step is on-GCD by construction (one action per press); a shared helper that resolves "what does this macro actually cast" for GCD-color display purposes must not also feed the secure `isa_offgcd_*` attribute that drives multi-step stacking, or steps silently collapse/stop advancing.
+
+### Combat Aura Secrecy (12.0.7) — measured, build 68887
+
+Established by seven in-game probes on 2026-07-26. **Earlier notes claiming
+12.0.7 "hides rotationally-relevant auras from all reads in combat" are WRONG
+and were deleted — that theory was inferred from reads that also failed out of
+combat.** What actually happens:
+
+- **Auras still enumerate in combat.** `GetAuraSlots` / `GetAuraDataBySlot`
+  return the aura table normally. Nothing is hidden.
+- **Individual FIELDS become secret**: `spellId`, `name`, `applications`,
+  `points`, `duration`, `expirationTime`. `auraInstanceID`, `isHelpful`,
+  `isFromPlayerOrPlayerPet` stay **plain**. `C_Secrets.ShouldAurasBeSecret`
+  flips `false`→`true` on combat entry, so this is deliberate, not a bug.
+- **Therefore every by-identity lookup fails in combat** — `GetPlayerAuraBySpellID`
+  cannot match a plain ID against a secret `spellId`. Do not "fix" this by
+  trying another lookup order; they all fail for the same reason.
+- **`auraInstanceID` values rotate on combat entry**, so a handle learned
+  pre-pull does NOT survive. Any "learn the instance out of combat, use it in
+  combat" design is dead on arrival.
+- **`GetAuraApplicationDisplayCount(unit, inst, min, max)`**: `minDisplayCount`
+  gates correctly **out of combat** (1 stack → `min1="1"`, `min2=""`) — note the
+  miss is a **plain empty string, not nil**, so `c == nil` is wrong twice over
+  (`""` is truthy, and comparing a secret throws). **In combat every threshold
+  returns a secret regardless of N**, so no threshold can be inferred.
+
+**Net rule: in combat a stack count is DISPLAYABLE but not INSPECTABLE.**
+`FontString:SetText(secret)` is accepted and the client renders it — this is why
+the Abundance counter works. `StatusBar:SetValue(secret)` is **refused**.
+Anything that *branches* on the value (border colour, glow, threshold sounds)
+cannot work in combat and must degrade to "unknown" — never to 0, which lights
+`<=N` rules for an entire fight. Out of combat, everything works normally.
+
+Routes already tested and closed, so nobody re-runs them: lookup by buff/cast
+ID/name, full enumeration, pre-learned instance handles, the display-count API
+with and without `maxDisplayCount`, `minDisplayCount` gating, the `C_Secrets`
+namespace, `C_CooldownViewer` (carries no aura data for Abundance), Blizzard's
+rendered CDM FontStrings, `tonumber` coercion into `SetValue`, and
+`SetText`→`GetText` laundering.
 
 ### CooldownViewer Integration (`wiser/Cooldowns.lua`)
 

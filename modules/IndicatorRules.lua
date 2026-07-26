@@ -41,8 +41,16 @@ end
 -- What a rule WATCHES. Numeric metrics use operator+value; boolean metrics match
 -- when their state is true (no operator/value). Order here is the dropdown order.
 -- `numeric` decides whether the operator+value controls show in the UI.
+--
+-- "Aura stacks" is DELIBERATELY ABSENT. Under 12.0.7 combat secrecy a stack count
+-- is displayable but not inspectable (see the Combat Aura Secrecy section in
+-- AGENTS.md), so a stacks-driven colour/glow/sound can never fire in combat —
+-- which is the only time it would matter. Offering it produces an indicator that
+-- silently does nothing in a raid, so the option is withdrawn rather than shipped
+-- broken. The stack COUNT still displays on the button corner; only branching on
+-- it is gone. Everything cooldown- or usability-derived is unaffected: those read
+-- fine in combat.
 local METRICS = {
-	{ key = "stacks", label = "Aura stacks", numeric = true },
 	{ key = "charges", label = "Charges", numeric = true },
 	{ key = "available", label = "Available (off CD)", numeric = false },
 	{ key = "cooldown", label = "On cooldown", numeric = false },
@@ -55,13 +63,24 @@ for _, m in ipairs(METRICS) do
 	METRIC_LABELS[m.key] = m.label
 	METRIC_IS_NUMERIC[m.key] = m.numeric
 end
--- Legacy rules (and the Abundance migration) have no metric → treat as stacks,
--- which is the behavior they were authored against.
-local DEFAULT_METRIC = "stacks"
+local DEFAULT_METRIC = "available"
+
+-- Rules authored against the withdrawn "stacks" metric — either explicitly, or
+-- as the legacy shape that carried NO metric field and meant stacks by default.
+-- These must go INERT, not fall through to DEFAULT_METRIC: silently re-reading
+-- an "Abundance <= 2" rule as "available <= 2" would colour the button off an
+-- unrelated condition, which is worse than the rule simply not firing.
+local function IsRetiredRule(rule)
+	local m = rule.metric
+	if m == nil or m == "stacks" then
+		return true
+	end
+	return METRIC_LABELS[m] == nil
+end
 
 local function RuleMetric(rule)
-	local m = rule.metric or DEFAULT_METRIC
-	if METRIC_LABELS[m] then
+	local m = rule.metric
+	if m and METRIC_LABELS[m] then
 		return m
 	end
 	return DEFAULT_METRIC
@@ -92,87 +111,16 @@ local function SafeCheckUsable()
 	return (C_Spell.IsSpellUsable(_usableSpellID)) and true or false
 end
 
--- ---- 12.0.7 sanctioned display-count machinery -------------------------------
--- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, minDisplayCount)
--- is the one API Blizzard left for showing a hidden aura's stack count in combat:
--- it returns a (possibly secret) STRING meant to be handed straight to
--- FontString:SetText, and returns nil while applications < minDisplayCount — which
--- doubles as a plain threshold signal we can drive rules with. Semantics are
--- self-validated once per session: dc(min=999) must come back nil for a real aura
--- (nothing stacks to 999); if it doesn't, min is being ignored and threshold
--- inference would be garbage, so it stays disabled.
-local dcSemanticsValid = nil -- nil = untested, true = usable, false = broken
-local _dcInst, _dcMin
-local function DcAtLeastProbe()
-	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _dcInst, _dcMin)
-	if c == nil then
-		return false
-	end
-	return true
-end
-
--- Plain true/false when the API answered; nil when unknown/unavailable/refused.
-local function StacksAtLeast(instID, n)
-	if not (instID and C_UnitAuras and C_UnitAuras.GetAuraApplicationDisplayCount) then
-		return nil
-	end
-	if n <= 0 then
-		return true
-	end
-	if dcSemanticsValid == nil then
-		_dcInst, _dcMin = instID, 999
-		local ok, res = pcall(DcAtLeastProbe)
-		if ok then
-			dcSemanticsValid = (res == false)
-		end
-		-- On a refused probe (error), leave nil so a later pass can retry.
-	end
-	if dcSemanticsValid ~= true then
-		return nil
-	end
-	_dcInst, _dcMin = instID, n
-	local ok, res = pcall(DcAtLeastProbe)
-	if ok then
-		return res
-	end
-	return nil
-end
-
--- Evaluate a numeric stacks rule against a hidden aura purely through >=-threshold
--- probes. Returns true/false when decidable, nil when the API can't answer.
-local function MatchStacksRuleViaDisplayCount(rule, instID)
-	local v = tonumber(rule.value) or 0
-	local op = rule.operator
-	if op == ">=" then
-		return StacksAtLeast(instID, v)
-	elseif op == ">" then
-		return StacksAtLeast(instID, v + 1)
-	elseif op == "<" then
-		local r = StacksAtLeast(instID, v)
-		if r == nil then
-			return nil
-		end
-		return not r
-	elseif op == "<=" then
-		local r = StacksAtLeast(instID, v + 1)
-		if r == nil then
-			return nil
-		end
-		return not r
-	elseif op == "=" or op == "!=" then
-		local a = StacksAtLeast(instID, v)
-		local b = StacksAtLeast(instID, v + 1)
-		if a == nil or b == nil then
-			return nil
-		end
-		local eq = (a and not b) and true or false
-		if op == "=" then
-			return eq
-		end
-		return not eq
-	end
-	return nil
-end
+-- ---- 12.0.7 display-count machinery ------------------------------------------
+-- C_UnitAuras.GetAuraApplicationDisplayCount(unit, auraInstanceID, min, max)
+-- returns a STRING meant to be handed straight to FontString:SetText.
+--
+-- It is used ONLY to display the count. Threshold inference from it is
+-- impossible and the machinery that attempted it has been removed: measured on
+-- live 12.0.7 (build 68887), in combat the return is a SECRET string for every
+-- value of minDisplayCount, and comparing a secret throws. Out of combat it
+-- gates correctly, but a rule that only works out of combat is worse than none.
+-- Hence "Aura stacks" is no longer an offerable metric; see METRICS above.
 
 -- Cast spell -> buff aura id seeds for spells whose buff has a DIFFERENT id than
 -- the cast. Learned mappings are persisted per-action as action.trackedAuraID, so
@@ -185,27 +133,42 @@ local KNOWN_AURA_IDS = {
 	[207383] = 207640, -- Abundance
 }
 
--- Runtime-only memory of a tracked buff's live auraInstanceID, learned whenever an
--- out-of-combat read succeeds (weak keys: entries die with their action tables).
--- WHY: 12.0.7 hides rotationally-relevant player auras from ALL C_UnitAuras
--- lookups during combat — by aura id, by cast id, by name, and even from full
--- enumeration (Mechanic probe 2026-07-05: every path nil / "tracked NOT in list"
--- while 12 Abundance stacks were visibly up). No lookup strategy can recover the
--- stacks mid-combat; the only sanctioned window Blizzard left is through the aura
--- INSTANCE id learned while the aura was still visible (pre-pull), fed to
--- GetAuraDataByAuraInstanceID / GetAuraApplicationDisplayCount. Instance ids die
--- with the aura instance, so they must NOT be persisted (unlike trackedAuraID).
-local liveAuraInstance = setmetatable({}, { __mode = "k" })
+
+-- 12.0 secret-value primitives. `issecretvalue` / `issecrettable` are real
+-- client globals (they sit beside issecure/issecurevalue in the API list) and
+-- answer "is this readable?" directly, returning a plain boolean. Guarded so a
+-- client without them falls back to the round-trip below.
+local _issecretvalue = _G.issecretvalue
+
+-- Is this value unreadable? Plain true/false; treats a refusal as secret.
+local function IsSecretValue(v)
+	if _issecretvalue then
+		local ok, res = pcall(_issecretvalue, v)
+		if ok then
+			return res and true or false
+		end
+		return true
+	end
+	return nil -- unknown: caller falls through to the round-trip
+end
 
 -- Plain number from a possibly-secret value; nil when truly secret/unreadable.
--- tostring->tonumber round-trips sever the secret flag, and throw on values that
--- can't be represented — hence the pcall (hoisted closure, AGENTS.md Rule on
--- zero-alloc hot loops).
+--
+-- WHY NOT tostring alone: tostring(secret) does NOT throw — it returns a SECRET
+-- STRING, which then explodes on the next comparison. Three separate probe
+-- crashes during the 12.0.7 investigation came from trusting the round-trip to
+-- surface secrets. tonumber() is what actually collapses one to nil, and
+-- issecretvalue() short-circuits the whole dance when available.
 local _ssnVal
 local function SecretSafeNumberProbe()
 	return tonumber(tostring(_ssnVal))
 end
 local function SecretSafeNumber(v)
+	-- Ask the client first when it can answer.
+	local secret = IsSecretValue(v)
+	if secret == true then
+		return nil
+	end
 	-- No direct nil/type checks on v here: even `v == nil` is a comparison a true
 	-- secret may refuse. The pcall'd round-trip handles every case — nil converts
 	-- to nil, plain numbers convert to themselves, secrets either throw (caught)
@@ -217,6 +180,95 @@ local function SecretSafeNumber(v)
 		return n
 	end
 	return nil
+end
+
+-- NOTE: no nested-field helper here on purpose. Indexing a SECRET TABLE (e.g.
+-- aura.points[1]) throws outright, and issecretvalue cannot catch that — it
+-- reports on values, not on whether their container can be indexed. That is
+-- what `issecrettable` is for. Wise currently reads no such field, so adding
+-- the helper now would be dead code; if one is ever read, guard it with
+-- `issecrettable` BEFORE indexing rather than pcall'ing after the fact.
+
+-- Find the tracked aura's CURRENT auraInstanceID by live enumeration.
+--
+-- In combat spellId is secret, so the aura cannot be identified by id. What IS
+-- available: auraInstanceID is plain even in combat, and the aura's SLOT is
+-- stable for the lifetime of a given application. So we remember which slot the
+-- aura occupied when we last identified it out of combat, and in combat we read
+-- the instance id out of that same slot.
+--
+-- This is best-effort by design. A slot can be reused by a different aura, which
+-- would point the display-count call at the wrong aura — the cost is a wrong or
+-- absent number in the button corner, never a wrong CAST (nothing here feeds the
+-- secure path). It self-corrects on the next out-of-combat pass.
+-- Last known instance id per action, used ONLY to prefer the same aura instance
+-- across passes when several candidates match. Never trusted on its own.
+local lastAuraInstance = setmetatable({}, { __mode = "k" })
+
+local _slotUnit, _slotIdx
+local function ReadSlotAuraProbe()
+	return C_UnitAuras.GetAuraDataBySlot(_slotUnit, _slotIdx)
+end
+
+local _dcUnit, _dcInst
+local function DisplayCountProbe()
+	-- min=1/max=99: "does this instance have a count at all". The RETURN is a
+	-- possibly-secret string and must never be compared — only its presence is
+	-- used, and presence is what identifies a stacking aura.
+	return C_UnitAuras.GetAuraApplicationDisplayCount(_dcUnit, _dcInst, 1, 99)
+end
+local function InstanceHasCount(inst)
+	if not (C_UnitAuras.GetAuraApplicationDisplayCount and inst) then
+		return false
+	end
+	_dcUnit, _dcInst = "player", inst
+	local ok, c = pcall(DisplayCountProbe)
+	_dcUnit, _dcInst = nil, nil
+	-- type() is safe on a secret; == is not.
+	return ok and type(c) ~= "nil"
+end
+
+-- Find the tracked aura's CURRENT auraInstanceID by scanning the live aura list.
+--
+-- Re-scans EVERY pass rather than caching a slot. Abundance is reapplied
+-- constantly in combat, and each reapplication is a NEW aura instance in a
+-- possibly different slot — a slot learned once goes stale, which showed up as a
+-- counter that could fall but never climb.
+--
+-- Identification without spellId (secret in combat): take player-cast helpful
+-- auras whose instance the display-count API will answer for. Only a stacking
+-- aura has a display count, which narrows the field sharply. Where several
+-- qualify, prefer the instance we used last pass so the number stays stable.
+local function ResolveLiveAuraInstance(spellID, action)
+	if not (C_UnitAuras and C_UnitAuras.GetAuraSlots and C_UnitAuras.GetAuraDataBySlot) then
+		return nil
+	end
+	local previous = action and lastAuraInstance[action]
+	local slots = { C_UnitAuras.GetAuraSlots("player", "HELPFUL") }
+	local firstMatch = nil
+	for i = 2, #slots do
+		_slotUnit, _slotIdx = "player", slots[i]
+		local ok, aura = pcall(ReadSlotAuraProbe)
+		_slotUnit, _slotIdx = nil, nil
+		if ok and aura then
+			-- These two flags stay PLAIN in combat (verified in live aura dumps),
+			-- so they can be tested directly.
+			local mine = (aura.isFromPlayerOrPlayerPet == true)
+			local inst = mine and SecretSafeNumber(aura.auraInstanceID) or nil
+			if inst and InstanceHasCount(inst) then
+				if inst == previous then
+					return inst -- same instance as last pass: strongest signal
+				end
+				if not firstMatch then
+					firstMatch = inst
+				end
+			end
+		end
+	end
+	if firstMatch and action then
+		lastAuraInstance[action] = firstMatch
+	end
+	return firstMatch
 end
 
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
@@ -248,35 +300,27 @@ local function ResolveSpellState(spellID, name, action)
 					action.trackedAuraID = id
 				end
 			end
-			-- Learn the live instance id while the aura is visible (e.g. prehotting
-			-- before the pull) so combat still has a handle once 12.0.7 hides it.
+			-- Record the instance we positively identified here (spellId is
+			-- readable on this path). Combat uses it only as a tie-breaker when
+			-- several candidates match — never as the sole handle, since a new
+			-- application means a new instance id.
 			local inst = SecretSafeNumber(aura.auraInstanceID)
 			if inst then
-				liveAuraInstance[action] = inst
+				lastAuraInstance[action] = inst
 			end
 		end
 	elseif InCombatLockdown() then
-		-- Every direct read failed in combat: hidden-vs-missing is undecidable, so
-		-- stack/buff state is NOT authoritative this pass. Offer the learned
-		-- instance handle to the display/threshold paths regardless of whether the
-		-- data read below succeeds — GetAuraApplicationDisplayCount is a separate,
-		-- independently-sanctioned API.
+		-- In combat the aura is NOT hidden — it still enumerates. Its identifying
+		-- fields (spellId/name/applications) are secret, which is why every lookup
+		-- above failed, but auraInstanceID stays PLAIN and readable. So the handle
+		-- must be read LIVE from the current enumeration.
+		--
+		-- Do NOT use a handle learned out of combat: instance ids rotate on combat
+		-- entry (measured — an id captured pre-pull is stale by the first sample).
+		-- Stacks stay UNKNOWN either way: the count is displayable via SetText but
+		-- not readable, so never claim a number here.
 		stacksKnown = false
-		local inst = action and liveAuraInstance[action]
-		if inst then
-			countInstID = inst
-			if C_UnitAuras.GetAuraDataByAuraInstanceID then
-				local ok, ai = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "player", inst)
-				if ok and ai then
-					buffActive = true
-					local apps = SecretSafeNumber(ai.applications)
-					if apps then
-						stacks = apps
-						stacksKnown = true
-					end
-				end
-			end
-		end
+		countInstID = ResolveLiveAuraInstance(spellID, action)
 	end
 	local charges = 0
 	if spellID and C_Spell and C_Spell.GetSpellCharges then
@@ -340,17 +384,11 @@ end
 
 -- Does one rule match the current spell state?
 local function RuleMatches(rule, st)
+	if IsRetiredRule(rule) then
+		return false
+	end
 	local metric = RuleMetric(rule)
-	if metric == "stacks" then
-		if st.stacksKnown then
-			return Wise:EvaluateNumericRule(st.stacks, rule.operator, rule.value)
-		end
-		-- Aura hidden by 12.0.7 combat secrecy: the count is unreadable, but the
-		-- sanctioned display-count API can still answer >=-threshold questions.
-		-- Rules the API can't decide simply don't match — never treat "hidden" as
-		-- 0 stacks (that lit the <=N red border for entire fights).
-		return MatchStacksRuleViaDisplayCount(rule, st.countInstID) == true
-	elseif metric == "charges" then
+	if metric == "charges" then
 		return Wise:EvaluateNumericRule(st.charges, rule.operator, rule.value)
 	elseif metric == "available" then
 		return st.available == true
@@ -377,21 +415,7 @@ end
 -- override.
 local function RuleDistance(rule, st)
 	local metric = RuleMetric(rule)
-	if metric == "stacks" then
-		if not st.stacksKnown then
-			-- Hidden-aura matches come from >=-threshold probes, not a readable
-			-- count: a HIGHER >= threshold is strictly more specific (12 stacks
-			-- satisfies both >=3 and >=8; the >=8 rule must win, mirroring the
-			-- closest-threshold logic used when the count is visible).
-			local v = tonumber(rule.value) or 0
-			local op = rule.operator
-			if op == ">=" or op == ">" then
-				return -v
-			end
-			return v
-		end
-		return math.abs(st.stacks - (tonumber(rule.value) or 0))
-	elseif metric == "charges" then
+	if metric == "charges" then
 		return math.abs(st.charges - (tonumber(rule.value) or 0))
 	end
 	return 0
@@ -426,9 +450,9 @@ local function ResolveEntry(entry)
 end
 
 -- Best default metric for a NEW rule on this action, so the user rarely has to
--- change it: a spell that currently shows a stacking aura → "stacks"; a charge
--- spell → "charges"; everything else (most spells, e.g. Raze) → "available", which
--- is the universally-meaningful "off cooldown / usable" state. The metric is still
+-- change it: a charge spell → "charges"; everything else (most spells, e.g. Raze)
+-- → "available", which is the universally-meaningful "off cooldown / usable"
+-- state and reads correctly in combat. The metric is still
 -- a per-rule dropdown the user can change.
 local function DefaultMetricForAction(action)
 	if not action or action.type ~= "spell" then
@@ -442,14 +466,9 @@ local function DefaultMetricForAction(action)
 	if not sid then
 		return "available"
 	end
-	-- Currently-applied stacking aura (>1 application) → it's a stacking spell.
-	local aura = C_UnitAuras.GetPlayerAuraBySpellID(sid)
-	if not aura and action.name and C_UnitAuras.GetAuraDataBySpellName then
-		aura = C_UnitAuras.GetAuraDataBySpellName("player", action.name)
-	end
-	if aura and (aura.applications or 0) > 1 then
-		return "stacks"
-	end
+	-- NOTE: no stacking-aura branch here any more. "Aura stacks" was withdrawn as
+	-- a metric (it cannot be evaluated in combat), so suggesting it would hand the
+	-- user a rule that never fires.
 	-- Multi-charge spell → charges is the natural numeric metric.
 	if C_Spell and C_Spell.GetSpellCharges then
 		local ci = C_Spell.GetSpellCharges(sid)
@@ -536,7 +555,7 @@ function Wise:RenderIndicatorRules(panel, action, y, commit)
 		if Wise.AddTooltip then
 			Wise:AddTooltip(
 				metricBtn,
-				"What this rule watches on this spell (stacks, charges, availability, buff state)."
+				"What this rule watches on this spell (charges, availability, buff state)."
 			)
 		end
 
@@ -910,10 +929,17 @@ end
 
 -- Hoisted closure for the secret-count display path (fetch + SetText must share
 -- one pcall: any step may refuse a secret value).
+--
+-- NOTE: `c == nil` here would be a bug, not a guard. For a secret return the
+-- comparison itself throws, the pcall swallows it, and the count silently hides
+-- — the exact opposite of what the check intends. type() is safe on secrets
+-- (it reports the underlying type without reading the value), so it is the only
+-- way to reject a genuine absence while letting a secret through to SetText.
+-- Measured against live 12.0.7 build 68887; see the StacksAtLeast header.
 local _secretCountFS, _secretCountInst
 local function SecretCountProbe()
 	local c = C_UnitAuras.GetAuraApplicationDisplayCount("player", _secretCountInst, 1)
-	if c == nil then
+	if type(c) == "nil" then
 		error("no-display-count", 0)
 	end
 	_secretCountFS:SetText(c)

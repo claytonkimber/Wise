@@ -21,9 +21,13 @@ test("IndicatorRules: indicator stays bound when a sibling state is active", fun
 		type = "spell",
 		value = 207383,
 		name = "Abundance",
-		-- stacks <= 99 always matches (stacks read 0 in the sim), so a bound
-		-- indicator shows its border; an unbound one is cleared.
-		indicatorRules = { { operator = "<=", value = 99, color = "Red", glow = false } },
+		-- charges <= 99 always matches (charges read 0 in the sim), so a bound
+		-- indicator shows its border; an unbound one is cleared. Uses charges
+		-- rather than stacks: "Aura stacks" was withdrawn as a metric because it
+		-- cannot be evaluated under combat secrecy.
+		indicatorRules = {
+			{ metric = "charges", operator = "<=", value = 99, color = "Red", glow = false },
+		},
 	}
 	WiseDB.groups = {
 		IndicatorTest = {
@@ -83,13 +87,12 @@ test("IndicatorRules: indicator stays bound when a sibling state is active", fun
 end)
 
 -- A spell whose buff has a different id than the cast (Abundance: cast 207383,
--- buff 207640) must resolve stacks by the buff's aura id: learned from the first
+-- buff 207640) must resolve its aura by the BUFF's id: learned from the first
 -- successful lookup (persisted as action.trackedAuraID), or from the known-id
--- seed table — the name path is only a last resort. NOTE (2026-07-05 live probe):
--- in COMBAT 12.0.7 blocks ALL of these reads for rotational auras, id included;
--- that path is covered by the hidden-aura tests below. This test covers the
--- learned-id mechanism itself (restores the counter out of combat).
-test("IndicatorRules: stacks resolve by learned aura id when name lookup fails", function()
+-- seed table — the name path is only a last resort. This drives the COUNT
+-- display, which is the one piece of stack feedback that still works; stack
+-- THRESHOLDS were withdrawn as a metric (unevaluatable under combat secrecy).
+test("IndicatorRules: aura resolves by learned buff id when name lookup fails", function()
 	local CAST_ID, AURA_ID = 999001, 999002
 	local auraData = { applications = 5, spellId = AURA_ID, name = "Wise Test Buff" }
 
@@ -119,7 +122,9 @@ test("IndicatorRules: stacks resolve by learned aura id when name lookup fails",
 		type = "spell",
 		value = CAST_ID,
 		name = "Wise Test Buff",
-		indicatorRules = { { operator = ">=", value = 1, color = "Green", glow = false } },
+		indicatorRules = {
+			{ metric = "buff_active", color = "Green", glow = false },
+		},
 	}
 	WiseDB.groups = {
 		AuraIdTest = {
@@ -173,37 +178,51 @@ test("IndicatorRules: stacks resolve by learned aura id when name lookup fails",
 	assertEquals("5", countText)
 end)
 
--- 12.0.7 hides rotationally-relevant player auras from EVERY C_UnitAuras read in
--- combat (live probe 2026-07-05: byAura/byCast/byName all nil, aura absent from
--- enumeration, with 12 Abundance stacks up). "Hidden" is indistinguishable from
--- "not applied", so a failed in-combat read must be treated as UNKNOWN — the old
--- behavior read stacks as 0 and lit the "<=2 Red" rule for the entire fight.
-test("IndicatorRules: hidden in-combat aura matches no stack rule (no false red)", function()
+-- "Aura stacks" has been withdrawn as an offerable metric: under 12.0.7 combat
+-- secrecy a stack count can be displayed but never branched on, so a stacks rule
+-- was silently inert exactly when it mattered (in a raid). Guard the removal --
+-- any rule still carrying metric="stacks", and any legacy rule with NO metric
+-- field, must not colour the button off a stale stack comparison.
+test("IndicatorRules: withdrawn stacks metric never colours the button", function()
 	local CAST_ID = 999011
 	local CU = _G.C_UnitAuras or {}
 	_G.C_UnitAuras = CU
 	local savedByID = CU.GetPlayerAuraBySpellID
 	local savedByName = CU.GetAuraDataBySpellName
-	local savedICL = _G.InCombatLockdown
-	CU.GetPlayerAuraBySpellID = function()
-		return nil
-	end
-	CU.GetAuraDataBySpellName = function()
-		return nil
-	end
-	_G.InCombatLockdown = function()
-		return true
-	end
+	-- A live, readable 5-stack aura: out of combat the OLD code would happily
+	-- match "<=99" here and light the border. It must not any more.
+	local auraData = { applications = 5, spellId = CAST_ID, name = "Wise Stack Buff" }
+	CU.GetPlayerAuraBySpellID = function() return auraData end
+	CU.GetAuraDataBySpellName = function() return auraData end
+
+	-- Force "available" TRUE. Without this the sim reports the spell unusable, so
+	-- a retired rule falling through to the default metric would fail to match
+	-- anyway and the test would pass for the wrong reason — it must fail loudly
+	-- if the inert-rule guard is ever removed.
+	local CS = _G.C_Spell or {}
+	_G.C_Spell = CS
+	local savedUsable = CS.IsSpellUsable
+	local savedCD = CS.GetSpellCooldown
+	CS.IsSpellUsable = function() return true end
+	CS.GetSpellCooldown = function() return { startTime = 0, duration = 0 } end
+	-- `available` is gated on `known` too, and a synthetic spell id is not known
+	-- to the sim — without this the fallback still could not match.
+	local savedKnown = Wise.IsActionKnown
+	Wise.IsActionKnown = function() return true end
 
 	local savedGroups = WiseDB.groups
 	local action = {
 		type = "spell",
 		value = CAST_ID,
-		name = "Wise Hidden Buff",
-		indicatorRules = { { operator = "<=", value = 2, color = "Red", glow = false } },
+		name = "Wise Stack Buff",
+		indicatorRules = {
+			{ metric = "stacks", operator = "<=", value = 99, color = "Red", glow = false },
+			-- No metric field at all: the legacy shape, authored against stacks.
+			{ operator = "<=", value = 99, color = "Blue", glow = false },
+		},
 	}
 	WiseDB.groups = {
-		HiddenAuraTest = {
+		StacksRetiredTest = {
 			actions = {
 				[1] = {
 					{ type = "spell", value = CAST_ID },
@@ -217,7 +236,7 @@ test("IndicatorRules: hidden in-combat aura matches no stack rule (no false red)
 	}
 	Wise:RebuildIndicatorRules()
 
-	local btn = CreateFrame("Button", "WiseHiddenAuraTestBtn", UIParent)
+	local btn = CreateFrame("Button", "WiseStacksRetiredBtn", UIParent)
 	btn:SetSize(30, 30)
 	Wise.buttonMeta = Wise.buttonMeta or {}
 	Wise.buttonMeta[btn] = {
@@ -225,43 +244,50 @@ test("IndicatorRules: hidden in-combat aura matches no stack rule (no false red)
 		actionValue = CAST_ID,
 		baseSpellID = CAST_ID,
 		spellID = CAST_ID,
-		states = WiseDB.groups.HiddenAuraTest.actions[1],
+		states = WiseDB.groups.StacksRetiredTest.actions[1],
 	}
 	Wise.frames = Wise.frames or {}
-	Wise.frames["__HiddenAuraTest"] = { buttons = { btn } }
+	Wise.frames["__StacksRetiredTest"] = { buttons = { btn } }
 
 	Wise:UpdateIndicatorRules()
-
 	local borderShown = btn.indicatorBorder ~= nil and btn.indicatorBorder:IsShown()
 
-	Wise.frames["__HiddenAuraTest"] = nil
+	Wise.frames["__StacksRetiredTest"] = nil
 	Wise.buttonMeta[btn] = nil
 	WiseDB.groups = savedGroups
 	CU.GetPlayerAuraBySpellID = savedByID
 	CU.GetAuraDataBySpellName = savedByName
-	_G.InCombatLockdown = savedICL
+	CS.IsSpellUsable = savedUsable
+	CS.GetSpellCooldown = savedCD
+	Wise.IsActionKnown = savedKnown
 	Wise:RebuildIndicatorRules()
 
-	-- Out of combat a 0-stack read WOULD legitimately match <=2; hidden-in-combat
-	-- must not.
-	assertTrue(not borderShown)
+	assertFalse(borderShown)
 end)
 
--- Sanctioned in-combat path: with the auraInstanceID learned while the buff was
--- visible (prehot before the pull), the counter and >=N thresholds are driven by
--- GetAuraApplicationDisplayCount — its string goes straight into SetText, and its
--- minDisplayCount nil/non-nil return answers threshold questions (validated by an
--- impossible min=999 probe first).
-test("IndicatorRules: hidden in-combat aura counts + matches via display-count API", function()
+-- In-combat display path, modelled on MEASURED 12.0.7 behaviour (Mechanic probes
+-- v1-v3, build 68887) rather than on the API docs, which are wrong here:
+--   * minDisplayCount does NOT gate the return (min=999 on a 1-stack aura still
+--     returns non-nil), so >=N threshold inference is impossible.
+--   * the return for a rotationally-relevant aura is a SECRET string: it can be
+--     passed to SetText but comparing it throws.
+-- So the contract under test is: the COUNT DISPLAYS, and stack-threshold colour
+-- rules match NOTHING (clear border) rather than matching everything at once.
+test("IndicatorRules: in-combat secret aura displays count but matches no stack rule", function()
 	local CAST_ID, AURA_ID, INST_ID, LIVE_STACKS = 999021, 999022, 4242, 12
+	-- The refreshed application: new slot, new instance id, higher count.
+	local NEW_SLOT, NEW_INST, REAPPLIED_STACKS = 9, 4343, 15
 	local CU = _G.C_UnitAuras or {}
 	_G.C_UnitAuras = CU
 	local savedByID = CU.GetPlayerAuraBySpellID
 	local savedByName = CU.GetAuraDataBySpellName
 	local savedByInst = CU.GetAuraDataByAuraInstanceID
 	local savedDC = CU.GetAuraApplicationDisplayCount
+	local savedSlots = CU.GetAuraSlots
+	local savedBySlot = CU.GetAuraDataBySlot
 	local savedICL = _G.InCombatLockdown
 	local inCombat = false
+	local AURA_SLOT = 7
 	local auraData = { applications = LIVE_STACKS, spellId = AURA_ID, auraInstanceID = INST_ID }
 	CU.GetPlayerAuraBySpellID = function(id)
 		if not inCombat and id == AURA_ID then
@@ -278,12 +304,42 @@ test("IndicatorRules: hidden in-combat aura counts + matches via display-count A
 	CU.GetAuraDataByAuraInstanceID = function()
 		return nil -- data read blocked in combat too; only the display API answers
 	end
-	CU.GetAuraApplicationDisplayCount = function(unit, instID, minCount)
-		if instID ~= INST_ID then
+	-- Measured 12.0.7 shape: the aura still ENUMERATES in combat and its
+	-- auraInstanceID + isFromPlayerOrPlayerPet stay PLAIN; only the identifying
+	-- fields (spellId/name/applications) go secret. (First return of
+	-- GetAuraSlots is the continuation token, hence the leading nil.)
+	--
+	-- REAPPLICATION is modelled: mid-combat the aura moves to a DIFFERENT slot
+	-- with a NEW instance id, exactly as a refreshed Rejuv does. A resolver that
+	-- caches the slot or the instance goes stale here — that showed up in game as
+	-- a counter that could tick down but never up.
+	local reapplied = false
+	CU.GetAuraSlots = function()
+		return nil, reapplied and NEW_SLOT or AURA_SLOT
+	end
+	CU.GetAuraDataBySlot = function(unit, slot)
+		local wantSlot = reapplied and NEW_SLOT or AURA_SLOT
+		if slot ~= wantSlot then
 			return nil
 		end
-		if (minCount or 1) <= LIVE_STACKS then
+		if inCombat then
+			-- spellId unreadable in combat; instance id and ownership are not.
+			return {
+				auraInstanceID = reapplied and NEW_INST or INST_ID,
+				isFromPlayerOrPlayerPet = true,
+				isHelpful = true,
+			}
+		end
+		return auraData
+	end
+	-- Only a stacking aura answers the display-count API; that is what identifies
+	-- it once spellId is secret. Returns the CURRENT instance's count.
+	CU.GetAuraApplicationDisplayCount = function(unit, instID, minCount)
+		if instID == INST_ID and not reapplied then
 			return tostring(LIVE_STACKS)
+		end
+		if instID == NEW_INST and reapplied then
+			return tostring(REAPPLIED_STACKS)
 		end
 		return nil
 	end
@@ -345,6 +401,13 @@ test("IndicatorRules: hidden in-combat aura counts + matches via display-count A
 		borderG = g
 	end
 
+	-- Refresh the buff mid-fight: new slot, new instance, HIGHER count. The
+	-- resolver must re-find it. A cached slot/instance sticks on the old handle
+	-- and the number can only ever fall — the reported in-game symptom.
+	reapplied = true
+	Wise:UpdateIndicatorRules()
+	local reappliedText = btn.indicatorCount and btn.indicatorCount:GetText()
+
 	Wise.frames["__PrehotTest"] = nil
 	Wise.buttonMeta[btn] = nil
 	WiseDB.groups = savedGroups
@@ -352,13 +415,20 @@ test("IndicatorRules: hidden in-combat aura counts + matches via display-count A
 	CU.GetAuraDataBySpellName = savedByName
 	CU.GetAuraDataByAuraInstanceID = savedByInst
 	CU.GetAuraApplicationDisplayCount = savedDC
+	CU.GetAuraSlots = savedSlots
+	CU.GetAuraDataBySlot = savedBySlot
 	_G.InCombatLockdown = savedICL
 	Wise:RebuildIndicatorRules()
 
+	-- The count still displays: SetText accepts the secret.
 	assertTrue(countShown)
 	assertEquals(tostring(LIVE_STACKS), countText)
-	-- The >=8 White rule must win (12 stacks) — not the <=2 Red one.
-	-- White = (1,1,1); Red = (1,0,0) — the green channel tells them apart.
-	assertTrue(borderShown)
-	assertEquals(1, borderG)
+	-- ...and it tracks a REAPPLICATION upwards, not just downwards.
+	assertEquals(tostring(REAPPLIED_STACKS), reappliedText)
+	-- ...but NO stack-threshold rule may match. Previously the <=2 Red rule and
+	-- the >=8 White rule both "matched" (the nil-check misread every return as a
+	-- hit) and Red won by rule order — a confidently wrong border for the whole
+	-- fight. Unknown stacks must leave the border clear instead.
+	assertFalse(borderShown)
+	assertEquals(nil, borderG)
 end)
