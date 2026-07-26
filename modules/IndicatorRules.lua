@@ -173,17 +173,6 @@ local KNOWN_AURA_IDS = {
 	[207383] = 207640, -- Abundance
 }
 
--- Runtime-only memory of a tracked buff's live auraInstanceID, learned whenever an
--- out-of-combat read succeeds (weak keys: entries die with their action tables).
--- WHY: 12.0.7 hides rotationally-relevant player auras from ALL C_UnitAuras
--- lookups during combat — by aura id, by cast id, by name, and even from full
--- enumeration (Mechanic probe 2026-07-05: every path nil / "tracked NOT in list"
--- while 12 Abundance stacks were visibly up). No lookup strategy can recover the
--- stacks mid-combat; the only sanctioned window Blizzard left is through the aura
--- INSTANCE id learned while the aura was still visible (pre-pull), fed to
--- GetAuraDataByAuraInstanceID / GetAuraApplicationDisplayCount. Instance ids die
--- with the aura instance, so they must NOT be persisted (unlike trackedAuraID).
-local liveAuraInstance = setmetatable({}, { __mode = "k" })
 
 -- 12.0 secret-value primitives. `issecretvalue` / `issecrettable` are real
 -- client globals (they sit beside issecure/issecurevalue in the API list) and
@@ -240,6 +229,67 @@ end
 -- the helper now would be dead code; if one is ever read, guard it with
 -- `issecrettable` BEFORE indexing rather than pcall'ing after the fact.
 
+-- Find the tracked aura's CURRENT auraInstanceID by live enumeration.
+--
+-- In combat spellId is secret, so the aura cannot be identified by id. What IS
+-- available: auraInstanceID is plain even in combat, and the aura's SLOT is
+-- stable for the lifetime of a given application. So we remember which slot the
+-- aura occupied when we last identified it out of combat, and in combat we read
+-- the instance id out of that same slot.
+--
+-- This is best-effort by design. A slot can be reused by a different aura, which
+-- would point the display-count call at the wrong aura — the cost is a wrong or
+-- absent number in the button corner, never a wrong CAST (nothing here feeds the
+-- secure path). It self-corrects on the next out-of-combat pass.
+local trackedAuraSlot = setmetatable({}, { __mode = "k" })
+
+local _slotUnit, _slotIdx
+local function ReadSlotInstanceProbe()
+	local aura = C_UnitAuras.GetAuraDataBySlot(_slotUnit, _slotIdx)
+	if aura == nil then
+		return nil
+	end
+	return aura.auraInstanceID
+end
+
+local function ResolveLiveAuraInstance(spellID, action)
+	if not (action and C_UnitAuras and C_UnitAuras.GetAuraDataBySlot) then
+		return nil
+	end
+	local slot = trackedAuraSlot[action]
+	if not slot then
+		return nil
+	end
+	_slotUnit, _slotIdx = "player", slot
+	local ok, inst = pcall(ReadSlotInstanceProbe)
+	_slotUnit, _slotIdx = nil, nil
+	if not ok then
+		return nil
+	end
+	-- auraInstanceID is plain in combat; SecretSafeNumber still guards the case
+	-- where the slot now holds something whose id is not readable.
+	return SecretSafeNumber(inst)
+end
+
+-- Record which slot the tracked aura occupies, while we can still identify it by
+-- id (i.e. out of combat). Cheap: only runs when a direct read already matched.
+local function RememberAuraSlot(action, auraID)
+	if not (action and auraID and C_UnitAuras and C_UnitAuras.GetAuraSlots) then
+		return
+	end
+	local slots = { C_UnitAuras.GetAuraSlots("player", "HELPFUL") }
+	for i = 2, #slots do
+		local ok, aura = pcall(C_UnitAuras.GetAuraDataBySlot, "player", slots[i])
+		if ok and aura then
+			local id = SecretSafeNumber(aura.spellId)
+			if id and id == auraID then
+				trackedAuraSlot[action] = slots[i]
+				return
+			end
+		end
+	end
+end
+
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
 -- spell. Read order: learned/seeded buff aura id, then cast id, then name (the
 -- name path only resolves out of combat). When EVERY read fails IN combat, the
@@ -269,35 +319,27 @@ local function ResolveSpellState(spellID, name, action)
 					action.trackedAuraID = id
 				end
 			end
-			-- Learn the live instance id while the aura is visible (e.g. prehotting
-			-- before the pull) so combat still has a handle once 12.0.7 hides it.
-			local inst = SecretSafeNumber(aura.auraInstanceID)
-			if inst then
-				liveAuraInstance[action] = inst
+			-- Remember WHICH SLOT this aura sits in, so combat (where spellId is
+			-- secret and the aura cannot be identified by id) can still find its
+			-- live instance handle. Storing the instance id itself would be
+			-- useless — ids rotate on combat entry.
+			local knownID = SecretSafeNumber(aura.spellId) or auraID
+			if knownID and not InCombatLockdown() then
+				RememberAuraSlot(action, knownID)
 			end
 		end
 	elseif InCombatLockdown() then
-		-- Every direct read failed in combat: hidden-vs-missing is undecidable, so
-		-- stack/buff state is NOT authoritative this pass. Offer the learned
-		-- instance handle to the display/threshold paths regardless of whether the
-		-- data read below succeeds — GetAuraApplicationDisplayCount is a separate,
-		-- independently-sanctioned API.
+		-- In combat the aura is NOT hidden — it still enumerates. Its identifying
+		-- fields (spellId/name/applications) are secret, which is why every lookup
+		-- above failed, but auraInstanceID stays PLAIN and readable. So the handle
+		-- must be read LIVE from the current enumeration.
+		--
+		-- Do NOT use a handle learned out of combat: instance ids rotate on combat
+		-- entry (measured — an id captured pre-pull is stale by the first sample).
+		-- Stacks stay UNKNOWN either way: the count is displayable via SetText but
+		-- not readable, so never claim a number here.
 		stacksKnown = false
-		local inst = action and liveAuraInstance[action]
-		if inst then
-			countInstID = inst
-			if C_UnitAuras.GetAuraDataByAuraInstanceID then
-				local ok, ai = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "player", inst)
-				if ok and ai then
-					buffActive = true
-					local apps = SecretSafeNumber(ai.applications)
-					if apps then
-						stacks = apps
-						stacksKnown = true
-					end
-				end
-			end
-		end
+		countInstID = ResolveLiveAuraInstance(spellID, action)
 	end
 	local charges = 0
 	if spellID and C_Spell and C_Spell.GetSpellCharges then

@@ -263,8 +263,11 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	local savedByName = CU.GetAuraDataBySpellName
 	local savedByInst = CU.GetAuraDataByAuraInstanceID
 	local savedDC = CU.GetAuraApplicationDisplayCount
+	local savedSlots = CU.GetAuraSlots
+	local savedBySlot = CU.GetAuraDataBySlot
 	local savedICL = _G.InCombatLockdown
 	local inCombat = false
+	local AURA_SLOT = 7
 	local auraData = { applications = LIVE_STACKS, spellId = AURA_ID, auraInstanceID = INST_ID }
 	CU.GetPlayerAuraBySpellID = function(id)
 		if not inCombat and id == AURA_ID then
@@ -280,6 +283,23 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	end
 	CU.GetAuraDataByAuraInstanceID = function()
 		return nil -- data read blocked in combat too; only the display API answers
+	end
+	-- Measured 12.0.7 shape: the aura still ENUMERATES in combat and its
+	-- auraInstanceID stays PLAIN; only the identifying fields go secret. That is
+	-- what lets the slot-based resolver find the live handle mid-combat. (First
+	-- return of GetAuraSlots is the continuation token, hence the leading nil.)
+	CU.GetAuraSlots = function()
+		return nil, AURA_SLOT
+	end
+	CU.GetAuraDataBySlot = function(unit, slot)
+		if slot ~= AURA_SLOT then
+			return nil
+		end
+		if inCombat then
+			-- spellId unreadable in combat; the instance id is not.
+			return { auraInstanceID = INST_ID }
+		end
+		return auraData
 	end
 	-- Live-client model. The sim cannot represent a true secret (SetText demands a
 	-- real string, and a proxy table hard-errors at file scope), so this models
@@ -362,6 +382,8 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	CU.GetAuraDataBySpellName = savedByName
 	CU.GetAuraDataByAuraInstanceID = savedByInst
 	CU.GetAuraApplicationDisplayCount = savedDC
+	CU.GetAuraSlots = savedSlots
+	CU.GetAuraDataBySlot = savedBySlot
 	_G.InCombatLockdown = savedICL
 	Wise:RebuildIndicatorRules()
 
