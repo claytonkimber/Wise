@@ -275,6 +275,8 @@ end)
 -- rules match NOTHING (clear border) rather than matching everything at once.
 test("IndicatorRules: in-combat secret aura displays count but matches no stack rule", function()
 	local CAST_ID, AURA_ID, INST_ID, LIVE_STACKS = 999021, 999022, 4242, 12
+	-- The refreshed application: new slot, new instance id, higher count.
+	local NEW_SLOT, NEW_INST, REAPPLIED_STACKS = 9, 4343, 15
 	local CU = _G.C_UnitAuras or {}
 	_G.C_UnitAuras = CU
 	local savedByID = CU.GetPlayerAuraBySpellID
@@ -303,37 +305,43 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 		return nil -- data read blocked in combat too; only the display API answers
 	end
 	-- Measured 12.0.7 shape: the aura still ENUMERATES in combat and its
-	-- auraInstanceID stays PLAIN; only the identifying fields go secret. That is
-	-- what lets the slot-based resolver find the live handle mid-combat. (First
-	-- return of GetAuraSlots is the continuation token, hence the leading nil.)
+	-- auraInstanceID + isFromPlayerOrPlayerPet stay PLAIN; only the identifying
+	-- fields (spellId/name/applications) go secret. (First return of
+	-- GetAuraSlots is the continuation token, hence the leading nil.)
+	--
+	-- REAPPLICATION is modelled: mid-combat the aura moves to a DIFFERENT slot
+	-- with a NEW instance id, exactly as a refreshed Rejuv does. A resolver that
+	-- caches the slot or the instance goes stale here — that showed up in game as
+	-- a counter that could tick down but never up.
+	local reapplied = false
 	CU.GetAuraSlots = function()
-		return nil, AURA_SLOT
+		return nil, reapplied and NEW_SLOT or AURA_SLOT
 	end
 	CU.GetAuraDataBySlot = function(unit, slot)
-		if slot ~= AURA_SLOT then
+		local wantSlot = reapplied and NEW_SLOT or AURA_SLOT
+		if slot ~= wantSlot then
 			return nil
 		end
 		if inCombat then
-			-- spellId unreadable in combat; the instance id is not.
-			return { auraInstanceID = INST_ID }
+			-- spellId unreadable in combat; instance id and ownership are not.
+			return {
+				auraInstanceID = reapplied and NEW_INST or INST_ID,
+				isFromPlayerOrPlayerPet = true,
+				isHelpful = true,
+			}
 		end
 		return auraData
 	end
-	-- Live-client model. The sim cannot represent a true secret (SetText demands a
-	-- real string, and a proxy table hard-errors at file scope), so this models
-	-- the OTHER half of the measured behaviour, which is equally fatal to
-	-- threshold inference and IS expressible here: minDisplayCount is IGNORED, so
-	-- every probe returns a value no matter how large the threshold. Any >=N
-	-- inference therefore reads "true" at every N.
-	--
-	-- The secret-comparison half is covered by construction instead: StacksAtLeast
-	-- no longer calls the API at all, so there is no comparison left to throw.
+	-- Only a stacking aura answers the display-count API; that is what identifies
+	-- it once spellId is secret. Returns the CURRENT instance's count.
 	CU.GetAuraApplicationDisplayCount = function(unit, instID, minCount)
-		if instID ~= INST_ID then
-			return nil
+		if instID == INST_ID and not reapplied then
+			return tostring(LIVE_STACKS)
 		end
-		-- NOTE: minCount deliberately ignored — that is what the client does.
-		return tostring(LIVE_STACKS)
+		if instID == NEW_INST and reapplied then
+			return tostring(REAPPLIED_STACKS)
+		end
+		return nil
 	end
 	_G.InCombatLockdown = function()
 		return inCombat
@@ -393,6 +401,13 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 		borderG = g
 	end
 
+	-- Refresh the buff mid-fight: new slot, new instance, HIGHER count. The
+	-- resolver must re-find it. A cached slot/instance sticks on the old handle
+	-- and the number can only ever fall — the reported in-game symptom.
+	reapplied = true
+	Wise:UpdateIndicatorRules()
+	local reappliedText = btn.indicatorCount and btn.indicatorCount:GetText()
+
 	Wise.frames["__PrehotTest"] = nil
 	Wise.buttonMeta[btn] = nil
 	WiseDB.groups = savedGroups
@@ -408,6 +423,8 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	-- The count still displays: SetText accepts the secret.
 	assertTrue(countShown)
 	assertEquals(tostring(LIVE_STACKS), countText)
+	-- ...and it tracks a REAPPLICATION upwards, not just downwards.
+	assertEquals(tostring(REAPPLIED_STACKS), reappliedText)
 	-- ...but NO stack-threshold rule may match. Previously the <=2 Red rule and
 	-- the >=8 White rule both "matched" (the nil-check misread every return as a
 	-- hit) and Red won by rule order — a confidently wrong border for the whole

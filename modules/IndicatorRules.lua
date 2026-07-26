@@ -201,53 +201,74 @@ end
 -- would point the display-count call at the wrong aura — the cost is a wrong or
 -- absent number in the button corner, never a wrong CAST (nothing here feeds the
 -- secure path). It self-corrects on the next out-of-combat pass.
-local trackedAuraSlot = setmetatable({}, { __mode = "k" })
+-- Last known instance id per action, used ONLY to prefer the same aura instance
+-- across passes when several candidates match. Never trusted on its own.
+local lastAuraInstance = setmetatable({}, { __mode = "k" })
 
 local _slotUnit, _slotIdx
-local function ReadSlotInstanceProbe()
-	local aura = C_UnitAuras.GetAuraDataBySlot(_slotUnit, _slotIdx)
-	if aura == nil then
-		return nil
-	end
-	return aura.auraInstanceID
+local function ReadSlotAuraProbe()
+	return C_UnitAuras.GetAuraDataBySlot(_slotUnit, _slotIdx)
 end
 
+local _dcUnit, _dcInst
+local function DisplayCountProbe()
+	-- min=1/max=99: "does this instance have a count at all". The RETURN is a
+	-- possibly-secret string and must never be compared — only its presence is
+	-- used, and presence is what identifies a stacking aura.
+	return C_UnitAuras.GetAuraApplicationDisplayCount(_dcUnit, _dcInst, 1, 99)
+end
+local function InstanceHasCount(inst)
+	if not (C_UnitAuras.GetAuraApplicationDisplayCount and inst) then
+		return false
+	end
+	_dcUnit, _dcInst = "player", inst
+	local ok, c = pcall(DisplayCountProbe)
+	_dcUnit, _dcInst = nil, nil
+	-- type() is safe on a secret; == is not.
+	return ok and type(c) ~= "nil"
+end
+
+-- Find the tracked aura's CURRENT auraInstanceID by scanning the live aura list.
+--
+-- Re-scans EVERY pass rather than caching a slot. Abundance is reapplied
+-- constantly in combat, and each reapplication is a NEW aura instance in a
+-- possibly different slot — a slot learned once goes stale, which showed up as a
+-- counter that could fall but never climb.
+--
+-- Identification without spellId (secret in combat): take player-cast helpful
+-- auras whose instance the display-count API will answer for. Only a stacking
+-- aura has a display count, which narrows the field sharply. Where several
+-- qualify, prefer the instance we used last pass so the number stays stable.
 local function ResolveLiveAuraInstance(spellID, action)
-	if not (action and C_UnitAuras and C_UnitAuras.GetAuraDataBySlot) then
+	if not (C_UnitAuras and C_UnitAuras.GetAuraSlots and C_UnitAuras.GetAuraDataBySlot) then
 		return nil
 	end
-	local slot = trackedAuraSlot[action]
-	if not slot then
-		return nil
-	end
-	_slotUnit, _slotIdx = "player", slot
-	local ok, inst = pcall(ReadSlotInstanceProbe)
-	_slotUnit, _slotIdx = nil, nil
-	if not ok then
-		return nil
-	end
-	-- auraInstanceID is plain in combat; SecretSafeNumber still guards the case
-	-- where the slot now holds something whose id is not readable.
-	return SecretSafeNumber(inst)
-end
-
--- Record which slot the tracked aura occupies, while we can still identify it by
--- id (i.e. out of combat). Cheap: only runs when a direct read already matched.
-local function RememberAuraSlot(action, auraID)
-	if not (action and auraID and C_UnitAuras and C_UnitAuras.GetAuraSlots) then
-		return
-	end
+	local previous = action and lastAuraInstance[action]
 	local slots = { C_UnitAuras.GetAuraSlots("player", "HELPFUL") }
+	local firstMatch = nil
 	for i = 2, #slots do
-		local ok, aura = pcall(C_UnitAuras.GetAuraDataBySlot, "player", slots[i])
+		_slotUnit, _slotIdx = "player", slots[i]
+		local ok, aura = pcall(ReadSlotAuraProbe)
+		_slotUnit, _slotIdx = nil, nil
 		if ok and aura then
-			local id = SecretSafeNumber(aura.spellId)
-			if id and id == auraID then
-				trackedAuraSlot[action] = slots[i]
-				return
+			-- These two flags stay PLAIN in combat (verified in live aura dumps),
+			-- so they can be tested directly.
+			local mine = (aura.isFromPlayerOrPlayerPet == true)
+			local inst = mine and SecretSafeNumber(aura.auraInstanceID) or nil
+			if inst and InstanceHasCount(inst) then
+				if inst == previous then
+					return inst -- same instance as last pass: strongest signal
+				end
+				if not firstMatch then
+					firstMatch = inst
+				end
 			end
 		end
 	end
+	if firstMatch and action then
+		lastAuraInstance[action] = firstMatch
+	end
+	return firstMatch
 end
 
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
@@ -279,13 +300,13 @@ local function ResolveSpellState(spellID, name, action)
 					action.trackedAuraID = id
 				end
 			end
-			-- Remember WHICH SLOT this aura sits in, so combat (where spellId is
-			-- secret and the aura cannot be identified by id) can still find its
-			-- live instance handle. Storing the instance id itself would be
-			-- useless — ids rotate on combat entry.
-			local knownID = SecretSafeNumber(aura.spellId) or auraID
-			if knownID and not InCombatLockdown() then
-				RememberAuraSlot(action, knownID)
+			-- Record the instance we positively identified here (spellId is
+			-- readable on this path). Combat uses it only as a tie-breaker when
+			-- several candidates match — never as the sole handle, since a new
+			-- application means a new instance id.
+			local inst = SecretSafeNumber(aura.auraInstanceID)
+			if inst then
+				lastAuraInstance[action] = inst
 			end
 		end
 	elseif InCombatLockdown() then
