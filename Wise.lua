@@ -650,6 +650,48 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		for _, item in ipairs(addonItems) do
 			table.insert(addonsGroup.buttons, item)
 		end
+
+		-- Re-sync .actions from the freshly-scanned .buttons.
+		--
+		-- The properties panel reads group.actions[slotIdx], but this group only
+		-- ever wrote .buttons. MigrateGroupToActions() populates .actions once and
+		-- then short-circuits, so every later rebuild left .actions pointing at a
+		-- stale snapshot — the panel showed data for whatever addon used to
+		-- occupy that slot, or nothing at all. Rebuild it here, preserving
+		-- per-slot settings (keybinds, custom names) by addon identity rather
+		-- than by index, so slots keep their meaning when the addon list shifts.
+		local preserved = {}
+		if addonsGroup.actions then
+			for _, states in pairs(addonsGroup.actions) do
+				if type(states) == "table" then
+					local prev = states[1]
+					local key = prev and (prev.addonName or prev.name)
+					if key then
+						preserved[key] = {
+							keybind = states.keybind,
+							customName = prev.customName,
+							slashArgs = prev.slashArgs,
+						}
+					end
+				end
+			end
+		end
+
+		addonsGroup.actions = {}
+		for i, item in ipairs(addonsGroup.buttons) do
+			local saved = preserved[item.addonName or item.name]
+			if saved then
+				item.customName = saved.customName
+				if saved.slashArgs and not item.slashArgs then
+					item.slashArgs = saved.slashArgs
+				end
+			end
+			addonsGroup.actions[i] = { item }
+			if saved and saved.keybind then
+				addonsGroup.actions[i].keybind = saved.keybind
+			end
+		end
+		addonsGroup.migratedToActions = true
 	end
 	if Wise.frames["Addons"] and Wise.frames["Addons"]:IsShown() then
 		Wise:UpdateGroupDisplay("Addons")

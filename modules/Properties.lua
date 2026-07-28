@@ -1045,6 +1045,13 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 				else
 					action.availableCommands = nil
 				end
+				-- Alternate entry points (options panel / compartment / broker)
+				action.optionsCommand = extra.optionsCommand
+				action.optionsLabel = extra.optionsLabel
+				action.compartmentCommand = extra.compartmentCommand
+				action.compartmentLabel = extra.compartmentLabel
+				action.ldbCommand = extra.ldbCommand
+				action.ldbLabel = extra.ldbLabel
 				-- Clear args when changing action (user sets new args in properties)
 				action.slashArgs = nil
 			end
@@ -1090,20 +1097,64 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		tinsert(panel.controls, cmdLabel)
 		y = y - 20
 
+		-- Build the selectable command list: detected slash commands, plus the
+		-- options-panel and compartment/LDB entry points when the addon exposes
+		-- them. An addon with no detected command still gets a picker so the
+		-- user can assign one by hand.
+		local cmds = {}
+		local cmdSeen = {}
+		local cmdLabels = {}
+		local function AddCmd(cmd, label)
+			if cmd and cmd ~= "" and not cmdSeen[cmd] then
+				cmdSeen[cmd] = true
+				tinsert(cmds, cmd)
+				cmdLabels[cmd] = label
+			end
+		end
+		for _, c in ipairs(action.availableCommands or {}) do
+			AddCmd(c)
+		end
+		AddCmd(action.optionsCommand, "Options panel: " .. (action.optionsLabel or action.name or ""))
+		AddCmd(action.compartmentCommand, "Addon compartment: " .. (action.compartmentLabel or ""))
+		AddCmd(action.ldbCommand, "Broker plugin: " .. (action.ldbLabel or ""))
+
+		-- Shorten a macro body for display in the picker
+		local function DisplayCmd(cmd)
+			if not cmd or cmd == "" then
+				return "|cffff8080None assigned|r"
+			end
+			if cmdLabels[cmd] then
+				return cmdLabels[cmd]
+			end
+			if #cmd > 40 then
+				return string.sub(cmd, 1, 37) .. "..."
+			end
+			return cmd
+		end
+
 		-- Base command picker (dropdown button)
-		local cmds = action.availableCommands
-		if cmds and #cmds > 1 then
+		if #cmds > 0 then
 			local cmdBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
 			cmdBtn:SetSize(200, 22)
 			cmdBtn:SetPoint("TOPLEFT", 10, y)
-			cmdBtn:SetText(action.value or "")
+			cmdBtn:SetText(DisplayCmd(action.value))
 			cmdBtn:SetScript("OnClick", function(self)
 				if self.dropdown and self.dropdown:IsShown() then
 					self.dropdown:Hide()
 					return
 				end
 
-				if not self.dropdown then
+				-- Rebuild rather than reuse: the rows close over the command list
+				-- and the current selection, both of which change when the user
+				-- picks a command or the addon list is rescanned. A cached
+				-- dropdown kept showing the stale selection marker.
+				if self.dropdown then
+					self.dropdown:Hide()
+					self.dropdown:SetParent(nil)
+					self.dropdown = nil
+				end
+
+				do
 					local itemHeight = 22
 					local maxVisible = 8
 					local visibleCount = math.min(#cmds, maxVisible)
@@ -1149,12 +1200,15 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 						row.text:SetJustifyH("LEFT")
 						row.text:SetText(
 							(cmd == action.value and "|cff00ff00" or "")
-								.. cmd
+								.. DisplayCmd(cmd)
 								.. (cmd == action.value and " *|r" or "")
 						)
 
 						row:SetScript("OnClick", function()
 							action.value = cmd
+							action.hasCommand = true
+							-- Persist the choice so the next rebuild honors it.
+							-- GetAddons() now trusts this unconditionally.
 							if action.addonName and Wise.selectedGroup == "Addons" then
 								WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
 								WiseDB.addonSlashOverrides[action.addonName] = cmd
@@ -1169,13 +1223,65 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 			tinsert(panel.controls, cmdBtn)
 			y = y - 28
 		else
-			-- Single command — show as read-only
 			local cmdValue = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 			cmdValue:SetPoint("TOPLEFT", 10, y)
-			cmdValue:SetText(action.value or "")
+			cmdValue:SetText("|cffff8080No command detected|r")
 			tinsert(panel.controls, cmdValue)
+			y = y - 18
+
+			-- Users land here by clicking a command-less button in the world, so
+			-- point them at the only control that can fix it.
+			local cmdHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+			cmdHint:SetPoint("TOPLEFT", 10, y)
+			cmdHint:SetWidth(200)
+			cmdHint:SetJustifyH("LEFT")
+			cmdHint:SetText("Type this addon's slash command below.")
+			tinsert(panel.controls, cmdHint)
 			y = y - 22
 		end
+
+		-- Manual slash command entry. Addons whose command the scanner can't
+		-- find still get a slot, so this is how the user gives it one.
+		local customLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		customLabel:SetPoint("TOPLEFT", 10, y)
+		customLabel:SetText("Custom Command:")
+		tinsert(panel.controls, customLabel)
+		y = y - 20
+
+		local customEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+		customEdit:SetSize(180, 20)
+		customEdit:SetPoint("TOPLEFT", 14, y)
+		customEdit:SetAutoFocus(false)
+		customEdit:SetText(WiseDB.addonCustomCommands and WiseDB.addonCustomCommands[action.addonName] or "")
+		customEdit:SetCursorPosition(0)
+
+		local function SaveCustomCmd(self)
+			local text = strtrim(self:GetText())
+			if text ~= "" and not string.match(text, "^/") then
+				text = "/" .. text
+				self:SetText(text)
+			end
+			WiseDB.addonCustomCommands = WiseDB.addonCustomCommands or {}
+			WiseDB.addonCustomCommands[action.addonName] = (text ~= "") and text or nil
+			if text ~= "" then
+				action.value = text
+				action.hasCommand = true
+				-- Also record as the override so the rebuild keeps selecting it
+				WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
+				WiseDB.addonSlashOverrides[action.addonName] = text
+			end
+			self:ClearFocus()
+			CommitAddonCmd()
+		end
+
+		customEdit:SetScript("OnEnterPressed", SaveCustomCmd)
+		customEdit:SetScript("OnEditFocusLost", SaveCustomCmd)
+		customEdit:SetScript("OnEscapePressed", function(self)
+			self:SetText(WiseDB.addonCustomCommands and WiseDB.addonCustomCommands[action.addonName] or "")
+			self:ClearFocus()
+		end)
+		tinsert(panel.controls, customEdit)
+		y = y - 25
 
 		-- Parameters text box
 		local argsLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

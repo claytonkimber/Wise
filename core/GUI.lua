@@ -2991,10 +2991,16 @@ function Wise:GetSecureAttributes(actionData, conditions)
 		secureType = "macro"
 		-- Append slash command arguments if present (e.g. "/ti" + "window" → "/ti window")
 		local effectiveValue = aValue
-		if actionData.slashArgs and actionData.slashArgs ~= "" then
-			effectiveValue = aValue .. " " .. actionData.slashArgs
+		if actionData.slashArgs and actionData.slashArgs ~= "" and effectiveValue then
+			effectiveValue = effectiveValue .. " " .. actionData.slashArgs
 		end
-		if string.sub(effectiveValue, 1, 1) == "/" then
+		-- An Addons slot can exist with no command yet: every loaded top-level
+		-- addon gets a button, and the user assigns a slash command in the
+		-- properties panel. Bind nothing until then rather than erroring.
+		if not effectiveValue or effectiveValue == "" then
+			secureAttr = "macrotext"
+			secureValue = ""
+		elseif string.sub(effectiveValue, 1, 1) == "/" then
 			secureAttr = "macrotext"
 			if hasCond then
 				-- e.g. "/click ActionButton1" -> "/click [possessbar] ActionButton1"
@@ -4917,6 +4923,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					-- print("Wise Debug: OnMouseUp fired (No Cursor)")
 				end
 			end)
+
+			-- Addons slot with no command yet: the secure attributes are empty, so
+			-- the press does nothing. Send the user to the exact slot in the
+			-- options panel, with its command picker open, instead of leaving a
+			-- dead button and a tooltip telling them to go find the panel.
+			btn:HookScript("PostClick", function(self, button, down)
+				if button ~= "LeftButton" then
+					return
+				end
+				-- Buttons register AnyUp+AnyDown, so PostClick fires twice per
+				-- press. Act on the up edge only.
+				if down then
+					return
+				end
+				local meta = Wise.buttonMeta and Wise.buttonMeta[self]
+				local data = (meta and meta.actionData) or self.actionData
+				if not data or data.category ~= "Addons" then
+					return
+				end
+				if data.value and data.value ~= "" then
+					return
+				end
+				if Wise.OpenAddonCommandPicker then
+					Wise:OpenAddonCommandPicker(data.addonName, data.name)
+				end
+			end)
 		end
 
 		f.toggleBtn:SetFrameRef(btn:GetName(), btn)
@@ -6199,15 +6231,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								or ic == 134400
 								or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
 						end
-						local displayIcon
-						if not isPlaceholderIcon(meta.actionData.icon) then
-							displayIcon = meta.actionData.icon
-						elseif not isPlaceholderIcon(mIcon) then
-							displayIcon = mIcon
-						else
-							displayIcon = 134400
-						end
-
 						local overrideActive = HasOverrideActionBar and HasOverrideActionBar()
 						local vehicleActive = HasVehicleActionBar and HasVehicleActionBar()
 						local needsRetry = false
@@ -6231,6 +6254,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							needsRetry = true
 						end
 
+						-- Only fall back to the "?" placeholder while a retry is pending
+						-- (override/vehicle bar is active but hasn't populated yet). If
+						-- nothing is active and nothing resolves — e.g. a [possessbar] /
+						-- [overridebar] compiled step while flying with no such bar up —
+						-- there's genuinely nothing in the slot, so hide the icon instead
+						-- of showing a permanent "?". See memory: override_bar_torch_event_127.
+						local displayIcon
+						if not isPlaceholderIcon(meta.actionData.icon) then
+							displayIcon = meta.actionData.icon
+						elseif not isPlaceholderIcon(mIcon) then
+							displayIcon = mIcon
+						elseif needsRetry then
+							displayIcon = 134400
+						else
+							displayIcon = nil
+						end
+
 						if needsRetry then
 							f._retryCount = (f._retryCount or 0) + 1
 							if f._retryCount <= 5 and not f._retryTimerScheduled then
@@ -6246,10 +6286,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							f._retryCount = 0
 						end
 
-						btn.icon:SetTexture(displayIcon)
 						local vClone = meta.visualClone or btn.visualClone
-						if vClone and vClone.icon then
-							vClone.icon:SetTexture(displayIcon)
+						if displayIcon then
+							btn.icon:SetTexture(displayIcon)
+							btn.icon:Show()
+							if vClone and vClone.icon then
+								vClone.icon:SetTexture(displayIcon)
+								vClone.icon:Show()
+							end
+						else
+							btn.icon:Hide()
+							if vClone and vClone.icon then
+								vClone.icon:Hide()
+							end
 						end
 
 						if mType then

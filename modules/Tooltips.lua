@@ -98,12 +98,18 @@ function Wise:AddInterfaceTooltip(btn)
 				end
 			end
 		elseif type == "macro" then
+			local title = (data and data.customName) or (data and data.name) or (meta and meta.name)
 			if _G.type(value) == "string" and string.sub(value, 1, 1) == "/" then
-				local title = (data and data.name) or (meta and meta.name) or "Macro"
-				GameTooltip:SetText(title, 1, 1, 1)
+				GameTooltip:SetText(title or "Macro", 1, 1, 1)
+			elseif value == nil or value == "" then
+				-- An Addons slot with no command assigned yet. Name the addon and
+				-- say what to do about it rather than printing "Macro: nil".
+				GameTooltip:SetText(title or "Unassigned", 1, 1, 1)
+				GameTooltip:AddLine("No command assigned", 1, 0.5, 0.5)
+				GameTooltip:AddLine("Click to choose a command for this addon.", 0.8, 0.8, 0.8, true)
 			else
-				GameTooltip:SetText("Macro: " .. tostring(value), 1, 1, 1)
-				local name, icon, body = GetMacroInfo(value)
+				GameTooltip:SetText(title or ("Macro: " .. tostring(value)), 1, 1, 1)
+				local _, _, body = GetMacroInfo(value)
 				if body then
 					GameTooltip:AddLine(body, 0.8, 0.8, 0.8, true)
 				end
@@ -162,13 +168,21 @@ function Wise:AddInterfaceTooltip(btn)
 					hasAction = true
 				end
 				if not hasAction then
-					-- Nothing resolvable (e.g. all lines off-spec / off-cooldown gated):
-					-- show the macro body rather than the internal token.
-					GameTooltip:SetText((data and data.name) or "Macro", 1, 1, 1)
-					if mText and mText ~= "" then
-						GameTooltip:AddLine(mText, 0.8, 0.8, 0.8, true)
+					-- Nothing resolvable (e.g. all lines off-spec / off-cooldown gated,
+					-- or an override/possess-bar compiled step while no such bar is
+					-- active, like [flying] slot 1 with no vehicle/override bar up).
+					-- The button itself falls back to the "?" placeholder icon in this
+					-- state (see GUI.lua isPlaceholderIcon); mirror that here: nothing
+					-- meaningful in the slot means no tooltip, instead of dumping the
+					-- internal compiled macro source at the player.
+					local hasCustomName = data and data.name and data.name ~= "" and data.name ~= "Empty"
+					if hasCustomName then
+						GameTooltip:SetText(data.name, 1, 1, 1)
+						hasAction = true
+					else
+						GameTooltip:Hide()
+						return
 					end
-					hasAction = true
 				end
 			elseif value == "extrabutton" and data and data.showTooltip then
 				if HasExtraActionBar and HasExtraActionBar() then

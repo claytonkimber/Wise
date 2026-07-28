@@ -2330,6 +2330,12 @@ function Wise:IsActionKnown(actionType, value)
 		if type(value) == "string" and string.sub(value, 1, 1) == "/" then
 			return true
 		end
+		-- An Addons slot with no command assigned yet is still a valid button —
+		-- it just does nothing until the user picks a slash command. Treat it as
+		-- known so it isn't filtered out of the interface.
+		if value == nil or value == "" then
+			return true
+		end
 		return GetMacroInfo(value) ~= nil
 	elseif actionType == "equipmentset" then
 		if C_EquipmentSet then
@@ -3342,6 +3348,14 @@ function Wise:PickerRefresh(filter)
 					if self.data.availableCommands then
 						extra.availableCommands = self.data.availableCommands
 					end
+					-- Alternate entry points the properties picker offers
+					-- alongside the plain slash commands
+					extra.optionsCommand = self.data.optionsCommand
+					extra.optionsLabel = self.data.optionsLabel
+					extra.compartmentCommand = self.data.compartmentCommand
+					extra.compartmentLabel = self.data.compartmentLabel
+					extra.ldbCommand = self.data.ldbCommand
+					extra.ldbLabel = self.data.ldbLabel
 					Wise.PickerCallback(self.data.type, self.data.value, extra)
 				end
 				Wise.pickingAction = false
@@ -4090,39 +4104,172 @@ function Wise:GetProfessions(filter)
 	return items
 end
 
+-- Strip color escapes / trailing whitespace from a TOC Title
+local function CleanTitle(title)
+	if not title or title == "" then
+		return nil
+	end
+	title = string.gsub(title, "|c%x%x%x%x%x%x%x%x", "")
+	title = string.gsub(title, "|r", "")
+	title = string.gsub(title, "|T.-|t", "")
+	return strtrim(title)
+end
+
+-- Build the set of addons that are top-level (deserve their own slot) versus
+-- nested modules of another addon (never get a slot).
+--
+-- No single signal is reliable: of the addons installed here only ~1/3 declare
+-- Dependencies, and popular suites (BigWigs) declare none at all. So combine:
+--   1. Dependencies/RequiredDeps naming another *installed* addon
+--   2. LoadOnDemand modules whose name prefix is an installed addon
+--   3. "Parent_Child" folder naming where Parent is itself installed
+--   4. Title prefix matching a loaded parent's title (BigWigs [Core])
+local function BuildAddonHierarchy()
+	local installed = {}
+	local titles = {}
+	local numAddons = C_AddOns.GetNumAddOns()
+
+	for i = 1, numAddons do
+		local name = C_AddOns.GetAddOnInfo(i)
+		if name then
+			installed[name] = i
+			titles[name] = CleanTitle(C_AddOns.GetAddOnMetadata(name, "Title")) or name
+		end
+	end
+
+	local parentOf = {}
+
+	for name in pairs(installed) do
+		local parent
+
+		-- 1. Explicit dependency on an installed addon
+		if C_AddOns.GetAddOnDependencies then
+			local deps = { C_AddOns.GetAddOnDependencies(name) }
+			for _, dep in ipairs(deps) do
+				if type(dep) == "string" and installed[dep] and dep ~= name then
+					parent = dep
+					break
+				end
+			end
+		end
+
+		-- 2/3. Underscore-nested folder whose prefix is an installed addon
+		if not parent then
+			local prefix = string.match(name, "^(.+)_[^_]+$")
+			while prefix and not parent do
+				if installed[prefix] and prefix ~= name then
+					parent = prefix
+				else
+					prefix = string.match(prefix, "^(.+)_[^_]+$")
+				end
+			end
+		end
+
+		-- 4. Title-prefix match (BigWigs [Core] -> BigWigs), used when the
+		-- folder name gives nothing away.
+		if not parent then
+			local myTitle = titles[name]
+			if myTitle then
+				for other, otherTitle in pairs(titles) do
+					if
+						other ~= name
+						and #otherTitle >= 4
+						and #myTitle > #otherTitle
+						and string.sub(myTitle, 1, #otherTitle) == otherTitle
+					then
+						-- Only treat as nested if the remainder is a separator +
+						-- module name, not just a longer word (Bag vs Bagnon)
+						local rest = string.sub(myTitle, #otherTitle + 1)
+						if string.match(rest, "^[%s%[%(%-_:|]") then
+							parent = other
+							break
+						end
+					end
+				end
+			end
+		end
+
+		if parent then
+			parentOf[name] = parent
+		end
+	end
+
+	-- Collapse chains so a module of a module resolves to the real root
+	local rootOf = {}
+	for name in pairs(installed) do
+		local root, guard = name, 0
+		while parentOf[root] and guard < 16 do
+			root = parentOf[root]
+			guard = guard + 1
+		end
+		rootOf[name] = root
+	end
+
+	return installed, titles, parentOf, rootOf
+end
+
+-- Resolve the Settings/Interface options category registered for an addon, if
+-- any. Returns a macro body that opens it, plus the category display name.
+local function GetOptionsPanelCommand(addonName, title)
+	if not (Settings and Settings.OpenToCategory) then
+		return nil
+	end
+
+	local candidates = { addonName }
+	if title and title ~= addonName then
+		table.insert(candidates, title)
+	end
+
+	for _, want in ipairs(candidates) do
+		-- Blizzard matches categories by display name; verify one exists so we
+		-- don't hand out a button that silently does nothing.
+		if Settings.GetCategory then
+			local ok, category = pcall(Settings.GetCategory, want)
+			if ok and category then
+				return string.format('/run Settings.OpenToCategory("%s")', want), want
+			end
+		end
+	end
+
+	return nil
+end
+
 function Wise:GetAddons(filter)
 	local items = {}
 	local seen = {}
+	-- Canonical dedup: one slot per addon, keyed by TOC folder name. LDB and
+	-- compartment entries merge into the owning addon's slot instead of adding
+	-- their own (previously an addon whose LDB label differed from its Title
+	-- produced two slots).
+	local slotByAddon = {}
+
+	local installed, addonTitles, parentOf, rootOf = BuildAddonHierarchy()
+
+	-- Map a free-form display name (LDB / compartment label) onto an addon
+	-- folder. Titles are filled in first so an exact folder-name match always
+	-- wins over another addon's title that happens to collide with it.
+	local nameToAddon = {}
+	for name, title in pairs(addonTitles) do
+		if title then
+			nameToAddon[string.lower(title)] = name
+		end
+	end
+	for name in pairs(installed) do
+		nameToAddon[string.lower(name)] = name
+	end
 
 	-- 1. LibDataBroker — also build icon lookup for use in section 2
 	local ldb = LibStub and LibStub("LibDataBroker-1.1", true)
 	local ldbIcons = {}
+	local ldbClicks = {}
 	if ldb then
 		for name, dataObj in ldb:DataObjectIterator() do
 			local lName = string.lower(name)
 			if dataObj.icon then
 				ldbIcons[lName] = dataObj.icon
 			end
-			if not filter or string.find(lName, filter, 1, true) then
-				if dataObj.OnClick then
-					local icon = dataObj.icon or "Interface\\Icons\\INV_Misc_EngGizmos_20"
-					local macroText = string.format(
-						'/run local o=LibStub("LibDataBroker-1.1"):GetDataObjectByName("%s"); if o and o.OnClick then o.OnClick(UIParent, "LeftButton") end',
-						name
-					)
-
-					table.insert(items, {
-						type = "macro",
-						value = macroText,
-						name = name,
-						icon = icon,
-						category = "Addons",
-						tooltipFunc = function()
-							GameTooltip:SetText(name .. " (LDB Plugin)")
-						end,
-					})
-					seen[lName] = true
-				end
+			if dataObj.OnClick then
+				ldbClicks[lName] = name
 			end
 		end
 	end
@@ -4172,6 +4319,8 @@ function Wise:GetAddons(filter)
 	-- Initialize user overrides tables
 	WiseDB.addonSlashOverrides = WiseDB.addonSlashOverrides or {}
 	WiseDB.addonSlashArgs = WiseDB.addonSlashArgs or {}
+	-- Commands typed in by the user for addons where none could be detected
+	WiseDB.addonCustomCommands = WiseDB.addonCustomCommands or {}
 
 	if C_AddOns and C_AddOns.GetNumAddOns then
 		for i = 1, C_AddOns.GetNumAddOns() do
@@ -4185,15 +4334,21 @@ function Wise:GetAddons(filter)
 				local lName = string.lower(title)
 				local lAddonName = string.lower(addonName)
 				if not filter or string.find(lName, filter, 1, true) or string.find(lAddonName, filter, 1, true) then
-					-- Skip sub-addons (e.g. Journalator_Auctionator) if parent is already seen
-					local parentName = string.match(lAddonName, "^([^_]+)_")
-					local isSubAddon = parentName and seen[parentName]
+					-- Nested modules never get their own map button. Classification
+					-- comes from TOC metadata (see BuildAddonHierarchy), not from
+					-- iteration order, so it no longer matters which of a suite's
+					-- addons the scan reaches first.
+					local isSubAddon = parentOf[addonName] ~= nil
 
-					-- If we haven't seen this from LDB and it's not a sub-addon duplicate
-					if not isSubAddon and not seen[lName] and not seen[lAddonName] then
+					if not isSubAddon and not slotByAddon[addonName] then
 						-- Find ALL matching slash commands for this addon
 						local allCommands = {}
 						local allCommandsSeen = {}
+						-- Commands the addon registers itself, as opposed to ones
+						-- rolled up from its nested modules. A module's command
+						-- must never outrank the addon's own when picking a
+						-- default, or BigWigs would default to /bwoptions.
+						local ownCommand = {}
 						local upperName = string.upper(addonName)
 						local upperTitle = string.upper(title)
 
@@ -4204,6 +4359,7 @@ function Wise:GetAddons(filter)
 									table.insert(allCommands, cmd)
 									allCommandsSeen[cmd] = true
 								end
+								ownCommand[cmd] = true
 							end
 						end
 
@@ -4212,46 +4368,117 @@ function Wise:GetAddons(filter)
 						-- or the addon name/title contains the full command key AND the
 						-- key is long enough to be meaningful (>=4 chars to avoid
 						-- short keys like "TI" matching everything)
-						for k, variants in pairs(slashCmds) do
-							if k ~= upperName then
+						local function CollectFuzzy(matchName, matchTitle, isOwn)
+							local uName, uTitle = string.upper(matchName), string.upper(matchTitle or matchName)
+							for k, variants in pairs(slashCmds) do
 								local matched = false
 								-- Command key contains addon name (e.g. key "ADVANCEDINTERFACEOPTIONS" contains addon "ADVANCED")
-								if string.find(k, upperName, 1, true) or string.find(k, upperTitle, 1, true) then
+								if string.find(k, uName, 1, true) or string.find(k, uTitle, 1, true) then
 									matched = true
 								-- Addon name contains command key, but only if key is long enough
 								elseif
 									#k >= 4
-									and (string.find(upperName, k, 1, true) or string.find(upperTitle, k, 1, true))
+									and (string.find(uName, k, 1, true) or string.find(uTitle, k, 1, true))
 								then
 									matched = true
 								end
 								if matched then
+									-- Fuzzy matches are ambiguous for ownership: the key
+									-- BIGWIGSOPTIONS contains BIGWIGS, so a module's
+									-- command would otherwise be credited to the parent.
+									-- Only claim it when the key isn't a better (longer)
+									-- match for one of this addon's own modules.
+									local claimOwn = isOwn
+									if claimOwn then
+										-- Slash keys drop separators (BigWigs_Options
+										-- registers BIGWIGSOPTIONS), so compare with
+										-- underscores stripped from the module name.
+										for child, root in pairs(rootOf) do
+											if root == addonName and child ~= addonName then
+												local childKey = string.upper(string.gsub(child, "[_%s]", ""))
+												if #childKey >= 4 and string.find(k, childKey, 1, true) then
+													claimOwn = false
+													break
+												end
+											end
+										end
+									end
 									for _, cmd in ipairs(variants) do
 										if not allCommandsSeen[cmd] then
 											table.insert(allCommands, cmd)
 											allCommandsSeen[cmd] = true
+										end
+										if claimOwn then
+											ownCommand[cmd] = true
 										end
 									end
 								end
 							end
 						end
 
-						if #allCommands > 0 then
-							-- Pick the best default: user override > options-keyword match > first found
+						CollectFuzzy(addonName, title, true)
+
+						-- Roll up commands registered by this addon's nested modules
+						-- (BigWigs_Options owns /bwoptions, but only BigWigs has a slot)
+						for child, root in pairs(rootOf) do
+							if root == addonName and child ~= addonName then
+								if slashCmds[string.upper(child)] then
+									for _, cmd in ipairs(slashCmds[string.upper(child)]) do
+										if not allCommandsSeen[cmd] then
+											table.insert(allCommands, cmd)
+											allCommandsSeen[cmd] = true
+										end
+									end
+								end
+								CollectFuzzy(child, addonTitles[child])
+							end
+						end
+
+						-- Options panel fallback: an addon with no slash command may
+						-- still register a Settings category we can open.
+						local optionsCmd, optionsLabel = GetOptionsPanelCommand(addonName, title)
+
+						-- A command the user typed in for an addon we couldn't detect
+						local customCmd = WiseDB.addonCustomCommands[addonName]
+						if customCmd and customCmd ~= "" and not allCommandsSeen[customCmd] then
+							table.insert(allCommands, customCmd)
+							allCommandsSeen[customCmd] = true
+						end
+
+						-- Every top-level loaded addon gets exactly one slot, even
+						-- with no command yet — the properties panel lets the user
+						-- assign one. Previously such addons were silently dropped.
+						do
+							-- Pick the best default. The saved override wins
+							-- unconditionally: the old code required it to appear in
+							-- the freshly-scanned command list, so a late-registering
+							-- addon would fail that guard and the scoring heuristic
+							-- would silently overwrite the user's choice.
 							local foundCmd = nil
 							local userOverride = WiseDB.addonSlashOverrides[addonName]
-							if userOverride and allCommandsSeen[userOverride] then
+							if userOverride and userOverride ~= "" then
 								foundCmd = userOverride
-							else
-								-- Score commands and pick the best one (favoring options/config commands)
-								local bestScore = 0
+								if not allCommandsSeen[userOverride] then
+									table.insert(allCommands, userOverride)
+									allCommandsSeen[userOverride] = true
+								end
+							elseif #allCommands > 0 then
+								-- Score commands and pick the best one (favoring options/config
+								-- commands), but rank the addon's own commands above any
+								-- rolled up from its nested modules.
+								local bestScore = -1
 								for _, cmd in ipairs(allCommands) do
 									local score = ScoreCommand(cmd)
+									if ownCommand[cmd] then
+										score = score + 10
+									end
 									if score > bestScore then
 										bestScore = score
 										foundCmd = cmd
 									end
 								end
+							elseif optionsCmd then
+								foundCmd = optionsCmd
 							end
 
 							-- Resolve icon: TOC IconTexture > AddonCompartment > LDB > default
@@ -4265,13 +4492,8 @@ function Wise:GetAddons(filter)
 							if not icon or icon == "" then
 								icon = "Interface\\Icons\\INV_Misc_Gear_01"
 							end
-							local activeCmd = foundCmd
 							local savedArgs = WiseDB.addonSlashArgs[addonName]
-							local displayCmd = activeCmd
-							if savedArgs and savedArgs ~= "" then
-								displayCmd = activeCmd .. " " .. savedArgs
-							end
-							table.insert(items, {
+							local item = {
 								type = "macro",
 								value = foundCmd,
 								name = title,
@@ -4279,11 +4501,34 @@ function Wise:GetAddons(filter)
 								category = "Addons",
 								addonName = addonName,
 								availableCommands = allCommands,
+								optionsCommand = optionsCmd,
+								optionsLabel = optionsLabel,
 								slashArgs = savedArgs,
-								tooltipFunc = function()
-									GameTooltip:SetText(title .. "\nCommand: " .. displayCmd)
-								end,
-							})
+								hasCommand = foundCmd ~= nil,
+							}
+							item.tooltipFunc = function()
+								local active = item.value
+								if active and active ~= "" then
+									local shown = active
+									if item.slashArgs and item.slashArgs ~= "" then
+										shown = active .. " " .. item.slashArgs
+									end
+									if item.optionsCommand and active == item.optionsCommand then
+										GameTooltip:SetText(
+											title .. "\nOpens options: " .. (item.optionsLabel or title)
+										)
+									else
+										GameTooltip:SetText(title .. "\nCommand: " .. shown)
+									end
+								else
+									GameTooltip:SetText(
+										title .. "\n|cffff8080No command assigned|r\n|cffaaaaaaClick to choose one|r"
+									)
+								end
+							end
+
+							table.insert(items, item)
+							slotByAddon[addonName] = item
 							seen[lName] = true
 							seen[lAddonName] = true
 						end
@@ -4293,28 +4538,45 @@ function Wise:GetAddons(filter)
 		end
 	end
 
-	-- 3. Addons registered in Blizzard's Addon Compartment
+	-- 3. Addons registered in Blizzard's Addon Compartment.
+	-- These merge into the owning addon's existing slot when we can identify it,
+	-- so a compartment registration no longer produces a second button for an
+	-- addon that already has one.
 	if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then
 		for _, entry in ipairs(AddonCompartmentFrame.registeredAddons) do
 			if entry.text then
 				local name = entry.text
 				local lName = string.lower(name)
-				if not filter or string.find(lName, filter, 1, true) then
-					if not seen[lName] then
-						local icon = entry.icon or "Interface\\Icons\\INV_Misc_Gear_01"
-						-- We call the registered function when clicked
-						local macroText = string.format(
-							'/run if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then for _, e in ipairs(AddonCompartmentFrame.registeredAddons) do if e.text == "%s" and e.func then e.func("%s", "LeftButton") break end end end',
-							name,
-							name
-						)
+				local macroText = string.format(
+					'/run if AddonCompartmentFrame and AddonCompartmentFrame.registeredAddons then for _, e in ipairs(AddonCompartmentFrame.registeredAddons) do if e.text == "%s" and e.func then e.func("%s", "LeftButton") break end end end',
+					name,
+					name
+				)
 
+				-- Does this belong to an addon that already has a slot?
+				local ownerAddon = nameToAddon[lName]
+				local ownerRoot = ownerAddon and rootOf[ownerAddon] or nil
+				local ownerItem = ownerRoot and slotByAddon[ownerRoot] or nil
+
+				if ownerItem then
+					-- Offer it as a selectable command on the owner's slot, and use
+					-- it as the default if nothing better was found.
+					ownerItem.compartmentCommand = macroText
+					ownerItem.compartmentLabel = name
+					if not ownerItem.hasCommand and not ownerItem.value then
+						ownerItem.value = macroText
+						ownerItem.hasCommand = true
+					end
+				elseif not seen[lName] then
+					if not filter or string.find(lName, filter, 1, true) then
+						local icon = entry.icon or "Interface\\Icons\\INV_Misc_Gear_01"
 						table.insert(items, {
 							type = "macro",
 							value = macroText,
 							name = name,
 							icon = icon,
 							category = "Addons",
+							hasCommand = true,
 							tooltipFunc = function()
 								GameTooltip:SetText(name .. " (Compartment)")
 							end,
@@ -4326,10 +4588,170 @@ function Wise:GetAddons(filter)
 		end
 	end
 
+	-- 4. LibDataBroker plugins that did not map onto any addon slot.
+	-- LDB objects owned by an addon that already has a slot are attached to it
+	-- as an alternate command rather than becoming a duplicate button.
+	for lName, displayName in pairs(ldbClicks) do
+		local macroText = string.format(
+			'/run local o=LibStub("LibDataBroker-1.1"):GetDataObjectByName("%s"); if o and o.OnClick then o.OnClick(UIParent, "LeftButton") end',
+			displayName
+		)
+		local ownerAddon = nameToAddon[lName]
+		local ownerRoot = ownerAddon and rootOf[ownerAddon] or nil
+		local ownerItem = ownerRoot and slotByAddon[ownerRoot] or nil
+
+		if ownerItem then
+			ownerItem.ldbCommand = macroText
+			ownerItem.ldbLabel = displayName
+			if not ownerItem.hasCommand and not ownerItem.value then
+				ownerItem.value = macroText
+				ownerItem.hasCommand = true
+			end
+		elseif not seen[lName] then
+			if not filter or string.find(lName, filter, 1, true) then
+				table.insert(items, {
+					type = "macro",
+					value = macroText,
+					name = displayName,
+					icon = ldbIcons[lName] or "Interface\\Icons\\INV_Misc_EngGizmos_20",
+					category = "Addons",
+					hasCommand = true,
+					tooltipFunc = function()
+						GameTooltip:SetText(displayName .. " (LDB Plugin)")
+					end,
+				})
+				seen[lName] = true
+			end
+		end
+	end
+
 	table.sort(items, function(a, b)
 		return a.name < b.name
 	end)
 	return items
+end
+
+-- Open the options panel straight onto one addon's slot in the Addons wiser
+-- interface, with its action (state 1) selected so the "Slash Command" picker
+-- is already on screen. Clicking a command-less Addons button in the world
+-- calls this instead of doing nothing — the old behavior was a dead button
+-- plus a tooltip telling the user to go find the panel themselves.
+function Wise:OpenAddonCommandPicker(addonName, actionName)
+	if InCombatLockdown() then
+		-- Showing the options frame taints/errors in combat; say so rather than
+		-- failing silently on a press the user deliberately made.
+		print("|cff00ccffWise|r: Can't open the options panel in combat.")
+		return false
+	end
+
+	if not Wise.OptionsFrame then
+		if not Wise.CreateOptionsFrame then
+			return false
+		end
+		Wise:CreateOptionsFrame()
+	end
+	if not Wise.OptionsFrame then
+		return false
+	end
+
+	Wise.OptionsFrame:Show()
+	if Wise.SetTab then
+		Wise:SetTab("Editor")
+	end
+
+	-- Clear any picker overlay left over from a previous session in the panel,
+	-- or the properties panel renders that instead of the slot's properties.
+	Wise.pickingAction = false
+	Wise.pickingCondition = false
+	Wise.pickingIcon = false
+	Wise.pickingRestrictions = false
+	Wise.pickingTalents = false
+	Wise.pickingSpecs = false
+
+	Wise.selectedGroup = "Addons"
+
+	-- Locate the slot by addon identity, not by a remembered index: the Addons
+	-- group rebuilds its slot list on every scan, so indices shift as addons
+	-- load. Fall back to the display name for slots with no addonName
+	-- (compartment/LDB-only entries).
+	local group = WiseDB and WiseDB.groups and WiseDB.groups["Addons"]
+	local foundSlot
+	if group and group.actions then
+		for slotIdx, states in pairs(group.actions) do
+			local action = type(states) == "table" and states[1]
+			if action then
+				if addonName and action.addonName == addonName then
+					foundSlot = slotIdx
+					break
+				elseif not addonName and actionName and action.name == actionName then
+					foundSlot = slotIdx
+					break
+				end
+			end
+		end
+	end
+
+	Wise.selectedSlot = foundSlot
+	-- State 1 is the addon's single action; RenderActionProperties is the view
+	-- that carries the slash-command picker (RenderSlotProperties does not).
+	Wise.selectedState = foundSlot and 1 or nil
+
+	if Wise.RefreshGroupList then
+		Wise:RefreshGroupList()
+	end
+	if Wise.RefreshActionsView and Wise.OptionsFrame.Middle then
+		Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+	end
+	if Wise.RefreshPropertiesPanel then
+		Wise:RefreshPropertiesPanel()
+	end
+
+	if foundSlot then
+		Wise:ScrollActionsViewToSlot(foundSlot)
+	end
+
+	return foundSlot ~= nil
+end
+
+-- Scroll the Middle slot list so the given slot is visible. The Addons list is
+-- long (one slot per loaded addon), so selecting a slot off-screen would look
+-- like nothing happened.
+function Wise:ScrollActionsViewToSlot(slotIdx)
+	local f = Wise.OptionsFrame
+	local scroll = f and f.Middle and f.Middle.Scroll
+	local content = f and f.Middle and f.Middle.Content
+	if not scroll or not content or not content.slots then
+		return
+	end
+
+	local target
+	for _, slotFrame in ipairs(content.slots) do
+		if slotFrame:IsShown() and slotFrame.slotID == slotIdx then
+			target = slotFrame
+			break
+		end
+	end
+	if not target then
+		return
+	end
+
+	-- Slot frames are anchored TOPLEFT of the content frame at a negative y, so
+	-- -offsetY is the distance from the top of the scroll range.
+	local _, _, _, _, offsetY = target:GetPoint(1)
+	if not offsetY then
+		return
+	end
+
+	-- Run next frame: the scroll range isn't recalculated until after the
+	-- refresh that just re-laid-out the content frame has been rendered.
+	C_Timer.After(0, function()
+		if not scroll:IsShown() then
+			return
+		end
+		local maxScroll = scroll:GetVerticalScrollRange() or 0
+		local desired = math.max(0, math.min(-offsetY - 20, maxScroll))
+		scroll:SetVerticalScroll(desired)
+	end)
 end
 
 function Wise:GetSpecialActionbars(filter)
