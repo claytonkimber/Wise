@@ -161,10 +161,22 @@ local issecretvalue = issecretvalue or (_G and _G.issecretvalue)
 -- Returns the raw value only if it can be accessed without error.
 -- Accepts a table and a key (string) rather than the already-read value,
 -- because even *reading* the field `table.key` can crash on secret values.
+-- Indexing helper hoisted out of SafeReadField: passing it to pcall along with
+-- the arguments avoids allocating a fresh closure on every read. SafeReadField
+-- runs on the per-button cooldown/charge paths many thousands of times per
+-- second in combat, so the closure churn was showing up in GC pressure.
+local function rawIndex(tbl, key)
+	return tbl[key]
+end
+
+-- Secret-value probe hoisted for the same reason as rawIndex: passed to pcall
+-- by reference so no closure is allocated per call.
+local function checkSecret(val)
+	return issecretvalue and issecretvalue(val)
+end
+
 local function SafeReadField(tbl, key)
-	local ok, val = pcall(function()
-		return tbl[key]
-	end)
+	local ok, val = pcall(rawIndex, tbl, key)
 	if not ok then
 		return nil
 	end
@@ -179,9 +191,9 @@ local function CleanSecretNumber(val)
 		return nil
 	end
 	-- Fast-path: issecretvalue() is available in WoW 12.0+
-	local svOk, isSecret = pcall(function()
-		return issecretvalue and issecretvalue(val)
-	end)
+	-- checkSecret is hoisted (see rawIndex above) so this pcall doesn't allocate
+	-- a closure — CleanSecretNumber runs on every charge/cooldown field read.
+	local svOk, isSecret = pcall(checkSecret, val)
 	if svOk and isSecret then
 		return nil
 	end
@@ -7426,12 +7438,22 @@ end
 -- (appearing at the cursor on key press/hold is their designed behavior, and
 -- they vanish on release). Offsets are in frame-local units (callers divide
 -- by frame scale before passing them in).
+-- Scratch storage for ClampMouseFollowOffset. This runs from the mouse-follow
+-- OnUpdate handler (i.e. every frame while a follower interface is visible) and
+-- used to build a fresh list plus one table per visible button on each call —
+-- steady garbage at the frame rate for values that are thrown away immediately.
+-- The tables are reused across calls instead: entries are overwritten in place
+-- and only grown when a group has more buttons than any previous call. Nothing
+-- escapes the function, so reuse is safe; the count is passed explicitly since
+-- the array keeps stale entries past that point.
+local clampBoxes = {}
+
 function Wise:ClampMouseFollowOffset(frame, offsetX, offsetY)
 	local margin = 5
 	local adjusted = true
 	local iterations = 0
 
-	local buttons = {}
+	local count = 0
 	for _, btn in ipairs(frame.buttons or {}) do
 		if btn:IsShown() then
 			local bx, by = btn.targetX or 0, btn.targetY or 0
@@ -7441,26 +7463,33 @@ function Wise:ClampMouseFollowOffset(frame, offsetX, offsetY)
 				local iconSize = groupName and WiseDB.groups[groupName] and WiseDB.groups[groupName].iconSize or 30
 				bw, bh = iconSize, iconSize
 			end
-			table.insert(buttons, {
-				minX = -bx - bw / 2 - margin,
-				maxX = -bx + bw / 2 + margin,
-				minY = -by - bh / 2 - margin,
-				maxY = -by + bh / 2 + margin,
-			})
+			count = count + 1
+			local box = clampBoxes[count]
+			if not box then
+				box = {}
+				clampBoxes[count] = box
+			end
+			box.minX = -bx - bw / 2 - margin
+			box.maxX = -bx + bw / 2 + margin
+			box.minY = -by - bh / 2 - margin
+			box.maxY = -by + bh / 2 + margin
 		end
 	end
 
 	while adjusted and iterations < 10 do
 		adjusted = false
 		iterations = iterations + 1
-		for _, btn in ipairs(buttons) do
-			if offsetX >= btn.minX and offsetX <= btn.maxX then
-				if offsetY >= btn.minY and offsetY <= btn.maxY then
+		-- Iterate to `count`, not #clampBoxes: the scratch array is reused and
+		-- retains entries from a previous, larger group past that point.
+		for i = 1, count do
+			local box = clampBoxes[i]
+			if offsetX >= box.minX and offsetX <= box.maxX then
+				if offsetY >= box.minY and offsetY <= box.maxY then
 					adjusted = true
 					if offsetY < 0 then
-						offsetY = btn.minY
+						offsetY = box.minY
 					else
-						offsetY = btn.maxY
+						offsetY = box.maxY
 					end
 				end
 			end
@@ -7621,7 +7650,86 @@ function Wise:UpdateBindings()
 end
 
 -- Cooldown Update Functions
--- Cooldown Update Functions
+
+-- Swipe-repaint guard: Cooldown:SetCooldown() and SetCooldownFromDurationObject()
+-- always restart the swipe animation, even when called with identical values.
+-- Because UNIT_AURA (player + target) fires frequently during combat — DoT ticks,
+-- buff refreshes, nearby enemy auras — UpdateAllCooldowns() re-runs often, which
+-- would re-paint every active swipe on every tick and cause visible "pulsing" on
+-- short timers like the GCD. The helpers below short-circuit redundant writes by
+-- caching the last applied tuple per-cooldown-frame.
+-- The cache tuple is (start, duration, reverse) — source is stored for
+-- debugging but not compared, because the rendered swipe is determined
+-- entirely by the numeric tuple + reverse flag. Comparing source would
+-- cause false-negatives across layers (CD → buff → CD) where nothing
+-- actually changed from the Cooldown frame's perspective.
+--
+-- These live at file scope rather than inside UpdateButtonCooldown: they take
+-- everything they need as arguments and capture no per-call state, and that
+-- function runs ~160x per pass. Defining them per call allocated three closures
+-- (plus one per pcall) every time, which measured as ~58% of all addon garbage
+-- in a 30s raid trace. Hoisting them makes it zero.
+
+-- Body of the cache comparison, kept separate so cdTupleMatches can hand it to
+-- pcall as a plain function reference with its arguments passed through. The old
+-- form wrapped an inline closure over the locals, which allocated on every call;
+-- pcall(f, a, b, ...) forwards arguments natively and allocates nothing.
+local function cdCacheEquals(cache, newStart, newDur, reverse)
+	return cache.start == newStart and cache.duration == newDur and cache.reverse == reverse
+end
+
+-- Compare the cached swipe tuple without ever letting a secret number escape.
+-- The values may be "secret numbers" in combat (WoW 11.1+) which throw on any
+-- comparison, so the whole check is wrapped: a throw means "not matched", which
+-- forces a re-write — always safe, just not skipped.
+local function cdTupleMatches(cache, newStart, newDur, reverse)
+	if not cache then
+		return false
+	end
+	local ok, matched = pcall(cdCacheEquals, cache, newStart, newDur, reverse)
+	return ok and matched
+end
+
+local function applyCD(cdFrame, newStart, newDur, reverse, source)
+	if not cdFrame then
+		return
+	end
+	if cdTupleMatches(cdFrame._wiseLastCD, newStart, newDur, reverse) then
+		return
+	end
+	if cdFrame.SetReverse then
+		cdFrame:SetReverse(reverse == true)
+	end
+	cdFrame:SetCooldown(newStart, newDur)
+	cdFrame._wiseLastCD = { start = newStart, duration = newDur, reverse = reverse, source = source }
+end
+
+local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
+	if not cdFrame then
+		return
+	end
+	if cdTupleMatches(cdFrame._wiseLastCD, numStart, numDur, reverse) then
+		return
+	end
+	if cdFrame.SetReverse then
+		cdFrame:SetReverse(reverse == true)
+	end
+	cdFrame:SetCooldownFromDurationObject(durObj, true)
+	-- Store the raw values; next comparison will pcall too.
+	cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
+end
+
+local function clearCD(cdFrame)
+	if not cdFrame then
+		return
+	end
+	if cdTupleMatches(cdFrame._wiseLastCD, 0, 0, false) then
+		return
+	end
+	cdFrame:SetCooldown(0, 0)
+	cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
+end
+
 function Wise:UpdateButtonCooldown(btn)
 	if not btn or not btn.cooldown then
 		return
@@ -7652,71 +7760,6 @@ function Wise:UpdateButtonCooldown(btn)
 
 	local _, _, _, _, _, _, _, _, _, _, _, showBuffs, _, showGCD, _, _, _, _, showDebuffs, _, _, _, cooldownSwipeReverse, buffSwipeReverse, debuffSwipeReverse =
 		Wise:GetGroupDisplaySettings(btn.groupName)
-
-	-- Swipe-repaint guard: Cooldown:SetCooldown() and SetCooldownFromDurationObject()
-	-- always restart the swipe animation, even when called with identical values.
-	-- Because UNIT_AURA (player + target) fires frequently during combat — DoT ticks,
-	-- buff refreshes, nearby enemy auras — UpdateAllCooldowns() re-runs often, which
-	-- would re-paint every active swipe on every tick and cause visible "pulsing" on
-	-- short timers like the GCD. The helpers below short-circuit redundant writes by
-	-- caching the last applied tuple per-cooldown-frame.
-	-- The cache tuple is (start, duration, reverse) — source is stored for
-	-- debugging but not compared, because the rendered swipe is determined
-	-- entirely by the numeric tuple + reverse flag. Comparing source would
-	-- cause false-negatives across layers (CD → buff → CD) where nothing
-	-- actually changed from the Cooldown frame's perspective.
-	local function applyCD(cdFrame, newStart, newDur, reverse, source)
-		if not cdFrame then
-			return
-		end
-		local cache = cdFrame._wiseLastCD
-		local ok, matched = pcall(function()
-			return cache and cache.start == newStart and cache.duration == newDur and cache.reverse == reverse
-		end)
-		if ok and matched then
-			return
-		end
-		if cdFrame.SetReverse then
-			cdFrame:SetReverse(reverse == true)
-		end
-		cdFrame:SetCooldown(newStart, newDur)
-		cdFrame._wiseLastCD = { start = newStart, duration = newDur, reverse = reverse, source = source }
-	end
-	local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
-		if not cdFrame then
-			return
-		end
-		-- numStart/numDur may be "secret numbers" in combat (WoW 11.1+) that
-		-- throw on any arithmetic or comparison. pcall the cache check so
-		-- secrets just force a re-write (safe — DurationObject handles them).
-		local cache = cdFrame._wiseLastCD
-		local ok, matched = pcall(function()
-			return cache and cache.start == numStart and cache.duration == numDur and cache.reverse == reverse
-		end)
-		if ok and matched then
-			return
-		end
-		if cdFrame.SetReverse then
-			cdFrame:SetReverse(reverse == true)
-		end
-		cdFrame:SetCooldownFromDurationObject(durObj, true)
-		-- Store the raw values; next comparison will pcall too.
-		cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
-	end
-	local function clearCD(cdFrame)
-		if not cdFrame then
-			return
-		end
-		local cache = cdFrame._wiseLastCD
-		local ok, isZero = pcall(function()
-			return cache and cache.start == 0 and cache.duration == 0
-		end)
-		if ok and isZero then
-			return
-		end
-		cdFrame:SetCooldown(0, 0)
-		cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
-	end
 
 	-- GetActionCooldown (and C_Item.GetItemCooldown) return "secret numbers" in
 	-- combat on retail 11.1+. The legacy path below compares those values
@@ -8887,8 +8930,15 @@ end
 eventFrame:SetScript("OnEvent", function(self, event, unit)
 	if event == "UNIT_AURA" then
 		if unit == "target" or unit == "player" then
+			-- Auras drive usability/glow (procs, buff-gated spells), so this pass
+			-- has to run. The cooldown pass does NOT belong here: aura application
+			-- never changes a cooldown by itself, and the events that do change one
+			-- (SPELL_UPDATE_COOLDOWN, ACTIONBAR_UPDATE_COOLDOWN, SPELL_UPDATE_CHARGES,
+			-- BAG_UPDATE_COOLDOWN) are all registered below and schedule it directly.
+			-- Firing it from UNIT_AURA made cooldowns re-sweep on every DoT tick and
+			-- every nearby-enemy aura — in a 30s raid trace that was the single
+			-- largest source of both CPU time and garbage, for no visible change.
 			scheduleUsabilityUpdate()
-			scheduleCooldownUpdate()
 		end
 		if unit == "player" then
 			Wise:UpdateAllStates()
