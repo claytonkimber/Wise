@@ -7690,6 +7690,25 @@ local function cdTupleMatches(cache, newStart, newDur, reverse)
 	return ok and matched
 end
 
+-- Record the applied tuple on the Cooldown frame, reusing the existing cache
+-- table instead of replacing it. A cache MISS is the common case for a ticking
+-- cooldown (the values genuinely change), so allocating a fresh 4-field table
+-- per write produced steady garbage. The table is private to the frame and only
+-- ever read back by cdTupleMatches, so overwriting in place is safe -- but every
+-- field must be written each time, or a stale one would survive into the next
+-- comparison and could wrongly report a match.
+local function storeCDCache(cdFrame, newStart, newDur, reverse, source)
+	local cache = cdFrame._wiseLastCD
+	if not cache then
+		cache = {}
+		cdFrame._wiseLastCD = cache
+	end
+	cache.start = newStart
+	cache.duration = newDur
+	cache.reverse = reverse
+	cache.source = source
+end
+
 local function applyCD(cdFrame, newStart, newDur, reverse, source)
 	if not cdFrame then
 		return
@@ -7701,7 +7720,7 @@ local function applyCD(cdFrame, newStart, newDur, reverse, source)
 		cdFrame:SetReverse(reverse == true)
 	end
 	cdFrame:SetCooldown(newStart, newDur)
-	cdFrame._wiseLastCD = { start = newStart, duration = newDur, reverse = reverse, source = source }
+	storeCDCache(cdFrame, newStart, newDur, reverse, source)
 end
 
 local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
@@ -7716,7 +7735,7 @@ local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
 	end
 	cdFrame:SetCooldownFromDurationObject(durObj, true)
 	-- Store the raw values; next comparison will pcall too.
-	cdFrame._wiseLastCD = { start = numStart, duration = numDur, reverse = reverse, source = "durObj" }
+	storeCDCache(cdFrame, numStart, numDur, reverse, "durObj")
 end
 
 local function clearCD(cdFrame)
@@ -7727,7 +7746,7 @@ local function clearCD(cdFrame)
 		return
 	end
 	cdFrame:SetCooldown(0, 0)
-	cdFrame._wiseLastCD = { start = 0, duration = 0, reverse = false, source = "clear" }
+	storeCDCache(cdFrame, 0, 0, false, "clear")
 end
 
 function Wise:UpdateButtonCooldown(btn)
@@ -8214,17 +8233,31 @@ function Wise:UpdateButtonCooldown(btn)
 		-- so the per-frame hot loop stays allocation-free. Re-runs (and thus picks up
 		-- option changes) whenever UpdateButtonCooldown fires for this button.
 		local countdownFormat = select(26, Wise:GetGroupDisplaySettings(groupName))
-		Wise.ActiveCooldownButtons[btn] = {
-			start = start,
-			duration = duration,
-			groupName = groupName,
-			isListMode = isListMode,
-			isBuffActive = isBuffActive,
-			isDebuffActive = isDebuffActive,
-			scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil,
-			countdownFormat = countdownFormat,
-			lastText = "",
-		}
+		-- Reuse the existing entry rather than replacing it. This runs for every
+		-- button with a live cooldown on every sweep -- during a rotation that is
+		-- most buttons, most of the time -- and a fresh 9-field table per call was
+		-- the single largest remaining source of garbage in the addon.
+		--
+		-- Overwriting in place is safe: the table is private to
+		-- Wise.ActiveCooldownButtons, never escapes, and the OnUpdate consumer
+		-- only reads these fields (and mutates the aura flags on the same table).
+		-- EVERY field must be assigned unconditionally, including the nil case for
+		-- scanSpellID, or a recycled entry would inherit a stale value from the
+		-- cooldown that previously occupied it.
+		local info = Wise.ActiveCooldownButtons[btn]
+		if not info then
+			info = {}
+			Wise.ActiveCooldownButtons[btn] = info
+		end
+		info.start = start
+		info.duration = duration
+		info.groupName = groupName
+		info.isListMode = isListMode
+		info.isBuffActive = isBuffActive
+		info.isDebuffActive = isDebuffActive
+		info.scanSpellID = (isBuffActive or isDebuffActive) and scanSpellID or nil
+		info.countdownFormat = countdownFormat
+		info.lastText = ""
 		Wise.CooldownUpdateFrame:Show()
 
 		if isListMode then
