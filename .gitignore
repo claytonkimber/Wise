@@ -18,3 +18,7 @@ GEMINI.md
 # Testing scripts
 *.py
 .mcp.json
+
+# Runtime state written by tools/perfy-profile.ps1 while an in-place
+# instrumentation run is active. Never belongs in a commit.
+.perfy-instrumented
