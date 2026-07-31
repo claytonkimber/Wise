@@ -368,10 +368,16 @@ function Wise:ResolveBarActionID(aID)
 		local getVehicle = C_ActionBar and C_ActionBar.GetVehicleBarIndex or GetVehicleBarIndex
 		local getShapeshift = C_ActionBar and C_ActionBar.GetTempShapeshiftBarIndex or GetTempShapeshiftBarIndex
 
-		if HasOverrideActionBar and HasOverrideActionBar() and getOverride then
-			specialPage = getOverride()
-		elseif HasVehicleActionBar and HasVehicleActionBar() and getVehicle then
+		-- Priority MUST match Blizzard's ActionBarController_UpdateAll: vehicle FIRST,
+		-- then override, then temp shapeshift. Both HasVehicleActionBar() and
+		-- HasOverrideActionBar() can be true at once (e.g. the Xeronia drake segment in
+		-- the Archival Assault delve); the actions live on the VEHICLE page then, and
+		-- resolving the override page instead reads empty slots — blank icons while
+		-- Blizzard's own OverrideActionBar shows the spells.
+		if HasVehicleActionBar and HasVehicleActionBar() and getVehicle then
 			specialPage = getVehicle()
+		elseif HasOverrideActionBar and HasOverrideActionBar() and getOverride then
+			specialPage = getOverride()
 		elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and getShapeshift then
 			specialPage = getShapeshift()
 		end
@@ -3086,8 +3092,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
 					.. " ActionButton"
 					.. (aNum - offset)
 			else
-				if resolvedCond == "" then
-					resolvedCond = "[overridebar]"
+				if resolvedCond == "" or resolvedCond == "[overridebar]" then
+					-- A skinned vehicle bar (e.g. Xeronia in Archival Assault) raises
+					-- [vehicleui] — sometimes WITHOUT [overridebar] — yet its actions
+					-- still sit on OverrideActionBarButtonN. Cover both by default.
+					resolvedCond = "[overridebar][vehicleui]"
 				end
 				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
 				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. (aNum - 132)
@@ -9011,6 +9020,25 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- mark it pending and let PLAYER_REGEN_ENABLED flush one rebuild on exit.
 	local isFullRebuildEvent = (event == "PLAYER_SPECIALIZATION_CHANGED" or event == "SPELLS_CHANGED")
 
+	-- Special-bar transitions (override/vehicle/bonus bar appearing or its slots
+	-- populating) routinely happen IN combat — e.g. mounting the Xeronia drake
+	-- mid-assault in the Archival Assault delve. The refresh is visual-only in
+	-- combat (icon textures; secure writes self-guard on canSetAttrs), and these
+	-- events are rare compared to cooldown/target churn, so let them through the
+	-- combat gate below — otherwise override-bar replacement slots stay blank for
+	-- the whole fight. ACTIONBAR_SLOT_CHANGED qualifies only for special-bar
+	-- slots (121+; arg1 == 0 means "all slots"); pcall guards the numeric compare
+	-- in case the payload is ever a combat "secret".
+	local isSpecialBarEvent = event == "UPDATE_OVERRIDE_ACTIONBAR"
+		or event == "UPDATE_VEHICLE_ACTIONBAR"
+		or event == "UPDATE_BONUS_ACTIONBAR"
+	if not isSpecialBarEvent and event == "ACTIONBAR_SLOT_CHANGED" then
+		local ok, special = pcall(function()
+			return arg1 == 0 or (type(arg1) == "number" and arg1 >= 121)
+		end)
+		isSpecialBarEvent = ok and special or false
+	end
+
 	-- In combat the refresh is a no-op: every closure that touches secure
 	-- attributes self-guards on InCombatLockdown(), and cooldown/target events
 	-- fire every GCD — so don't even schedule. PLAYER_REGEN_ENABLED flushes on
@@ -9020,7 +9048,13 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- conditional slots flipping to matched. The refresh it runs is visual-only
 	-- in combat (secure writes self-guard on canSetAttrs), so it's safe to let
 	-- through — without it a [combat] potion stays greyed for the whole fight.
-	if event ~= "PLAYER_REGEN_ENABLED" and event ~= "PLAYER_REGEN_DISABLED" and InCombatLockdown() then
+	-- Special-bar events (see isSpecialBarEvent above) get the same exemption.
+	if
+		event ~= "PLAYER_REGEN_ENABLED"
+		and event ~= "PLAYER_REGEN_DISABLED"
+		and not isSpecialBarEvent
+		and InCombatLockdown()
+	then
 		if isFullRebuildEvent then
 			dynEventFrame._fullRebuildPending = true
 		end

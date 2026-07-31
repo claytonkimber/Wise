@@ -2,6 +2,14 @@
 
 Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
 
+## [1.0.20260730] - 2026-07-30
+
+### Fixed
+- **Override-bar replacement no longer blanks in skinned vehicles (e.g. the Xeronia drake in the Archival Assault delve).** `Wise:ResolveBarActionID` checked `HasOverrideActionBar()` before `HasVehicleActionBar()`; Blizzard's `ActionBarController_UpdateAll` checks vehicle FIRST, and both flags can be true at once — the actions then live on the vehicle page, so Wise read the (empty) override page and hid every icon while Blizzard's own bar had the spells. Priority now mirrors Blizzard: vehicle → override → temp shapeshift (covered by `tests/override_bar.lua` in the sim suite).
+- **Override/vehicle bars that appear mid-combat now populate immediately.** The dynamic-refresh event driver dropped ALL events during combat (perf gate), so a bar swap inside an ongoing fight — standard in delve assault segments — left the replacement slots blank until combat ended. `UPDATE_OVERRIDE_ACTIONBAR`, `UPDATE_VEHICLE_ACTIONBAR`, `UPDATE_BONUS_ACTIONBAR`, and `ACTIONBAR_SLOT_CHANGED` for special-bar slots (121+) now bypass the combat gate; the refresh is visual-only in combat (secure writes still self-guard on `canSetAttrs`).
+- **Default click routing for override slots (133-144) now also fires under `[vehicleui]`.** A skinned vehicle bar can raise `[vehicleui]` without `[overridebar]`, yet its actions still sit on `OverrideActionBarButtonN`; the generated `/click` was gated on `[overridebar]` alone and silently no-opped.
+- `/wise ovrdbg` now scans slots 121-240 (the 12.0.7 override page is 18 → slots 205-216, which the old 121-180 cap missed) and reports temp-shapeshift state, bar skins (`GetOverrideBarSkin` / `UnitVehicleSkin`), possess/vehicle unit state, and the live `ResolveBarActionID(133)` result.
+
 ## [1.0.20260722] - 2026-07-22
 
 ### Fixed

@@ -2595,6 +2595,11 @@ SlashCmdList["WISE"] = function(msg)
 		out(("  HasOverrideActionBar() = %s"):format(tostring(HasOverrideActionBar and HasOverrideActionBar())))
 		out(("  HasVehicleActionBar()  = %s"):format(tostring(HasVehicleActionBar and HasVehicleActionBar())))
 		out(
+			("  HasTempShapeshiftActionBar() = %s"):format(
+				tostring(HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			)
+		)
+		out(
 			("  C_ActionBar.GetOverrideBarIndex() = %s"):format(
 				tostring(C_ActionBar and C_ActionBar.GetOverrideBarIndex and C_ActionBar.GetOverrideBarIndex())
 			)
@@ -2602,6 +2607,35 @@ SlashCmdList["WISE"] = function(msg)
 		out(
 			("  C_ActionBar.GetVehicleBarIndex()  = %s"):format(
 				tostring(C_ActionBar and C_ActionBar.GetVehicleBarIndex and C_ActionBar.GetVehicleBarIndex())
+			)
+		)
+		out(
+			("  C_ActionBar.GetTempShapeshiftBarIndex() = %s"):format(
+				tostring(
+					C_ActionBar and C_ActionBar.GetTempShapeshiftBarIndex and C_ActionBar.GetTempShapeshiftBarIndex()
+				)
+			)
+		)
+		-- Which mechanism Blizzard's skinned OverrideActionBar would pick (its
+		-- ActionBarController shows it only for a skinned vehicle/override bar,
+		-- vehicle checked FIRST — same priority Wise:ResolveBarActionID must use).
+		out(
+			("  GetOverrideBarSkin() = %s  UnitVehicleSkin(player) = %s"):format(
+				tostring(C_ActionBar and C_ActionBar.GetOverrideBarSkin and C_ActionBar.GetOverrideBarSkin()),
+				tostring(UnitVehicleSkin and UnitVehicleSkin("player"))
+			)
+		)
+		out(
+			("  UnitInVehicle=%s UnitHasVehicleUI=%s IsPossessBarVisible=%s"):format(
+				tostring(UnitInVehicle and UnitInVehicle("player")),
+				tostring(UnitHasVehicleUI and UnitHasVehicleUI("player")),
+				tostring(IsPossessBarVisible and IsPossessBarVisible())
+			)
+		)
+		out(
+			("  Wise:ResolveBarActionID(133) = %s  tex=%s"):format(
+				tostring(Wise.ResolveBarActionID and Wise:ResolveBarActionID(133)),
+				tostring(Wise.ResolveBarActionID and GetActionTexture(Wise:ResolveBarActionID(133)))
 			)
 		)
 
@@ -2627,9 +2661,11 @@ SlashCmdList["WISE"] = function(msg)
 			out("  OverrideActionBarButton1 frame is NOT found")
 		end
 
-		out("--- override slots scan (121-180) ---")
+		-- Scan through page 20 (slot 240): 12.0.7 places the override page at index
+		-- 18 (slots 205-216), which the old 121-180 cap silently missed.
+		out("--- override slots scan (121-240) ---")
 		local anySlot = false
-		for slot = 121, 180 do
+		for slot = 121, 240 do
 			local aType, id, sub = GetActionInfo(slot)
 			if aType then
 				anySlot = true
@@ -2645,7 +2681,7 @@ SlashCmdList["WISE"] = function(msg)
 			end
 		end
 		if not anySlot then
-			out("  (all scanned override slots 121-180 are EMPTY right now)")
+			out("  (all scanned override slots 121-240 are EMPTY right now)")
 		end
 
 		-- Auto-discover interfaces whose buttons carry an [overridebar] condition,
