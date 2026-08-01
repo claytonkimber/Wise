@@ -22,3 +22,15 @@ GEMINI.md
 # Runtime state written by tools/perfy-profile.ps1 while an in-place
 # instrumentation run is active. Never belongs in a commit.
 .perfy-instrumented
+
+# Scratch produced while debugging: command output dumps, SavedVariables
+# extracts, loose patch files and AI/working notes. Useful locally, noise in
+# the repo. Docs belong in docs/ or wiki/, not a stray plan.md at the root.
+log*.txt
+out.txt
+grep*.txt
+diff*.txt
+branch.txt
+dump_sv.txt
+*.diff
+/plan.md
