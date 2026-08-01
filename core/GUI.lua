@@ -2873,22 +2873,14 @@ function Wise:SanitizeMacroCondition(str)
 				base = token
 			end
 			if base:lower() == "aml" then
+				-- Active set, not IsAddOnLoaded: an unpressed slot that overlaps
+				-- a pressed one has its addons loaded without being active.
 				local isActive = false
 				if WiseDB and WiseDB.addonMagicSlots then
 					local slotName = (arg or ""):lower()
-					for _, slot in ipairs(WiseDB.addonMagicSlots) do
+					for i, slot in ipairs(WiseDB.addonMagicSlots) do
 						if slot.name and slot.name:lower() == slotName then
-							isActive = true
-							if slot.addons and #slot.addons > 0 then
-								for _, a in ipairs(slot.addons) do
-									if not C_AddOns.IsAddOnLoaded(a) then
-										isActive = false
-										break
-									end
-								end
-							else
-								isActive = false
-							end
+							isActive = Wise:IsAddonMagicSlotActive(i)
 							break
 						end
 					end
@@ -4838,6 +4830,15 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			btn.activeHighlight:SetBlendMode("ADD")
 			btn.activeHighlight:Hide()
 
+			-- Broken state highlight — same square as activeHighlight, tinted red.
+			-- Drawn one sublevel above so it wins when both are somehow shown.
+			btn.missingHighlight = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+			btn.missingHighlight:SetAllPoints(btn.icon)
+			btn.missingHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+			btn.missingHighlight:SetBlendMode("ADD")
+			btn.missingHighlight:SetVertexColor(1, 0.1, 0.1)
+			btn.missingHighlight:Hide()
+
 			-- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
 			btn.cooldown = CreateFrame("Cooldown", nil, btn)
 			btn.cooldown:SetAllPoints(btn.icon)
@@ -5513,9 +5514,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		}
 		btn.groupName = name -- Store for Text lookups
 
-		-- Update cooldown and active state immediately
+		-- Update cooldown immediately. The active/missing state is applied after
+		-- the visual reset below, which clears both highlights — setting it here
+		-- would just be overwritten until the next refresh cycle.
 		Wise:UpdateButtonCooldown(btn)
-		Wise:UpdateButtonState(btn)
 
 		-- Apply visual state for known/unknown and category match.
 		-- hadMatch is false only for multi-state slots where no condition currently
@@ -5546,6 +5548,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			if btn.activeHighlight then
 				btn.activeHighlight:Hide()
 			end
+			if btn.missingHighlight then
+				btn.missingHighlight:Hide()
+			end
 
 			if isValid then
 				-- Initial state saturated; Usability check will refine this later
@@ -5556,6 +5561,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				btn.icon:SetAlpha(0.5)
 			end
 		end
+
+		-- Now that the highlights have been reset, apply the real active/missing
+		-- state so a loaded or broken slot shows its border on the first build.
+		Wise:UpdateButtonState(btn)
 
 		-- Update count (items, consumable spells, and spell charges)
 		local count = 0
@@ -5703,6 +5712,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				vBtn.activeHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
 				vBtn.activeHighlight:SetBlendMode("ADD")
 				vBtn.activeHighlight:Hide()
+
+				-- Broken state highlight (see the real-button counterpart)
+				vBtn.missingHighlight = vBtn:CreateTexture(nil, "OVERLAY", nil, 1)
+				vBtn.missingHighlight:SetAllPoints(vBtn.icon)
+				vBtn.missingHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+				vBtn.missingHighlight:SetBlendMode("ADD")
+				vBtn.missingHighlight:SetVertexColor(1, 0.1, 0.1)
+				vBtn.missingHighlight:Hide()
 				-- Cooldown frame — skip CooldownFrameTemplate to avoid its baked-in swipe insets
 				vBtn.cooldown = CreateFrame("Cooldown", nil, vBtn)
 				vBtn.cooldown:SetAllPoints(vBtn.icon)
@@ -5765,6 +5782,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				vBtn:SetAlpha(1)
 				if vBtn.activeHighlight then
 					vBtn.activeHighlight:Hide()
+				end
+				if vBtn.missingHighlight then
+					vBtn.missingHighlight:Hide()
 				end
 				if isKnown and categoryMatch then
 					vBtn.icon:SetDesaturated(false)
@@ -6696,11 +6716,33 @@ function Wise:ApplyIconStyle(btn, style)
 
 	style = style or "rounded"
 
+	-- Both overlays sit on top of the icon and must follow its shape, so every
+	-- mask/texcoord change below applies to the pair.
+	local function overlayTexCoord(...)
+		if btn.activeHighlight then
+			btn.activeHighlight:SetTexCoord(...)
+		end
+		if btn.missingHighlight then
+			btn.missingHighlight:SetTexCoord(...)
+		end
+	end
+	local function overlayAddMask(mask)
+		if btn.activeHighlight then
+			btn.activeHighlight:AddMaskTexture(mask)
+		end
+		if btn.missingHighlight then
+			btn.missingHighlight:AddMaskTexture(mask)
+		end
+	end
+
 	-- Clear previous mask if exists
 	if btn.styleMask then
 		btn.icon:RemoveMaskTexture(btn.styleMask)
 		if btn.activeHighlight then
 			btn.activeHighlight:RemoveMaskTexture(btn.styleMask)
+		end
+		if btn.missingHighlight then
+			btn.missingHighlight:RemoveMaskTexture(btn.styleMask)
 		end
 		btn.styleMask:Hide()
 	end
@@ -6714,15 +6756,11 @@ function Wise:ApplyIconStyle(btn, style)
 	if style == "rounded" then
 		-- Default WoW Icon (slightly rounded square)
 		btn.icon:SetTexCoord(0, 1, 0, 1)
-		if btn.activeHighlight then
-			btn.activeHighlight:SetTexCoord(0, 1, 0, 1)
-		end
+		overlayTexCoord(0, 1, 0, 1)
 	elseif style == "square" then
 		-- Zoom in to remove rounded borders
 		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		if btn.activeHighlight then
-			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		end
+		overlayTexCoord(0.08, 0.92, 0.08, 0.92)
 	elseif style == "round" then
 		-- Apply circular mask
 		if not btn.styleMask then
@@ -6736,13 +6774,9 @@ function Wise:ApplyIconStyle(btn, style)
 		)
 		btn.styleMask:Show()
 		btn.icon:AddMaskTexture(btn.styleMask)
-		if btn.activeHighlight then
-			btn.activeHighlight:AddMaskTexture(btn.styleMask)
-		end
+		overlayAddMask(btn.styleMask)
 		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		if btn.activeHighlight then
-			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		end
+		overlayTexCoord(0.08, 0.92, 0.08, 0.92)
 		-- Circular cooldown swipe
 		if btn.cooldown then
 			btn.cooldown:SetUseCircularEdge(true)
@@ -6760,13 +6794,9 @@ function Wise:ApplyIconStyle(btn, style)
 		)
 		btn.styleMask:Show()
 		btn.icon:AddMaskTexture(btn.styleMask)
-		if btn.activeHighlight then
-			btn.activeHighlight:AddMaskTexture(btn.styleMask)
-		end
+		overlayAddMask(btn.styleMask)
 		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		if btn.activeHighlight then
-			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		end
+		overlayTexCoord(0.08, 0.92, 0.08, 0.92)
 		-- Hexagon-shaped cooldown swipe
 		if btn.cooldown then
 			btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\HexagonMask.tga")
@@ -6783,13 +6813,9 @@ function Wise:ApplyIconStyle(btn, style)
 		)
 		btn.styleMask:Show()
 		btn.icon:AddMaskTexture(btn.styleMask)
-		if btn.activeHighlight then
-			btn.activeHighlight:AddMaskTexture(btn.styleMask)
-		end
+		overlayAddMask(btn.styleMask)
 		btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		if btn.activeHighlight then
-			btn.activeHighlight:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-		end
+		overlayTexCoord(0.08, 0.92, 0.08, 0.92)
 		-- Octagon-shaped cooldown swipe
 		if btn.cooldown then
 			btn.cooldown:SetSwipeTexture("Interface\\AddOns\\Wise\\Media\\OctagonMask.tga")
@@ -8513,19 +8539,10 @@ function Wise:UpdateButtonUsability(btn)
 	elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
 		local amIdx = tonumber(actionValue:sub(13))
 		if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
-			local slot = WiseDB.addonMagicSlots[amIdx]
-			if slot.addons and #slot.addons > 0 then
-				isUsable = true
-				for _, addon in ipairs(slot.addons) do
-					addon = strtrim(addon)
-					if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
-						isUsable = false
-						break
-					end
-				end
-			else
-				isUsable = false -- No addons selected
-			end
+			-- A broken slot stays lit (red) rather than greyed out — the red
+			-- border is the signal, and dimming it too would bury it.
+			local amState = Wise:GetAddonMagicSlotState(amIdx)
+			isUsable = (amState == "loaded" or amState == "missing")
 		end
 	elseif actionType == "toy" then
 		local toyID = tonumber(actionValue)
@@ -8746,6 +8763,7 @@ function Wise:UpdateButtonState(btn)
 	end
 
 	local isActive = false
+	local isMissing = false
 	local actionType = meta.actionType
 	local actionValue = meta.actionValue
 	local spellID = meta.spellID
@@ -8814,17 +8832,11 @@ function Wise:UpdateButtonState(btn)
 		if amIdx then
 			amIdx = tonumber(amIdx)
 			if amIdx and WiseDB.addonMagicSlots and WiseDB.addonMagicSlots[amIdx] then
-				local slot = WiseDB.addonMagicSlots[amIdx]
-				if slot.addons and #slot.addons > 0 then
-					isActive = true
-					for _, addon in ipairs(slot.addons) do
-						addon = strtrim(addon)
-						if addon ~= "" and not C_AddOns.IsAddOnLoaded(addon) then
-							isActive = false
-							break
-						end
-					end
-				end
+				local amState, amMissing = Wise:GetAddonMagicSlotState(amIdx)
+				isActive = (amState == "loaded")
+				-- Both borders can show at once: a slot loaded before one of its
+				-- addons was uninstalled is genuinely active AND broken.
+				isMissing = (amMissing ~= nil)
 			end
 		end
 	end
@@ -8832,10 +8844,16 @@ function Wise:UpdateButtonState(btn)
 	if btn.activeHighlight then
 		btn.activeHighlight:SetShown(isActive)
 	end
+	if btn.missingHighlight then
+		btn.missingHighlight:SetShown(isMissing)
+	end
 
 	local visualClone = (meta and meta.visualClone) or btn.visualClone
 	if visualClone and visualClone.activeHighlight then
 		visualClone.activeHighlight:SetShown(isActive)
+	end
+	if visualClone and visualClone.missingHighlight then
+		visualClone.missingHighlight:SetShown(isMissing)
 	end
 end
 

@@ -5253,6 +5253,11 @@ function Wise:RefreshActionsView(container)
 						else
 							suffixText = count .. " addons"
 						end
+
+						local amState, amMissing = Wise:GetAddonMagicSlotState(amIdx)
+						if amState == "missing" then
+							suffixText = suffixText .. " |cffff4040(" .. #amMissing .. " missing)|r"
+						end
 					end
 				end
 

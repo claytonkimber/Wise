@@ -2,6 +2,26 @@
 
 Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
 
+## [1.0.20260801] - 2026-08-01
+
+### Added
+- **Addon Loading Magic slots now flag a broken selection in red.** A slot's addon can be uninstalled long after it was picked, and there was no way to tell: the slot just looked unloaded and silently failed to ever load whole. A slot with at least one selection that is not installed now carries a red border for as long as the condition persists, its tooltip names the missing addons, and the Editor list marks it `(N missing)`. Pressing a broken slot refuses to load and prints which addons are gone rather than reloading into a bundle that can never come back complete. An addon uninstalled while its slot is loaded is a special case: the slot stays pressable so it can be switched off, and shows both borders (active and broken) until it is.
+- **The properties panel can now clear a missing selection.** The addon picker only walks *installed* addons, so an uninstalled name was stuck in the slot with no UI to remove it. Missing entries are listed first with their own Remove button.
+
+### Changed
+- **Addon Loading Magic slots are now stackable on-demand loads above your normal addon list.** A press enables the addons of every active slot, reloads, and then immediately un-checks whatever it enabled. Because a WoW addon's *checked* state and its *loaded* state are independent, the client is back to your system addon list the moment the bundle is running — so a manual `/reload`, a logout, or a crash all come back to system state on their own, with nothing left behind to clean up. Multiple slots stack (pressing a second sums both), each keeps its own highlight, and pressing a highlighted slot drops just that one.
+- **Overlapping slots share addons correctly.** Turning one slot off keeps any addon another active slot still needs — this falls out of rebuilding the union on every press rather than needing separate bookkeeping.
+- **Addons you enabled yourself are never un-checked**, so a slot containing something you run permanently cannot erode your addon list.
+- **Slots now carry a stable id.** Deleting a slot `table.remove`s it and shifts every later index, which would have silently re-pointed the active set at the wrong slots; ids are backfilled for existing saved slots.
+- **Slot highlight reflects "this slot is active", not "its addons are loaded".** The press un-checks its addons, so the checkboxes no longer record what is active; the active set is stored separately and carried across the reload. That stored set is also what lets a later press rebuild the union and stack. The `aml:` macro conditional reads the same state.
+
+### Fixed
+- **`/reload` now actually returns to your system addons.** `C_AddOns.GetAddOnEnableState` takes `(name, character)`, but was being called with the legacy global's `(character, name)` order — which returns 0 for *every* addon, so Wise could not tell which addons were yours.
+- **No more `ADDON_ACTION_BLOCKED` on reload.** `ReloadUI` is protected and callable only from a hardware event; an earlier design tried to reload from an event handler to finish cleaning up, which the client blocked. Un-checking proactively removes the need for any follow-up reload.
+- **A pressed slot comes back highlighted after its reload.** The restore runs on `ADDON_LOADED`, not at file scope: `WiseDB` is a SavedVariable populated by Wise's own `ADDON_LOADED` handler, so a file-scope read saw `nil`, silently restored no active set, and the bundle returned with its addons loaded but every slot unhighlighted.
+- **Other addons no longer see a slot's addons as disabled** (TSM reported "AppHelper is installed but not enabled"). Addons check their dependencies' *enable* state during their own startup, and Wise loads early enough that un-checking on `ADDON_LOADED` pulled that state away before they looked. The un-check is now deferred to just after `PLAYER_LOGIN`, once every addon has run its startup checks — and a slot press flushes any still-pending un-check first, so a press before that point cannot leave addons permanently checked.
+- **Active/missing highlights now show on the first build of a group** instead of only after the next refresh cycle: the per-button state was applied *before* the visual reset that hides both highlight textures, so it was immediately overwritten.
+
 ## [1.0.20260730] - 2026-07-30
 
 ### Fixed

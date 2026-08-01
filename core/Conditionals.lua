@@ -729,22 +729,14 @@ function Wise:UpdateConditionalsValues()
 				local frame = Wise.frames and Wise.frames[item.groupName]
 				isActive = frame and frame:IsShown()
 			elseif item.isAddonMagic then
+				-- Active set, not IsAddOnLoaded: with overlapping slots an
+				-- unpressed slot's addons can be loaded because a DIFFERENT slot
+				-- pulled them in, which must not read as active here.
 				isActive = false
 				if WiseDB and WiseDB.addonMagicSlots then
-					for _, slot in ipairs(WiseDB.addonMagicSlots) do
-						if slot.name == item.slotName and slot.addons then
-							local allLoaded = true
-							if #slot.addons > 0 then
-								for _, addon in ipairs(slot.addons) do
-									if not C_AddOns.IsAddOnLoaded(addon) then
-										allLoaded = false
-										break
-									end
-								end
-							else
-								allLoaded = false
-							end
-							isActive = allLoaded
+					for i, slot in ipairs(WiseDB.addonMagicSlots) do
+						if slot.name == item.slotName then
+							isActive = Wise:IsAddonMagicSlotActive(i)
 							break
 						end
 					end

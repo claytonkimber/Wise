@@ -264,6 +264,30 @@ function Wise:AddInterfaceTooltip(btn)
 						else
 							GameTooltip:AddLine(count .. " addons", 0.8, 0.8, 0.8)
 						end
+
+						local amState, amMissing = Wise:GetAddonMagicSlotState(amIdx)
+						if amState == "loaded" then
+							GameTooltip:AddLine(" ")
+							GameTooltip:AddLine("Loaded — click to unload and reload", 0.4, 1, 0.4)
+							GameTooltip:AddLine("Any other reload also unloads it.", 0.6, 0.6, 0.6)
+							if amMissing then
+								GameTooltip:AddLine(" ")
+								GameTooltip:AddLine("Uninstalled since loading:", 1, 0.2, 0.2)
+								for _, a in ipairs(amMissing) do
+									GameTooltip:AddLine("  " .. a, 1, 0.4, 0.4)
+								end
+							end
+						elseif amState == "missing" then
+							GameTooltip:AddLine(" ")
+							GameTooltip:AddLine("Not installed:", 1, 0.2, 0.2)
+							for _, a in ipairs(amMissing) do
+								GameTooltip:AddLine("  " .. a, 1, 0.4, 0.4)
+							end
+							GameTooltip:AddLine("Edit this slot to remove them.", 0.6, 0.6, 0.6)
+						elseif amState == "unloaded" then
+							GameTooltip:AddLine(" ")
+							GameTooltip:AddLine("Click to load and reload", 0.8, 0.8, 0.8)
+						end
 						hasAction = true
 					else
 						label = "Addon Magic Slot"
