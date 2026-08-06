@@ -2056,16 +2056,17 @@ local function AttachSlotKeybindCapture(bindBtn, group, slotIdx, getSlot)
 					return
 				end
 
-				local mods = ""
+				local modTable = {}
 				if IsAltKeyDown() then
-					mods = mods .. "ALT-"
+					modTable[#modTable + 1] = "ALT-"
 				end
 				if IsControlKeyDown() then
-					mods = mods .. "CTRL-"
+					modTable[#modTable + 1] = "CTRL-"
 				end
 				if IsShiftKeyDown() then
-					mods = mods .. "SHIFT-"
+					modTable[#modTable + 1] = "SHIFT-"
 				end
+				local mods = table.concat(modTable)
 
 				-- Check MouseWheel Validation
 				if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
@@ -2392,16 +2393,17 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
 						return
 					end
 
-					local mods = ""
+					local modTable = {}
 					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
+						modTable[#modTable + 1] = "ALT-"
 					end
 					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
+						modTable[#modTable + 1] = "CTRL-"
 					end
 					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
+						modTable[#modTable + 1] = "SHIFT-"
 					end
+					local mods = table.concat(modTable)
 
 					-- Check MouseWheel Validation
 					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
@@ -4935,16 +4937,17 @@ function Wise:RenderGroupProperties(panel, group, y)
 						return
 					end
 
-					local mods = ""
+					local modTable = {}
 					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
+						modTable[#modTable + 1] = "ALT-"
 					end
 					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
+						modTable[#modTable + 1] = "CTRL-"
 					end
 					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
+						modTable[#modTable + 1] = "SHIFT-"
 					end
+					local mods = table.concat(modTable)
 
 					local fullKey = mods .. key
 					self:EnableKeyboard(false)
@@ -5462,16 +5465,17 @@ function Wise:RenderGroupProperties(panel, group, y)
 						return
 					end
 
-					local mods = ""
+					local modTable = {}
 					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
+						modTable[#modTable + 1] = "ALT-"
 					end
 					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
+						modTable[#modTable + 1] = "CTRL-"
 					end
 					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
+						modTable[#modTable + 1] = "SHIFT-"
 					end
+					local mods = table.concat(modTable)
 
 					-- Check MouseWheel Validation
 					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
