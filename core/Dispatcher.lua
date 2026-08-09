@@ -166,6 +166,24 @@ end)
 -- so the SetAttribute calls (the expensive part) fire only on key edges.
 local modTracker = CreateFrame("Frame")
 modTracker._wiseProfileName = "Dispatcher.modTracker"
+-- 12.1: gate the per-frame dispatch on the frame's own visibility, so a dormant
+-- dispatcher costs ZERO handler calls instead of one early-returning call per
+-- frame. Shown/hidden by SyncModTrackerState below, which mirrors "are any
+-- bindings registered". The in-handler bail stays as the pre-12.1 gate and as a
+-- correctness backstop — never rely on visibility alone.
+Wise.Compat.SetOnUpdateWhenVisible(modTracker)
+modTracker:Hide()
+
+-- Keep the tracker's visibility in step with whether the dispatcher is armed.
+-- Called after any change to Dispatcher.bindings.
+local function SyncModTrackerState()
+	if next(Dispatcher.bindings) then
+		modTracker:Show()
+	else
+		modTracker:Hide()
+	end
+end
+
 local lastShift, lastCtrl, lastAlt = false, false, false
 modTracker:SetScript("OnUpdate", function()
 	-- No registered bindings → the dispatcher is dormant, skip all work.
@@ -215,6 +233,7 @@ function Dispatcher:RegisterAction(key, actionType, actionValue, callback)
 		value = actionValue,
 		callback = callback,
 	}
+	SyncModTrackerState()
 
 	-- Apply immediately if possible
 	if not InCombatLockdown() then
@@ -229,6 +248,7 @@ function Dispatcher:UnregisterAction(key)
 		return
 	end
 	self.bindings[key] = nil
+	SyncModTrackerState()
 
 	if not InCombatLockdown() then
 		-- Clear the secure attributes
@@ -307,6 +327,7 @@ function Dispatcher:ClearAll()
 	end
 
 	self.bindings = {}
+	SyncModTrackerState()
 	ClearOverrideBindings(dispatcherBtn)
 
 	-- Reset cached modifier state so the next arming starts clean and the

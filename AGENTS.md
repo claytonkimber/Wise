@@ -445,6 +445,49 @@ a fully-secret payload (never index it), and some spells are whitelisted
 non-secret — if Abundance lands on that list, plain `GetPlayerAuraBySpellID`
 reads work again in combat.
 
+### Patch 12.1 Readiness (`core/Compat121.lua`)
+
+All 12.1 feature detection lives in **one layer**, `Wise.Compat` — do not
+scatter `if C_Foo and C_Foo.Bar then` chains through call sites. The TOC ships a
+single build for interface 120000..120100, so every 12.1 call needs a guard
+anyway; centralising means one file to read for "what does Wise do differently
+on 12.1?" and one to delete when 12.0.x support is dropped. `/wise compat`
+prints the live capability report.
+
+- **Never feature-detect an intrinsic by TEMPLATE NAME.** `CreateFrame("Frame",
+  nil, parent, "AnyNameAtAll")` does **not** throw for an unknown template — it
+  silently returns an ordinary Frame (verified in wow-ui-sim 12.0.7). A
+  name-only probe reports a false positive on every 12.0.x client and then
+  explodes at the first real method call. Probe the **method**
+  (`type(frame.AddAuraSlot) == "function"`), not the label. This exact bug was
+  written and caught by `tests/compat121.lua`.
+- **Aura display widgets must be created and configured OUT OF COMBAT.**
+  AuraButtons/AuraContainers carry Forbidden Aspects while auras are secret
+  (`UntrustedScriptExecution`, `EventRegistrations`, `ScriptedInput`,
+  `QueryFocus`), so tainted callers are refused. Build them out of combat and
+  only show/hide afterwards — `Compat.CanUseAuraWidgets()` enforces both gates.
+- **`Compat.AreAurasSecret()` is not `InCombatLockdown()`.** It prefers
+  `C_Secrets.ShouldAurasBeSecret()`, which is false in ordinary open-world
+  combat and true in M+/raid/PvP. The combat fallback deliberately
+  OVER-reports secrecy; a true must cost accuracy (don't trust a read), never
+  function (don't blank the UI).
+- **`Frame:SetOnUpdateMode(frame, "RunWhenVisible")`** lets the client skip
+  dispatching an OnUpdate on a hidden frame entirely, rather than the handler
+  early-returning every frame. Applied to `CooldownUpdateFrame` (already
+  `Hide()`n when idle) and `Dispatcher.modTracker` (now shown/hidden by
+  `SyncModTrackerState` to mirror "any bindings registered"). **Keep the
+  handler's own early-return** — it is the only gate pre-12.1 and a
+  correctness backstop after.
+
+**Surveyed and deliberately NOT adapted to**, so nobody re-litigates:
+`getglobal`/`setglobal` deprecation (Wise already uses `_G[name]`),
+`UIParentLoadAddOn`→`LoadAddOnWithErrorHandling` and `CanAccessObject`
+(unused), `SecureAuraHeaderTemplate` removal (unused). The **expanded unit
+secrets** (`UnitClass`, `UnitRace`, `UnitSex`, `UnitGroupRolesAssigned`,
+`UnitInRaid`, `GetInspectSpecialization`, …) do not affect Wise: every call
+site passes `"player"`, and a player's own unit data stays non-secret. Verify
+that still holds before adding any call on a non-player unit.
+
 ### CooldownViewer Integration (`wiser/Cooldowns.lua`)
 
 - **`C_CooldownViewer` child frames do not reliably expose `cooldownID`** when the native Cooldown Manager viewer is hidden (`hideNativeInterface=true`) — as of 12.0.7, hidden children report `cooldownID=nil`. Detect "did this child actually yield a spell" by checking `child.cooldownID ~= nil`, never by the mere presence of a `GetSpellID` method (every frame has one).

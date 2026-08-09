@@ -2789,6 +2789,23 @@ SlashCmdList["WISE"] = function(msg)
 		return
 	end
 
+	if cmd == "compat" then
+		-- What 12.1 capabilities does THIS client expose? Answers "why is the
+		-- in-combat stack counter absent here but present there" without a
+		-- code read. See core/Compat121.lua.
+		local r = Wise.Compat.GetReport()
+		local function yn(v)
+			return v and "|cff00ff00yes|r" or "|cffff5555no|r"
+		end
+		print("|cff00ccff[Wise compat]|r client capability report:")
+		print(("  aura display widgets (12.1): %s"):format(yn(r.auraWidgets)))
+		print(("  SetOnUpdateMode (12.1):      %s"):format(yn(r.onUpdateMode)))
+		print(("  issecretvalue primitives:    %s"):format(yn(r.secretPrimitives)))
+		print(("  C_Secrets query:             %s"):format(yn(r.secretsQuery)))
+		print(("  auras secret right now:      %s"):format(yn(r.aurasSecretNow)))
+		return
+	end
+
 	if cmd == "cpu" then
 		-- Delta-based CPU profiler for Wise's OWN frames.
 		--   /wise cpu start  → reset counters, mark t0

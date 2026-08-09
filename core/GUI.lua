@@ -985,6 +985,10 @@ Wise.CooldownUpdateFrame = CreateFrame("Frame")
 Wise.CooldownUpdateFrame._wiseProfileName = "CooldownUpdateFrame"
 Wise.ActiveCooldownButtons = {}
 Wise.CooldownUpdateFrame:Hide()
+-- 12.1: let the client skip dispatching this OnUpdate entirely while the frame
+-- is hidden (it is Hide()n whenever no button has a live cooldown). Pre-12.1
+-- this is a no-op and the Hide() itself remains the gate. See core/Compat121.lua.
+Wise.Compat.SetOnUpdateWhenVisible(Wise.CooldownUpdateFrame)
 
 -- ─── Combat-safe countdown: Blizzard native text fallback ──────────
 -- WoW 11.1+ returns "secret numbers" for cooldown start/duration in combat.
