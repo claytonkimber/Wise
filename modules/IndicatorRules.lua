@@ -189,87 +189,25 @@ end
 -- the helper now would be dead code; if one is ever read, guard it with
 -- `issecrettable` BEFORE indexing rather than pcall'ing after the fact.
 
--- Find the tracked aura's CURRENT auraInstanceID by live enumeration.
+-- REMOVED (2026-08-09): the in-combat aura-slot scan (GetAuraSlots +
+-- GetAuraDataBySlot over every player HELPFUL aura, probing the display-count
+-- API to identify the tracked instance). Two reasons, either fatal on its own:
 --
--- In combat spellId is secret, so the aura cannot be identified by id. What IS
--- available: auraInstanceID is plain even in combat, and the aura's SLOT is
--- stable for the lifetime of a given application. So we remember which slot the
--- aura occupied when we last identified it out of combat, and in combat we read
--- the instance id out of that same slot.
+-- 1. Taint storm. The scan ran on every UNIT_AURA in combat. In content where
+--    aura data is secret (M+/raid/PvP) it spread 'Wise' taint into the shared
+--    aura records; Blizzard's CooldownViewer — reading the same records off the
+--    same UNIT_AURA — then threw "secret value ... while execution tainted by
+--    'Wise'" on ITS OWN comparisons (~14k errors captured in one M+10, see
+--    !BugGrabber session 9, 2026-08-09). Wise never appeared on those stacks:
+--    the pcall wrappers hid Wise's errors but did nothing about the taint.
+-- 2. Dead in 12.1. Aura access by index/slot/instanceID hard Lua-errors for
+--    addons whenever auras are secret; only by-spellID/by-name lookups survive.
 --
--- This is best-effort by design. A slot can be reused by a different aura, which
--- would point the display-count call at the wrong aura — the cost is a wrong or
--- absent number in the button corner, never a wrong CAST (nothing here feeds the
--- secure path). It self-corrects on the next out-of-combat pass.
--- Last known instance id per action, used ONLY to prefer the same aura instance
--- across passes when several candidates match. Never trusted on its own.
-local lastAuraInstance = setmetatable({}, { __mode = "k" })
-
-local _slotUnit, _slotIdx
-local function ReadSlotAuraProbe()
-	return C_UnitAuras.GetAuraDataBySlot(_slotUnit, _slotIdx)
-end
-
-local _dcUnit, _dcInst
-local function DisplayCountProbe()
-	-- min=1/max=99: "does this instance have a count at all". The RETURN is a
-	-- possibly-secret string and must never be compared — only its presence is
-	-- used, and presence is what identifies a stacking aura.
-	return C_UnitAuras.GetAuraApplicationDisplayCount(_dcUnit, _dcInst, 1, 99)
-end
-local function InstanceHasCount(inst)
-	if not (C_UnitAuras.GetAuraApplicationDisplayCount and inst) then
-		return false
-	end
-	_dcUnit, _dcInst = "player", inst
-	local ok, c = pcall(DisplayCountProbe)
-	_dcUnit, _dcInst = nil, nil
-	-- type() is safe on a secret; == is not.
-	return ok and type(c) ~= "nil"
-end
-
--- Find the tracked aura's CURRENT auraInstanceID by scanning the live aura list.
---
--- Re-scans EVERY pass rather than caching a slot. Abundance is reapplied
--- constantly in combat, and each reapplication is a NEW aura instance in a
--- possibly different slot — a slot learned once goes stale, which showed up as a
--- counter that could fall but never climb.
---
--- Identification without spellId (secret in combat): take player-cast helpful
--- auras whose instance the display-count API will answer for. Only a stacking
--- aura has a display count, which narrows the field sharply. Where several
--- qualify, prefer the instance we used last pass so the number stays stable.
-local function ResolveLiveAuraInstance(spellID, action)
-	if not (C_UnitAuras and C_UnitAuras.GetAuraSlots and C_UnitAuras.GetAuraDataBySlot) then
-		return nil
-	end
-	local previous = action and lastAuraInstance[action]
-	local slots = { C_UnitAuras.GetAuraSlots("player", "HELPFUL") }
-	local firstMatch = nil
-	for i = 2, #slots do
-		_slotUnit, _slotIdx = "player", slots[i]
-		local ok, aura = pcall(ReadSlotAuraProbe)
-		_slotUnit, _slotIdx = nil, nil
-		if ok and aura then
-			-- These two flags stay PLAIN in combat (verified in live aura dumps),
-			-- so they can be tested directly.
-			local mine = (aura.isFromPlayerOrPlayerPet == true)
-			local inst = mine and SecretSafeNumber(aura.auraInstanceID) or nil
-			if inst and InstanceHasCount(inst) then
-				if inst == previous then
-					return inst -- same instance as last pass: strongest signal
-				end
-				if not firstMatch then
-					firstMatch = inst
-				end
-			end
-		end
-	end
-	if firstMatch and action then
-		lastAuraInstance[action] = firstMatch
-	end
-	return firstMatch
-end
+-- Consequence: when the by-id/by-name lookups fail in combat (secret context),
+-- stacks are UNKNOWN and the count hides. The 12.1 replacement is the sanctioned
+-- AuraContainer/AuraButton display path (AddAuraSlot + SetApplicationCount /
+-- ApplicationBar): the client renders the live count itself, addon code never
+-- touches the data. Do NOT reintroduce enumeration here.
 
 -- Per-spell live state, computed ONCE per pass and shared by every rule on that
 -- spell. Read order: learned/seeded buff aura id, then cast id, then name (the
@@ -300,27 +238,16 @@ local function ResolveSpellState(spellID, name, action)
 					action.trackedAuraID = id
 				end
 			end
-			-- Record the instance we positively identified here (spellId is
-			-- readable on this path). Combat uses it only as a tie-breaker when
-			-- several candidates match — never as the sole handle, since a new
-			-- application means a new instance id.
-			local inst = SecretSafeNumber(aura.auraInstanceID)
-			if inst then
-				lastAuraInstance[action] = inst
-			end
 		end
 	elseif InCombatLockdown() then
-		-- In combat the aura is NOT hidden — it still enumerates. Its identifying
-		-- fields (spellId/name/applications) are secret, which is why every lookup
-		-- above failed, but auraInstanceID stays PLAIN and readable. So the handle
-		-- must be read LIVE from the current enumeration.
-		--
-		-- Do NOT use a handle learned out of combat: instance ids rotate on combat
-		-- entry (measured — an id captured pre-pull is stale by the first sample).
-		-- Stacks stay UNKNOWN either way: the count is displayable via SetText but
-		-- not readable, so never claim a number here.
+		-- Every lookup above failed in combat: the aura's identifying fields are
+		-- secret, or the aura is genuinely absent — undecidable from here. Stacks
+		-- become UNKNOWN (stacksKnown=false) and the corner count hides. We do NOT
+		-- hunt for the instance by enumerating aura slots (see the removal note
+		-- above ResolveSpellState), and a handle learned out of combat is stale by
+		-- the first sample (instance ids rotate on combat entry), so countInstID
+		-- stays nil.
 		stacksKnown = false
-		countInstID = ResolveLiveAuraInstance(spellID, action)
 	end
 	local charges = 0
 	if spellID and C_Spell and C_Spell.GetSpellCharges then

@@ -265,18 +265,16 @@ test("IndicatorRules: withdrawn stacks metric never colours the button", functio
 	assertFalse(borderShown)
 end)
 
--- In-combat display path, modelled on MEASURED 12.0.7 behaviour (Mechanic probes
--- v1-v3, build 68887) rather than on the API docs, which are wrong here:
---   * minDisplayCount does NOT gate the return (min=999 on a 1-stack aura still
---     returns non-nil), so >=N threshold inference is impossible.
---   * the return for a rotationally-relevant aura is a SECRET string: it can be
---     passed to SetText but comparing it throws.
--- So the contract under test is: the COUNT DISPLAYS, and stack-threshold colour
--- rules match NOTHING (clear border) rather than matching everything at once.
-test("IndicatorRules: in-combat secret aura displays count but matches no stack rule", function()
+-- In-combat contract after the 2026-08-09 slot-scan removal (see the note above
+-- ResolveSpellState in IndicatorRules.lua). When the by-id/by-name lookups go
+-- dark in combat (secret context: M+/raid/PvP), Wise must:
+--   * NOT enumerate aura slots — the scan spread 'Wise' taint into the shared
+--     aura records and detonated ~14k CooldownViewer errors in one M+10, and in
+--     12.1 slot/index/instance aura access hard Lua-errors while secret.
+--   * hide the corner count (stacks UNKNOWN, never a stale or guessed number).
+--   * match no stack-threshold rule (clear border, not a confidently wrong one).
+test("IndicatorRules: in-combat secret aura hides count, no enumeration, no stack rule", function()
 	local CAST_ID, AURA_ID, INST_ID, LIVE_STACKS = 999021, 999022, 4242, 12
-	-- The refreshed application: new slot, new instance id, higher count.
-	local NEW_SLOT, NEW_INST, REAPPLIED_STACKS = 9, 4343, 15
 	local CU = _G.C_UnitAuras or {}
 	_G.C_UnitAuras = CU
 	local savedByID = CU.GetPlayerAuraBySpellID
@@ -287,7 +285,6 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	local savedBySlot = CU.GetAuraDataBySlot
 	local savedICL = _G.InCombatLockdown
 	local inCombat = false
-	local AURA_SLOT = 7
 	local auraData = { applications = LIVE_STACKS, spellId = AURA_ID, auraInstanceID = INST_ID }
 	CU.GetPlayerAuraBySpellID = function(id)
 		if not inCombat and id == AURA_ID then
@@ -302,44 +299,28 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 		return nil
 	end
 	CU.GetAuraDataByAuraInstanceID = function()
-		return nil -- data read blocked in combat too; only the display API answers
+		return nil
 	end
-	-- Measured 12.0.7 shape: the aura still ENUMERATES in combat and its
-	-- auraInstanceID + isFromPlayerOrPlayerPet stay PLAIN; only the identifying
-	-- fields (spellId/name/applications) go secret. (First return of
-	-- GetAuraSlots is the continuation token, hence the leading nil.)
-	--
-	-- REAPPLICATION is modelled: mid-combat the aura moves to a DIFFERENT slot
-	-- with a NEW instance id, exactly as a refreshed Rejuv does. A resolver that
-	-- caches the slot or the instance goes stale here — that showed up in game as
-	-- a counter that could tick down but never up.
-	local reapplied = false
+	-- Tripwires: any slot/instance-keyed access while auras are secret is the
+	-- exact pattern that taints Blizzard's aura records today and hard-errors in
+	-- 12.1. Record the offense instead of erroring so every assertion still runs
+	-- and teardown stays reachable.
+	local enumeratedInCombat = false
 	CU.GetAuraSlots = function()
-		return nil, reapplied and NEW_SLOT or AURA_SLOT
-	end
-	CU.GetAuraDataBySlot = function(unit, slot)
-		local wantSlot = reapplied and NEW_SLOT or AURA_SLOT
-		if slot ~= wantSlot then
-			return nil
-		end
 		if inCombat then
-			-- spellId unreadable in combat; instance id and ownership are not.
-			return {
-				auraInstanceID = reapplied and NEW_INST or INST_ID,
-				isFromPlayerOrPlayerPet = true,
-				isHelpful = true,
-			}
+			enumeratedInCombat = true
 		end
-		return auraData
+		return nil, 7
 	end
-	-- Only a stacking aura answers the display-count API; that is what identifies
-	-- it once spellId is secret. Returns the CURRENT instance's count.
-	CU.GetAuraApplicationDisplayCount = function(unit, instID, minCount)
-		if instID == INST_ID and not reapplied then
-			return tostring(LIVE_STACKS)
+	CU.GetAuraDataBySlot = function()
+		if inCombat then
+			enumeratedInCombat = true
 		end
-		if instID == NEW_INST and reapplied then
-			return tostring(REAPPLIED_STACKS)
+		return nil
+	end
+	CU.GetAuraApplicationDisplayCount = function()
+		if inCombat then
+			enumeratedInCombat = true
 		end
 		return nil
 	end
@@ -384,29 +365,18 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	Wise.frames = Wise.frames or {}
 	Wise.frames["__PrehotTest"] = { buttons = { btn } }
 
-	-- Prehot: one out-of-combat pass learns trackedAuraID AND the instance handle.
+	-- Prehot: the out-of-combat pass reads real stacks and shows the count.
 	Wise:RebuildIndicatorRules()
 	Wise:UpdateIndicatorRules()
+	local prehotShown = btn.indicatorCount ~= nil and btn.indicatorCount:IsShown()
+	local prehotText = btn.indicatorCount and btn.indicatorCount:GetText()
 
-	-- Pull: every direct read goes dark; only the display-count API still answers.
+	-- Pull: every direct read goes dark. No fallback hunting is allowed.
 	inCombat = true
 	Wise:UpdateIndicatorRules()
 
 	local countShown = btn.indicatorCount ~= nil and btn.indicatorCount:IsShown()
-	local countText = btn.indicatorCount and btn.indicatorCount:GetText()
 	local borderShown = btn.indicatorBorder ~= nil and btn.indicatorBorder:IsShown()
-	local borderG = nil
-	if borderShown then
-		local _, g = btn.indicatorBorder:GetVertexColor()
-		borderG = g
-	end
-
-	-- Refresh the buff mid-fight: new slot, new instance, HIGHER count. The
-	-- resolver must re-find it. A cached slot/instance sticks on the old handle
-	-- and the number can only ever fall — the reported in-game symptom.
-	reapplied = true
-	Wise:UpdateIndicatorRules()
-	local reappliedText = btn.indicatorCount and btn.indicatorCount:GetText()
 
 	Wise.frames["__PrehotTest"] = nil
 	Wise.buttonMeta[btn] = nil
@@ -420,15 +390,15 @@ test("IndicatorRules: in-combat secret aura displays count but matches no stack 
 	_G.InCombatLockdown = savedICL
 	Wise:RebuildIndicatorRules()
 
-	-- The count still displays: SetText accepts the secret.
-	assertTrue(countShown)
-	assertEquals(tostring(LIVE_STACKS), countText)
-	-- ...and it tracks a REAPPLICATION upwards, not just downwards.
-	assertEquals(tostring(REAPPLIED_STACKS), reappliedText)
-	-- ...but NO stack-threshold rule may match. Previously the <=2 Red rule and
-	-- the >=8 White rule both "matched" (the nil-check misread every return as a
-	-- hit) and Red won by rule order — a confidently wrong border for the whole
-	-- fight. Unknown stacks must leave the border clear instead.
+	-- Out of combat the count works normally...
+	assertTrue(prehotShown)
+	assertEquals(tostring(LIVE_STACKS), prehotText)
+	-- ...in combat it hides rather than guessing...
+	assertFalse(countShown)
+	-- ...no slot/instance API was touched while secret...
+	assertFalse(enumeratedInCombat)
+	-- ...and no stack-threshold rule fires on unknown stacks. Previously the <=2
+	-- Red rule "matched" unknown stacks and painted a confidently wrong border
+	-- for the whole fight.
 	assertFalse(borderShown)
-	assertEquals(nil, borderG)
 end)

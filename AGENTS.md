@@ -390,8 +390,17 @@ Established by seven in-game probes on 2026-07-26. **Earlier notes claiming
 and were deleted — that theory was inferred from reads that also failed out of
 combat.** What actually happens:
 
-- **Auras still enumerate in combat.** `GetAuraSlots` / `GetAuraDataBySlot`
-  return the aura table normally. Nothing is hidden.
+- **Auras still enumerate in combat** (`GetAuraSlots` / `GetAuraDataBySlot`
+  return the aura table normally) — **but enumerating is FORBIDDEN in Wise
+  anyway.** The enumeration itself is what spread 'Wise' taint into the shared
+  aura records: Blizzard's CooldownViewer reads the same records off the same
+  `UNIT_AURA` and threw ~14k "secret value ... while execution tainted by
+  'Wise'" errors across one M+10 (2026-08-09, !BugGrabber session 9 — Wise on
+  none of the stacks; pcall hides the error, not the taint). Normal combat
+  doesn't detonate because full aura secrecy is scoped to M+/raid/PvP-style
+  content, so the taint sits silent until it meets a secret. In **12.1** the
+  question is moot: slot/index/instanceID aura access hard Lua-errors for
+  addons whenever auras are secret; only by-spellID/by-name lookups survive.
 - **Individual FIELDS become secret**: `spellId`, `name`, `applications`,
   `points`, `duration`, `expirationTime`. `auraInstanceID`, `isHelpful`,
   `isFromPlayerOrPlayerPet` stay **plain**. `C_Secrets.ShouldAurasBeSecret`
@@ -420,7 +429,21 @@ ID/name, full enumeration, pre-learned instance handles, the display-count API
 with and without `maxDisplayCount`, `minDisplayCount` gating, the `C_Secrets`
 namespace, `C_CooldownViewer` (carries no aura data for Abundance), Blizzard's
 rendered CDM FontStrings, `tonumber` coercion into `SetValue`, and
-`SetText`→`GetText` laundering.
+`SetText`→`GetText` laundering. The in-combat slot-scan resolver
+(`ResolveLiveAuraInstance`) was itself removed 2026-08-09 for tainting the
+shared aura records (see above) — the corner count now hides in combat when
+by-id/by-name reads fail, by design.
+
+**12.1 path forward (from PTR API notes):** the sanctioned replacement is the
+new `AuraContainer`/`AuraButton` intrinsics — `AddAuraSlot(slotKey,
+filterString, options)` to bind a filtered aura, `SetApplicationCount` /
+`ApplicationBar` to render live stack counts client-side. The addon styles and
+anchors the widget; it never sees the data (AuraButtons are forbidden to
+tainted code while auras are secret, so configure out of combat). This is the
+route to a working in-combat Abundance counter. Also 12.1: `UNIT_AURA` carries
+a fully-secret payload (never index it), and some spells are whitelisted
+non-secret — if Abundance lands on that list, plain `GetPlayerAuraBySpellID`
+reads work again in combat.
 
 ### CooldownViewer Integration (`wiser/Cooldowns.lua`)
 
