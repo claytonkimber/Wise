@@ -2195,18 +2195,41 @@ function Wise:SetViewerVisibility(viewerName, hidden)
 	local settingKey = Enum.EditModeCooldownViewerSetting.VisibleSetting
 	local value = hidden and Enum.CooldownViewerVisibleSetting.Hidden or Enum.CooldownViewerVisibleSetting.Always
 
+	-- Read the plain `visibleSetting` field rather than calling GetSettingValue:
+	-- the method dispatches through Blizzard's setting map, and on a CooldownViewer
+	-- that is a tainted call into frames that own forbidden aura tables (12.1).
+	-- The field carries the same value and reading it taints nothing.
+	local current = viewer.visibleSetting
+
+	-- State unknown -> do NOTHING. Edit Mode applies layouts asynchronously, so on
+	-- the earliest ReapplyAllHiding pass (PLAYER_LOGIN, before the +1s/+3s retries)
+	-- the viewer exists but this field is still nil.
+	--
+	-- Bailing out is the whole point. A nil here used to fall through to
+	-- OnSystemSettingChange, which for the common default (hideTrackedBuffs =
+	-- false -> target Always, already the viewer's real state) was a REDUNDANT
+	-- call that still ran the refresh chain tainted and stuck 'Wise' taint on
+	-- BuffIconCooldownViewer. Blizzard's own later UNIT_AURA refresh then threw
+	-- from RegisterAuraInstanceIDItemFrame with Wise nowhere on the stack
+	-- (!BugGrabber session 5, 2026-08-13). Removing viewer:UpdateShownState()
+	-- closed the direct route; this closes the redundant-write route.
+	--
+	-- Returning false (not true) matters: the later timer passes re-run this, and
+	-- by then Edit Mode has populated the field, so a genuinely-needed change
+	-- still lands. Claiming success here would silently drop it.
+	if current == nil then
+		return false
+	end
+
 	-- Already at the target value? Nothing to do (avoids redundant layout dirtying).
-	if viewer.GetSettingValue then
-		local ok, cur = pcall(viewer.GetSettingValue, viewer, settingKey)
-		if ok and cur == value then
-			return true
-		end
+	if current == value then
+		return true
 	end
 
 	-- Apply the change the way the in-game Edit Mode dropdown does, so it's
 	-- recorded in the active layout and persists. The exact setter has churned
-	-- across patches, so try the known paths in order and verify via
-	-- GetSettingValue (confirmed present on these frames).
+	-- across patches, so try the known paths in order and verify via the
+	-- `visibleSetting` field afterwards.
 	local applied = false
 	if EditModeManagerFrame and EditModeManagerFrame.OnSystemSettingChange then
 		pcall(EditModeManagerFrame.OnSystemSettingChange, EditModeManagerFrame, viewer, settingKey, value)
@@ -2217,17 +2240,25 @@ function Wise:SetViewerVisibility(viewerName, hidden)
 		applied = true
 	end
 
-	-- Make sure the visual state reflects the new setting immediately.
-	if viewer.UpdateShownState then
-		pcall(viewer.UpdateShownState, viewer)
-	end
+	-- NOTE: do NOT call viewer:UpdateShownState() here.
+	--
+	-- OnSystemSettingChange already drives the refresh through Edit Mode's own
+	-- path (UpdateSystemSettingVisibleSetting -> UpdateShownState), so this call
+	-- was only ever a belt-and-braces repeat. In 12.1 it became actively harmful:
+	-- UpdateShownState -> OnShow -> RefreshLayout -> RefreshData reaches
+	-- RegisterAuraInstanceIDItemFrame, which indexes `auraInstanceIDToItemFramesMap`
+	-- — a FORBIDDEN table as of 12.1. Calling it from Wise runs that chain tainted
+	-- and hard-errors ("attempted to index a table that cannot be accessed while
+	-- tainted"), and the taint sticks to the viewer, so later Blizzard-driven
+	-- UNIT_AURA refreshes (CheckAuraAddedAlertTriggers) error too. The pcall here
+	-- did not help: the error surfaces on a later dispatch, outside its extent.
+	--
+	-- Letting Edit Mode do the refresh keeps the whole chain untainted.
 
-	-- Verify it actually took.
-	if viewer.GetSettingValue then
-		local ok, cur = pcall(viewer.GetSettingValue, viewer, settingKey)
-		return ok and cur == value
-	end
-	return applied
+	-- Verify it actually took, via the plain field (see the read above for why
+	-- GetSettingValue is avoided on these frames). The nil case is handled by the
+	-- early return above, so the field is populated by the time we get here.
+	return viewer.visibleSetting == value
 end
 
 -- Drive an Edit Mode action bar's "Visible Setting" — the action-bar analog of
@@ -2258,12 +2289,23 @@ function Wise:SetActionBarVisibility(barName, hidden)
 	local settingKey = Enum.EditModeActionBarSetting.VisibleSetting
 	local value = hidden and Enum.ActionBarVisibleSetting.Hidden or Enum.ActionBarVisibleSetting.Always
 
+	-- Read the plain field rather than calling GetSettingValue — see the matching
+	-- note in SetViewerVisibility for why the method dispatch is avoided.
+	local current = bar.visibleSetting
+
+	-- State unknown (Edit Mode has not populated the layout yet) -> do nothing and
+	-- let a later ReapplyAllHiding pass decide, rather than issuing a write we
+	-- cannot prove is needed. Precautionary here, matching SetViewerVisibility:
+	-- action bars do not own the forbidden aura tables that make a redundant write
+	-- detonate on a CooldownViewer, but both are driven from the same login timers
+	-- and the shape of the risk is identical.
+	if current == nil then
+		return false
+	end
+
 	-- Already at the target value? Nothing to do (avoids redundant layout dirtying).
-	if bar.GetSettingValue then
-		local ok, cur = pcall(bar.GetSettingValue, bar, settingKey)
-		if ok and cur == value then
-			return true
-		end
+	if current == value then
+		return true
 	end
 
 	-- Apply it the way the in-game Edit Mode dropdown does, so it's recorded in
@@ -2278,18 +2320,17 @@ function Wise:SetActionBarVisibility(barName, hidden)
 		applied = true
 	end
 
-	-- Refresh visual state immediately. Action bars don't all expose
-	-- UpdateShownState (PetActionBar does not), so call it only if present.
-	if bar.UpdateShownState then
-		pcall(bar.UpdateShownState, bar)
-	end
+	-- NOTE: do NOT call bar:UpdateShownState() here — OnSystemSettingChange
+	-- already drives the refresh through Edit Mode's own path, so this was only
+	-- ever a redundant repeat. Removed to match SetViewerVisibility: on the
+	-- CooldownViewers the identical call was the entry point into a forbidden
+	-- table in 12.1 (see that function's note). No action bar has been observed
+	-- to error this way, but the call bought nothing and carried the same shape
+	-- of risk, so it goes.
 
-	-- Verify it actually took.
-	if bar.GetSettingValue then
-		local ok, cur = pcall(bar.GetSettingValue, bar, settingKey)
-		return ok and cur == value
-	end
-	return applied
+	-- Verify it actually took, via the plain field. The nil case is handled by the
+	-- early return above, so the field is populated by the time we get here.
+	return bar.visibleSetting == value
 end
 
 -- Apply all four "hide" settings via Edit Mode VisibleSetting. Called at login

@@ -434,6 +434,107 @@ rendered CDM FontStrings, `tonumber` coercion into `SetValue`, and
 shared aura records (see above) — the corner count now hides in combat when
 by-id/by-name reads fail, by design.
 
+### Forbidden Tables on CooldownViewer (12.1) — measured, 2026-08-11
+
+**A different trap from the secrecy rules above. Do not conflate them.** Secret
+*values* throw on comparison/arithmetic; a **forbidden table** throws the moment
+tainted execution *indexes* it, whatever you do with the result:
+
+```
+attempted to index a table that cannot be accessed while tainted
+(execution tainted by 'Wise')
+```
+
+In 12.1 `CooldownViewer.auraInstanceIDToItemFramesMap` became forbidden. It shows
+up as `auraInstanceIDToItemFramesMap=<forbidden table>` in !BugGrabber locals —
+that string is the fingerprint for this class of bug.
+
+**The rule: never call a CooldownViewer method that can reach a layout refresh.**
+Any tainted path into `RefreshLayout`/`RefreshData` ends at
+`RegisterAuraInstanceIDItemFrame`, which indexes the forbidden map:
+
+```
+UpdateShownState -> SetShown -> OnShow -> RefreshLayout -> RefreshData
+  -> SetCooldownID -> OnCooldownIDSet -> RefreshLinkedSpell
+  -> SetAuraInstanceInfo -> OnAuraInstanceInfoSet
+  -> RegisterAuraInstanceIDItemFrame   <-- CooldownViewer.lua:1688  BOOM
+```
+
+Confirmed offenders, all removed from `Wise:SetViewerVisibility`:
+
+- **`viewer:UpdateShownState()`** — the entry point. Was a redundant repeat:
+  `EditModeManagerFrame:OnSystemSettingChange` already drives the same refresh
+  internally. Blizzard's own call runs untainted and is fine; ours was not.
+- **`viewer:GetSettingValue(key)`** — method dispatch through the setting map on
+  a frame that owns forbidden tables. Read the plain **`viewer.visibleSetting`**
+  field instead; same value, taints nothing.
+- **A redundant `OnSystemSettingChange` when `visibleSetting` is `nil`** — found
+  2026-08-13, after the two above had shipped. `OnSystemSettingChange` itself
+  reaches the same refresh chain, so it is only safe to call when the setting
+  genuinely changes.
+
+  **The redundancy guard has to hold on the unknown case, and originally it did
+  not.** It read `viewer.visibleSetting ~= nil and viewer.visibleSetting == value`,
+  which FAILS OPEN on nil. Edit Mode applies layouts asynchronously, so on the
+  first `ReapplyAllHiding` pass (PLAYER_LOGIN, ahead of the +1s/+3s retries) the
+  viewer exists with `visibleSetting == nil`. For the default
+  `hideTrackedBuffs = false` the target is `Always` — which is already the
+  viewer's real state — so the call was pure redundancy and still tainted
+  `BuffIconCooldownViewer`.
+
+  Fix: bail out when `visibleSetting` is nil and **return false, not true**, so
+  the later timer passes still apply a genuinely-needed change once the field is
+  populated. Note the enum: `Always = 0`, `InCombat = 1`, `Hidden = 2` — `0` is a
+  real value, so never test it for truthiness. Regression-tested in
+  `tests/viewer_visibility.lua`; both the bail-out and the `false` return are
+  independently mutation-verified (70/1 when either is broken).
+
+**Driving Edit Mode is still correct and still supported.** `OnSystemSettingChange`
+stays — it is what gives Wise native layout persistence through login, combat and
+reload. The bug was never Edit Mode; it was the two redundant wrappers around it.
+Do not "fix" a future recurrence by ripping out Edit Mode.
+
+**Taint here is persistent, and `pcall` does not contain it.** Once a Wise-driven
+call taints the viewer, Blizzard's *own* later `UNIT_AURA` refresh inherits it and
+throws from `CheckAuraAddedAlertTriggers` (`CooldownViewer.lua:1861`) with Wise
+nowhere on the stack. Wrapping the original call in `pcall` doesn't help — the
+error surfaces on a later dispatch, outside the pcall's dynamic extent. A clean
+stack is not evidence of a clean fix.
+
+Aura-instance-backed viewers (`BuffIconCooldownViewer`, `BuffBarCooldownViewer`)
+are the ones that detonate; `EssentialCooldownViewer` / `UtilityCooldownViewer`
+were never observed erroring but go through the same fixed function.
+`Wise:SetActionBarVisibility` carried the identical two wrappers and was cleaned
+up to match — no action bar was ever observed erroring this way, so that change
+is precautionary, not a fixed bug.
+
+Cross-check against a *current* addon before assuming an API is unsafe, but check
+how it is used: EnhanceQoL calls `OnSystemSettingChange` too, yet only ever sets
+viewers to **Always** behind a `ReloadUI()`. It never drives them to **Hidden**,
+which is the transition that runs `SetShown`. Same API, different blast radius.
+
+**Verifying a taint fix:** clear the backlog first (`BugGrabberDB.errors = {}`
+then `/reload`) — !BugGrabber persists errors across sessions *and* patches, and
+increments `counter` in place rather than adding entries, so a stale entry with a
+frozen counter reads exactly like a fresh one. Then exercise the real trigger
+(toggle the setting, and take combat for the `:1861` path). An untriggered
+session proves nothing.
+
+To tell a stale capture from a live one without clearing: compare the entry's
+`session` against the top-level `BugGrabberDB.session`, and check
+`!BugGrabber.lua.bak` (the previous session's file) for whether the entry
+existed before. The 2026-08-13 recurrence was confirmed genuinely new that way —
+`session = 5` with `counter = 1` against a `.bak` from session 4 that had no
+CooldownViewer entry at all. **Do not read the `time` field as "when it started"**;
+it is the timestamp of the most recent occurrence of a possibly-old entry.
+
+**One fix landing does not mean the class is closed.** Both earlier offenders
+were removed and verified, and the error still came back through a third route
+into the same chain. When a taint bug recurs, re-derive which call reaches
+`RefreshLayout` this time instead of assuming the known fix regressed — check
+`git log`/mtimes to confirm the previous fix is actually still in the deployed
+file before hunting further.
+
 **12.1 path forward (from PTR API notes):** the sanctioned replacement is the
 new `AuraContainer`/`AuraButton` intrinsics — `AddAuraSlot(slotKey,
 filterString, options)` to bind a filtered aura, `SetApplicationCount` /
