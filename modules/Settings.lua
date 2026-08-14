@@ -346,23 +346,58 @@ function Wise:PopulateSettingsView(panel)
 		end
 	end)
 
-	CreateCDMCheck("Hide Tracked Bars", function()
-		return WiseDB.settings.hideTrackedBars or false
-	end, function(checked)
-		WiseDB.settings.hideTrackedBars = checked
-		if Wise.SetViewerVisibility then
-			Wise:SetViewerVisibility("BuffBarCooldownViewer", checked)
-		end
-	end)
+	-- Tracked Buffs / Tracked Bars are NOT driven from here.
+	--
+	-- Those two viewers (BuffIconCooldownViewer, BuffBarCooldownViewer) are
+	-- aura-instance-backed: setting their VisibleSetting from addon code runs
+	-- Blizzard's RefreshLayout -> RegisterAuraInstanceIDItemFrame chain tainted,
+	-- and that chain indexes `auraInstanceIDToItemFramesMap`, a forbidden table
+	-- as of 12.1. The taint STICKS to the viewer, so Blizzard's own later
+	-- UNIT_AURA refresh throws from CheckAuraAddedAlertTriggers with Wise nowhere
+	-- on the stack — thousands of errors across an M+ run.
+	--
+	-- Guarding the redundant writes only narrowed the window; a genuinely-needed
+	-- write (the Always -> Hidden transition, which is the one that runs SetShown)
+	-- still detonates. So Wise does not write these at all. The player sets them
+	-- on Blizzard's own Edit Mode checkbox, where the same chain runs from a
+	-- hardware event with no addon taint, and Edit Mode persists the choice
+	-- through login, combat and reload natively.
+	--
+	-- We cannot click the checkbox for them either: driving the selection path
+	-- (EditModeManagerFrame:SelectSystem / ClearSelectedSystem) from Lua taints it
+	-- exactly the same way. All Wise does is open Edit Mode and say which box.
+	local cdmNote = leftContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	AddToContent(leftContent, cdmNote, lx, ly)
+	cdmNote:SetWidth(panelWidth - 20)
+	cdmNote:SetJustifyH("LEFT")
+	cdmNote:SetText(
+		"To hide Tracked Buffs or Tracked Bars, open Edit Mode, click that bar, "
+			.. "and set |cffffd700Visible Setting|r to |cffffd700Hidden|r."
+	)
+	table.insert(panel.children, cdmNote)
+	ly = ly - 40
 
-	CreateCDMCheck("Hide Tracked Buffs", function()
-		return WiseDB.settings.hideTrackedBuffs or false
-	end, function(checked)
-		WiseDB.settings.hideTrackedBuffs = checked
-		if Wise.SetViewerVisibility then
-			Wise:SetViewerVisibility("BuffIconCooldownViewer", checked)
+	local editModeBtn = CreateFrame("Button", nil, leftContent, "UIPanelButtonTemplate")
+	AddToContent(leftContent, editModeBtn, lx, ly)
+	editModeBtn:SetSize(160, 22)
+	editModeBtn:SetText("Open Edit Mode")
+	editModeBtn:SetScript("OnClick", function()
+		if InCombatLockdown() then
+			print("|cffff0000Wise:|r Cannot open Edit Mode while in combat.")
+			return
+		end
+		-- Close the Wise options panel so it isn't sitting on top of Edit Mode.
+		if Wise.OptionsFrame and Wise.OptionsFrame:IsShown() then
+			Wise.OptionsFrame:Hide()
+		end
+		if EditModeManagerFrame then
+			ShowUIPanel(EditModeManagerFrame)
+		elseif Wise.EnterEditMode then
+			Wise:EnterEditMode()
 		end
 	end)
+	table.insert(panel.children, editModeBtn)
+	ly = ly - 30
 
 	leftContent:SetHeight(math.abs(ly) + 20)
 

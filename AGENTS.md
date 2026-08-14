@@ -489,10 +489,40 @@ Confirmed offenders, all removed from `Wise:SetViewerVisibility`:
   `tests/viewer_visibility.lua`; both the bail-out and the `false` return are
   independently mutation-verified (70/1 when either is broken).
 
-**Driving Edit Mode is still correct and still supported.** `OnSystemSettingChange`
-stays — it is what gives Wise native layout persistence through login, combat and
-reload. The bug was never Edit Mode; it was the two redundant wrappers around it.
-Do not "fix" a future recurrence by ripping out Edit Mode.
+**RECURRED AGAIN 2026-08-14 (BugGrabber session 7) — and the conclusion above was
+too optimistic.** Guarding the redundant writes was necessary but NOT sufficient.
+Both aura-backed viewers were tainted mid-M+, and the error locals showed
+`visibleSetting = 0` (Always) on each — i.e. at the moment Blizzard threw, there
+was nothing for the guard to skip. The taint came from an EARLIER write in the
+session and had stuck.
+
+The source was the **re-assert loop**. `ReapplyAllHiding` runs at login, on +1s/+3s
+timers, and from the spec-refresh debounce; Edit Mode resets these viewers to
+`Always` on layout/spec changes, so each reset produced a *genuinely needed*
+`Always -> Hidden` write. That transition runs `SetShown` — the detonator — so the
+redundancy guard could never catch it. The guard only ever shrank the window.
+
+**Current rule for the two aura-backed viewers: Wise does not write them at all.**
+`hideTrackedBuffs` / `hideTrackedBars` are retired (deleted from SavedVariables on
+load) and `ReapplyAllHiding` skips both viewers. The player sets them on Blizzard's
+own Edit Mode checkbox, where the identical chain runs from a hardware event with
+no addon on the stack, and Edit Mode persists the choice natively — which is also
+why no re-assert is needed. `modules/Settings.lua` replaces the two checkboxes with
+an "Open Edit Mode" button plus a line naming the setting.
+
+**Wise cannot click that checkbox for the user.** Driving the selection path
+(`EditModeManagerFrame:SelectSystem` / `ClearSelectedSystem`) from Lua taints it the
+same way — Glider's LibEditMode annotates its own `ClearSelectedSystem` call with a
+bare `-- taint` comment and hand-rolls a replacement rather than call it, and
+CooldownManagerCentered only ever *reads* the attached system off
+`EditModeSystemSettingsDialog`. Open the panel and stop there.
+
+**Driving Edit Mode is still correct for the non-aura viewers.**
+`Wise:SetViewerVisibility` stays, and `EssentialCooldownViewer` /
+`UtilityCooldownViewer` still use it (they are not aura-instance-backed and have
+never been observed erroring). The nil-guard and redundancy guard stay too — they
+are still load-bearing for those. Do not "fix" a future recurrence by ripping out
+Edit Mode wholesale.
 
 **Taint here is persistent, and `pcall` does not contain it.** Once a Wise-driven
 call taints the viewer, Blizzard's *own* later `UNIT_AURA` refresh inherits it and

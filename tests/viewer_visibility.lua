@@ -150,3 +150,48 @@ test("SetViewerVisibility: never calls UpdateShownState on a viewer", function()
 	end)
 	assertFalse(touched)
 end)
+
+test("ReapplyAllHiding: never writes the aura-backed viewers", function()
+	-- THE 2026-08-14 REGRESSION (BugGrabber session 7).
+	--
+	-- Guarding redundant writes was not enough. Edit Mode resets these viewers to
+	-- Always on layout/spec changes, so the re-assert loop produced a genuinely
+	-- NEEDED Always -> Hidden write every time — and that transition (the one that
+	-- runs SetShown) is exactly what taints the frame. Both viewers were tainted
+	-- mid-M+ with visibleSetting == 0 in the error locals, proving the write had
+	-- happened earlier and the taint had stuck.
+	--
+	-- Wise must not write these at all; the player owns them via Edit Mode.
+	local savedEMM = _G.EditModeManagerFrame
+	local savedICL = _G.InCombatLockdown
+
+	local written = {}
+	_G.EditModeManagerFrame = {
+		OnSystemSettingChange = function(_, frame)
+			written[frame and frame.GetName and frame:GetName() or "?"] = true
+		end,
+	}
+	_G.InCombatLockdown = function()
+		return false
+	end
+
+	-- Both present and at Always, so any surviving call site WOULD fire (the
+	-- redundancy guard cannot mask the regression here).
+	_G.BuffIconCooldownViewer = MakeViewer("BuffIconCooldownViewer", ALWAYS)
+	_G.BuffBarCooldownViewer = MakeViewer("BuffBarCooldownViewer", ALWAYS)
+	WiseDB.settings.hideTrackedBuffs = true
+	WiseDB.settings.hideTrackedBars = true
+
+	local ok, err = pcall(Wise.ReapplyAllHiding, Wise)
+
+	_G.EditModeManagerFrame = savedEMM
+	_G.InCombatLockdown = savedICL
+	WiseDB.settings.hideTrackedBuffs = nil
+	WiseDB.settings.hideTrackedBars = nil
+	if not ok then
+		error(err, 0)
+	end
+
+	assertFalse(written["BuffIconCooldownViewer"])
+	assertFalse(written["BuffBarCooldownViewer"])
+end)

@@ -1247,19 +1247,21 @@ function frame:OnEvent(event, arg1)
 					showBuffs = false, -- Default: Disable Buff Durations
 					enableDragDrop = true, -- Default: Enable Drag and Drop
 					showTooltips = true, -- Default: Enable Interface Tooltips
-					hideTrackedBars = false,
-					hideTrackedBuffs = false,
 				},
 			}
 		end
 		-- Ensure global settings exist for existing users
 		if WiseDB.settings then
-			if WiseDB.settings.hideTrackedBars == nil then
-				WiseDB.settings.hideTrackedBars = false
-			end
-			if WiseDB.settings.hideTrackedBuffs == nil then
-				WiseDB.settings.hideTrackedBuffs = false
-			end
+			-- Retired: hideTrackedBars / hideTrackedBuffs. Wise no longer writes the
+			-- aura-backed viewers' VisibleSetting (it taints them — see
+			-- Wise:ReapplyAllHiding), so these settings no longer drive anything.
+			--
+			-- Users who had them ON have a viewer that Wise drove to Hidden in an
+			-- earlier session. Edit Mode persisted that, so it stays hidden and is
+			-- still theirs to change on Blizzard's own checkbox — we just stop
+			-- re-asserting it. Drop the dead keys so nothing reads them back.
+			WiseDB.settings.hideTrackedBars = nil
+			WiseDB.settings.hideTrackedBuffs = nil
 			if WiseDB.settings.showTooltips == nil then
 				WiseDB.settings.showTooltips = true
 			end
@@ -2340,8 +2342,16 @@ function Wise:ReapplyAllHiding()
 	if InCombatLockdown() then
 		return
 	end
-	Wise:SetViewerVisibility("BuffIconCooldownViewer", WiseDB.settings.hideTrackedBuffs)
-	Wise:SetViewerVisibility("BuffBarCooldownViewer", WiseDB.settings.hideTrackedBars)
+	-- BuffIconCooldownViewer / BuffBarCooldownViewer are deliberately NOT driven
+	-- here. They are aura-instance-backed, so writing their VisibleSetting from
+	-- addon code taints them persistently and Blizzard's own later UNIT_AURA
+	-- refresh then throws from CheckAuraAddedAlertTriggers (12.1 forbidden table
+	-- `auraInstanceIDToItemFramesMap`). This re-assert loop was the worst offender:
+	-- Edit Mode resets these viewers to Always on layout/spec changes, so every
+	-- reset produced a fresh Always -> Hidden write, and that is exactly the
+	-- transition that detonates. The player now sets these on Blizzard's own Edit
+	-- Mode checkbox, which persists natively and needs no re-assert from us.
+	-- See modules/Settings.lua (Cooldown Manager section) and AGENTS.md.
 	-- Pet bar: same Edit Mode path (taint-free). Honour hidePetBar + puzzle-hide.
 	do
 		local blizz = WiseDB.settings.blizzardUI or {}
