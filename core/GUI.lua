@@ -402,6 +402,31 @@ function Wise:ResolveBarActionID(aID)
 	return aID
 end
 
+-- Resolve the live action ID behind a misc "overridebar"/"possessbar" slot.
+--
+-- These two misc action types carry no button index of their own — the stored
+-- value is just the string "overridebar"/"possessbar". Every call site used to
+-- hardcode base slot 133 (or 121), so N such buttons on a bar all read button
+-- 1's texture/cooldown/tooltip: put "Override Bar" in three slots and all three
+-- showed the first ability's icon. The click path never had this bug, because
+-- it binds OverrideActionBarButton<N> by name — which is why the buttons still
+-- FIRED the right spells while LOOKING identical.
+--
+-- The index comes from meta.overrideIndex, stamped at build time from the
+-- button's position within its bar (see ApplyButtonMeta). Falls back to 1 so a
+-- slot built before this existed behaves exactly as it used to.
+function Wise:ResolveMiscBarActionID(meta, baseSlot)
+	local idx = meta and tonumber(meta.overrideIndex) or 1
+	-- Clamp against the REAL override bar button count, not NUM_ACTIONBAR_BUTTONS
+	-- (12). An index past the last existing OverrideActionBarButton<N> resolves to
+	-- a plausible-looking action id here while the click path binds a frame that
+	-- doesn't exist — icon and tooltip look right, the button does nothing.
+	if not Wise:IsValidOverrideBarIndex(idx) then
+		idx = 1
+	end
+	return Wise:ResolveBarActionID(baseSlot + (idx - 1))
+end
+
 -- Derive the ExtraActionButton1 slot at load time via GetExtraBarIndex().
 -- Reading .action from the Blizzard frame taints the value; this avoids taint.
 -- Formula: buttonIndex + (page - 1) * NUM_ACTIONBAR_BUTTONS
@@ -450,10 +475,63 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["auctionhouse"] = true,
 	["zoneability"] = true,
 	["undermouse"] = true,
+	["available"] = true,
 }
 
+-- Availability providers for the [available] conditional, keyed by group name.
+-- A module owning a dynamically-populated interface registers a function here that
+-- returns true when the interface currently has something actionable. Interfaces
+-- with no registered provider report available whenever they hold any action, so
+-- [available] is meaningful on ordinary bars too.
+Wise.AvailabilityProviders = Wise.AvailabilityProviders or {}
+
+function Wise:RegisterAvailabilityProvider(groupName, fn)
+	Wise.AvailabilityProviders[groupName] = fn
+end
+
+-- Does the named interface currently have anything worth showing?
+--
+-- `key` is the optional argument form, [available:<key>], which asks a narrower
+-- question: does THIS part of the interface have something? A provider that
+-- understands keys (e.g. one slot of a multi-slot generated interface) can
+-- answer per-key, so each slot shows on its own availability instead of the
+-- whole interface showing whenever any part of it is available.
+local function IsGroupAvailableNow(groupName, key)
+	if not groupName then
+		return false
+	end
+	local provider = Wise.AvailabilityProviders[groupName]
+	if provider then
+		local ok, result = pcall(provider, groupName, key)
+		if ok then
+			return result and true or false
+		end
+		return false
+	end
+
+	-- Default: the interface is available when it holds at least one action.
+	local group = WiseDB and WiseDB.groups and WiseDB.groups[groupName]
+	if not group then
+		return false
+	end
+	if group.actions then
+		for _, states in pairs(group.actions) do
+			if states and #states > 0 then
+				return true
+			end
+		end
+	end
+	if group.buttons and #group.buttons > 0 then
+		return true
+	end
+	return false
+end
+
+Wise.IsGroupAvailableNow = IsGroupAvailableNow
+
 -- Evaluate a single custom conditional token. Returns true/false.
-local function EvalCustomToken(token)
+-- `groupName` provides context for group-scoped tokens such as [available].
+local function EvalCustomToken(token, groupName)
 	local negated = false
 	local t = token:match("^%s*(.-)%s*$") -- trim
 	if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
@@ -474,6 +552,12 @@ local function EvalCustomToken(token)
 		result = AuctionHouseFrame and AuctionHouseFrame:IsShown() or false
 	elseif base == "zoneability" then
 		result = IsZoneAbilityActive()
+	elseif base == "available" then
+		-- [available] asks about the interface as a whole; [available:<key>] asks
+		-- about one named part of it (a slot). The key keeps its original case —
+		-- providers match it against their own slot names.
+		local key = t:match("^[^:]+:(.+)$")
+		result = IsGroupAvailableNow(groupName, key)
 	end
 
 	if negated then
@@ -506,7 +590,9 @@ end
 -- Evaluate a full condition string (e.g. "[extrabar]", "[zoneability]", "[combat,bank]")
 -- Returns true if ANY bracket group matches (OR across groups). Handles both custom and secure conditionals.
 -- Used by dynamic groups to determine per-slot visibility.
-local function EvalFullConditionString(str)
+-- `groupName` gives group-scoped tokens (e.g. [available], [available:<slot>])
+-- the context they need; omitted for callers with no group in hand.
+local function EvalFullConditionString(str, groupName)
 	if not str or str == "" then
 		return true
 	end -- No condition = always show
@@ -538,7 +624,7 @@ local function EvalFullConditionString(str)
 		local groupMatch = true
 
 		for _, ct in ipairs(customTokens) do
-			if not EvalCustomToken(ct) then
+			if not EvalCustomToken(ct, groupName) then
 				groupMatch = false
 				break
 			end
@@ -567,7 +653,10 @@ end
 -- reflects the CURRENT state and is used to pick which icon a multi-state slot shows.
 -- It also keeps raw custom tokens out of SecureCmdOptionParse, which would otherwise make
 -- the client print "unknown macro option: <name>".
-local function EvalConditionExact(str)
+-- `groupName` gives group-scoped custom tokens ([available], [available:<slot>])
+-- the context they need. Omitting it makes those tokens evaluate against a nil
+-- group, which reads as "not available" and greys the slot out.
+local function EvalConditionExact(str, groupName)
 	if not str or str == "" then
 		return true -- No condition = always matches
 	end
@@ -591,7 +680,7 @@ local function EvalConditionExact(str)
 			local baseToken = lookupBase:match("^([^:]+)") or lookupBase
 
 			if CUSTOM_VIS_CONDITIONALS[baseToken] then
-				if not EvalCustomToken(trimmed) then
+				if not EvalCustomToken(trimmed, groupName) then
 					groupMatch = false
 					break
 				end
@@ -626,7 +715,7 @@ end
 -- Evaluate a condition string (e.g. "[zoneability][extrabar][combat,bank]")
 -- Returns true if ANY bracket group containing a custom conditional matches (OR across groups).
 -- Bracket groups with ONLY built-in conditionals are skipped (secure driver handles those).
-local function EvalConditionString(str)
+local function EvalConditionString(str, groupName)
 	if not str or str == "" then
 		return false
 	end
@@ -662,7 +751,7 @@ local function EvalConditionString(str)
 			local groupMatch = true
 
 			for _, ct in ipairs(customTokens) do
-				if not EvalCustomToken(ct) then
+				if not EvalCustomToken(ct, groupName) then
 					groupMatch = false
 					break
 				end
@@ -2909,10 +2998,18 @@ function Wise:SanitizeMacroCondition(str)
 	return str
 end
 
-function Wise:GetSecureAttributes(actionData, conditions)
+-- `barIndex` (optional) is the override/possess bar button this slot stands for,
+-- used only by the misc "overridebar"/"possessbar" types, which carry no index in
+-- their action value. Omitted by callers that have no slot context; defaults to 1,
+-- which is the historical behaviour.
+function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 	local aType = actionData.type
 	local aValue = actionData.value
 	local hasCond = conditions and conditions ~= ""
+	local miscBarIndex = tonumber(barIndex) or 1
+	if miscBarIndex < 1 or miscBarIndex > NUM_ACTIONBAR_BUTTONS then
+		miscBarIndex = 1
+	end
 
 	if hasCond then
 		conditions = Wise:SanitizeMacroCondition(conditions)
@@ -3091,14 +3188,18 @@ function Wise:GetSecureAttributes(actionData, conditions)
 				local condPossess = table.concat(possessParts)
 
 				local offset = (aNum >= 145 and aNum <= 156) and 144 or 120
+				local slotIdx = aNum - offset
+				-- The OverrideActionBarButton half is bound by the override bar's
+				-- real button count; ActionButton keeps the full 1-12 range.
+				local ovrIdx = Wise:IsValidOverrideBarIndex(slotIdx) and slotIdx or 1
 				secureValue = "/click "
 					.. condVehicle
 					.. " OverrideActionBarButton"
-					.. (aNum - offset)
+					.. ovrIdx
 					.. "\n/click "
 					.. condPossess
 					.. " ActionButton"
-					.. (aNum - offset)
+					.. slotIdx
 			else
 				if resolvedCond == "" or resolvedCond == "[overridebar]" then
 					-- A skinned vehicle bar (e.g. Xeronia in Archival Assault) raises
@@ -3107,7 +3208,11 @@ function Wise:GetSecureAttributes(actionData, conditions)
 					resolvedCond = "[overridebar][vehicleui]"
 				end
 				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
-				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. (aNum - 132)
+				local ovrSlot = aNum - 132
+				if not Wise:IsValidOverrideBarIndex(ovrSlot) then
+					ovrSlot = 1
+				end
+				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. ovrSlot
 			end
 		elseif hasCond then
 			secureType = "macro"
@@ -3334,7 +3439,10 @@ function Wise:GetSecureAttributes(actionData, conditions)
 		elseif aValue == "overridebar" then
 			secureType = "click"
 			secureAttr = "clickbutton"
-			local overrideBtn = _G["OverrideActionBarButton1"]
+			-- miscBarIndex is clamped to NUM_ACTIONBAR_BUTTONS (12) for the main-bar
+			-- cases; the override bar is shorter, so re-clamp before naming a frame.
+			local ovrIdx = Wise:IsValidOverrideBarIndex(miscBarIndex) and miscBarIndex or 1
+			local overrideBtn = _G["OverrideActionBarButton" .. ovrIdx]
 			if overrideBtn then
 				secureValue = overrideBtn
 				if overrideBtn.GetName and overrideBtn:GetName() then
@@ -3346,7 +3454,14 @@ function Wise:GetSecureAttributes(actionData, conditions)
 		elseif aValue == "possessbar" then
 			secureType = "macro"
 			secureAttr = "macrotext"
-			secureValue = "/click [vehicleui] OverrideActionBarButton1; [possessbar] ActionButton1"
+			-- Two halves with DIFFERENT bounds: the [vehicleui] half clicks
+			-- OverrideActionBarButton<N> (override bar count), the [possessbar] half
+			-- clicks ActionButton<N> (12). Clamp each to its own frame's range.
+			local ovrIdx = Wise:IsValidOverrideBarIndex(miscBarIndex) and miscBarIndex or 1
+			secureValue = "/click [vehicleui] OverrideActionBarButton"
+				.. ovrIdx
+				.. "; [possessbar] ActionButton"
+				.. miscBarIndex
 		elseif aValue == "leave_vehicle" then
 			secureType = "macro"
 			secureAttr = "macrotext"
@@ -3450,7 +3565,12 @@ function Wise:GetSecureAttributes(actionData, conditions)
 end
 
 -- Helper: Evaluate slot conditions (insecure context) for icon updates
-function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
+-- `groupNameOverride` is for callers that run BEFORE a button exists (the layout
+-- pass picks the state first, then binds a button). Group-scoped custom tokens
+-- ([available:<slot>]) need the interface name or they evaluate against nil,
+-- report "no match", and the slot ends up greyed AND mouse-disabled.
+function Wise:EvaluateSlotConditions(states, conflictStrategy, btn, groupNameOverride)
+	local groupName = groupNameOverride or (btn and btn.groupName)
 	local matches = {}
 	for i, state in ipairs(states) do
 		local cond = Wise:ComputeEffectiveConditions(states, i)
@@ -3458,7 +3578,7 @@ function Wise:EvaluateSlotConditions(states, conflictStrategy, btn)
 		-- SecureCmdOptionParse AND Wise custom tokens (zoneability, bank, …) insecurely.
 		-- Passing a raw custom token straight to SecureCmdOptionParse made the client
 		-- print "unknown macro option: <name>" on every display refresh, including reload.
-		if EvalConditionExact(cond) then
+		if EvalConditionExact(cond, groupName) then
 			tinsert(matches, i)
 		end
 	end
@@ -3929,8 +4049,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		local showStr = (group.visibilitySettings and group.visibilitySettings.customShow) or ""
 		local hideStr = (group.visibilitySettings and group.visibilitySettings.customHide) or ""
 
-		local showResult = EvalConditionString(showStr)
-		local hideResult = EvalConditionString(hideStr)
+		local showResult = EvalConditionString(showStr, name)
+		local hideResult = EvalConditionString(hideStr, name)
 
 		-- Hide overrides show
 		if hideResult then
@@ -4542,14 +4662,27 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			if #validStates > 0 then
 				-- Evaluate conditions to pick the active state from VALID states
 				local conflictStrategy = validStates.conflictStrategy or "priority"
-				local chosenIdx, slotHadMatch = Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil)
+				-- Pass the group name explicitly: there is no button yet at this point
+				-- (it is chosen below), so group-scoped custom tokens like
+				-- [available:<slot>] would otherwise evaluate against a nil group and
+				-- report "no match" — which sets isValid=false and disables the mouse.
+				local chosenIdx, slotHadMatch =
+					Wise:EvaluateSlotConditions(validStates, conflictStrategy, nil, name)
 				local actionData = chosenIdx and validStates[chosenIdx] or validStates[1]
 
 				if actionData then
 					-- Check category metadata filter ONLY for the options UI, not the bar renderer itself.
 					local shouldShow = true
-					-- Check if spell/item is known
+					-- Check if spell/item is known. `alwaysKnown` opts out for
+					-- profession/trade-skill spells (Disenchant, Prospecting,
+					-- Milling), which live on profession skill lines rather than the
+					-- Player spell bank IsActionKnown scans — IsPlayerSpell reports
+					-- false for them. In a DYNAMIC group an unknown action is
+					-- dropped entirely (see the isKnown test below), so without this
+					-- the slot never renders at all.
 					local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
+						or actionData.alwaysKnown
+						or false
 
 					if isDynamic then
 						-- For dynamic groups, collapse "Spacer" actions (empty custom macros)
@@ -4569,7 +4702,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- to hide slots whose conditions are not currently met.
 						local conditionMet = true
 						if actionData.conditions and actionData.conditions ~= "" then
-							conditionMet = EvalFullConditionString(actionData.conditions)
+							conditionMet = EvalFullConditionString(actionData.conditions, name)
 						end
 
 						if shouldShow and isKnown and not isSpacer and not isOnCooldown and conditionMet then
@@ -4633,7 +4766,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 	if not group.actions and group.buttons then
 		for i, actionData in ipairs(group.buttons) do
 			local shouldShow = Wise:ShouldShowAction(actionData)
+			-- alwaysKnown: see the primary actions path above.
 			local isKnown = Wise:IsActionKnown(actionData.type, actionData.value)
+				or actionData.alwaysKnown
+				or false
 			if isDynamic then
 				local isOnCooldown = false
 				if group.propertyType ~= "CooldownWiser" then
@@ -4722,7 +4858,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						end
 						if #validStates > 0 then
 							local cs = validStates.conflictStrategy or "priority"
-							local chosenIdx = Wise:EvaluateSlotConditions(validStates, cs, nil)
+							-- childGroupName so [available:<slot>] resolves for a nested
+							-- interface too (see EvaluateSlotConditions).
+							local chosenIdx = Wise:EvaluateSlotConditions(validStates, cs, nil, childGroupName)
 							local cData = chosenIdx and validStates[chosenIdx] or validStates[1]
 							if cData and cData.type ~= "interface" then
 								local cKnown = Wise:IsActionKnown(cData.type, cData.value)
@@ -4938,11 +5076,34 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				Wise:OnDragReceive(name, self.slot)
 			end)
 
+			-- Stamp every press so the drag tracker can tell a cursor loaded by
+			-- this button's own macro from one the user dragged in. PreClick runs
+			-- on the same hardware event, before the macro body executes.
+			btn:HookScript("PreClick", function()
+				if Wise.NoteButtonAction then
+					Wise:NoteButtonAction()
+				end
+			end)
+
 			btn:SetScript("OnMouseUp", function(self, button)
 				-- Check if cursor has item; if so, OnReceiveDrag SHOULD have fired.
 				local type = GetCursorInfo()
 				if type then
-					-- Fallback?
+					-- Only treat this as a drop when the cursor was loaded by a real
+					-- user drag (OnDragStart), not by the button's own action. A
+					-- spell-targeting macro such as "/cast Disenchant" + "/use
+					-- <bag> <slot>" puts the item on the cursor as part of casting,
+					-- so mashing such a button made the second press look like a
+					-- drag-drop and wrote the item into the bar (and, before the
+					-- DragAndDrop type-shadow fix, threw "attempt to call a nil
+					-- value" on every press).
+					--
+					-- Wise.isDragging is NOT sufficient here: it is driven by
+					-- CURSOR_CHANGED, so it is true for ANY loaded cursor including
+					-- one our own macro created. Require an explicit drag origin.
+					if not Wise.userDragActive then
+						return
+					end
 					Wise:OnDragReceive(name, self.slot)
 				else
 					-- Normal click
@@ -4995,7 +5156,19 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- Compute secure attributes via helper
 		local aType = actionData.type
 		local aValue = actionData.value
-		local secureType, secureAttr, secureValue = Wise:GetSecureAttributes(actionData, actionData.conditions)
+		-- `visibilityOnlyConditions` means the slot's conditions govern whether the
+		-- button is SHOWN, not whether the action fires. They must not reach
+		-- GetSecureAttributes: a non-empty condition switches the spell path to a
+		-- conditional macro, and SanitizeCustom rewrites any custom token (e.g.
+		-- [available:<slot>]) to the always-false [actionbar:99] — producing
+		-- "/cast [actionbar:99] Disenchant", which never fires and also discards
+		-- the target-bag/target-slot attributes the action needs.
+		local secureConditions = actionData.conditions
+		if actionData.visibilityOnlyConditions then
+			secureConditions = nil
+		end
+		local secureType, secureAttr, secureValue =
+			Wise:GetSecureAttributes(actionData, secureConditions, actionInfo.slot)
 
 		-- Reset Attributes
 		btn:SetAttribute("type", nil)
@@ -5005,9 +5178,33 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		btn:SetAttribute("macrotext", nil)
 		btn:SetAttribute("clickbutton", nil)
 
+		-- Clear any extra attributes a previous action left behind (Rule 7:
+		-- stale attributes make the wrong action fire). Tracked per button so we
+		-- only clear what we actually set.
+		if btn._wiseExtraAttrKeys then
+			for _, k in ipairs(btn._wiseExtraAttrKeys) do
+				btn:SetAttribute(k, nil)
+			end
+			btn._wiseExtraAttrKeys = nil
+		end
+
 		btn:SetAttribute("type", secureType)
 		if secureType then
 			btn:SetAttribute(secureAttr, secureValue)
+		end
+
+		-- Optional extra secure attributes carried on the action itself. Needed
+		-- for spell-on-bag-item actions (type="spell" + target-bag/target-slot),
+		-- which is the only sanctioned way to apply Disenchant/Prospecting to a
+		-- specific bag slot — macrotext execution of protected actions was
+		-- removed in 11.x ("only available to the Blizzard UI").
+		if actionData.secureAttributes then
+			local keys = {}
+			for k, v in pairs(actionData.secureAttributes) do
+				btn:SetAttribute(k, v)
+				table.insert(keys, k)
+			end
+			btn._wiseExtraAttrKeys = keys
 		end
 
 		-- Press-and-hold: disabled by default, opt-in per-slot
@@ -5248,7 +5445,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					-- bracket carrying a custom token to [actionbar:99] (always-false in the
 					-- secure context); custom conditionals are resolved insecurely for display.
 					local secureCond = SanitizeCustom(computedCond)
-					local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond)
+					local sType, sAttr, sValue = Wise:GetSecureAttributes(stateAction, computedCond, actionInfo.slot)
 					-- Only store string-safe values for secure snippets (clickbutton is a frame ref)
 					-- For spell type, build subtext-qualified name for /cast in RESOLVE_BLOCK
 					-- (e.g. "Whirling Surge(Skyriding)") so skyriding abilities resolve correctly.
@@ -5515,6 +5712,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			-- nil for single-state slots (no condition gating); only multi-state slots
 			-- carry a meaningful match flag that the dynamic refresh greys out on.
 			activeHadMatch = actionInfo.hadMatch,
+			-- Which override/possess bar button a misc "overridebar"/"possessbar" slot
+			-- stands for. The misc action value carries no index (it's just the string),
+			-- so without this every such button resolved base slot 133/121 and rendered
+			-- button 1's icon/cooldown/tooltip. The slot number is the same ordinal the
+			-- click path already binds via OverrideActionBarButton<N>.
+			overrideIndex = actionInfo.slot,
 		}
 		btn.groupName = name -- Store for Text lookups
 
@@ -5529,7 +5732,14 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- nil (single-state slots) is treated as matched.
 		local categoryMatch = actionInfo.categoryMatch
 		local hasCurrentMatch = actionInfo.hadMatch ~= false
-		local isValid = isKnown and categoryMatch and hasCurrentMatch
+		-- `alwaysKnown` opts an action out of the IsActionKnown check. Needed for
+		-- profession/trade-skill spells (Disenchant, Prospecting, Milling): they
+		-- live on profession skill lines, not the Player spell bank that
+		-- IsActionKnown scans, and IsPlayerSpell returns false for them. Without
+		-- this they resolve as "unknown", which desaturates the icon AND makes
+		-- UpdateButtonUsability early-return before any later fix can run.
+		local treatAsKnown = isKnown or (actionData and actionData.alwaysKnown) or false
+		local isValid = treatAsKnown and categoryMatch and hasCurrentMatch
 		btn.isValid = isValid
 
 		local isEmptySlot = (aType == "empty")
@@ -5646,20 +5856,37 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				-- conditionals can't be evaluated by the secure driver — in either
 				-- case the trailing "; hide" would wrongly hide the slot, so skip
 				-- the driver and leave the button always visible.
+				--
+				-- EXCEPTION: an unconditional state that is excluded by another
+				-- state's `exclusive` flag is NOT an "always matches" fallback — the
+				-- exclusion makes it conditional. Use ComputeEffectiveConditions (the
+				-- same source the secure cast path uses via isa_cond_N) so the driver
+				-- agrees with what will actually fire. Without this, an override-bar
+				-- slot carrying an exclusive [overridebar] state plus a plain spell
+				-- fallback (e.g. "Override Bar Button 6" + Dash) was treated as
+				-- always-visible, so the slot never hid while the override bar was
+				-- up — the exclusivity was honoured for casting but not for display.
 				local conds = {}
 				local allDriverExpressible = true
 				for sIdx = 1, stateCount do
 					local stateAction = allStates[sIdx]
 					if stateAction then
 						local expressed = false
-						if stateAction.conditions and stateAction.conditions ~= "" then
-							if not HasCustomConditionals(stateAction.conditions) then
-								local sanitized =
-									SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+						local effectiveCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
+						if effectiveCond and effectiveCond ~= "" then
+							if not HasCustomConditionals(effectiveCond) then
+								local sanitized = SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(effectiveCond)))
 								if sanitized ~= "" then
-									local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
-									table.insert(conds, "[" .. inner .. "] show")
-									expressed = true
+									-- ComputeEffectiveConditions can emit several bracket
+									-- groups (OR). Keep each as its own "show" clause
+									-- rather than collapsing them into one bracket, which
+									-- would turn an OR into an AND and hide the slot.
+									for inner in sanitized:gmatch("%[([^%]]*)%]") do
+										if inner ~= "" then
+											table.insert(conds, "[" .. inner .. "] show")
+											expressed = true
+										end
+									end
 								end
 							end
 						end
@@ -6100,7 +6327,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					condSnapshot[slotIdx] = {}
 					for sIdx, state in ipairs(states) do
 						if state.conditions and state.conditions ~= "" then
-							condSnapshot[slotIdx][sIdx] = EvalConditionExact(state.conditions)
+							condSnapshot[slotIdx][sIdx] = EvalConditionExact(state.conditions, name)
 						elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
 							condSnapshot[slotIdx][sIdx] = Wise:IsActionKnown(state.type, state.value)
 						end
@@ -6150,7 +6377,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							for sIdx, state in ipairs(states) do
 								local now
 								if state.conditions and state.conditions ~= "" then
-									now = EvalConditionExact(state.conditions)
+									now = EvalConditionExact(state.conditions, name)
 								elseif state.type == "misc" and AVAILABILITY_MISC[state.value] then
 									now = Wise:IsActionKnown(state.type, state.value)
 								end
@@ -6421,8 +6648,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						Wise:UpdateButtonCooldown(btn)
 						Wise:UpdateButtonUsability(btn)
 					elseif meta.actionType == "misc" and meta.actionValue == "overridebar" then
-						-- Update Override Bar icon dynamically
-						local realID = Wise:ResolveBarActionID(133)
+						-- Update Override Bar icon dynamically. Per-button: several
+						-- "Override Bar" slots on one bar must each show their OWN
+						-- ability, not all mirror button 1 (see ResolveMiscBarActionID).
+						local realID = Wise:ResolveMiscBarActionID(meta, 133)
 						local tex = GetActionTexture(realID)
 						if tex then
 							btn.icon:SetTexture(tex)
@@ -6439,8 +6668,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								vClone.icon:Hide()
 							end
 						end
-						-- Rebind clickbutton in case override bar appeared
-						local overrideBtn = _G["OverrideActionBarButton1"]
+						-- Rebind clickbutton in case override bar appeared. Bind THIS
+						-- button's index, not always button 1.
+						local ovrIdx = tonumber(meta.overrideIndex) or 1
+						if not Wise:IsValidOverrideBarIndex(ovrIdx) then
+							ovrIdx = 1
+						end
+						local overrideBtn = _G["OverrideActionBarButton" .. ovrIdx]
 						if canSetAttrs and overrideBtn then
 							if overrideBtn.GetName and overrideBtn:GetName() then
 								btn:SetAttribute("type", "macro")
@@ -6453,8 +6687,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						Wise:UpdateButtonCooldown(btn)
 						Wise:UpdateButtonUsability(btn)
 					elseif meta.actionType == "misc" and meta.actionValue == "possessbar" then
-						-- Update Possess Bar icon dynamically
-						local realID = Wise:ResolveBarActionID(121)
+						-- Update Possess Bar icon dynamically (per-button, see above)
+						local realID = Wise:ResolveMiscBarActionID(meta, 121)
 						local tex = GetActionTexture(realID)
 						if tex then
 							btn.icon:SetTexture(tex)
@@ -6471,12 +6705,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								vClone.icon:Hide()
 							end
 						end
-						-- Rebind clickbutton in case possess bar appeared (route to OverrideActionBarButton1 in vehicle, ActionButton1 in possess)
+						-- Rebind clickbutton in case possess bar appeared (route to
+						-- OverrideActionBarButton<N> in vehicle, ActionButton<N> in possess)
 						if canSetAttrs then
+							-- The [vehicleui] half of this macro clicks
+							-- OverrideActionBarButton<N>, so it is bound by the override
+							-- bar's button count, not NUM_ACTIONBAR_BUTTONS.
+							local posIdx = tonumber(meta.overrideIndex) or 1
+							if not Wise:IsValidOverrideBarIndex(posIdx) then
+								posIdx = 1
+							end
 							btn:SetAttribute("type", "macro")
 							btn:SetAttribute(
 								"macrotext",
-								"/click [vehicleui] OverrideActionBarButton1; [possessbar] ActionButton1"
+								"/click [vehicleui] OverrideActionBarButton"
+									.. posIdx
+									.. "; [possessbar] ActionButton"
+									.. posIdx
 							)
 						end
 						Wise:UpdateButtonCooldown(btn)
@@ -7994,10 +8239,10 @@ function Wise:UpdateButtonCooldown(btn)
 				end
 			end
 		elseif actionType == "misc" and actionValue == "overridebar" then
-			local realID = Wise:ResolveBarActionID(133)
+			local realID = Wise:ResolveMiscBarActionID(meta, 133)
 			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif actionType == "misc" and actionValue == "possessbar" then
-			local realID = Wise:ResolveBarActionID(121)
+			local realID = Wise:ResolveMiscBarActionID(meta, 121)
 			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif itemID then
 			start, duration = stripCooldown(C_Item.GetItemCooldown(itemID))
@@ -8515,6 +8760,25 @@ function Wise:UpdateButtonUsability(btn)
 	local actionType = (meta and meta.actionType) or btn.actionType
 	local actionValue = (meta and meta.actionValue) or btn.actionValue
 
+	-- Opt-out for actions whose "usable" state the spell API cannot answer.
+	-- Spell-targeting abilities (Disenchant, Prospecting, Milling) report
+	-- IsSpellUsable=false whenever there is no pending target — which is always
+	-- the case until the moment of the click — so the icon would sit permanently
+	-- greyed even though pressing it works fine. Such actions set
+	-- `alwaysUsable = true` and own their availability logic themselves.
+	local usabilityData = (meta and meta.actionData) or btn.actionData
+	if usabilityData and usabilityData.alwaysUsable then
+		btn.icon:SetDesaturated(false)
+		btn.icon:SetVertexColor(1, 1, 1)
+		btn.icon:SetAlpha(1)
+		if vIcon then
+			vIcon:SetDesaturated(false)
+			vIcon:SetVertexColor(1, 1, 1)
+			vIcon:SetAlpha(1)
+		end
+		return
+	end
+
 	-- Module 4: API Compatibility (Polyfill)
 	if actionType == "action" and tonumber(actionValue) then
 		local realID = Wise:ResolveBarActionID(tonumber(actionValue))
@@ -8535,10 +8799,10 @@ function Wise:UpdateButtonUsability(btn)
 			isUsable = false
 		end
 	elseif actionType == "misc" and actionValue == "overridebar" then
-		local realID = Wise:ResolveBarActionID(133)
+		local realID = Wise:ResolveMiscBarActionID(meta, 133)
 		isUsable, noMana = IsUsableAction(realID)
 	elseif actionType == "misc" and actionValue == "possessbar" then
-		local realID = Wise:ResolveBarActionID(121)
+		local realID = Wise:ResolveMiscBarActionID(meta, 121)
 		isUsable, noMana = IsUsableAction(realID)
 	elseif actionType == "misc" and type(actionValue) == "string" and actionValue:sub(1, 12) == "addon_magic_" then
 		local amIdx = tonumber(actionValue:sub(13))
