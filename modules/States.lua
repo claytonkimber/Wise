@@ -6,27 +6,60 @@ local ipairs = ipairs
 local string = string
 local table = table
 
--- Helper to negate a conditional
+-- Helper to negate a conditional.
+--
+-- Multiple bracket groups are an OR ("[a][b]" = a OR b), so the negation is an
+-- AND of the negated groups — one bracket holding every negated token. Stripping
+-- only the outermost brackets and splitting on commas silently mangled
+-- multi-group input: "[overridebar][vehicleui]" became the single blob
+-- "overridebar][vehicleui", whose first token alone got negated, yielding
+-- "[nooverridebar][vehicleui]" — a condition that still MATCHES under
+-- [vehicleui]. An exclusive special-bar state plus a plain fallback therefore
+-- showed the fallback on top of a live vehicle bar.
 function Wise:NegateConditional(cond)
 	if not cond or cond == "" then
 		return nil
 	end
-	-- Remove brackets if present
-	local cleaned = cond:gsub("^%[", ""):gsub("%]$", "")
 
 	local results = {}
-	for part in cleaned:gmatch("[^,]+") do
+	local seen = {}
+	local function negateToken(part)
 		part = part:match("^%s*(.-)%s*$") -- trim
-		if not string.find(part, "@") then
-			if part:sub(1, 2) == "no" then
-				table.insert(results, part:sub(3))
-			else
-				table.insert(results, "no" .. part)
-			end
+		if part == "" or string.find(part, "@") then
+			return
+		end
+		local negated
+		if part:sub(1, 2) == "no" then
+			negated = part:sub(3)
+		else
+			negated = "no" .. part
+		end
+		-- The same token can appear in several groups; emit it once.
+		if not seen[negated] then
+			seen[negated] = true
+			table.insert(results, negated)
 		end
 	end
 
-	return "[" .. table.concat(results, ", ") .. "]"
+	local sawGroup = false
+	for group in cond:gmatch("%[([^%]]*)%]") do
+		sawGroup = true
+		for part in group:gmatch("[^,]+") do
+			negateToken(part)
+		end
+	end
+	-- Bare, unbracketed input (e.g. "combat") still negates.
+	if not sawGroup then
+		for part in cond:gmatch("[^,]+") do
+			negateToken(part)
+		end
+	end
+
+	if #results == 0 then
+		return nil
+	end
+
+	return "[" .. table.concat(results, ",") .. "]"
 end
 
 function Wise:ComputeEffectiveConditions(states, stateIdx)
@@ -35,7 +68,7 @@ function Wise:ComputeEffectiveConditions(states, stateIdx)
 
 	local exclusions = {}
 	for i, s in ipairs(states) do
-		if i ~= stateIdx and s.exclusive and s.conditions and s.conditions ~= "" then
+		if i ~= stateIdx and s.exclusive and s.conditions and s.conditions ~= "" and s.conditions ~= baseCond then
 			local negated = Wise:NegateConditional(s.conditions)
 			if negated then
 				local inner = string.match(negated, "^%[(.+)%]$") or negated

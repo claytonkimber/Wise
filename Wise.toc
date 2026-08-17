@@ -30,6 +30,7 @@ core\Filters.lua
 core\Polyfill.lua
 core\Compat121.lua
 core\Text.lua
+core\Retoken.lua
 core\Bindings.lua
 core\Dispatcher.lua
 core\GUI.lua
@@ -63,3 +64,9 @@ wiser\BarCopy.lua
 wiser\AddonMagic.lua
 wiser\SpecAndEquip.lua
 wiser\DisenchantConvert.lua
+
+# Dev-only probes (stripped by the packager). Loads LAST so it can call into
+# the fully-initialised addon. Defines /wiseprobe.
+#@debug@
+tools\probe-conditionals.lua
+#@end-debug@

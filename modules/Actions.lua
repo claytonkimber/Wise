@@ -1429,6 +1429,10 @@ local function ResolveMacroTarget(result)
 	if overrideIdx then
 		local barUp = (HasOverrideActionBar and HasOverrideActionBar())
 			or (HasVehicleActionBar and HasVehicleActionBar())
+			or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
 		if not barUp then
 			return nil
 		end
@@ -1449,6 +1453,26 @@ local function ResolveMacroTarget(result)
 		-- the next macro line for a usable icon.
 		return nil
 	end
+	local possessIdx = result:match("^PossessButton(%d+)$")
+	if possessIdx then
+		local barUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (HasVehicleActionBar and HasVehicleActionBar())
+			or (HasOverrideActionBar and HasOverrideActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
+		if not barUp then
+			return nil
+		end
+		local actionID = 120 + tonumber(possessIdx)
+		local realID = Wise:ResolveBarActionID(actionID)
+		local icon = GetActionTexture(realID)
+			or (GetPossessInfo and select(2, GetPossessInfo(tonumber(possessIdx))))
+		if icon then
+			return "action", actionID, icon
+		end
+		return nil
+	end
 	local actionIdx = result:match("^ActionButton(%d+)$")
 	if actionIdx then
 		-- Same gate: a "/click [possessbar] ActionButtonN" line is only meaningful
@@ -1457,6 +1481,9 @@ local function ResolveMacroTarget(result)
 		local barUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
 			or (HasVehicleActionBar and HasVehicleActionBar())
 			or (HasOverrideActionBar and HasOverrideActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
 		if not barUp then
 			return nil
 		end
@@ -1501,6 +1528,13 @@ end
 function Wise:ResolveMacroData(macroText)
 	if not macroText or macroText == "" then
 		return nil, nil, nil
+	end
+
+	-- Expand durable tokens before parsing, or a tokenized macro resolves its icon
+	-- from the literal "{{spell:133}}" and shows the question mark. Same expansion
+	-- the secure path uses (core/Retoken.lua); saved data is untouched.
+	if Wise.Retoken and Wise.Retoken:HasTokens(macroText) then
+		macroText = Wise.Retoken:Expand(macroText)
 	end
 
 	-- Collect candidate target lines in priority order: an explicit #show(tooltip)
@@ -4776,7 +4810,15 @@ function Wise:GetSpecialActionbars(filter)
 				name = name,
 				icon = "Interface\\Icons\\INV_Misc_QuestionMark",
 				category = "Special Action bars",
-				conditions = "[overridebar]",
+				exclusive = true,
+				-- [overridebar] alone is false on an UNSKINNED vehicle (the war
+				-- turtle raises only [vehicleui]), so the slot both hid itself and
+				-- lost its click. These action ids (133-144) resolve through
+				-- whichever special page is live, so [vehicleui] is correct here.
+				-- NOT extended to [possessbar]: that is the paired possess state's
+				-- job, and identical conditions would make the two states
+				-- indistinguishable. See Wise:BuildSpecialBarClickMacro.
+				conditions = "[overridebar][vehicleui]",
 			})
 		end
 	end
@@ -4794,7 +4836,8 @@ function Wise:GetSpecialActionbars(filter)
 				name = name,
 				icon = "Interface\\Icons\\INV_Misc_QuestionMark",
 				category = "Special Action bars",
-				conditions = "[possessbar][vehicleui]",
+				exclusive = true,
+				conditions = "[possessbar][bonusbar:5]",
 			})
 		end
 	end

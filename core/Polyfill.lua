@@ -112,3 +112,106 @@ function Wise:IsValidOverrideBarIndex(idx)
 	end
 	return idx <= Wise:GetOverrideBarButtonCount()
 end
+
+-- ─── Special-bar click macro ────────────────────────────────────────────
+-- There are TWO kinds of vehicle and Blizzard routes them to DIFFERENT frames
+-- (ActionBarController_UpdateAll):
+--
+--   * SKINNED vehicle (UnitVehicleSkin ~= nil, e.g. the Xeronia drake, a
+--     Mechagon shredder) — state flips to LE_ACTIONBAR_STATE_OVERRIDE and the
+--     abilities sit on OverrideActionBarButton<N>.
+--   * UNSKINNED vehicle (no custom art, e.g. the Gnarldor Isle war turtle) —
+--     state stays LE_ACTIONBAR_STATE_MAIN and Blizzard merely repages
+--     MainActionBar to C_ActionBar.GetVehicleBarIndex(); the abilities sit on
+--     the ordinary ActionButton<N>.
+--
+-- [vehicleui] is true for BOTH, so it cannot discriminate. Binding
+-- OverrideActionBarButton<N> behind [vehicleui] therefore names a frame that is
+-- not mounted on an unskinned vehicle: the icon is right (ResolveBarActionID is
+-- pure page arithmetic off GetVehicleBarIndex and works for both) while the
+-- click silently no-ops — the same "tooltip right, button dead" split as the
+-- out-of-range index bug above, arriving through a different door.
+--
+-- [overridebar] IS the skinned test: it maps to HasOverrideActionBar(), which
+-- returns false on an unskinned vehicle (confirmed in-client on the war turtle).
+-- Ordering the override line first therefore claims skinned vehicles and true
+-- override bars, and lets the [vehicleui] line catch the unskinned case.
+--
+-- Emitting BOTH lines keeps the choice inside the secure macro, evaluated at
+-- click time. A Lua-side probe would be a snapshot needing a rebind on
+-- UPDATE_VEHICLE_ACTIONBAR — which is exactly what combat lockdown forbids.
+--
+-- `extraCond` adds caller conditions (e.g. an exclusive slot's negations) to each
+-- route; nil for the plain case.
+--
+-- These must be MERGED INTO each route's bracket group, never concatenated in
+-- front of it. Multiple groups are an OR, so "[nooverridebar,novehicleui]" +
+-- "[overridebar]" reads as "no bar up OR override up" — a clause that fires
+-- precisely when the slot should be dormant, which silently killed every button.
+-- ANDing means one group per (caller group x route) pair.
+local function MergeConditionGroups(extraCond, routeToken)
+	if not extraCond or extraCond == "" then
+		return "[" .. routeToken .. "]"
+	end
+	local out = {}
+	for group in extraCond:gmatch("%[([^%]]*)%]") do
+		group = group:match("^%s*(.-)%s*$")
+		if group == "" then
+			out[#out + 1] = "[" .. routeToken .. "]"
+		else
+			out[#out + 1] = "[" .. group .. "," .. routeToken .. "]"
+		end
+	end
+	if #out == 0 then
+		-- Unbracketed caller input (e.g. "nocombat").
+		return "[" .. extraCond:match("^%s*(.-)%s*$") .. "," .. routeToken .. "]"
+	end
+	return table.concat(out)
+end
+
+function Wise:BuildSpecialBarClickMacro(idx, extraCond)
+	idx = tonumber(idx) or 1
+	-- The override half is bound by the override bar's real (shorter) button
+	-- count; the ActionButton half keeps the full 1-12 main-bar range.
+	local ovrIdx = Wise:IsValidOverrideBarIndex(idx) and idx or 1
+	local mainIdx = (idx >= 1 and idx <= NUM_ACTIONBAR_BUTTONS) and idx or 1
+	return "/click "
+		.. MergeConditionGroups(extraCond, "overridebar")
+		.. " OverrideActionBarButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "vehicleui")
+		.. " OverrideActionBarButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "vehicleui")
+		.. " ActionButton"
+		.. mainIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "possessbar")
+		.. " OverrideActionBarButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "possessbar")
+		.. " PossessButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "possessbar")
+		.. " ActionButton"
+		.. mainIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "bonusbar:5")
+		.. " OverrideActionBarButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "bonusbar:5")
+		.. " PossessButton"
+		.. ovrIdx
+		.. "\n/click "
+		.. MergeConditionGroups(extraCond, "bonusbar:5")
+		.. " ActionButton"
+		.. mainIdx
+end
+
+
+

@@ -404,4 +404,56 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_PortedConditionals" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Ported OPie Conditionals" type="string"/>
+            <KeyValue key="instructions" value="Verify the conditionals ported from OPie actually drive visibility. Before this change ~24 tokens were listed in the options Conditionals tab but were in NEITHER VALID_CONDITIONALS nor CUSTOM_VIS_CONDITIONALS — the editor rejected them, and had they passed they would have fallen through to SecureCmdOptionParse and evaluated false forever. The failure was silent: no Lua error, conditions simply never matched.
+1. Open Options -&gt; Conditionals -&gt; the Wise/OPie sub-tab. Confirm rows render and none show an error.
+2. Set an interface&apos;s custom Show to [horde] (or [alliance] to match your character). Confirm it shows. Invert it and confirm it hides.
+3. Set Show to [zone:&lt;your current zone&gt;]. Confirm it shows; fly to another zone and confirm it hides. Repeat with a SUB-zone name — [zone:] matches either, as in OPie.
+4. Set Show to [level:10] (true) then [level:999] (false) and confirm the &gt;= threshold behaves.
+5. Set Show to [prof:tail] with Tailoring, and confirm the short aliases work as well as the full localized name.
+6. Set Show to [in:raid] and confirm it matches only inside a raid instance. Confirm the NATIVE [indoors] still works and is not swallowed by the new [in:] token — this is the collision the base-name split guards.
+7. Combat freeze: set Show to [moving]. Run, and while running enter combat. Confirm the interface HOLDS its shown state for the whole fight even after you stop moving, then goes live again on leaving combat. This is expected — Wise drives visibility from insecure Lua and cannot write secure attributes during lockdown, so these tokens sample at combat entry.
+8. Confirm [near:] and [bar:] are NO LONGER listed in the tab (never implemented; use native [actionbar:n] for the latter).
+9. Confirm [cleanse] is no longer listed (its evaluator was a hardcoded return false)." type="string"/>
+            <KeyValue key="action" value="print(&apos;Ported conditionals: a custom token must appear in THREE tables — VALID_CONDITIONALS + opieConditionals (core/Conditionals.lua) and CUSTOM_VIS_CONDITIONALS (core/GUI.lua). Only the last one dispatches at runtime; a token missing there falls through to SecureCmdOptionParse and is silently always-false. Combat-sampled tokens (moving/falling/ready/have/buff/debuff/selfbuff/selfdebuff/combo) freeze at PLAYER_REGEN_DISABLED via Wise.SampleCombatConditionals and thaw at PLAYER_REGEN_ENABLED. Headless coverage: tests/ported_conditionals.lua&apos;)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_PortedConditionalsWave2" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Ported OPie Conditionals (wave 2)" type="string"/>
+            <KeyValue key="instructions" value="Verify the second batch of conditionals ported from OPie 8.3-8.8. Run /wiseprobe and compare each value against what you can actually see.
+1. [warbank] — true only somewhere you can reach the warband bank; false out in the world.
+2. [prey] — true ONLY while actively hunting Prey. The quest can linger after the hunt stops, so this also gates on the Prey widget being shown; confirm it goes false when the hunt ends even if the quest is still in your log. [prey:questID] targets one hunt.
+3. [myth] — true only during an M+ keystone run. [myth:map] takes a map ID or dungeon name.
+4. [coven:name] — Shadowlands covenant. Both spellings must work: [coven:fae] and [coven:nightfae] are the same covenant, likewise [coven:necro]/[coven:necrolord]. Expect false on a character with no covenant.
+5. [uslot:trinket1] — true only when that slot holds an item with an ON-USE effect. Equip a passive-only trinket and confirm it reads FALSE; equip an on-use trinket and confirm TRUE. Slot tokens: head/neck/shoulders/chest/waist/legs/feet/wrist/hands/finger1/finger2/trinket1/trinket2/back/tabard/shirt.
+6. Flight — [superflyable] true where skyriding works, [anyflyable] true where any flight works, [blockedflyable] true in a flyable zone where flight is currently suppressed. Check all three in a skyriding zone, an old-world no-fly zone, and a flyable zone.
+7. [worldhover] — true when the cursor is over the 3D world, false when it is over any UI frame. Move the mouse onto a bar and re-run.
+8. [merc] is an alias for [mercenary]; both must agree.
+9. Confirm [outpost] and [imbuedrw] are NOT offered — outpost has no reliable retail source and imbuedrw needs a ranged weapon slot that modern WoW does not have. Neither is registered, so both must be REJECTED by the condition editor rather than silently always-false." type="string"/>
+            <KeyValue key="action" value="print(&apos;Wave 2 tokens: warbank/prey/housereturn/myth/coven(+covenant alias)/uslot/superflyable/blockedflyable/anyflyable/worldhover/merc. Covenant and myth values carry alternatives on the VALUE side (fae/nightfae, mapID/name) so they use ArgMatchesAny, not ArgMatches — using the wrong helper makes one spelling silently fail. uslot rejects passive-only items via IsPassiveSpell and must stub BOTH GetInventoryItemLink and GetInventoryItemID to read a slot as empty. worldhover uses GetMouseFoci and is out-of-combat accurate only (OPie uses a secure full-screen frame). Headless coverage: tests/ported_conditionals.lua&apos;)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+    <Frame name="WiseDebugTest_RetokenDurableMacros" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Durable Macro Tokens (Retoken)" type="string"/>
+            <KeyValue key="instructions" value="Verify {{spell:id}} / {{item:id}} tokens survive saving and resolve at use time. The point is that ONE stored macro works on every character, in every language, across spell-ID changes.
+1. Create a Custom Macro action. Type: /cast {{spell:133}}   (Fireball)
+2. Confirm the preview line under the editor reads &apos;Resolves to: /cast Fireball&apos;.
+3. Confirm the button icon is the FIREBALL icon, not a question mark — the icon path expands tokens too.
+4. Click the slot and confirm it actually casts.
+5. CRITICAL: reload, reopen the editor, and confirm the text still reads {{spell:133}} and NOT &apos;Fireball&apos;. Before this change the editor expanded the token and saved the plain localized name, destroying it on the first keystroke and again on every open.
+6. Type a bogus id: /cast {{spell:99999999}}. The preview must warn that 1 token does not resolve AND NAME IT. The macro text must keep the token verbatim — never blank it, since a bare &apos;/cast&apos; is a valid command that silently does nothing.
+7. Fallback list: /cast {{spell:99999999/133}} must resolve to Fireball. This is the spell-ID-change mechanism — store new/old and one macro spans the patch.
+8. Click &apos;Make Durable&apos; on a macro containing a plain &apos;/cast Fireball&apos; line and confirm it becomes {{spell:133}}, that [conditions] are preserved, and that a /use line is LEFT ALONE.
+9. Confirm a macro with no tokens is completely unaffected end to end.
+10. If you have a non-enUS client available, the real test: write the macro on one locale, log in on the other, confirm it still casts." type="string"/>
+            <KeyValue key="action" value="print(&apos;Retoken (core/Retoken.lua): tokens are stored verbatim and expanded ON READ at exactly two points — the secure attribute in core/GUI.lua (custom_macro branch) and Wise:ResolveMacroData for the icon. Nothing writes expanded text back to SavedVariables; modules/Macro.lua used to and that destroyed tokens. API traps: C_Spell.GetSpellName AND C_Item.GetItemInfo both return the literal string &quot;Unknown&quot; for a nonexistent id rather than nil, and C_Item.GetItemInfoInstant echoes back ANY number, so it cannot be an existence check. Tokenize only rewrites /cast, never /use — Hearthstone is item 6948 AND spell 8690. Headless coverage: tests/retoken.lua&apos;)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

@@ -780,16 +780,46 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 		return compiledAction.macroText or "", compiledAction.conditions or ""
 	end
 	local macroLines = { "#showtooltip" }
+	local seenLines = { ["#showtooltip"] = true }
 	-- Also derive the SLOT-level condition from the allowed nodes: if every allowed
 	-- node shares one condition (e.g. all [combat]) we return it so the engine's
 	-- secure visibility driver can hide the slot when it isn't met. Mixed/none => "".
 	local slotCond = nil
 	local condMixed = false
 	local resolvedIcon = nil
-	for _, node in ipairs(nodes) do
+	-- Exclusivity must reach the macro lines, not just the slot's visibility.
+	-- An exclusive node (e.g. the [overridebar][vehicleui] override step) has to
+	-- suppress every LATER line in the same slot, or the fallback /cast still
+	-- fires while a vehicle bar is up — the reported "slot shows my Guardian
+	-- spell on the turtle". ComputeEffectiveConditions is the same source the
+	-- non-graph path uses, so both agree on what an exclusive state means.
+	local nodeStates = {}
+	for i, node in ipairs(nodes) do
+		local a = node.action
+		local v = a and tonumber(a.value)
+		local isSpecialBar = a
+			and (
+				(a.type == "action" and v and v >= 121 and v <= 156)
+				or (a.type == "misc" and (a.value == "overridebar" or a.value == "possessbar"))
+			)
+		local c = node.condition or (a and a.conditions) or ""
+		if c:find("possessbar", 1, true) and not c:find("bonusbar", 1, true) then
+			c = "[possessbar][bonusbar:5]"
+		end
+		nodeStates[i] = {
+			type = a and a.type,
+			value = a and a.value,
+			exclusive = (a and a.exclusive) or (isSpecialBar and true) or false,
+			-- The node's own condition is the authority; .action.conditions is the
+			-- picker's stored copy and can lag behind an edited node.
+			conditions = c,
+		}
+	end
+
+	for i, node in ipairs(nodes) do
 		local a = node.action
 		if a and Wise:IsActionAllowed(a) then
-			local cond = node.condition or ""
+			local cond = Wise:ComputeEffectiveConditions(nodeStates, i) or node.condition or ""
 			if cond ~= "" then
 				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
 				if not cond:match("^%[") then
@@ -798,7 +828,12 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 			end
 			local line = ResolveActionMacroLine(a, cond)
 			if line and line ~= "" then
-				tinsert(macroLines, line)
+				for subLine in line:gmatch("[^\r\n]+") do
+					if not seenLines[subLine] then
+						seenLines[subLine] = true
+						tinsert(macroLines, subLine)
+					end
+				end
 			end
 			-- Capture icon from the first allowed node for callers that need a fallback.
 			if not resolvedIcon then

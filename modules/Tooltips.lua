@@ -69,7 +69,12 @@ function Wise:AddInterfaceTooltip(btn)
 
 		if type == "action" then
 			local aID = tonumber(value)
-			if aID then
+			-- A possess slot (121-132) with no special bar up resolves to the raw
+			-- id, which IS action bar 12 — the tooltip would describe the player's
+			-- own ability. Say nothing rather than something wrong.
+			if aID and (aID >= 121 and aID <= 156) and not Wise:HasAnySpecialActionBar() then
+				GameTooltip:SetText("Unknown Action", 1, 1, 1)
+			elseif aID then
 				local realID = Wise:ResolveBarActionID(aID)
 				GameTooltip:SetAction(realID)
 			else

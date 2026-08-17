@@ -61,6 +61,29 @@ local C_Item = C_Item
 local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
+-- Used by EvalCustomToken for the ported OPie conditionals.
+local GetRealZoneText = GetRealZoneText
+local GetSubZoneText = GetSubZoneText
+local GetInstanceInfo = GetInstanceInfo
+local UnitName = UnitName
+local UnitClass = UnitClass
+local UnitLevel = UnitLevel
+local UnitRace = UnitRace
+local UnitExists = UnitExists
+local UnitFactionGroup = UnitFactionGroup
+local UnitPower = UnitPower
+-- GetUnitSpeed exists in the live client (BigWigs/Details still call it) but is
+-- NOT stubbed by wow-ui-sim outside its Mists bootstrap, so it reads nil there.
+-- Resolve at call time and treat a missing API as "not moving" rather than
+-- throwing — an unavailable movement API must not break visibility evaluation.
+local GetUnitSpeed = GetUnitSpeed
+local IsFalling = IsFalling
+local HasPetUI = HasPetUI
+local GetWeaponEnchantInfo = GetWeaponEnchantInfo
+local GetProfessions = GetProfessions
+local GetProfessionInfo = GetProfessionInfo
+local C_PvP = C_PvP
+local C_UnitAuras = C_UnitAuras
 
 -- Countdown text format. The 12.0.5 patch can render cooldown text in two styles:
 --   "short"    — bare number, no unit   (9, 30, 5, 1)   [default]
@@ -297,31 +320,50 @@ local function IsZoneAbilityButtonActive(child, activeSet)
 	return true
 end
 
--- Helper: Get the first active spell button from ZoneAbilityFrame.
+-- Helper: Get the currently-active spell button from ZoneAbilityFrame.
 -- Modern WoW (11.0+) uses SpellButtonContainer with dynamic children
 -- instead of a direct .SpellButton child.
+--
+-- SpellButtonContainer is a FRAME POOL: released buttons remain children forever,
+-- merely hidden, and they keep their old .spellID. So GetChildren() returns every
+-- button ever created for this session, not just the live ones. Picking the first
+-- child with a .spellID therefore binds to a leftover button from a previous zone
+-- once more than one has ever been pooled — the reason the slot works in an
+-- instance (one freshly-assigned ability) but misfires in the open world.
+--
+-- We filter through IsZoneAbilityButtonActive, the same C_ZoneAbility-backed check
+-- used by IsZoneAbilityActive, so binding and visibility agree on which button is
+-- real. Blizzard's own iteration uses EnumerateActive(), which returns only live
+-- pooled frames; we prefer it when present and fall back to filtered GetChildren().
 local function GetZoneAbilitySpellButton()
 	local zoneFrame = _G["ZoneAbilityFrame"]
 	if not zoneFrame then
 		return nil
 	end
-	-- Modern: SpellButtonContainer with dynamic children
-	if zoneFrame.SpellButtonContainer then
-		local children = { zoneFrame.SpellButtonContainer:GetChildren() }
-		for _, child in ipairs(children) do
-			if child.spellID and child:IsShown() then
-				return child
+	local activeSet = GetActiveZoneAbilitySet()
+	local container = zoneFrame.SpellButtonContainer
+	if container then
+		-- Preferred: Blizzard's pool iterator only yields currently-acquired buttons.
+		if container.EnumerateActive then
+			local ok, iter = pcall(container.EnumerateActive, container)
+			if ok and iter then
+				for spellButton in iter do
+					if IsZoneAbilityButtonActive(spellButton, activeSet) then
+						return spellButton
+					end
+				end
 			end
 		end
-		-- Return first child even if not shown (for secure click binding)
+		-- Fallback: raw children, filtered against the authoritative active set.
+		local children = { container:GetChildren() }
 		for _, child in ipairs(children) do
-			if child.spellID then
+			if IsZoneAbilityButtonActive(child, activeSet) then
 				return child
 			end
 		end
 	end
 	-- Legacy fallback: direct SpellButton
-	if zoneFrame.SpellButton then
+	if zoneFrame.SpellButton and IsZoneAbilityButtonActive(zoneFrame.SpellButton, activeSet) then
 		return zoneFrame.SpellButton
 	end
 	return nil
@@ -379,6 +421,7 @@ function Wise:ResolveBarActionID(aID)
 		local getOverride = C_ActionBar and C_ActionBar.GetOverrideBarIndex or GetOverrideBarIndex
 		local getVehicle = C_ActionBar and C_ActionBar.GetVehicleBarIndex or GetVehicleBarIndex
 		local getShapeshift = C_ActionBar and C_ActionBar.GetTempShapeshiftBarIndex or GetTempShapeshiftBarIndex
+		local getBonus = C_ActionBar and C_ActionBar.GetBonusBarIndex or GetBonusBarIndex or GetBonusBarOffset
 
 		-- Priority MUST match Blizzard's ActionBarController_UpdateAll: vehicle FIRST,
 		-- then override, then temp shapeshift. Both HasVehicleActionBar() and
@@ -392,6 +435,16 @@ function Wise:ResolveBarActionID(aID)
 			specialPage = getOverride()
 		elseif HasTempShapeshiftActionBar and HasTempShapeshiftActionBar() and getShapeshift then
 			specialPage = getShapeshift()
+		elseif
+			((C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+				or (IsPossessBarVisible and IsPossessBarVisible())
+				or (GetBonusBarOffset and GetBonusBarOffset() == 5))
+			and getBonus
+		then
+			local bonusVal = getBonus()
+			if bonusVal and bonusVal > 0 then
+				specialPage = bonusVal
+			end
 		end
 
 		if specialPage then
@@ -400,6 +453,18 @@ function Wise:ResolveBarActionID(aID)
 	end
 
 	return aID
+end
+
+-- True while some special (override/vehicle/possess/temp-shapeshift) bar is up.
+function Wise:HasAnySpecialActionBar()
+	return (HasVehicleActionBar and HasVehicleActionBar())
+		or (HasOverrideActionBar and HasOverrideActionBar())
+		or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+		or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+		or (IsPossessBarVisible and IsPossessBarVisible())
+		or (GetBonusBarOffset and GetBonusBarOffset() == 5)
+		or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
+		or false
 end
 
 -- Resolve the live action ID behind a misc "overridebar"/"possessbar" slot.
@@ -468,6 +533,12 @@ end
 
 -- All custom conditionals that are NOT understood by WoW's secure state driver.
 -- Used by BuildVisibilityDriver (SanitizeCustom) and UpdateGroupDisplay (CheckCustomVisibility).
+--
+-- A token MUST be listed here to have any effect. The options window keeps two
+-- other tables — VALID_CONDITIONALS (accept/reject in the editor) and
+-- opieConditionals (the displayed reference list) — and a token present there
+-- but missing here passes validation, falls through to SecureCmdOptionParse,
+-- and silently evaluates false forever. All three tables have to agree.
 local CUSTOM_VIS_CONDITIONALS = {
 	["guildbank"] = true,
 	["bank"] = true,
@@ -476,7 +547,110 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["zoneability"] = true,
 	["undermouse"] = true,
 	["available"] = true,
+
+	-- Location / character identity. These only change out of combat, so the
+	-- 0.5s ticker in UpdateGroupDisplay re-drives visibility for them normally.
+	["zone"] = true,
+	["instance"] = true,
+	["in"] = true,
+	["me"] = true,
+	["level"] = true,
+	["race"] = true,
+	["game"] = true,
+	["horde"] = true,
+	["alliance"] = true,
+	["mercenary"] = true,
+	["merc"] = true, -- OPie's short alias for [mercenary]
+	["prof"] = true,
+
+	-- Ported from OPie 8.3–8.8. All are out-of-combat-stable (or close enough that
+	-- the 0.5s ticker is the right cadence), which is why they are here and not in
+	-- COMBAT_SAMPLED.
+	["warbank"] = true, -- 8.8: warband bank reachable
+	["prey"] = true, -- 8.8: hunting Prey
+	["housereturn"] = true, -- 8.6: can return from a visited house
+	["myth"] = true, -- active M+ keystone
+	["coven"] = true, -- Shadowlands covenant
+	["covenant"] = true, -- OPie alias for [coven]
+	["uslot"] = true, -- equipment slot with a usable (on-use) item
+	["superflyable"] = true, -- steady/skyriding flight available here
+	["blockedflyable"] = true, -- flight suppressed despite a flyable zone
+	["anyflyable"] = true, -- any form of flight available
+	["worldhover"] = true, -- mouse over the 3D world, not the UI
+
+	-- Pet / weapon state.
+	["havepet"] = true,
+	["petcontrol"] = true,
+	["imbuedmh"] = true,
+	["imbuedoh"] = true,
+
+	-- Combat-sampled: value is frozen at combat entry (see COMBAT_SAMPLED).
+	["moving"] = true,
+	["falling"] = true,
+	["ready"] = true,
+	["have"] = true,
+	["buff"] = true,
+	["debuff"] = true,
+	["selfbuff"] = true,
+	["selfdebuff"] = true,
+	["combo"] = true,
 }
+
+-- Tokens whose underlying state can change mid-combat. Wise drives visibility
+-- from insecure Lua, which cannot touch secure attributes during lockdown, so
+-- these cannot re-drive visibility while combat is up. Instead their value is
+-- sampled at PLAYER_REGEN_DISABLED and held until combat ends. Out of combat
+-- they evaluate live like any other token.
+--
+-- (OPie can do better here only because it pushes values into a secure snippet
+-- environment via KR:SetStateConditionalValue. Matching that would mean a
+-- secure proxy frame; deliberately not done.)
+local COMBAT_SAMPLED = {
+	["moving"] = true,
+	["falling"] = true,
+	["ready"] = true,
+	["have"] = true,
+	["buff"] = true,
+	["debuff"] = true,
+	["selfbuff"] = true,
+	["selfdebuff"] = true,
+	["combo"] = true,
+}
+
+-- Frozen values for COMBAT_SAMPLED tokens, keyed by the full token text
+-- (e.g. "combo:3") so parameterised forms each get their own sample.
+local combatSamples = {}
+local combatSampleKeys = {}
+
+-- Record a token we evaluated, so combat entry knows what to sample.
+local function NoteCombatSampledToken(token)
+	if not combatSampleKeys[token] then
+		combatSampleKeys[token] = true
+	end
+end
+
+-- Forward declaration: the sampler needs EvalCustomToken, defined below.
+local EvalCustomToken
+
+-- Called at PLAYER_REGEN_DISABLED. Evaluates every combat-sampled token seen so
+-- far and freezes the result for the duration of combat.
+function Wise.SampleCombatConditionals()
+	if not EvalCustomToken then
+		return
+	end
+	wipe(combatSamples)
+	for token in pairs(combatSampleKeys) do
+		-- Evaluate without the frozen-value shortcut by sampling before lockdown
+		-- semantics apply. pcall keeps a bad token from breaking combat entry.
+		local ok, value = pcall(EvalCustomToken, token, nil, true)
+		combatSamples[token] = ok and value or false
+	end
+end
+
+-- Called at PLAYER_REGEN_ENABLED. Drops the frozen values so tokens go live again.
+function Wise.ClearCombatConditionalSamples()
+	wipe(combatSamples)
+end
 
 -- Availability providers for the [available] conditional, keyed by group name.
 -- A module owning a dynamically-populated interface registers a function here that
@@ -529,9 +703,426 @@ end
 
 Wise.IsGroupAvailableNow = IsGroupAvailableNow
 
+-- Case-insensitive "does this comma-free argument list contain `want`" test.
+-- OPie's parameterised tokens accept alternatives as [race:orc/troll], and a
+-- bare [zone:] with no argument is treated as "any", matching its behaviour.
+local function ArgMatches(arg, want)
+	if not arg or arg == "" then
+		return true
+	end
+	if not want then
+		return false
+	end
+	want = tostring(want):lower()
+	for piece in arg:lower():gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" and piece == want then
+			return true
+		end
+	end
+	return false
+end
+
+-- Like ArgMatches, but the VALUE side also carries /-separated alternatives —
+-- e.g. the covenant token "fae/nightfae" accepts either spelling. Matches when
+-- any requested alternative equals any value alternative.
+local function ArgMatchesAny(arg, value)
+	if not arg or arg == "" then
+		return true
+	end
+	if not value then
+		return false
+	end
+	for want in arg:lower():gmatch("[^/]+") do
+		want = want:match("^%s*(.-)%s*$")
+		if want ~= "" then
+			for have in tostring(value):lower():gmatch("[^/]+") do
+				have = have:match("^%s*(.-)%s*$")
+				if have == want then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- Numeric threshold tokens ([level:70], [combo:3]) are ">= n", per OPie.
+local function AtLeast(arg, actual)
+	local n = tonumber(arg)
+	if not n then
+		return false
+	end
+	return (tonumber(actual) or 0) >= n
+end
+
+-- [prof:name] — matches a known profession by localised name, and by the short
+-- English aliases OPie accepts so imported conditions keep working.
+local PROF_ALIASES = {
+	alch = "Alchemy",
+	bs = "Blacksmithing",
+	ench = "Enchanting",
+	engi = "Engineering",
+	herb = "Herbalism",
+	insc = "Inscription",
+	jc = "Jewelcrafting",
+	lw = "Leatherworking",
+	mine = "Mining",
+	skin = "Skinning",
+	tail = "Tailoring",
+	cook = "Cooking",
+	fish = "Fishing",
+	firstaid = "First Aid",
+}
+
+local function HasProfession(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	if not GetProfessions then
+		return false
+	end
+	-- Resolve aliases to their English names before comparing.
+	local wanted = {}
+	for piece in arg:lower():gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" then
+			wanted[piece] = true
+			local full = PROF_ALIASES[piece]
+			if full then
+				wanted[full:lower()] = true
+			end
+		end
+	end
+	for _, index in ipairs({ GetProfessions() }) do
+		local name = index and GetProfessionInfo(index)
+		if name and wanted[name:lower()] then
+			return true
+		end
+	end
+	return false
+end
+
+-- Spell 61304 is the shared global-cooldown "spell"; reading its cooldown is how
+-- you get the CURRENT gcd, which is haste-scaled and differs by class (1.0s for
+-- some, 1.5s baseline). Never hardcode 1.5 — that misreports readiness for any
+-- hasted character. Returns the timestamp the GCD ends, or math.huge if unknown.
+local function GCDEndTime()
+	if not (C_Spell and C_Spell.GetSpellCooldown) then
+		return math.huge
+	end
+	local ok, info = pcall(C_Spell.GetSpellCooldown, 61304)
+	if not ok or not info or not info.startTime or not info.duration then
+		return math.huge
+	end
+	return info.startTime + info.duration
+end
+
+-- [ready:spell] — spell or item is off cooldown, ignoring the GCD.
+-- A spell whose cooldown ends within the GCD counts as ready, matching OPie: you
+-- are about to be able to cast it, and a bar that hides for the length of every
+-- global would flicker constantly.
+local function IsSpellOrItemReady(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	local gcdEnd = GCDEndTime()
+
+	-- Each /-separated alternative is checked; any one ready satisfies the token.
+	for piece in tostring(arg):gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" then
+			local id = tonumber(piece) or piece
+
+			-- Spell first. An unknown spell yields no usable cooldown info, in which
+			-- case we must FALL THROUGH to the item lookup rather than returning —
+			-- C_Spell.GetSpellCooldown can hand back a table for a name it does not
+			-- know, which would otherwise swallow every item argument.
+			local handled = false
+			if C_Spell and C_Spell.GetSpellCooldown then
+				local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+				if ok and info and info.duration then
+					handled = true
+					local duration = info.duration or 0
+					if duration == 0 then
+						return true
+					end
+					local endsAt = (info.startTime or 0) + duration
+					if endsAt <= gcdEnd then
+						return true
+					end
+				end
+			end
+
+			-- Item fallback. C_Item.GetItemCooldown returns start=0,duration=0 for an
+			-- item that DOES NOT EXIST, which is indistinguishable from a real item
+			-- that is off cooldown — so [ready:NoSuchThing] reported true. Confirm
+			-- the item resolves first; GetItemInfoInstant returns nil for garbage.
+			if not handled and C_Item and C_Item.GetItemCooldown then
+				local resolves = false
+				if C_Item.GetItemInfoInstant then
+					local infoOk, itemID = pcall(C_Item.GetItemInfoInstant, id)
+					resolves = infoOk and itemID ~= nil
+				end
+				if resolves then
+					local ok, start, duration = pcall(C_Item.GetItemCooldown, id)
+					if ok and start then
+						if (duration or 0) == 0 then
+							return true
+						end
+						if (start + duration) <= gcdEnd then
+							return true
+						end
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- [have:item] — item is present in bags.
+local function HasItemInBags(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	if not (C_Item and C_Item.GetItemCount) then
+		return false
+	end
+	local id = tonumber(arg) or arg
+	local ok, count = pcall(C_Item.GetItemCount, id)
+	return ok and (count or 0) > 0
+end
+
+-- ── Ported OPie conditionals ────────────────────────────────────────────────
+
+-- [warbank] — the warband bank is reachable. FetchBankLockedReason(2) returns a
+-- reason code when it is NOT available, and nil when it is.
+local function IsWarbandBankAvailable()
+	if not (C_Bank and C_Bank.FetchBankLockedReason) then
+		return false
+	end
+	local ok, reason = pcall(C_Bank.FetchBankLockedReason, 2)
+	return ok and reason == nil
+end
+
+-- [prey] / [prey:questID] — hunting Prey. OPie gates on the widget's shownState
+-- as well as the quest being active, because the quest can linger while the hunt
+-- is not actually running.
+local PREY_WIDGET_ID = 7663
+local function GetActivePrey()
+	if not (C_QuestLog and C_QuestLog.GetActivePreyQuest) then
+		return nil
+	end
+	local ok, qid = pcall(C_QuestLog.GetActivePreyQuest)
+	if not ok or not qid then
+		return nil
+	end
+	local doneOk, isComplete = pcall(C_QuestLog.IsComplete, qid)
+	if doneOk and isComplete then
+		return nil
+	end
+	if C_UIWidgetManager and C_UIWidgetManager.GetPreyHuntProgressWidgetVisualizationInfo then
+		local vOk, viz = pcall(C_UIWidgetManager.GetPreyHuntProgressWidgetVisualizationInfo, PREY_WIDGET_ID)
+		if not vOk or not viz or viz.shownState ~= 1 then
+			return nil
+		end
+	end
+	return tostring(qid)
+end
+
+-- [myth] / [myth:token] — an M+ keystone run is active. The bare form is true
+-- during any run; the argument form matches the dungeon's map ID or its name.
+local function GetActiveKeystone()
+	if not (C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo) then
+		return nil
+	end
+	local ok, level = pcall(C_ChallengeMode.GetActiveKeystoneInfo)
+	if not ok or not level or level <= 0 then
+		return nil
+	end
+	local mapOk, mapID = pcall(C_ChallengeMode.GetActiveChallengeMapID)
+	if not mapOk or not mapID then
+		return tostring(level)
+	end
+	local nameOk, name = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+	return (nameOk and name) and (tostring(mapID) .. "/" .. tostring(name)) or tostring(mapID)
+end
+
+-- [coven:kyrian/venthyr/fae/necro] — Shadowlands covenant. Index order matches
+-- Blizzard's covenant IDs; each entry carries OPie's short and long spellings.
+local COVENANT_TOKENS = {
+	[1] = "kyrian",
+	[2] = "venthyr",
+	[3] = "fae/nightfae",
+	[4] = "necro/necrolord",
+}
+local function GetCovenantToken()
+	if not (C_Covenants and C_Covenants.GetActiveCovenantID) then
+		return nil
+	end
+	local ok, id = pcall(C_Covenants.GetActiveCovenantID)
+	if not ok or not id or id == 0 then
+		return nil
+	end
+	return COVENANT_TOKENS[id]
+end
+
+-- [uslot:trinket1/head/...] — an equipped item in that slot has an ON-USE effect.
+-- OPie resolves the item's spell and rejects passives; a slot whose item merely
+-- has a passive proc must not satisfy this.
+local USLOT_SLOTS = {
+	head = "HEADSLOT",
+	neck = "NECKSLOT",
+	shoulders = "SHOULDERSLOT",
+	shirt = "SHIRTSLOT",
+	chest = "CHESTSLOT",
+	waist = "WAISTSLOT",
+	legs = "LEGSSLOT",
+	feet = "FEETSLOT",
+	wrist = "WRISTSLOT",
+	hands = "HANDSSLOT",
+	finger1 = "FINGER0SLOT",
+	finger2 = "FINGER1SLOT",
+	trinket1 = "TRINKET0SLOT",
+	trinket2 = "TRINKET1SLOT",
+	back = "BACKSLOT",
+	tabard = "TABARDSLOT",
+}
+local function SlotHasUsableItem(token)
+	local slotKey = USLOT_SLOTS[token]
+	if not slotKey then
+		return false
+	end
+	local okSlot, slotIndex = pcall(GetInventorySlotInfo, slotKey)
+	if not okSlot or not slotIndex then
+		return false
+	end
+	local link = GetInventoryItemLink and GetInventoryItemLink("player", slotIndex)
+	local ref = link or (GetInventoryItemID and GetInventoryItemID("player", slotIndex))
+	if not ref then
+		return false
+	end
+	if not (C_Item and C_Item.GetItemSpell) then
+		return false
+	end
+	local okSpell, _, spellID = pcall(C_Item.GetItemSpell, ref)
+	if not okSpell or not spellID then
+		return false
+	end
+	local okPassive, isPassive = pcall(IsPassiveSpell, spellID)
+	return okPassive and not isPassive
+end
+
+-- Flight state. OPie splits this three ways because "can I fly here" is not one
+-- question: the zone may permit flight, the character may have skyriding, and a
+-- buff/zone effect may suppress it despite both.
+local function IsSuperFlyable()
+    -- Advanced (skyriding) flight available in this area.
+	local ok, v = pcall(function()
+		return IsAdvancedFlyableArea and IsAdvancedFlyableArea()
+	end)
+	return ok and v and true or false
+end
+local function IsPlainFlyable()
+	local ok, v = pcall(function()
+		return IsFlyableArea and IsFlyableArea()
+	end)
+	return ok and v and true or false
+end
+-- [worldhover] — the cursor is over the 3D world rather than any UI frame.
+--
+-- OPie answers this with a full-screen secure frame at strata BACKGROUND and
+-- IsMouseMotionFocus, which works in combat. Wise has no such frame, so we ask
+-- GetMouseFoci() whether anything other than WorldFrame/UIParent is under the
+-- cursor. That is accurate out of combat, which is where Wise can act on it.
+local function IsMouseOverWorld()
+	local foci
+	if GetMouseFoci then
+		local ok, result = pcall(GetMouseFoci)
+		foci = ok and result or nil
+	elseif GetMouseFocus then
+		local ok, result = pcall(GetMouseFocus)
+		foci = ok and result and { result } or nil
+	end
+	if not foci then
+		return false
+	end
+	for _, frame in ipairs(foci) do
+		if frame and frame ~= WorldFrame and frame ~= UIParent then
+			-- A real UI frame has the cursor: not hovering the world.
+			return false
+		end
+	end
+	return true
+end
+
+local function IsFlightBlocked()
+	-- Flyable zone, but the character cannot actually take off: the usual cause is
+	-- a zone/phase restriction. Approximated as "zone says flyable, neither flight
+	-- mode is usable" — Wise has no secure driver to ask the way OPie does.
+	if not IsPlainFlyable() then
+		return false
+	end
+	local mounted = IsMounted and IsMounted()
+	local gliding = false
+	if C_PlayerInfo and C_PlayerInfo.GetGlidingInfo then
+		local ok, info = pcall(C_PlayerInfo.GetGlidingInfo)
+		gliding = ok and info and true or false
+	end
+	return not (mounted or gliding) and not IsSuperFlyable()
+end
+
+-- [buff:]/[debuff:]/[selfbuff:]/[selfdebuff:] — aura present on a unit.
+-- Matches by aura name, case-insensitively, across the /-separated alternatives.
+--
+-- Aura secrecy: while the client withholds aura data (12.0+ combat in M+/raid/
+-- PvP content) names read back as secret values, and comparing them yields
+-- nonsense. OPie returns "lockdown" in that state; Wise has no such tri-state
+-- here, so we report false — the token simply stops matching for the duration.
+-- Combined with the combat-sampling freeze above, an aura token evaluated BEFORE
+-- combat keeps its entry value anyway, so the practical effect is limited to
+-- tokens first seen mid-fight.
+local function HasAura(unit, arg, filter)
+	if not arg or arg == "" then
+		return false
+	end
+	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+		return false
+	end
+	if not UnitExists(unit) then
+		return false
+	end
+	-- Never compare secret aura names; the result would be meaningless.
+	if Wise.Compat and Wise.Compat.AreAurasSecret and Wise.Compat.AreAurasSecret() then
+		return false
+	end
+	for i = 1, 40 do
+		local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, filter)
+		if not ok or not data then
+			break
+		end
+		local name = data.name
+		-- A secret name must not reach the comparison even if the query above
+		-- reported clear (state can flip between the two calls). checkSecret is
+		-- the hoisted probe used everywhere else in this file; it must be pcall'd
+		-- because touching a secret value can itself throw.
+		local secretOk, isSecret = pcall(checkSecret, name)
+		if name and secretOk and not isSecret and ArgMatches(arg, name) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Evaluate a single custom conditional token. Returns true/false.
 -- `groupName` provides context for group-scoped tokens such as [available].
-local function EvalCustomToken(token, groupName)
+-- `forceLive` bypasses the frozen-sample shortcut; the combat-entry sampler uses
+-- it to read the true value at the moment lockdown begins.
+--
+-- Assigns to the local forward-declared above so SampleCombatConditionals can
+-- reach it — do not turn this back into `local function`.
+function EvalCustomToken(token, groupName, forceLive)
 	local negated = false
 	local t = token:match("^%s*(.-)%s*$") -- trim
 	if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
@@ -540,6 +1131,27 @@ local function EvalCustomToken(token, groupName)
 	end
 	local base = t:match("^([^:]+)") or t
 	base = base:lower()
+	local arg = t:match("^[^:]+:(.+)$")
+
+	-- Combat-sampled tokens: out of combat evaluate live and record the token so
+	-- combat entry knows to sample it; in combat return the frozen value.
+	if COMBAT_SAMPLED[base] then
+		NoteCombatSampledToken(t)
+		-- InCombatLockdown is hoisted to an upvalue at the top of this file, so a
+		-- test cannot stub it via _G. Wise._forceCombatSampling is the seam that
+		-- makes the freeze path reachable from tests; it is nil in normal play.
+		local locked = Wise._forceCombatSampling
+		if locked == nil then
+			locked = InCombatLockdown()
+		end
+		if locked and not forceLive then
+			local result = combatSamples[t] or false
+			if negated then
+				result = not result
+			end
+			return result
+		end
+	end
 
 	local result = false
 	if base == "bank" then
@@ -558,6 +1170,109 @@ local function EvalCustomToken(token, groupName)
 		-- providers match it against their own slot names.
 		local key = t:match("^[^:]+:(.+)$")
 		result = IsGroupAvailableNow(groupName, key)
+
+	-- Location. [zone:] matches either the real zone or the sub-zone, as OPie does,
+	-- so [zone:Dornogal] and [zone:The Radiant Sanctum] both work.
+	elseif base == "zone" then
+		result = ArgMatches(arg, GetRealZoneText()) or ArgMatches(arg, GetSubZoneText())
+	elseif base == "instance" or base == "in" then
+		local _, instanceType = GetInstanceInfo()
+		result = ArgMatches(arg, instanceType)
+
+	-- Character identity.
+	elseif base == "me" then
+		local _, class = UnitClass("player")
+		result = ArgMatches(arg, UnitName("player")) or ArgMatches(arg, class)
+	elseif base == "level" then
+		result = AtLeast(arg, UnitLevel("player"))
+	elseif base == "race" then
+		local raceName, raceToken = UnitRace("player")
+		result = ArgMatches(arg, raceToken) or ArgMatches(arg, raceName)
+	elseif base == "game" then
+		-- Wise is retail-only, so the only version token that can match is "modern".
+		result = ArgMatches(arg, "modern")
+	elseif base == "horde" then
+		result = UnitFactionGroup("player") == "Horde"
+	elseif base == "alliance" then
+		result = UnitFactionGroup("player") == "Alliance"
+	elseif base == "mercenary" or base == "merc" then
+		result = (C_PvP and C_PvP.IsMercenary and C_PvP.IsMercenary()) or false
+	elseif base == "prof" then
+		result = HasProfession(arg)
+
+	-- ── Ported from OPie ────────────────────────────────────────────────
+	elseif base == "warbank" then
+		result = IsWarbandBankAvailable()
+	elseif base == "prey" then
+		-- Bare [prey] = hunting anything; [prey:12345] = that specific quest.
+		local qid = GetActivePrey()
+		result = qid ~= nil and ArgMatches(arg, qid)
+	elseif base == "housereturn" then
+		local ok, v = pcall(function()
+			return C_HousingNeighborhood
+				and C_HousingNeighborhood.CanReturnAfterVisitingHouse
+				and C_HousingNeighborhood.CanReturnAfterVisitingHouse()
+		end)
+		result = ok and v and true or false
+	elseif base == "myth" then
+		-- Value is "mapID/name", so alternatives exist on both sides.
+		local key = GetActiveKeystone()
+		result = key ~= nil and ArgMatchesAny(arg, key)
+	elseif base == "coven" or base == "covenant" then
+		local cov = GetCovenantToken()
+		result = cov ~= nil and (arg == nil or arg == "" or ArgMatchesAny(arg, cov))
+	elseif base == "uslot" then
+		if arg and arg ~= "" then
+			for piece in arg:lower():gmatch("[^/]+") do
+				piece = piece:match("^%s*(.-)%s*$")
+				if piece ~= "" and SlotHasUsableItem(piece) then
+					result = true
+					break
+				end
+			end
+		end
+	elseif base == "superflyable" then
+		result = IsSuperFlyable()
+	elseif base == "blockedflyable" then
+		result = IsFlightBlocked()
+	elseif base == "anyflyable" then
+		result = IsSuperFlyable() or (IsPlainFlyable() and not IsFlightBlocked())
+	elseif base == "worldhover" then
+		result = IsMouseOverWorld()
+
+	-- Pet / weapon state.
+	elseif base == "havepet" then
+		result = UnitExists("pet") and ArgMatches(arg, UnitName("pet")) or false
+	elseif base == "petcontrol" then
+		result = (HasPetUI and HasPetUI()) and true or false
+	elseif base == "imbuedmh" then
+		local hasMH = GetWeaponEnchantInfo()
+		result = hasMH and true or false
+	elseif base == "imbuedoh" then
+		local _, _, _, _, hasOH = GetWeaponEnchantInfo()
+		result = hasOH and true or false
+
+	-- Combat-sampled. Reached only out of combat; the in-combat path returned the
+	-- frozen sample above.
+	elseif base == "moving" then
+		local speedFn = GetUnitSpeed or _G.GetUnitSpeed
+		result = speedFn and (speedFn("player") or 0) > 0 or false
+	elseif base == "falling" then
+		result = IsFalling and IsFalling() and true or false
+	elseif base == "ready" then
+		result = IsSpellOrItemReady(arg)
+	elseif base == "have" then
+		result = HasItemInBags(arg)
+	elseif base == "buff" then
+		result = HasAura("target", arg, "HELPFUL")
+	elseif base == "debuff" then
+		result = HasAura("target", arg, "HARMFUL")
+	elseif base == "selfbuff" then
+		result = HasAura("player", arg, "HELPFUL")
+	elseif base == "selfdebuff" then
+		result = HasAura("player", arg, "HARMFUL")
+	elseif base == "combo" then
+		result = AtLeast(arg, UnitPower("player", Enum.PowerType.ComboPoints))
 	end
 
 	if negated then
@@ -3137,83 +3852,52 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			secureType = "macro"
 			secureAttr = "macrotext"
 			local resolvedCond = conditions or ""
-			if isPossess then
-				if resolvedCond == "" or resolvedCond == "[possessbar]" then
-					resolvedCond = "[possessbar][vehicleui]"
-				end
-
-				local vehicleParts = {}
-				local possessParts = {}
-				for block in resolvedCond:gmatch("%[([^%]]*)%]") do
-					local cleanBlock = {}
-					for token in block:gmatch("[^,]+") do
-						local t = token:match("^%s*(.-)%s*$")
-						if t ~= "possessbar" and t ~= "vehicleui" and t ~= "" then
-							table.insert(cleanBlock, t)
-						end
-					end
-					local subCond = table.concat(cleanBlock, ",")
-					local vPart = subCond ~= "" and ("[vehicleui," .. subCond .. "]") or "[vehicleui]"
-					local pPart = subCond ~= "" and ("[possessbar," .. subCond .. "]") or "[possessbar]"
-
-					local vExists = false
-					for _, val in ipairs(vehicleParts) do
-						if val == vPart then
-							vExists = true
-							break
-						end
-					end
-					if not vExists then
-						table.insert(vehicleParts, vPart)
-					end
-
-					local pExists = false
-					for _, val in ipairs(possessParts) do
-						if val == pPart then
-							pExists = true
-							break
-						end
-					end
-					if not pExists then
-						table.insert(possessParts, pPart)
+			-- Strip the POSITIVE bar-routing tokens out of the caller's conditions
+			-- and keep only their real predicates. BuildSpecialBarClickMacro owns
+			-- the [overridebar]/[vehicleui]/[possessbar] routing and merges it into
+			-- every group; leaving a positive token here duplicates it
+			-- ("[overridebar,...,overridebar]") or, worse, contradicts the route it
+			-- lands on ("[overridebar,...,possessbar]" is never true), which kills
+			-- the line. NEGATED forms (nooverridebar/novehicleui/nopossessbar) are
+			-- KEPT — those come from another state's `exclusive` flag and are the
+			-- whole point of the exclusion.
+			local cleanParts = {}
+			local seen = {}
+			for block in resolvedCond:gmatch("%[([^%]]*)%]") do
+				local cleanBlock = {}
+				for token in block:gmatch("[^,]+") do
+					local t = token:match("^%s*(.-)%s*$")
+					if
+						t ~= "overridebar"
+						and t ~= "possessbar"
+						and t ~= "vehicleui"
+						and t ~= "bonusbar:5"
+						and t ~= "bonusbar"
+						and t ~= ""
+					then
+						table.insert(cleanBlock, t)
 					end
 				end
-
-				if #vehicleParts == 0 then
-					table.insert(vehicleParts, "[vehicleui]")
-					table.insert(possessParts, "[possessbar]")
+				local subCond = table.concat(cleanBlock, ",")
+				if subCond ~= "" and not seen[subCond] then
+					seen[subCond] = true
+					table.insert(cleanParts, "[" .. subCond .. "]")
 				end
-
-				local condVehicle = table.concat(vehicleParts)
-				local condPossess = table.concat(possessParts)
-
-				local offset = (aNum >= 145 and aNum <= 156) and 144 or 120
-				local slotIdx = aNum - offset
-				-- The OverrideActionBarButton half is bound by the override bar's
-				-- real button count; ActionButton keeps the full 1-12 range.
-				local ovrIdx = Wise:IsValidOverrideBarIndex(slotIdx) and slotIdx or 1
-				secureValue = "/click "
-					.. condVehicle
-					.. " OverrideActionBarButton"
-					.. ovrIdx
-					.. "\n/click "
-					.. condPossess
-					.. " ActionButton"
-					.. slotIdx
-			else
-				if resolvedCond == "" or resolvedCond == "[overridebar]" then
-					-- A skinned vehicle bar (e.g. Xeronia in Archival Assault) raises
-					-- [vehicleui] — sometimes WITHOUT [overridebar] — yet its actions
-					-- still sit on OverrideActionBarButtonN. Cover both by default.
-					resolvedCond = "[overridebar][vehicleui]"
-				end
-				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
-				local ovrSlot = aNum - 132
-				if not Wise:IsValidOverrideBarIndex(ovrSlot) then
-					ovrSlot = 1
-				end
-				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. ovrSlot
 			end
+			local extraCond = table.concat(cleanParts)
+			extraCond = extraCond ~= "" and extraCond or nil
+
+			-- A skinned vehicle (e.g. Xeronia in Archival Assault) raises
+			-- [vehicleui] and keeps its actions on OverrideActionBarButtonN; an
+			-- UNSKINNED one (the war turtle) raises [vehicleui] too but leaves them
+			-- on ActionButtonN. The helper emits every route.
+			local slotIdx
+			if isPossess then
+				slotIdx = aNum - ((aNum >= 145 and aNum <= 156) and 144 or 120)
+			else
+				slotIdx = aNum - 132
+			end
+			secureValue = Wise:BuildSpecialBarClickMacro(slotIdx, extraCond)
 		elseif hasCond then
 			secureType = "macro"
 			secureAttr = "macrotext"
@@ -3421,47 +4105,25 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			secureAttr = "macrotext"
 			secureValue = "/click ExtraActionButton1"
 		elseif aValue == "zoneability" then
+			-- Zone ability buttons are pool-created from a virtual template and are
+			-- ANONYMOUS: GetName() is always nil, so a "/click <name>" macro can never
+			-- be built for them. Bind clickbutton to the frame reference instead — that
+			-- routes the press through Blizzard's own button, preserving ground-target
+			-- and pending-cast handling that a raw type="spell" cast would bypass.
 			secureType = "click"
 			secureAttr = "clickbutton"
 			local zoneBtn = GetZoneAbilitySpellButton()
 			if zoneBtn then
 				secureValue = zoneBtn
-				if zoneBtn.GetName and zoneBtn:GetName() then
-					secureType = "macro"
-					secureAttr = "macrotext"
-					secureValue = "/click " .. zoneBtn:GetName()
-				elseif zoneBtn.spellID then
-					secureType = "spell"
-					secureAttr = "spell"
-					secureValue = zoneBtn.spellID
-				end
 			end
-		elseif aValue == "overridebar" then
-			secureType = "click"
-			secureAttr = "clickbutton"
-			-- miscBarIndex is clamped to NUM_ACTIONBAR_BUTTONS (12) for the main-bar
-			-- cases; the override bar is shorter, so re-clamp before naming a frame.
-			local ovrIdx = Wise:IsValidOverrideBarIndex(miscBarIndex) and miscBarIndex or 1
-			local overrideBtn = _G["OverrideActionBarButton" .. ovrIdx]
-			if overrideBtn then
-				secureValue = overrideBtn
-				if overrideBtn.GetName and overrideBtn:GetName() then
-					secureType = "macro"
-					secureAttr = "macrotext"
-					secureValue = "/click " .. overrideBtn:GetName()
-				end
-			end
-		elseif aValue == "possessbar" then
+		elseif aValue == "overridebar" or aValue == "possessbar" then
+			-- Both misc types resolve to the same three-way route. A direct
+			-- clickbutton bind is not usable here: it names ONE frame, and which
+			-- frame is right depends on the vehicle kind at click time (see
+			-- Wise:BuildSpecialBarClickMacro). A macro defers that choice.
 			secureType = "macro"
 			secureAttr = "macrotext"
-			-- Two halves with DIFFERENT bounds: the [vehicleui] half clicks
-			-- OverrideActionBarButton<N> (override bar count), the [possessbar] half
-			-- clicks ActionButton<N> (12). Clamp each to its own frame's range.
-			local ovrIdx = Wise:IsValidOverrideBarIndex(miscBarIndex) and miscBarIndex or 1
-			secureValue = "/click [vehicleui] OverrideActionBarButton"
-				.. ovrIdx
-				.. "; [possessbar] ActionButton"
-				.. miscBarIndex
+			secureValue = Wise:BuildSpecialBarClickMacro(miscBarIndex)
 		elseif aValue == "leave_vehicle" then
 			secureType = "macro"
 			secureAttr = "macrotext"
@@ -3489,7 +4151,12 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 		elseif aValue == "custom_macro" then
 			secureType = "macro"
 			secureAttr = "macrotext"
-			secureValue = actionData.macroText or ""
+			-- Expand {{spell:id}} / {{item:id}} tokens to whatever THIS client calls
+			-- them, so one stored macro works across locales and across spell-ID
+			-- changes. Expansion happens here, on read — saved data keeps the token.
+			-- See core/Retoken.lua.
+			secureValue = Wise.Retoken and Wise.Retoken:Expand(actionData.macroText or "")
+				or (actionData.macroText or "")
 		elseif aValue:match("^spec_equip_") then
 			local slotIdx = tonumber(aValue:match("^spec_equip_(%d+)"))
 			secureType = "macro"
@@ -5629,7 +6296,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					or ic == 134400
 					or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
 			end
-			if not isPlaceholderIcon(actionData.icon) then
+			-- A LIVE special-bar resolution outranks the stored icon — see the
+			-- matching guard in the dynamic-refresh closure. resolvedType ==
+			-- "action" means a /click line reached a real override/vehicle/possess
+			-- slot, which only resolves while such a bar is up.
+			if resolvedType == "action" and not isPlaceholderIcon(resolvedIcon) then
+				texture = resolvedIcon
+			elseif not isPlaceholderIcon(actionData.icon) then
 				texture = actionData.icon
 			elseif not isPlaceholderIcon(resolvedIcon) then
 				texture = resolvedIcon
@@ -5642,6 +6315,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		else
 			btn.icon:Hide()
 		end
+		-- Seed the repaint cache the dynamic refresh compares against. Without this
+		-- a rebuilt button carries the PREVIOUS button's cached texture and the
+		-- refresh's "unchanged" check skips the first repaint.
+		btn._wiseLastIcon = texture
 
 		Wise:ApplyIconStyle(btn, iconStyle)
 
@@ -6055,23 +6732,24 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				local stateCount = allStates and #allStates or 1
 				local combinedCond = ""
 				if stateCount > 1 then
-					-- Same rule as the real button above: a state with no conditions
-					-- (or custom conditionals) always matches, so a hide-fallback
-					-- driver would wrongly hide the slot — skip it in that case.
 					local conds = {}
 					local allDriverExpressible = true
 					for sIdx = 1, stateCount do
 						local stateAction = allStates[sIdx]
 						if stateAction then
 							local expressed = false
-							if stateAction.conditions and stateAction.conditions ~= "" then
-								if not HasCustomConditionals(stateAction.conditions) then
+							local effectiveCond = Wise:ComputeEffectiveConditions(allStates, sIdx)
+							if effectiveCond and effectiveCond ~= "" then
+								if not HasCustomConditionals(effectiveCond) then
 									local sanitized =
-										SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(stateAction.conditions)))
+										SanitizeCustom(Wise:SanitizeMacroCondition(Sanitize(effectiveCond)))
 									if sanitized ~= "" then
-										local inner = sanitized:gsub("^%[", ""):gsub("%]$", "")
-										table.insert(conds, "[" .. inner .. "] show")
-										expressed = true
+										for inner in sanitized:gmatch("%[([^%]]*)%]") do
+											if inner ~= "" then
+												table.insert(conds, "[" .. inner .. "] show")
+												expressed = true
+											end
+										end
 									end
 								end
 							end
@@ -6437,8 +7115,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						local aID = tonumber(meta.actionValue)
 						if aID then
 							local realID = Wise:ResolveBarActionID(aID)
-							local tex = GetActionTexture(realID)
 							local isBarSlot = (aID >= 121 and aID <= 156)
+							-- With NO special bar up, ResolveBarActionID falls through to
+							-- the raw id — and the possess range 121-132 IS action bar 12
+							-- (145-156 likewise collide). Reading the texture there paints
+							-- the player's own bar onto a vehicle slot: the reported
+							-- symptom of "[possessbar] active, showing action bar 12".
+							-- Treat it as empty unless a special bar is genuinely up.
+							local tex
+							if not isBarSlot or Wise:HasAnySpecialActionBar() then
+								tex = GetActionTexture(realID)
+							end
 							if tex then
 								f._retryCount = 0
 								btn.icon:SetTexture(tex)
@@ -6532,8 +7219,21 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- [overridebar] compiled step while flying with no such bar up —
 						-- there's genuinely nothing in the slot, so hide the icon instead
 						-- of showing a permanent "?". See memory: override_bar_torch_event_127.
+						-- A LIVE special-bar resolution outranks the stored icon. The
+						-- stored icon is baked at compile time from the graph node's
+						-- fallback spell (copy.icon = liveIcon), so on a vehicle it shows
+						-- the character's own ability while the TOOLTIP — which always
+						-- resolves live — describes the vehicle ability. That split is
+						-- the "right tooltip, wrong icon" report. Only mType == "action"
+						-- counts: that means ResolveMacroData followed a /click line to a
+						-- real override/vehicle/possess slot, which only resolves while
+						-- such a bar is actually up.
+						local liveBarIcon = (mType == "action" and not isPlaceholderIcon(mIcon)) and mIcon or nil
+
 						local displayIcon
-						if not isPlaceholderIcon(meta.actionData.icon) then
+						if liveBarIcon then
+							displayIcon = liveBarIcon
+						elseif not isPlaceholderIcon(meta.actionData.icon) then
 							displayIcon = meta.actionData.icon
 						elseif not isPlaceholderIcon(mIcon) then
 							displayIcon = mIcon
@@ -6632,18 +7332,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						if vClone and vClone.icon then
 							vClone.icon:SetTexture(tex)
 						end
-						-- Rebind clickbutton when the spell button changes (e.g. entering garrison)
-						if canSetAttrs and zoneBtn then
-							if zoneBtn.GetName and zoneBtn:GetName() then
-								btn:SetAttribute("type", "macro")
-								btn:SetAttribute("macrotext", "/click " .. zoneBtn:GetName())
-							elseif zoneBtn.spellID then
-								btn:SetAttribute("type", "spell")
-								btn:SetAttribute("spell", zoneBtn.spellID)
-							else
-								btn:SetAttribute("type", "click")
-								btn:SetAttribute("clickbutton", zoneBtn)
-							end
+						-- Rebind clickbutton when the spell button changes (e.g. entering
+						-- garrison, or the pool hands out a different button for a new
+						-- zone). Buttons are anonymous, so clickbutton on the frame
+						-- reference is the only correct binding — see BuildSecureAction.
+						if canSetAttrs then
+							btn:SetAttribute("type", "click")
+							btn:SetAttribute("clickbutton", zoneBtn)
 						end
 						Wise:UpdateButtonCooldown(btn)
 						Wise:UpdateButtonUsability(btn)
@@ -6668,21 +7363,17 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								vClone.icon:Hide()
 							end
 						end
-						-- Rebind clickbutton in case override bar appeared. Bind THIS
-						-- button's index, not always button 1.
-						local ovrIdx = tonumber(meta.overrideIndex) or 1
-						if not Wise:IsValidOverrideBarIndex(ovrIdx) then
-							ovrIdx = 1
-						end
-						local overrideBtn = _G["OverrideActionBarButton" .. ovrIdx]
-						if canSetAttrs and overrideBtn then
-							if overrideBtn.GetName and overrideBtn:GetName() then
-								btn:SetAttribute("type", "macro")
-								btn:SetAttribute("macrotext", "/click " .. overrideBtn:GetName())
-							else
-								btn:SetAttribute("type", "click")
-								btn:SetAttribute("clickbutton", overrideBtn)
-							end
+						-- Rebind in case the special bar appeared. Bind THIS button's
+						-- index, not always button 1. The macro carries all three
+						-- routes, so it stays correct whichever bar came up — no
+						-- rebind is needed on a vehicle-kind change, which matters
+						-- because canSetAttrs is false in combat.
+						if canSetAttrs then
+							btn:SetAttribute("type", "macro")
+							btn:SetAttribute(
+								"macrotext",
+								Wise:BuildSpecialBarClickMacro(meta.overrideIndex)
+							)
 						end
 						Wise:UpdateButtonCooldown(btn)
 						Wise:UpdateButtonUsability(btn)
@@ -6705,23 +7396,13 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								vClone.icon:Hide()
 							end
 						end
-						-- Rebind clickbutton in case possess bar appeared (route to
-						-- OverrideActionBarButton<N> in vehicle, ActionButton<N> in possess)
+						-- Rebind in case the possess/vehicle bar appeared. Same
+						-- three-route macro as the overridebar branch above.
 						if canSetAttrs then
-							-- The [vehicleui] half of this macro clicks
-							-- OverrideActionBarButton<N>, so it is bound by the override
-							-- bar's button count, not NUM_ACTIONBAR_BUTTONS.
-							local posIdx = tonumber(meta.overrideIndex) or 1
-							if not Wise:IsValidOverrideBarIndex(posIdx) then
-								posIdx = 1
-							end
 							btn:SetAttribute("type", "macro")
 							btn:SetAttribute(
 								"macrotext",
-								"/click [vehicleui] OverrideActionBarButton"
-									.. posIdx
-									.. "; [possessbar] ActionButton"
-									.. posIdx
+								Wise:BuildSpecialBarClickMacro(meta.overrideIndex)
 							)
 						end
 						Wise:UpdateButtonCooldown(btn)
@@ -6789,11 +7470,32 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								Wise:UpdateButtonUsability(btn)
 							end
 						end
+						-- Repaint the icon whenever the RESOLVED TEXTURE changes, not just
+						-- when the chosen index changes. meta.activeState is also reset at
+						-- build time (ApplyButtonMeta), so a rebuild can leave `chosen` equal
+						-- to the fresh activeState while btn.icon still holds the texture drawn
+						-- for the previous action — the index-only guard skipped SetTexture and
+						-- the slot kept a stale icon. The click/tooltip paths re-read
+						-- meta.actionData live, which is why only the ICON went stale.
+						-- GetActionIcon is a cheap deterministic lookup, so resolving it every
+						-- refresh to compare is fine.
+						local chosenState = chosen and meta.states[chosen]
+						local resolvedIcon = chosenState
+							and Wise:GetActionIcon(chosenState.type, chosenState.value, chosenState)
+						if chosenState and chosenState.type ~= "empty" and resolvedIcon ~= btn._wiseLastIcon then
+							btn._wiseLastIcon = resolvedIcon
+							btn.icon:SetTexture(resolvedIcon)
+							local vc = meta.visualClone or btn.visualClone
+							if vc and vc.icon then
+								vc.icon:SetTexture(resolvedIcon)
+							end
+						end
 						if chosen and chosen ~= meta.activeState then
 							meta.activeState = chosen
 							local state = meta.states[chosen]
 							if state then
-								btn.icon:SetTexture(Wise:GetActionIcon(state.type, state.value, state))
+								btn._wiseLastIcon = Wise:GetActionIcon(state.type, state.value, state)
+								btn.icon:SetTexture(btn._wiseLastIcon)
 								btn.actionType = state.type
 								btn.actionValue = state.value
 								btn.actionData = state
@@ -8207,8 +8909,13 @@ function Wise:UpdateButtonCooldown(btn)
 	-- ─── Legacy path (action slots, items, misc) ────────────────────
 	if not usedDurationObject then
 		if actionType == "action" and tonumber(actionValue) then
-			local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-			start, duration = stripCooldown(GetActionCooldown(realID))
+			local aID = tonumber(actionValue)
+			-- Same collision as the icon path: with no special bar up, possess
+			-- slots resolve onto action bar 12 and would show ITS cooldowns.
+			if not (aID >= 121 and aID <= 156) or Wise:HasAnySpecialActionBar() then
+				local realID = Wise:ResolveBarActionID(aID)
+				start, duration = stripCooldown(GetActionCooldown(realID))
+			end
 		elseif actionType == "misc" and actionValue == "extrabutton" then
 			if HasExtraActionBar and HasExtraActionBar() then
 				start, duration = stripCooldown(GetActionCooldown(EXTRA_ACTION_BUTTON_SLOT))
@@ -8781,8 +9488,13 @@ function Wise:UpdateButtonUsability(btn)
 
 	-- Module 4: API Compatibility (Polyfill)
 	if actionType == "action" and tonumber(actionValue) then
-		local realID = Wise:ResolveBarActionID(tonumber(actionValue))
-		isUsable, noMana = IsUsableAction(realID)
+		local aID = tonumber(actionValue)
+		-- Same collision as the icon path: a possess slot with no special bar up
+		-- would take its usability from action bar 12.
+		if not (aID >= 121 and aID <= 156) or Wise:HasAnySpecialActionBar() then
+			local realID = Wise:ResolveBarActionID(aID)
+			isUsable, noMana = IsUsableAction(realID)
+		end
 	elseif actionType == "misc" and actionValue == "extrabutton" then
 		if HasExtraActionBar and HasExtraActionBar() then
 			isUsable, noMana = IsUsableAction(EXTRA_ACTION_BUTTON_SLOT)
@@ -9381,6 +10093,17 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- UNIT_*_VEHICLE fire for every unit; only the player matters here.
 	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
 		return
+	end
+
+	-- Freeze combat-sampled conditionals ([moving], [combo:3], [buff:name], ...)
+	-- at combat entry, and drop the samples on exit so they evaluate live again.
+	-- Wise drives visibility from insecure Lua and cannot write secure attributes
+	-- during lockdown, so holding the entry value is the honest behaviour: it beats
+	-- reporting a stale-and-drifting live value that can never reach the driver.
+	if event == "PLAYER_REGEN_DISABLED" then
+		Wise.SampleCombatConditionals()
+	elseif event == "PLAYER_REGEN_ENABLED" then
+		Wise.ClearCombatConditionalSamples()
 	end
 	-- Spec/spell changes need a full rebuild (they invalidate the per-character
 	-- graph macroText the snapshot-diff can't see). PLAYER_SPECIALIZATION_CHANGED

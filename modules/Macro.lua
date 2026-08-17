@@ -218,16 +218,18 @@ function Wise:CreateMacroEditor(panel, action, y)
 	editBox:SetScript("OnTextChanged", function(self, isUserInput)
 		local rawText = self:GetText()
 
-		-- Check for resolution triggers (only resolve tags, don't force color on everything constantly)
-		if rawText:find("{{spell:%d+}}") then
-			local resolved = Wise:ResolveAndColorMacro(rawText)
-			if resolved ~= rawText then
-				-- Update text and keep cursor?
-				-- Since this usually happens on paste, cursor behavior is less critical
-				self:SetText(resolved)
-				rawText = resolved -- proceed with resolved text
-			end
-		end
+		-- NOTE: tokens are NOT expanded here any more.
+		--
+		-- This used to call ResolveAndColorMacro and save the result, which
+		-- expanded {{spell:133}} to the colored name, stripped the colors, and
+		-- stored the plain LOCALIZED NAME. That silently destroyed the token on the
+		-- first keystroke — turning a durable reference into exactly the fragile
+		-- text that tokens exist to avoid, and defeating the feature on the client
+		-- where the macro was written.
+		--
+		-- Tokens now survive into SavedVariables and are expanded on READ, at the
+		-- two points that consume macro text: the secure attribute (core/GUI.lua)
+		-- and the icon resolver (Wise:ResolveMacroData). See core/Retoken.lua.
 
 		-- Clean text for storage
 		local cleanText = Wise:StripMacroColors(rawText)
@@ -256,15 +258,15 @@ function Wise:CreateMacroEditor(panel, action, y)
 		end
 	end)
 
-	-- Initial Update (Apply initial resolution/coloring)
+	-- Initial Update. Show the stored text AS STORED — tokens included.
+	--
+	-- This previously ran ResolveAndColorMacro and wrote the expanded result back
+	-- to saved data whenever it differed, which meant merely OPENING the editor on
+	-- a tokenized macro destroyed its tokens. The editor now displays what is
+	-- actually stored; expansion happens on read at the consumption points.
 	local initialText = action.macroText or ""
-	local resolvedInitial = Wise:ResolveAndColorMacro(initialText)
-	editBox:SetText(resolvedInitial)
-	if initialText ~= resolvedInitial then
-		-- Update saved state if resolution happened immediately (e.g. legacy data)
-		Wise:SetMacroText(action, Wise:StripMacroColors(resolvedInitial))
-	end
-	UpdateCharCount(Wise:StripMacroColors(resolvedInitial))
+	editBox:SetText(initialText)
+	UpdateCharCount(initialText)
 
 	editBox:SetScript("OnCursorChanged", function(self, x, y, w, h)
 		-- Handle scrolling
@@ -277,6 +279,100 @@ function Wise:CreateMacroEditor(panel, action, y)
 	table.insert(panel.controls, bg) -- Add bg to controls to hide it later
 
 	y = y - 160
+
+	-- ── Durable tokens (core/Retoken.lua) ───────────────────────────────────
+	--
+	-- Stored macro text keeps its {{spell:id}} tokens; they are expanded on read.
+	-- Since the editor therefore shows the RAW token, the preview line below is
+	-- what tells the user whether it currently resolves — without it a token is an
+	-- opaque string and a typo'd id looks identical to a working one.
+	local tokenStatus = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	tokenStatus:SetPoint("TOPLEFT", 10, y)
+	tokenStatus:SetWidth(260)
+	tokenStatus:SetJustifyH("LEFT")
+	tokenStatus:SetWordWrap(true)
+	table.insert(panel.controls, tokenStatus)
+
+	local function UpdateTokenStatus()
+		local R = Wise.Retoken
+		local text = action.macroText or ""
+		if not R or not R:HasTokens(text) then
+			tokenStatus:SetText("")
+			return
+		end
+		local expanded, resolved, unresolved = R:Expand(text)
+		if unresolved > 0 then
+			-- Name the unresolved ones: on the wrong class or with a typo'd id these
+			-- look identical, and the id is the only way to tell which.
+			local missing = {}
+			for _, entry in ipairs(R:Inspect(text)) do
+				if not entry.resolved then
+					missing[#missing + 1] = entry.kind .. ":" .. entry.arg
+				end
+			end
+			tokenStatus:SetText(
+				string.format(
+					"|cffff8800%d token(s) do not resolve on this character:|r %s",
+					unresolved,
+					table.concat(missing, ", ")
+				)
+			)
+		else
+			tokenStatus:SetText(string.format("|cff00ccffResolves to:|r %s", (expanded:gsub("\n", " | "))))
+		end
+	end
+	UpdateTokenStatus()
+	y = y - 34
+
+	-- One-click conversion of plain /cast lines into durable tokens.
+	local tokenBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	tokenBtn:SetSize(150, 22)
+	tokenBtn:SetPoint("TOPLEFT", 10, y)
+	tokenBtn:SetText("Make Durable")
+	tokenBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Make Durable")
+		GameTooltip:AddLine(
+			"Rewrites /cast spell names as {{spell:id}} tokens so the macro keeps"
+				.. " working in another language and across spell-ID changes.",
+			1,
+			1,
+			1,
+			true
+		)
+		GameTooltip:AddLine(" ")
+		GameTooltip:AddLine("/use lines are left alone: many items share a name with a spell,", 1, 0.82, 0, true)
+		GameTooltip:AddLine("so converting them could silently bind to the wrong thing.", 1, 0.82, 0, true)
+		GameTooltip:Show()
+	end)
+	tokenBtn:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	tokenBtn:SetScript("OnClick", function()
+		local R = Wise.Retoken
+		if not R then
+			return
+		end
+		local converted, count = R:Tokenize(action.macroText or "")
+		if count > 0 then
+			Wise:SetMacroText(action, converted)
+			editBox:SetText(converted)
+			UpdateCharCount(converted)
+			UpdateTokenStatus()
+			Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			print(string.format("|cff33ff99Wise|r converted %d spell name(s) to durable tokens.", count))
+		else
+			print("|cff33ff99Wise|r nothing to convert: no plain /cast spell names found.")
+		end
+	end)
+	table.insert(panel.controls, tokenBtn)
+
+	-- Keep the preview in step with typing.
+	editBox:HookScript("OnTextChanged", function()
+		UpdateTokenStatus()
+	end)
+
+	y = y - 30
 
 	return y
 end

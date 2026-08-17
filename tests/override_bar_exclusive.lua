@@ -216,7 +216,7 @@ end)
 local function overrideSlotStates()
 	return {
 		{ type = "action", value = 138, conditions = "[overridebar]", exclusive = true },
-		{ type = "action", value = 126, conditions = "[possessbar]", exclusive = true },
+		{ type = "action", value = 126, conditions = "[vehicleui]", exclusive = true },
 		{ type = "spell", value = 1850 }, -- Dash: no conditions
 	}
 end
@@ -225,7 +225,7 @@ test("ComputeEffectiveConditions: unconditional fallback inherits the negations"
 	local states = overrideSlotStates()
 	local cond = Wise:ComputeEffectiveConditions(states, 3)
 	-- The fallback must NOT stay unconditional — it has to carry
-	-- [nooverridebar,nopossessbar], which is what lets the driver hide the
+	-- [nooverridebar,novehicleui], which is what lets the driver hide the
 	-- slot while the override bar is up.
 	assert(cond ~= "", "fallback state must not remain unconditional")
 	assert(
@@ -233,12 +233,12 @@ test("ComputeEffectiveConditions: unconditional fallback inherits the negations"
 		"fallback must inherit nooverridebar, got: " .. tostring(cond)
 	)
 	assert(
-		cond:find("nopossessbar", 1, true),
-		"fallback must inherit nopossessbar, got: " .. tostring(cond)
+		cond:find("novehicleui", 1, true),
+		"fallback must inherit novehicleui, got: " .. tostring(cond)
 	)
 end)
 
-test("ComputeEffectiveConditions: the exclusive states keep their own condition", function()
+test("ComputeEffectiveConditions: the exclusive states keep its own condition", function()
 	local states = overrideSlotStates()
 	local ovr = Wise:ComputeEffectiveConditions(states, 1)
 	assert(ovr:find("overridebar", 1, true), "override state lost its condition: " .. tostring(ovr))

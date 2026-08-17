@@ -1334,6 +1334,91 @@ function frame:OnEvent(event, arg1)
 				if g.visibilitySettings and g.visibilitySettings.held and g.visibilitySettings.toggleOnPress then
 					g.visibilitySettings.toggleOnPress = false
 				end
+				-- Migration: an "Override Bar Button N" state saved as plain
+				-- "[overridebar]" never matched on an UNSKINNED vehicle (the war
+				-- turtle raises [vehicleui] but NOT [overridebar]), so the slot fell
+				-- through to its next state.
+				--
+				-- Only the OVERRIDE state is widened, and only with [vehicleui].
+				-- These slots pair an exclusive override state with an exclusive
+				-- possess state; giving both the same conditions would make them
+				-- identical and the first would always win. The possess state keeps
+				-- plain [possessbar] — [vehicleui] belongs to the override state,
+				-- whose value (133-144) resolves through the vehicle page, while the
+				-- possess range 121-132 collides with action bar 12.
+				if g.actions then
+					-- A slot's states live in one of TWO shapes: a plain array of
+					-- entries, or the newer graph form (slotStates.graph.nodes). Both
+					-- nest the real data under .action with a sibling .condition
+					-- mirroring .action.conditions. Walking only the array form
+					-- silently skips every graph slot.
+					-- "[overridebar][vehicleui][possessbar]" is the SHORT-LIVED bad
+					-- default that a dev build handed out from the picker: it made the
+					-- override state identical to its paired possess state, so
+					-- exclusivity could not tell them apart and neither showed. Repair
+					-- it alongside the plain "[overridebar]" case.
+					local OVERRIDE_COND = "[overridebar][vehicleui]"
+					local function needsMigration(cond)
+						return cond == "[overridebar]" or cond == "[overridebar][vehicleui][possessbar]"
+					end
+					local function migrateEntry(entry)
+						local action = entry and entry.action or entry
+						local v = tonumber(action and action.value)
+						local isOverrideSlot = action
+							and action.type == "action"
+							and v
+							and v >= 133
+							and v <= 144
+						local isOverrideMisc = action and action.type == "misc" and action.value == "overridebar"
+						if isOverrideSlot or isOverrideMisc then
+							action.exclusive = true
+							if entry then
+								entry.exclusive = true
+							end
+							if needsMigration(action.conditions) then
+								action.conditions = OVERRIDE_COND
+								if entry and needsMigration(entry.condition) then
+									entry.condition = OVERRIDE_COND
+								end
+							end
+						end
+						-- Migrate possess states to [possessbar][bonusbar:5]
+						local POSSESS_COND = "[possessbar][bonusbar:5]"
+						local isPossessSlot = action and action.type == "action" and v and v >= 121 and v <= 132
+						local isPossessMisc = action and action.type == "misc" and action.value == "possessbar"
+						if isPossessSlot or isPossessMisc then
+							action.exclusive = true
+							if entry then
+								entry.exclusive = true
+							end
+							if
+								action.conditions == "[overridebar][vehicleui][possessbar]"
+								or action.conditions == "[possessbar]"
+								or action.conditions == "[bonusbar:5]"
+								or action.conditions == "[overridebar][vehicleui]"
+								or needsMigration(action.conditions)
+							then
+								action.conditions = POSSESS_COND
+								if entry then
+									entry.condition = POSSESS_COND
+								end
+							end
+						end
+					end
+
+					for _, slotStates in pairs(g.actions) do
+						if type(slotStates) == "table" then
+							for _, entry in ipairs(slotStates) do
+								migrateEntry(entry)
+							end
+							if slotStates.graph and type(slotStates.graph.nodes) == "table" then
+								for _, node in ipairs(slotStates.graph.nodes) do
+									migrateEntry(node)
+								end
+							end
+						end
+					end
+				end
 			end
 		end
 		-- Register with MechanicLib for full Mechanic integration
