@@ -1432,6 +1432,13 @@ local function ResolveMacroTarget(result)
 		if not barUp then
 			return nil
 		end
+		-- Index past the last real OverrideActionBarButton<N>: the /click can never
+		-- fire (it names a frame that doesn't exist), so refuse to resolve an icon
+		-- for it. Without this the arithmetic below happily returns a valid-looking
+		-- action id and the slot shows a correct icon/tooltip over a dead button.
+		if not Wise:IsValidOverrideBarIndex(overrideIdx) then
+			return nil
+		end
 		local actionID = 132 + tonumber(overrideIdx)
 		local realID = Wise:ResolveBarActionID(actionID)
 		local icon = GetActionTexture(realID)

@@ -1,4 +1,4 @@
-## Interface: 120000, 120001, 120005, 120007
+## Interface: 120000, 120001, 120005, 120007, 120100
 ## Title: Wise
 ## Notes: A flexible action bar rework with smart features and account wide settings.
 ## Author: Wise
@@ -28,6 +28,7 @@ modules\Debug.lua
 Wise.lua
 core\Filters.lua
 core\Polyfill.lua
+core\Compat121.lua
 core\Text.lua
 core\Bindings.lua
 core\Dispatcher.lua
@@ -61,3 +62,4 @@ wiser\SmartItem.lua
 wiser\BarCopy.lua
 wiser\AddonMagic.lua
 wiser\SpecAndEquip.lua
+wiser\DisenchantConvert.lua

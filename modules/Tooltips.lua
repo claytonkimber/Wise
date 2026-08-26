@@ -52,6 +52,21 @@ function Wise:AddInterfaceTooltip(btn)
 		local value = (meta and meta.actionValue) or self.actionValue
 		local data = (meta and meta.actionData) or self.actionData
 
+		-- Module-supplied tooltip. An action can carry `tooltipProvider`, the name
+		-- of a handler registered via Wise:RegisterTooltipProvider. This lets a
+		-- generated slot describe what it will actually DO (e.g. the queue of items
+		-- a Disenchant slot will work through) instead of the raw spell tooltip its
+		-- secure type implies. The provider owns the whole tooltip when it returns
+		-- true; returning false falls through to the normal type dispatch.
+		local providerName = data and data.tooltipProvider
+		if providerName and Wise.TooltipProviders and Wise.TooltipProviders[providerName] then
+			local ok, handled = pcall(Wise.TooltipProviders[providerName], GameTooltip, self, data, meta)
+			if ok and handled then
+				GameTooltip:Show()
+				return
+			end
+		end
+
 		if type == "action" then
 			local aID = tonumber(value)
 			if aID then
@@ -196,7 +211,8 @@ function Wise:AddInterfaceTooltip(btn)
 					hasAction = true
 				end
 			elseif value == "overridebar" and data and data.showTooltip then
-				local realID = Wise:ResolveBarActionID(133)
+				-- Per-button: resolve THIS slot's override button, not always button 1.
+				local realID = Wise:ResolveMiscBarActionID(meta, 133)
 				if
 					(HasOverrideActionBar and HasOverrideActionBar())
 					or (HasVehicleActionBar and HasVehicleActionBar())
@@ -206,7 +222,7 @@ function Wise:AddInterfaceTooltip(btn)
 					hasAction = true
 				end
 			elseif value == "possessbar" and data and data.showTooltip then
-				local realID = Wise:ResolveBarActionID(121)
+				local realID = Wise:ResolveMiscBarActionID(meta, 121)
 				if
 					(HasOverrideActionBar and HasOverrideActionBar())
 					or (HasVehicleActionBar and HasVehicleActionBar())
@@ -309,6 +325,15 @@ function Wise:AddInterfaceTooltip(btn)
 	btn:HookScript("OnLeave", function(self)
 		GameTooltip:Hide()
 	end)
+end
+
+-- Register a named tooltip handler that actions can opt into via
+-- actionData.tooltipProvider. The handler receives (tooltip, button, actionData,
+-- meta) and returns true when it has fully populated the tooltip itself.
+Wise.TooltipProviders = Wise.TooltipProviders or {}
+
+function Wise:RegisterTooltipProvider(name, fn)
+	Wise.TooltipProviders[name] = fn
 end
 
 function Wise:InitTooltips()

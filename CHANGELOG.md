@@ -2,6 +2,30 @@
 
 Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
 
+## [1.0.20260826] - 2026-08-26
+
+### Added
+- **New Disenchant / Convert Wiser interface.** A dynamic 2-button interface backed by auction-house and vendor pricing data (supporting TradeSkillMaster, ProfitProphet, and Auctionator):
+  - **Disenchant slot**: Identifies bag items whose expected disenchant material value exceeds their alternative baseline (vendor or auction market price). Validates armor and weapon equipment locations.
+  - **Convert slot**: Identifies stacks of ore or herbs whose prospected or milled value exceeds keeping raw materials, dynamically matching expansion-specific salvage spells (Dragonflight, TWW, Midnight) and required batch sizes (5 or 10).
+  - **Ignore auction price option (`ignoreMarket`)**: Disenchant can optionally measure mat value against vendor price only. Essential for gear bought off the auction house specifically to disenchant/flip, where market price sits right near mat value and would otherwise disqualify the items.
+  - **Mailing fallback**: If the current character is not an enchanter, the Disenchant slot falls back to a mail-assist macro to send eligible gear to a designated enchanter alt.
+  - **Equipment set protection**: Automatically excludes any gear belonging to saved equipment sets (`C_EquipmentSet.GetItemIDs`), preventing accidental destruction of active gear sets (enabled by default, reactive to `EQUIPMENT_SETS_CHANGED`).
+  - **Right-click item skips**: Right-clicking a slot skips its top candidate and advances to the next item; skipped items persist across sessions and can be cleared via the properties panel.
+  - **Live queue tooltips**: Hovering either slot displays the top candidate item and a preview of upcoming items queued in value/gain order instead of the generic spell tooltip.
+  - **Opt-in auto-confirm destroy prompt**: Optional keybind button to quickly dismiss Blizzard's destroy prompt on soulbound gear without affecting unrelated popups.
+  - **Independent slot availability**: Uses `[available:<slot>]` conditional so each slot shows only when qualifying items are present in bags.
+  - **Asynchronous bag caching & instant cast updates**: Handles cold login item caching with staged retries and refreshes the queue immediately upon `UNIT_SPELLCAST_SUCCEEDED` / `STOP` / `INTERRUPTED` without waiting for bag debounces.
+- **Patch 12.1 compatibility foundation (`core/Compat121.lua`).** Centralized feature detection and capability guards for Patch 12.1 APIs, including AuraContainer/AuraButton intrinsic detection (`hasAuraWidgets`), `SetOnUpdateMode`, secrecy queries (`C_Secrets.ShouldAurasBeSecret`), and client secrecy primitives (`issecretvalue`, `issecrettable`). Updated TOC interface versions to include `120007` and `120100`.
+- **Custom conditional `[available]` and `[available:<key>]`.** Registered availability provider system allowing modules to dynamically drive slot or group visibility based on whether actionable items/data exist.
+
+### Fixed
+- **Multi-slot Override / Possess bars showing duplicate abilities.** Multiple misc "overridebar" or "possessbar" buttons placed on one bar previously resolved base slot 133 or 121 for all buttons, causing every button to render the first ability's icon, cooldown, and tooltip. Each button now resolves its own ordinal position (`meta.overrideIndex` via `Wise:ResolveMiscBarActionID`).
+- **Override bar frame bounds checking.** Replaced hardcoded 12-slot assumptions with dynamic probing (`Wise:GetOverrideBarButtonCount` / `Wise:IsValidOverrideBarIndex`) against actual `OverrideActionBarButton<N>` frames created by Blizzard, preventing `/click` macros from targeting missing frames that resulted in "right tooltip, dead button" issues.
+- **State driver visibility with exclusive states.** An unconditional state paired with an `exclusive` state (e.g. override bar button with a fallback spell) was mistakenly treated by the visibility driver as always-matching, leaving the fallback visible when the override bar was active. Drivers now compute effective conditions via `Wise:ComputeEffectiveConditions`.
+- **Drag & drop variable shadowing and false drops during spell targeting.** Fixed a bug where `type` shadowed the Lua built-in inside `OnDragReceive`, causing errors on drag operations. Added button action timestamping (`Wise:NoteButtonAction`) so cursor changes during spell-targeting casts (like disenchanting or milling) are no longer mistaken for user drag-and-drop actions.
+- **Icon greying on profession and salvage abilities.** Trade-skill spells (Disenchant, Milling, Prospecting) live outside the player spell bank and report `IsSpellUsable=false` until a target is selected. Added `alwaysKnown` and `alwaysUsable` action flags so icons retain full color and proper usability states.
+
 ## [1.0.20260801] - 2026-08-01
 
 ### Added

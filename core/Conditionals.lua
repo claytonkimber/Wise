@@ -107,6 +107,7 @@ local VALID_CONDITIONALS = {
 	["always"] = true,
 	["zoneability"] = true,
 	["undermouse"] = true,
+	["available"] = true,
 }
 
 -- Built-in Conditionals List
@@ -270,6 +271,17 @@ Wise.opieConditionals = {
 	-- UI Interaction
 	{ type = "header", text = "UI Interaction" },
 	{ name = "undermouse", desc = "Mouse is over the interface", combatRestricted = false },
+	{
+		name = "available",
+		desc = "Interface has something actionable right now (e.g. items to disenchant/convert)",
+		combatRestricted = true,
+	},
+	{
+		name = "available:slot",
+		desc = "One named slot of a generated interface has something actionable",
+		combatRestricted = true,
+		skipeval = true,
+	},
 }
 
 function Wise:UpdateConditionalsTab()

@@ -8,6 +8,9 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
 	if WiseDB.settings.enableDragDrop == false then
 		return
 	end
+	-- NOTE: `type` shadows the Lua built-in for the rest of this function, so never
+	-- call type() below this line — use the hoisted `luaType` alias instead.
+	local luaType = _G.type
 	local type, id, subType, param4 = GetCursorInfo()
 
 	if WiseDB.groups[groupName] and WiseDB.groups[groupName].isLocked then
@@ -35,7 +38,7 @@ function Wise:OnDragReceive(groupName, slotIndex, isAppend, stateIndex)
 		else
 			local group = WiseDB.groups[groupName]
 			local existing = group and group.actions and group.actions[slotIndex]
-			if type(existing) == "table" and #existing > 0 then
+			if luaType(existing) == "table" and #existing > 0 then
 				Wise:AddAction(groupName, slotIndex, actionType, actionValue, category, extra)
 				Wise:UpdateGroupDisplay(groupName)
 				Wise:UpdateOptionsUI()
@@ -222,6 +225,13 @@ function Wise:StopDragHighlight()
 	end)
 end
 
+-- Record that a Wise button was just pressed. Any cursor change immediately
+-- following is attributed to that button's own action (e.g. a spell-targeting
+-- macro picking an item up) rather than to the user starting a drag.
+function Wise:NoteButtonAction()
+	Wise._lastButtonActionAt = GetTime()
+end
+
 -- Drag Tracker Frame
 local dragTracker = CreateFrame("Frame")
 dragTracker:RegisterEvent("CURSOR_CHANGED")
@@ -232,9 +242,22 @@ dragTracker:SetScript("OnEvent", function(self, event)
 
 	local cursorType = GetCursorInfo()
 	if cursorType then
+		-- Distinguish a genuine user drag from a cursor our OWN button action
+		-- loaded. Spell-targeting macros ("/cast Disenchant" + "/use <bag>
+		-- <slot>") pick the item up as part of casting; treating that as a drag
+		-- makes the next press drop the item into the bar.
+		--
+		-- Wise:NoteButtonAction() stamps a timestamp on every Wise button press,
+		-- so a CURSOR_CHANGED landing in that window is attributed to our own
+		-- action rather than to the user.
+		local lastAction = Wise._lastButtonActionAt or 0
+		local selfInflicted = (GetTime() - lastAction) < 0.5
+		Wise.userDragActive = not selfInflicted
+
 		-- Cursor has something tracked
 		Wise:StartDragHighlight()
 	else
+		Wise.userDragActive = false
 		Wise:StopDragHighlight()
 	end
 end)
