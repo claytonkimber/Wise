@@ -1519,6 +1519,74 @@ function frame:OnEvent(event, arg1)
 						end
 					end
 				end
+
+				-- One-time migration: update special bar (override / possess) states to carry
+				-- [canexitvehicle] / [bonusbar:5] and exclusive=true, then recompile graphs so fallback
+				-- class spells properly inherit negation of vehicle states and slots 7/8 bind properly.
+				if not WiseDB.migrations.specialBarVehicleExclusivityV3 then
+					if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+						local recompiled = 0
+						for _, g in pairs(WiseDB.groups) do
+							if type(g.actions) == "table" then
+								for slotKey, slotActions in pairs(g.actions) do
+									if type(slotKey) == "number" and type(slotActions) == "table" then
+										local function migrateSpecialBarEntry(entry)
+											local a = entry and (entry.action or entry)
+											if type(a) ~= "table" then
+												return
+											end
+											local v = tonumber(a.value)
+											local isOvr = (a.type == "action" and v and v >= 133 and v <= 144)
+												or (a.type == "misc" and a.value == "overridebar")
+											local isPos = (a.type == "action" and v and v >= 121 and v <= 132)
+												or (a.type == "misc" and a.value == "possessbar")
+											if isOvr then
+												a.exclusive = true
+												if entry then
+													entry.exclusive = true
+												end
+												if a.conditions == "[overridebar]" or (a.conditions and a.conditions:find("vehicleui", 1, true)) or a.conditions == "" or not a.conditions then
+													a.conditions = "[overridebar][canexitvehicle]"
+												end
+												if entry and (entry.condition == "[overridebar]" or (entry.condition and entry.condition:find("vehicleui", 1, true)) or entry.condition == "" or not entry.condition) then
+													entry.condition = "[overridebar][canexitvehicle]"
+												end
+											elseif isPos then
+												a.exclusive = true
+												if entry then
+													entry.exclusive = true
+												end
+												if not (a.conditions and a.conditions:find("bonusbar", 1, true)) then
+													a.conditions = "[possessbar][bonusbar:5]"
+												end
+												if entry and not (entry.condition and entry.condition:find("bonusbar", 1, true)) then
+													entry.condition = "[possessbar][bonusbar:5]"
+												end
+											end
+										end
+
+										for _, st in ipairs(slotActions) do
+											migrateSpecialBarEntry(st)
+										end
+										if slotActions.graph and type(slotActions.graph.nodes) == "table" then
+											for _, node in ipairs(slotActions.graph.nodes) do
+												migrateSpecialBarEntry(node)
+											end
+										end
+
+										if slotActions.graph and Wise:RepairCompiledSlotFromGraph(slotActions) then
+											recompiled = recompiled + 1
+										end
+									end
+								end
+							end
+						end
+						WiseDB.migrations.specialBarVehicleExclusivityV3 = true
+						if recompiled > 0 then
+							Wise:DebugPrint("Recompiled " .. recompiled .. " slot(s) for special-bar vehicle exclusivity V3")
+						end
+					end
+				end
 			end
 
 			-- Scope-waterfall backfill: the All/Class/Spec/Build/Character filter

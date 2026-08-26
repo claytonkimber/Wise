@@ -727,13 +727,45 @@ end
 -- whenever availability changes (spec/talents/login).  Baking the filter in here
 -- would freeze one character's spells into the shared saved data — which is what
 -- corrupted slots like AtMouse across characters.
+local function buildNodeStates(nodes)
+	local nodeStates = {}
+	for i, node in ipairs(nodes) do
+		local a = node.action
+		local v = a and tonumber(a.value)
+		local isSpecialBar = a
+			and (
+				(a.type == "action" and v and v >= 121 and v <= 156)
+				or (a.type == "misc" and (a.value == "overridebar" or a.value == "possessbar"))
+			)
+		local c = node.condition or (a and a.conditions) or ""
+		if c:find("possessbar", 1, true) and not c:find("bonusbar", 1, true) then
+			c = "[possessbar][bonusbar:5]"
+		end
+		if c == "[overridebar]" or c:find("vehicleui", 1, true) or (isSpecialBar and c == "") then
+			c = (a and (a.value == "possessbar" or (v and v >= 121 and v <= 132))) and "[possessbar][bonusbar:5]"
+				or "[overridebar][canexitvehicle]"
+		end
+		nodeStates[i] = {
+			type = a and a.type,
+			value = a and a.value,
+			exclusive = (a and a.exclusive) or (isSpecialBar and true) or (node.exclusive and true) or false,
+			conditions = c,
+		}
+	end
+	return nodeStates
+end
+
 local function BuildMacroTextFromNodes(nodes)
+	local nodeStates = buildNodeStates(nodes)
 	local macroLines = {}
+	local seenLines = {}
 	tinsert(macroLines, "#showtooltip")
-	for _, node in ipairs(nodes) do
+	seenLines["#showtooltip"] = true
+
+	for i, node in ipairs(nodes) do
 		local a = node.action
 		if a then
-			local cond = node.condition or ""
+			local cond = Wise:ComputeEffectiveConditions(nodeStates, i) or node.condition or ""
 			if cond ~= "" then
 				-- Strip duplicate or nested brackets if they occurred from previous import/export bugs
 				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
@@ -743,7 +775,12 @@ local function BuildMacroTextFromNodes(nodes)
 			end
 			local line = ResolveActionMacroLine(a, cond)
 			if line and line ~= "" then
-				tinsert(macroLines, line)
+				for subLine in line:gmatch("[^\r\n]+") do
+					if not seenLines[subLine] then
+						seenLines[subLine] = true
+						tinsert(macroLines, subLine)
+					end
+				end
 			end
 		end
 	end
@@ -779,56 +816,77 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 	if not nodes then
 		return compiledAction.macroText or "", compiledAction.conditions or ""
 	end
+
+	local allowedNodes = {}
+	for _, node in ipairs(nodes) do
+		local a = node.action
+		if a and Wise:IsActionAllowed(a) then
+			tinsert(allowedNodes, node)
+		end
+	end
+
+	local nodeStates = buildNodeStates(allowedNodes)
 	local macroLines = { "#showtooltip" }
+	local seenLines = { ["#showtooltip"] = true }
 	-- Also derive the SLOT-level condition from the allowed nodes: if every allowed
 	-- node shares one condition (e.g. all [combat]) we return it so the engine's
 	-- secure visibility driver can hide the slot when it isn't met. Mixed/none => "".
 	local slotCond = nil
 	local condMixed = false
 	local resolvedIcon = nil
-	for _, node in ipairs(nodes) do
+	local startsWithSpecialBar = false
+
+	for i, node in ipairs(allowedNodes) do
 		local a = node.action
-		if a and Wise:IsActionAllowed(a) then
-			local cond = node.condition or ""
-			if cond ~= "" then
-				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
-				if not cond:match("^%[") then
-					cond = "[" .. cond .. "]"
+		local v = a and tonumber(a.value)
+		local isSpecial = a
+			and (
+				(a.type == "action" and v and v >= 121 and v <= 156)
+				or (a.type == "misc" and (a.value == "overridebar" or a.value == "possessbar"))
+			)
+		if i == 1 and isSpecial then
+			startsWithSpecialBar = true
+		end
+
+		local cond = Wise:ComputeEffectiveConditions(nodeStates, i) or node.condition or ""
+		if cond ~= "" then
+			cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
+			if not cond:match("^%[") then
+				cond = "[" .. cond .. "]"
+			end
+		end
+		local line = ResolveActionMacroLine(a, cond)
+		if line and line ~= "" then
+			for subLine in line:gmatch("[^\r\n]+") do
+				if not seenLines[subLine] then
+					seenLines[subLine] = true
+					tinsert(macroLines, subLine)
 				end
 			end
-			local line = ResolveActionMacroLine(a, cond)
-			if line and line ~= "" then
-				tinsert(macroLines, line)
+		end
+		-- Capture icon from the first allowed node for callers that need a fallback.
+		-- If the slot starts with special bar states (override/possess), do NOT capture
+		-- fallback spec spells as the resolvedIcon fallback (which would show the spec
+		-- spell while riding an unskinned vehicle).
+		if not resolvedIcon and not startsWithSpecialBar then
+			resolvedIcon = Wise:GetActionIcon(a.type, a.value, a)
+			if
+				resolvedIcon == 134400
+				or (type(resolvedIcon) == "string" and resolvedIcon:lower():find("inv_misc_questionmark", 1, true))
+			then
+				resolvedIcon = nil
 			end
-			-- Capture icon from the first allowed node for callers that need a fallback.
-			if not resolvedIcon then
-				resolvedIcon = Wise:GetActionIcon(a.type, a.value, a)
-				-- The question mark is a placeholder, never a useful fallback. It can
-				-- arrive as the numeric fileID (134400) OR as the texture PATH string
-				-- "Interface\Icons\INV_Misc_QuestionMark" (e.g. an override/possess bar
-				-- node stores the string in its action.icon, and GetActionIcon returns
-				-- that stored icon verbatim for non-spell types). Reject BOTH forms so
-				-- resolvedIcon falls through to the next allowed node — the real spec
-				-- spell — instead of locking the slot to a question mark. See memory:
-				-- override_bar_torch_event_127.
-				if
-					resolvedIcon == 134400
-					or (type(resolvedIcon) == "string" and resolvedIcon:lower():find("inv_misc_questionmark", 1, true))
-				then
-					resolvedIcon = nil
-				end
-			end
-			-- Track shared condition across the allowed nodes only.
-			local rawCond = node.condition or ""
-			if rawCond ~= "" then
-				if slotCond == nil then
-					slotCond = rawCond
-				elseif slotCond ~= rawCond then
-					condMixed = true
-				end
-			elseif slotCond ~= nil then
+		end
+		-- Track shared condition across the allowed nodes only.
+		local rawCond = node.condition or ""
+		if rawCond ~= "" then
+			if slotCond == nil then
+				slotCond = rawCond
+			elseif slotCond ~= rawCond then
 				condMixed = true
 			end
+		elseif slotCond ~= nil then
+			condMixed = true
 		end
 	end
 	if condMixed then

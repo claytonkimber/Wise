@@ -1429,44 +1429,63 @@ local function ResolveMacroTarget(result)
 	if overrideIdx then
 		local barUp = (HasOverrideActionBar and HasOverrideActionBar())
 			or (HasVehicleActionBar and HasVehicleActionBar())
+			or (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
+			or (CanExitVehicle and CanExitVehicle())
 		if not barUp then
-			return nil
-		end
-		-- Index past the last real OverrideActionBarButton<N>: the /click can never
-		-- fire (it names a frame that doesn't exist), so refuse to resolve an icon
-		-- for it. Without this the arithmetic below happily returns a valid-looking
-		-- action id and the slot shows a correct icon/tooltip over a dead button.
-		if not Wise:IsValidOverrideBarIndex(overrideIdx) then
 			return nil
 		end
 		local actionID = 132 + tonumber(overrideIdx)
 		local realID = Wise:ResolveBarActionID(actionID)
+		local icon = realID and GetActionTexture(realID)
+		if icon and Wise:IsValidOverrideBarIndex(overrideIdx) then
+			return "action", actionID, icon
+		end
+		-- Special bar is up, but this button is empty (or beyond the bar frame's count).
+		-- Return empty_override so ResolveMacroData knows this button was the live match
+		-- and does not fall through to non-vehicle fallback lines.
+		return "empty_override", actionID, nil
+	end
+	local possessIdx = result:match("^PossessButton(%d+)$")
+	if possessIdx then
+		local possessUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (GetBonusBarOffset and GetBonusBarOffset() == 5)
+		if not possessUp then
+			return nil
+		end
+		local actionID = 120 + tonumber(possessIdx)
+		local realID = Wise:ResolveBarActionID(actionID)
 		local icon = GetActionTexture(realID)
+			or (GetPossessInfo and select(2, GetPossessInfo(tonumber(possessIdx))))
 		if icon then
 			return "action", actionID, icon
 		end
-		-- No texture on the resolved slot (empty): let the caller fall through to
-		-- the next macro line for a usable icon.
-		return nil
+		return "empty_override", actionID, nil
 	end
 	local actionIdx = result:match("^ActionButton(%d+)$")
 	if actionIdx then
 		-- Same gate: a "/click [possessbar] ActionButtonN" line is only meaningful
 		-- while a possess/temp-shapeshift bar is up; otherwise ActionButtonN is just
 		-- the player's own main bar and must not hijack the slot's display.
-		local barUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
-			or (HasVehicleActionBar and HasVehicleActionBar())
-			or (HasOverrideActionBar and HasOverrideActionBar())
-		if not barUp then
+		local possessUp = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+			or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+			or (IsPossessBarVisible and IsPossessBarVisible())
+			or (GetBonusBarOffset and GetBonusBarOffset() == 5)
+		if not possessUp then
 			return nil
 		end
-		local actionID = tonumber(actionIdx)
+		local actionID = 120 + tonumber(actionIdx)
 		local realID = Wise:ResolveBarActionID(actionID)
 		local icon = GetActionTexture(realID)
+			or (GetPossessInfo and select(2, GetPossessInfo(tonumber(actionIdx))))
 		if icon then
 			return "action", actionID, icon
 		end
-		return nil
+		return "empty_override", actionID, nil
 	end
 
 	-- Try Spell first (most common)
@@ -1501,6 +1520,12 @@ end
 function Wise:ResolveMacroData(macroText)
 	if not macroText or macroText == "" then
 		return nil, nil, nil
+	end
+
+	-- Expand durable tokens before parsing, or a tokenized macro resolves its icon
+	-- from the literal "{{spell:133}}" and shows the question mark.
+	if Wise.Retoken and Wise.Retoken:HasTokens(macroText) then
+		macroText = Wise.Retoken:Expand(macroText)
 	end
 
 	-- Collect candidate target lines in priority order: an explicit #show(tooltip)
@@ -1553,33 +1578,52 @@ function Wise:ResolveMacroData(macroText)
 		end
 	end
 
-	for _, targetLine in ipairs(candidates) do
-		-- Evaluate the live conditional. If nothing currently matches (e.g.
-		-- "[combat] Abundance" out of combat), strip [conditions] and use the first
-		-- clause so the button still shows the intended icon. Mirrors a real macro.
-		local result = SecureCmdOptionParse(targetLine)
+	local function cleanTarget(result)
 		if not result or result == "" then
-			for clause in string.gmatch(targetLine, "[^;]+") do
-				local stripped = strtrim((clause:gsub("%b[]", "")))
-				if stripped ~= "" then
-					result = stripped
-					break
-				end
+			return nil
+		end
+		if result:match("^reset=") then
+			result = result:gsub("^reset=%S+%s*", "")
+		end
+		if result:match(",") then
+			result = result:match("^([^,]+)")
+		end
+		return strtrim(result)
+	end
+
+	-- PASS 1: Live conditional matching via SecureCmdOptionParse.
+	-- If any line's condition matches right now, that is the authoritative line.
+	for _, targetLine in ipairs(candidates) do
+		local result = SecureCmdOptionParse(targetLine)
+		if result and result ~= "" then
+			result = cleanTarget(result)
+			local rType, rVal, rIcon = ResolveMacroTarget(result)
+			if rType == "empty_override" then
+				-- Live vehicle/override bar is active and this slot is empty on the bar:
+				-- stop and return nil, nil, nil (do not fall through to un-matching class spells).
+				return nil, nil, nil
+			elseif rType then
+				return rType, rVal, rIcon
+			end
+		end
+	end
+
+	-- PASS 2: Fallback when NO live condition matched (e.g. out of combat with [combat] Spell).
+	-- Strip [conditions] from candidates and find the first valid target.
+	for _, targetLine in ipairs(candidates) do
+		local strippedTarget = nil
+		for clause in string.gmatch(targetLine, "[^;]+") do
+			local stripped = strtrim((clause:gsub("%b[]", "")))
+			if stripped ~= "" then
+				strippedTarget = stripped
+				break
 			end
 		end
 
-		if result and result ~= "" then
-			-- Clean up castsequence reset rules and comma lists
-			if result:match("^reset=") then
-				result = result:gsub("^reset=%S+%s*", "")
-			end
-			if result:match(",") then
-				result = result:match("^([^,]+)")
-			end
-			result = strtrim(result)
-
-			local rType, rVal, rIcon = ResolveMacroTarget(result)
-			if rType then
+		if strippedTarget and strippedTarget ~= "" then
+			strippedTarget = cleanTarget(strippedTarget)
+			local rType, rVal, rIcon = ResolveMacroTarget(strippedTarget)
+			if rType and rType ~= "empty_override" then
 				return rType, rVal, rIcon
 			end
 		end
@@ -4776,7 +4820,8 @@ function Wise:GetSpecialActionbars(filter)
 				name = name,
 				icon = "Interface\\Icons\\INV_Misc_QuestionMark",
 				category = "Special Action bars",
-				conditions = "[overridebar]",
+				conditions = "[overridebar][canexitvehicle]",
+				exclusive = true,
 			})
 		end
 	end
@@ -4794,7 +4839,8 @@ function Wise:GetSpecialActionbars(filter)
 				name = name,
 				icon = "Interface\\Icons\\INV_Misc_QuestionMark",
 				category = "Special Action bars",
-				conditions = "[possessbar][vehicleui]",
+				conditions = "[possessbar][bonusbar:5]",
+				exclusive = true,
 			})
 		end
 	end

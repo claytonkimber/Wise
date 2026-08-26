@@ -3139,79 +3139,26 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			local resolvedCond = conditions or ""
 			if isPossess then
 				if resolvedCond == "" or resolvedCond == "[possessbar]" then
-					resolvedCond = "[possessbar][vehicleui]"
+					resolvedCond = "[possessbar][bonusbar:5]"
 				end
-
-				local vehicleParts = {}
-				local possessParts = {}
-				for block in resolvedCond:gmatch("%[([^%]]*)%]") do
-					local cleanBlock = {}
-					for token in block:gmatch("[^,]+") do
-						local t = token:match("^%s*(.-)%s*$")
-						if t ~= "possessbar" and t ~= "vehicleui" and t ~= "" then
-							table.insert(cleanBlock, t)
-						end
-					end
-					local subCond = table.concat(cleanBlock, ",")
-					local vPart = subCond ~= "" and ("[vehicleui," .. subCond .. "]") or "[vehicleui]"
-					local pPart = subCond ~= "" and ("[possessbar," .. subCond .. "]") or "[possessbar]"
-
-					local vExists = false
-					for _, val in ipairs(vehicleParts) do
-						if val == vPart then
-							vExists = true
-							break
-						end
-					end
-					if not vExists then
-						table.insert(vehicleParts, vPart)
-					end
-
-					local pExists = false
-					for _, val in ipairs(possessParts) do
-						if val == pPart then
-							pExists = true
-							break
-						end
-					end
-					if not pExists then
-						table.insert(possessParts, pPart)
-					end
-				end
-
-				if #vehicleParts == 0 then
-					table.insert(vehicleParts, "[vehicleui]")
-					table.insert(possessParts, "[possessbar]")
-				end
-
-				local condVehicle = table.concat(vehicleParts)
-				local condPossess = table.concat(possessParts)
 
 				local offset = (aNum >= 145 and aNum <= 156) and 144 or 120
 				local slotIdx = aNum - offset
-				-- The OverrideActionBarButton half is bound by the override bar's
-				-- real button count; ActionButton keeps the full 1-12 range.
-				local ovrIdx = Wise:IsValidOverrideBarIndex(slotIdx) and slotIdx or 1
-				secureValue = "/click "
-					.. condVehicle
-					.. " OverrideActionBarButton"
-					.. ovrIdx
+				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
+				secureValue = "/click [canexitvehicle] OverrideActionBarButton"
+					.. slotIdx
 					.. "\n/click "
-					.. condPossess
-					.. " ActionButton"
+					.. prefix
+					.. "ActionButton"
 					.. slotIdx
 			else
-				if resolvedCond == "" or resolvedCond == "[overridebar]" then
+				if resolvedCond == "" or resolvedCond == "[overridebar]" or resolvedCond:find("vehicleui", 1, true) then
 					-- A skinned vehicle bar (e.g. Xeronia in Archival Assault) raises
-					-- [vehicleui] — sometimes WITHOUT [overridebar] — yet its actions
-					-- still sit on OverrideActionBarButtonN. Cover both by default.
-					resolvedCond = "[overridebar][vehicleui]"
+					-- [canexitvehicle] / [overridebar] — its actions sit on OverrideActionBarButtonN.
+					resolvedCond = "[overridebar][canexitvehicle]"
 				end
 				local prefix = resolvedCond ~= "" and (resolvedCond .. " ") or ""
 				local ovrSlot = aNum - 132
-				if not Wise:IsValidOverrideBarIndex(ovrSlot) then
-					ovrSlot = 1
-				end
 				secureValue = "/click " .. prefix .. "OverrideActionBarButton" .. ovrSlot
 			end
 		elseif hasCond then
@@ -3457,8 +3404,8 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			-- Two halves with DIFFERENT bounds: the [vehicleui] half clicks
 			-- OverrideActionBarButton<N> (override bar count), the [possessbar] half
 			-- clicks ActionButton<N> (12). Clamp each to its own frame's range.
-			local ovrIdx = Wise:IsValidOverrideBarIndex(miscBarIndex) and miscBarIndex or 1
-			secureValue = "/click [vehicleui] OverrideActionBarButton"
+			local ovrIdx = miscBarIndex
+			secureValue = "/click [canexitvehicle] OverrideActionBarButton"
 				.. ovrIdx
 				.. "; [possessbar] ActionButton"
 				.. miscBarIndex
@@ -5617,22 +5564,41 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		local resolvedType, resolvedValue, resolvedIcon
 		if aType == "misc" and aValue == "custom_macro" then
 			resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
-			-- Priority: stored icon (user override, OR the build-pass fallback icon a graph step
-			-- carries for spells ResolveMacroData can't resolve by name, e.g. /cast Abundance) >
-			-- dynamic resolution (#showtooltip) > question mark. The placeholder "?" (numeric
-			-- 134400 or the INV_Misc_QuestionMark path) is never a real icon — skip it at each
-			-- rung so an override/possess step that stores "?" falls through to live resolution
-			-- instead of locking on. Mirrors the dynamic-refresh closure below. See memory:
-			-- override_bar_torch_event_127.
 			local function isPlaceholderIcon(ic)
 				return not ic
 					or ic == 134400
 					or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
 			end
-			if not isPlaceholderIcon(actionData.icon) then
-				texture = actionData.icon
-			elseif not isPlaceholderIcon(resolvedIcon) then
-				texture = resolvedIcon
+			local canExit = CanExitVehicle and CanExitVehicle()
+			local overrideActive = (HasOverrideActionBar and HasOverrideActionBar()) or canExit
+			local vehicleActive = (HasVehicleActionBar and HasVehicleActionBar()) or canExit
+			local possessActive = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+				or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+				or (IsPossessBarVisible and IsPossessBarVisible())
+				or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
+				or (GetBonusBarOffset and GetBonusBarOffset() == 5)
+			local specialBarActive = overrideActive or vehicleActive or possessActive
+			local isSpecialSlot = actionData.macroText
+				and (
+					actionData.macroText:find("overridebar", 1, true)
+					or actionData.macroText:find("canexitvehicle", 1, true)
+					or actionData.macroText:find("vehicleui", 1, true)
+					or actionData.macroText:find("possessbar", 1, true)
+					or actionData.macroText:find("bonusbar", 1, true)
+				)
+
+			if specialBarActive and isSpecialSlot then
+				if not isPlaceholderIcon(resolvedIcon) then
+					texture = resolvedIcon
+				else
+					texture = nil
+				end
+			else
+				if not isPlaceholderIcon(actionData.icon) then
+					texture = actionData.icon
+				elseif not isPlaceholderIcon(resolvedIcon) then
+					texture = resolvedIcon
+				end
 			end
 		end
 
@@ -6503,8 +6469,25 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								or ic == 134400
 								or (type(ic) == "string" and ic:lower():find("inv_misc_questionmark", 1, true))
 						end
-						local overrideActive = HasOverrideActionBar and HasOverrideActionBar()
-						local vehicleActive = HasVehicleActionBar and HasVehicleActionBar()
+						local canExit = CanExitVehicle and CanExitVehicle()
+						local overrideActive = (HasOverrideActionBar and HasOverrideActionBar()) or canExit
+						local vehicleActive = (HasVehicleActionBar and HasVehicleActionBar()) or canExit
+						local possessActive = (HasTempShapeshiftActionBar and HasTempShapeshiftActionBar())
+							or (C_ActionBar and C_ActionBar.IsPossessBarVisible and C_ActionBar.IsPossessBarVisible())
+							or (IsPossessBarVisible and IsPossessBarVisible())
+							or (UnitHasVehicleUI and UnitHasVehicleUI("player"))
+							or (GetBonusBarOffset and GetBonusBarOffset() == 5)
+						local specialBarActive = overrideActive or vehicleActive or possessActive
+						local isSpecialSlot = meta.actionData
+							and meta.actionData.macroText
+							and (
+								meta.actionData.macroText:find("overridebar", 1, true)
+								or meta.actionData.macroText:find("canexitvehicle", 1, true)
+								or meta.actionData.macroText:find("vehicleui", 1, true)
+								or meta.actionData.macroText:find("possessbar", 1, true)
+								or meta.actionData.macroText:find("bonusbar", 1, true)
+							)
+
 						local needsRetry = false
 						if (not mIcon or mIcon == 134400) and (overrideActive or vehicleActive) then
 							needsRetry = true
@@ -6520,27 +6503,30 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 							vehicleActive
 							and meta.actionData
 							and meta.actionData.macroText
-							and meta.actionData.macroText:find("vehicleui", 1, true)
+							and (
+								meta.actionData.macroText:find("canexitvehicle", 1, true)
+								or meta.actionData.macroText:find("vehicleui", 1, true)
+							)
 							and mType ~= "action"
 						then
 							needsRetry = true
 						end
 
-						-- Only fall back to the "?" placeholder while a retry is pending
-						-- (override/vehicle bar is active but hasn't populated yet). If
-						-- nothing is active and nothing resolves — e.g. a [possessbar] /
-						-- [overridebar] compiled step while flying with no such bar up —
-						-- there's genuinely nothing in the slot, so hide the icon instead
-						-- of showing a permanent "?". See memory: override_bar_torch_event_127.
 						local displayIcon
-						if not isPlaceholderIcon(meta.actionData.icon) then
-							displayIcon = meta.actionData.icon
-						elseif not isPlaceholderIcon(mIcon) then
-							displayIcon = mIcon
-						elseif needsRetry then
-							displayIcon = 134400
+						if specialBarActive and isSpecialSlot then
+							if not isPlaceholderIcon(mIcon) then
+								displayIcon = mIcon
+							else
+								displayIcon = nil
+							end
 						else
-							displayIcon = nil
+							if not isPlaceholderIcon(meta.actionData.icon) then
+								displayIcon = meta.actionData.icon
+							elseif not isPlaceholderIcon(mIcon) then
+								displayIcon = mIcon
+							else
+								displayIcon = nil
+							end
 						end
 
 						if needsRetry then
@@ -6671,9 +6657,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- Rebind clickbutton in case override bar appeared. Bind THIS
 						-- button's index, not always button 1.
 						local ovrIdx = tonumber(meta.overrideIndex) or 1
-						if not Wise:IsValidOverrideBarIndex(ovrIdx) then
-							ovrIdx = 1
-						end
 						local overrideBtn = _G["OverrideActionBarButton" .. ovrIdx]
 						if canSetAttrs and overrideBtn then
 							if overrideBtn.GetName and overrideBtn:GetName() then
@@ -6708,17 +6691,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						-- Rebind clickbutton in case possess bar appeared (route to
 						-- OverrideActionBarButton<N> in vehicle, ActionButton<N> in possess)
 						if canSetAttrs then
-							-- The [vehicleui] half of this macro clicks
-							-- OverrideActionBarButton<N>, so it is bound by the override
-							-- bar's button count, not NUM_ACTIONBAR_BUTTONS.
 							local posIdx = tonumber(meta.overrideIndex) or 1
-							if not Wise:IsValidOverrideBarIndex(posIdx) then
-								posIdx = 1
-							end
 							btn:SetAttribute("type", "macro")
 							btn:SetAttribute(
 								"macrotext",
-								"/click [vehicleui] OverrideActionBarButton"
+								"/click [canexitvehicle] OverrideActionBarButton"
 									.. posIdx
 									.. "; [possessbar] ActionButton"
 									.. posIdx

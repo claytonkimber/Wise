@@ -2,6 +2,16 @@
 
 Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
 
+## [1.0.20260827] - 2026-08-27
+
+### Fixed
+- **Vehicle, Override, and Possess Bar Fallback & Display Isolation:**
+  - **Native Macro Conditionals (`[canexitvehicle]`)**: Replaced non-standard `[vehicleui]` in generated macro strings with WoW's native `[canexitvehicle]` conditional, resolving action bar states accurately in `SecureCmdOptionParse` without macro fallthroughs.
+  - **Class Spell Fallthrough Prevention**: Fixed an issue where actions fell back to un-shapeshifted/Balance Druid abilities or dragonriding spells on vehicle mounts (e.g. War Turtle). Whenever a vehicle or override bar is active, slots without abilities now return `empty_override` instead of `nil`, cleanly terminating macro evaluation.
+  - **Slot Duplication on Bars with $> 6$ Buttons**: Removed legacy index clamping that mapped button indices $> 6$ back to `OverrideActionBarButton1`. Buttons 7+ now map to their distinct indices (`OverrideActionBarButton7`, etc.) without duplicating ability 1.
+  - **Empty Vehicle Slot Icon Display**: Suppressed question mark fallback (`134400`) during dynamic refresh passes on active vehicle bars; unused vehicle slots now remain completely hidden and clean.
+  - **Automated Migration (`specialBarVehicleExclusivityV3`)**: Recompiles saved action bar graphs on login, ensuring all existing character slots inherit updated vehicle conditionals and proper negation rules (`[nooverridebar,nocanexitvehicle,nopossessbar,nobonusbar:5]`).
+
 ## [1.0.20260826] - 2026-08-26
 
 ### Added
