@@ -92,9 +92,9 @@ The default macro editor is... limited. Wise can add *any number* of macros that
 
 Let me be clear: The addons listed below are masterpieces. Their authors are legends. Wise is an alternative vision.
 
-### vs. OPie
-**OPie** is the GOAT of ring menus. It's stable, efficient, and handles everything perfectly.
-*   **Why Wise?** This addon actually started from modifying OPie to get the functionality I wanted.  What I wanted quickly diverged from OPie's vision, and I found that I needed to make my own thing.
+### vs. the classic ring-menu addon
+That addon is the GOAT of ring menus. It's stable, efficient, and handles everything perfectly.
+*   **Why Wise?** This addon actually started from modifying it to get the functionality I wanted. What I wanted quickly diverged from its vision, and I found that I needed to make my own thing.
 
 ### vs. GSE (Gnome Sequencer Enhanced)
 **GSE** is a powerhouse for one-button rotation macros. It's basically a programming language for DPS.
@@ -112,7 +112,7 @@ There will be bugs, I'm very new to this and also, it's a very new addon
 ## Compatibility
 
 Wise **creates its own frames**, and doesn't use the default WoW action bar frames, so as far as I know, Wise is compatible with:
-* OPie
+* Other ring-menu addons
 * GSE (Gnome Sequencer Enhanced)
 * Bartender / Dominos / ElvUI
 * Any addon that uses the standard WoW API for action bars

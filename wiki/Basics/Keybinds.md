@@ -28,7 +28,7 @@ The trigger mode controls how the keybind interacts with visibility:
 | **Release (Mouseover)** | Like Release, but only fires if your mouse is over a button at release time. Prevents accidental casts. |
 | **Release + Repeat** | Fires on release, but also begins auto-repeating the action if the key is held. |
 
-The **Hold** mode is the most popular for rings and circles — it feels like OPie's hold-ring workflow.
+The **Hold** mode is the most popular for rings and circles — it feels like the classic hold-to-open ring workflow familiar from other ring-menu addons.
 
 ### Conflict detection
 

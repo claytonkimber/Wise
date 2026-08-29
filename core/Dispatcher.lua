@@ -1,7 +1,7 @@
 -- Dispatcher.lua: Secure Action Button Dispatcher for Mouse Input
--- Intercepts Middle Click (Button3), Button4, Button5 etc. using
--- the OPie-style "Dispatcher Pattern" — a dedicated transparent overlay
--- with SecureActionButtonTemplate that handles clicks without taint.
+-- Intercepts Middle Click (Button3), Button4, Button5 etc. using a
+-- dedicated transparent overlay with SecureActionButtonTemplate that
+-- handles clicks without taint.
 local addonName, Wise = ...
 
 local CreateFrame = CreateFrame

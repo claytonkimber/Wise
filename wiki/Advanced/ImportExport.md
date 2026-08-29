@@ -58,13 +58,13 @@ It does **not** include account-specific data like character names used in chara
 
 ---
 
-## Importing from OPie
+## Importing from another ring-menu addon
 
-If you have a ring configured in OPie and want to bring it into Wise, you cannot use OPie's default export format (strings beginning with `oetohH7` are compressed and incompatible with Wise's importer).
+If you have a ring configured in another popular ring-menu addon and want to bring it into Wise, you cannot use that addon's default export format (compressed strings are incompatible with Wise's importer).
 
 **Workaround:**
-1. In OPie, open the ring you want to migrate
-2. Use **Snapshot → Copy as Lua** to generate an uncompressed representation
+1. In the other addon, open the ring you want to migrate
+2. Use its **Snapshot → Copy as Lua** feature (if available) to generate an uncompressed representation
 3. This format can be parsed by Wise on import
 
 ---

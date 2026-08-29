@@ -114,7 +114,7 @@ local VALID_CONDITIONALS = {
 	["undermouse"] = true,
 	["available"] = true,
 
-	-- Ported from OPie: location and character identity.
+	-- Location and character identity.
 	["zone"] = true,
 	["instance"] = true,
 	["in"] = true,
@@ -128,7 +128,7 @@ local VALID_CONDITIONALS = {
 	["merc"] = true,
 	["prof"] = true,
 
-	-- Ported from OPie 8.3–8.8.
+	-- Extended content-state conditionals.
 	["warbank"] = true,
 	["prey"] = true,
 	["housereturn"] = true,
@@ -141,17 +141,17 @@ local VALID_CONDITIONALS = {
 	["anyflyable"] = true,
 	["worldhover"] = true,
 
-	-- New Wise-only conditional (not from OPie): Delves report instanceType ==
-	-- "scenario" like other content, so native [instance:] can't identify one.
+	-- Wise-only conditional: Delves report instanceType == "scenario" like other
+	-- content, so native [instance:] can't identify one.
 	["delve"] = true,
 
-	-- Ported from OPie: pet and weapon state.
+	-- Pet and weapon state.
 	["havepet"] = true,
 	["petcontrol"] = true,
 	["imbuedmh"] = true,
 	["imbuedoh"] = true,
 
-	-- Ported from OPie: combat-sampled (frozen at combat entry, see COMBAT_SAMPLED).
+	-- Combat-sampled (frozen at combat entry, see COMBAT_SAMPLED).
 	["moving"] = true,
 	["falling"] = true,
 	["ready"] = true,
@@ -259,8 +259,8 @@ Wise.builtinConditionals = {
 	{ name = "mod:alt", desc = "Alt key held" },
 }
 
--- Wise (OPie) Conditionals List
-Wise.opieConditionals = {
+-- Extended Wise Conditionals List
+Wise.extendedConditionals = {
 	{ type = "header", text = "Evaluated against location and player status" },
 
 	-- Location
@@ -309,15 +309,15 @@ Wise.opieConditionals = {
 	{ name = "zoneability", desc = "Zone ability is available (garrison, covenant, etc)" },
 	{ name = "aml:slot name", desc = "Addon Loading Magic slot is active", skipeval = true },
 
-	-- Flight (ported from OPie). Three tokens because "can I fly here" is not one
-	-- question: the zone may allow it, the character may have skyriding, and it may
-	-- be suppressed despite both.
+	-- Flight. Three tokens because "can I fly here" is not one question: the zone
+	-- may allow it, the character may have skyriding, and it may be suppressed
+	-- despite both.
 	{ type = "header", text = "Flight" },
 	{ name = "superflyable", desc = "Skyriding / advanced flight available here" },
 	{ name = "blockedflyable", desc = "Flyable zone, but flight is currently suppressed" },
 	{ name = "anyflyable", desc = "Any form of flight is usable here" },
 
-	-- Content state (ported from OPie, plus the new Wise-only [delve])
+	-- Content state (includes the Wise-only [delve])
 	{ type = "header", text = "Content State" },
 	{ name = "warbank", desc = "Warband bank is reachable" },
 	{ name = "prey", desc = "Currently hunting Prey" },
@@ -343,10 +343,10 @@ Wise.opieConditionals = {
 	{ name = "selfbuff:name", desc = "Player has helpful aura", combatRestricted = true },
 	{ name = "selfdebuff:name", desc = "Player has harmful aura", combatRestricted = true },
 	{ name = "combo:n", desc = "Combo points >= n", combatRestricted = true },
-	-- [near:] and [bar:] are intentionally absent: [near:] needs OPie's object
-	-- proximity scanner, and [bar:] its future-aware paging. Use the native
-	-- [actionbar:n] for the latter. Listing them here without an implementation is
-	-- what made the whole tab untrustworthy.
+	-- [near:] and [bar:] are intentionally absent: [near:] would need an object
+	-- proximity scanner Wise doesn't have, and [bar:] future-aware paging. Use the
+	-- native [actionbar:n] for the latter. Listing them here without an
+	-- implementation is what made the whole tab untrustworthy.
 
 	-- UI Interaction
 	{ type = "header", text = "UI Interaction" },
@@ -431,7 +431,7 @@ function Wise:UpdateConditionalsTab()
 	local list
 	if Wise.conditionalsSubTab == "wise" then
 		list = {}
-		for _, item in ipairs(Wise.opieConditionals) do
+		for _, item in ipairs(Wise.extendedConditionals) do
 			table.insert(list, item)
 		end
 

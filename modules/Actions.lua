@@ -5494,7 +5494,7 @@ function Wise:CreateIconPicker(parent)
 	end)
 	-- Start with this button hidden if we want cleaner init, but parent logic handles it
 
-	-- Container for OPie IconSelector
+	-- Container for the icon selector widget
 	ip.Frame = CreateFrame("Frame", nil, parent)
 	ip.Frame:SetPoint("TOPLEFT", 10, -50)
 	ip.Frame:SetPoint("BOTTOMRIGHT", -10, 10)

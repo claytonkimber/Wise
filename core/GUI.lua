@@ -471,9 +471,10 @@ end
 --
 -- A token MUST be listed here to have any effect. The options window keeps two
 -- other tables — VALID_CONDITIONALS (accept/reject in the editor) and
--- opieConditionals (the displayed reference list) — and a token present there
--- but missing here passes validation, falls through to SecureCmdOptionParse,
--- and silently evaluates false forever. All three tables have to agree.
+-- extendedConditionals (the displayed reference list) — and a token present
+-- there but missing here passes validation, falls through to
+-- SecureCmdOptionParse, and silently evaluates false forever. All three
+-- tables have to agree.
 local CUSTOM_VIS_CONDITIONALS = {
 	["guildbank"] = true,
 	["bank"] = true,
@@ -495,18 +496,18 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["horde"] = true,
 	["alliance"] = true,
 	["mercenary"] = true,
-	["merc"] = true, -- OPie's short alias for [mercenary]
+	["merc"] = true, -- short alias for [mercenary]
 	["prof"] = true,
 
-	-- Ported from OPie 8.3–8.8. All are out-of-combat-stable (or close enough that
-	-- the 0.5s ticker is the right cadence), which is why they are here and not in
-	-- COMBAT_SAMPLED.
-	["warbank"] = true, -- 8.8: warband bank reachable
-	["prey"] = true, -- 8.8: hunting Prey
-	["housereturn"] = true, -- 8.6: can return from a visited house
+	-- Extended content-state conditionals. All are out-of-combat-stable (or close
+	-- enough that the 0.5s ticker is the right cadence), which is why they are
+	-- here and not in COMBAT_SAMPLED.
+	["warbank"] = true, -- warband bank reachable
+	["prey"] = true, -- hunting Prey
+	["housereturn"] = true, -- can return from a visited house
 	["myth"] = true, -- active M+ keystone
 	["coven"] = true, -- Shadowlands covenant
-	["covenant"] = true, -- OPie alias for [coven]
+	["covenant"] = true, -- alias for [coven]
 	["uslot"] = true, -- equipment slot with a usable (on-use) item
 	["superflyable"] = true, -- steady/skyriding flight available here
 	["blockedflyable"] = true, -- flight suppressed despite a flyable zone
@@ -542,9 +543,9 @@ local CUSTOM_VIS_CONDITIONALS = {
 -- sampled at PLAYER_REGEN_DISABLED and held until combat ends. Out of combat
 -- they evaluate live like any other token.
 --
--- (OPie can do better here only because it pushes values into a secure snippet
--- environment via KR:SetStateConditionalValue. Matching that would mean a
--- secure proxy frame; deliberately not done.)
+-- (A secure proxy frame that pushes values into a protected snippet environment
+-- could sample live during combat instead of freezing at entry; deliberately
+-- not built — the complexity isn't justified yet.)
 local COMBAT_SAMPLED = {
 	["moving"] = true,
 	["falling"] = true,
@@ -644,8 +645,8 @@ end
 Wise.IsGroupAvailableNow = IsGroupAvailableNow
 
 -- Case-insensitive "does this comma-free argument list contain `want`" test.
--- OPie's parameterised tokens accept alternatives as [race:orc/troll], and a
--- bare [zone:] with no argument is treated as "any", matching its behaviour.
+-- Parameterised tokens accept alternatives as [race:orc/troll], and a bare
+-- [zone:] with no argument is treated as "any".
 local function ArgMatches(arg, want)
 	if not arg or arg == "" then
 		return true
@@ -687,7 +688,7 @@ local function ArgMatchesAny(arg, value)
 	return false
 end
 
--- Numeric threshold tokens ([level:70], [combo:3]) are ">= n", per OPie.
+-- Numeric threshold tokens ([level:70], [combo:3]) mean ">= n".
 local function AtLeast(arg, actual)
 	local n = tonumber(arg)
 	if not n then
@@ -697,7 +698,7 @@ local function AtLeast(arg, actual)
 end
 
 -- [prof:name] — matches a known profession by localised name, and by the short
--- English aliases OPie accepts so imported conditions keep working.
+-- English aliases below so imported conditions keep working across locales.
 local PROF_ALIASES = {
 	alch = "Alchemy",
 	bs = "Blacksmithing",
@@ -759,9 +760,9 @@ local function GCDEndTime()
 end
 
 -- [ready:spell] — spell or item is off cooldown, ignoring the GCD.
--- A spell whose cooldown ends within the GCD counts as ready, matching OPie: you
--- are about to be able to cast it, and a bar that hides for the length of every
--- global would flicker constantly.
+-- A spell whose cooldown ends within the GCD counts as ready: you are about to
+-- be able to cast it, and a bar that hides for the length of every global would
+-- flicker constantly.
 local function IsSpellOrItemReady(arg)
 	if not arg or arg == "" then
 		return false
@@ -834,7 +835,7 @@ local function HasItemInBags(arg)
 	return ok and (count or 0) > 0
 end
 
--- ── Ported OPie conditionals ────────────────────────────────────────────────
+-- ── Extended content-state conditionals ─────────────────────────────────────
 
 -- [warbank] — the warband bank is reachable. FetchBankLockedReason(2) returns a
 -- reason code when it is NOT available, and nil when it is.
@@ -857,8 +858,8 @@ local function IsInActiveDelve()
 	return ok and v and true or false
 end
 
--- [prey] / [prey:questID] — hunting Prey. OPie gates on the widget's shownState
--- as well as the quest being active, because the quest can linger while the hunt
+-- [prey] / [prey:questID] — hunting Prey. Gated on the widget's shownState as
+-- well as the quest being active, because the quest can linger while the hunt
 -- is not actually running.
 local PREY_WIDGET_ID = 7663
 local function GetActivePrey()
@@ -901,7 +902,7 @@ local function GetActiveKeystone()
 end
 
 -- [coven:kyrian/venthyr/fae/necro] — Shadowlands covenant. Index order matches
--- Blizzard's covenant IDs; each entry carries OPie's short and long spellings.
+-- Blizzard's covenant IDs; each entry carries both a short and long spelling.
 local COVENANT_TOKENS = {
 	[1] = "kyrian",
 	[2] = "venthyr",
@@ -920,8 +921,8 @@ local function GetCovenantToken()
 end
 
 -- [uslot:trinket1/head/...] — an equipped item in that slot has an ON-USE effect.
--- OPie resolves the item's spell and rejects passives; a slot whose item merely
--- has a passive proc must not satisfy this.
+-- Resolves the item's spell and rejects passives; a slot whose item merely has
+-- a passive proc must not satisfy this.
 local USLOT_SLOTS = {
 	head = "HEADSLOT",
 	neck = "NECKSLOT",
@@ -965,8 +966,8 @@ local function SlotHasUsableItem(token)
 	return okPassive and not isPassive
 end
 
--- Flight state. OPie splits this three ways because "can I fly here" is not one
--- question: the zone may permit flight, the character may have skyriding, and a
+-- Flight state, split three ways because "can I fly here" is not one question:
+-- the zone may permit flight, the character may have skyriding, and a
 -- buff/zone effect may suppress it despite both.
 local function IsSuperFlyable()
     -- Advanced (skyriding) flight available in this area.
@@ -983,10 +984,10 @@ local function IsPlainFlyable()
 end
 -- [worldhover] — the cursor is over the 3D world rather than any UI frame.
 --
--- OPie answers this with a full-screen secure frame at strata BACKGROUND and
--- IsMouseMotionFocus, which works in combat. Wise has no such frame, so we ask
--- GetMouseFoci() whether anything other than WorldFrame/UIParent is under the
--- cursor. That is accurate out of combat, which is where Wise can act on it.
+-- A full-screen secure frame at strata BACKGROUND with IsMouseMotionFocus would
+-- work in combat too, but Wise has no such frame, so we ask GetMouseFoci()
+-- whether anything other than WorldFrame/UIParent is under the cursor. That is
+-- accurate out of combat, which is where Wise can act on it.
 local function IsMouseOverWorld()
 	local foci
 	if GetMouseFoci then
@@ -1011,7 +1012,7 @@ end
 local function IsFlightBlocked()
 	-- Flyable zone, but the character cannot actually take off: the usual cause is
 	-- a zone/phase restriction. Approximated as "zone says flyable, neither flight
-	-- mode is usable" — Wise has no secure driver to ask the way OPie does.
+	-- mode is usable" — Wise has no secure driver to ask directly.
 	if not IsPlainFlyable() then
 		return false
 	end
@@ -1029,8 +1030,8 @@ end
 --
 -- Aura secrecy: while the client withholds aura data (12.0+ combat in M+/raid/
 -- PvP content) names read back as secret values, and comparing them yields
--- nonsense. OPie returns "lockdown" in that state; Wise has no such tri-state
--- here, so we report false — the token simply stops matching for the duration.
+-- nonsense. Wise has no tri-state for "unknown, ask again later", so we report
+-- false — the token simply stops matching for the duration.
 -- Combined with the combat-sampling freeze above, an aura token evaluated BEFORE
 -- combat keeps its entry value anyway, so the practical effect is limited to
 -- tokens first seen mid-fight.
@@ -1122,8 +1123,8 @@ function EvalCustomToken(token, groupName, forceLive)
 		local key = t:match("^[^:]+:(.+)$")
 		result = IsGroupAvailableNow(groupName, key)
 
-	-- Location. [zone:] matches either the real zone or the sub-zone, as OPie does,
-	-- so [zone:Dornogal] and [zone:The Radiant Sanctum] both work.
+	-- Location. [zone:] matches either the real zone or the sub-zone, so
+	-- [zone:Dornogal] and [zone:The Radiant Sanctum] both work.
 	elseif base == "zone" then
 		result = ArgMatches(arg, GetRealZoneText()) or ArgMatches(arg, GetSubZoneText())
 	elseif base == "instance" or base == "in" then
@@ -1151,7 +1152,7 @@ function EvalCustomToken(token, groupName, forceLive)
 	elseif base == "prof" then
 		result = HasProfession(arg)
 
-	-- ── Ported from OPie ────────────────────────────────────────────────
+	-- ── Extended content-state tokens ──────────────────────────────────
 	elseif base == "warbank" then
 		result = IsWarbandBankAvailable()
 	elseif base == "delve" then

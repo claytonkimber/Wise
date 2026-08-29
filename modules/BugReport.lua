@@ -170,7 +170,7 @@ function Wise:CaptureRuntimeState()
 	end
 
 	CheckList(Wise.builtinConditionals, "builtin")
-	CheckList(Wise.opieConditionals, "wise")
+	CheckList(Wise.extendedConditionals, "wise")
 
 	-- 4. System State
 	state.system = {

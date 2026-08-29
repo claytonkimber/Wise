@@ -1,6 +1,6 @@
 -- Nesting.lua
 -- Centralizes all nesting rules, options, and conditionals for Wise interfaces.
--- Inspired by OPie's sub-collection model (rotation modes, open triggers, scroll navigation).
+-- Modeled on a sub-collection design (rotation modes, open triggers, scroll navigation).
 local addonName, Wise = ...
 
 ---------------------------------------------------------------------------

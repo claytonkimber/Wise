@@ -4280,7 +4280,7 @@ RenderConditionalList = function(pickerFrame, listType)
 	end
 
 	local content = pickerFrame.listContent
-	local list = (listType == "wise") and Wise.opieConditionals or Wise.builtinConditionals
+	local list = (listType == "wise") and Wise.extendedConditionals or Wise.builtinConditionals
 	if not list then
 		return
 	end
