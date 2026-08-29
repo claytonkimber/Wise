@@ -468,6 +468,12 @@ end
 
 -- All custom conditionals that are NOT understood by WoW's secure state driver.
 -- Used by BuildVisibilityDriver (SanitizeCustom) and UpdateGroupDisplay (CheckCustomVisibility).
+--
+-- A token MUST be listed here to have any effect. The options window keeps two
+-- other tables — VALID_CONDITIONALS (accept/reject in the editor) and
+-- opieConditionals (the displayed reference list) — and a token present there
+-- but missing here passes validation, falls through to SecureCmdOptionParse,
+-- and silently evaluates false forever. All three tables have to agree.
 local CUSTOM_VIS_CONDITIONALS = {
 	["guildbank"] = true,
 	["bank"] = true,
@@ -476,7 +482,115 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["zoneability"] = true,
 	["undermouse"] = true,
 	["available"] = true,
+
+	-- Location / character identity. These only change out of combat, so the
+	-- 0.5s ticker in UpdateGroupDisplay re-drives visibility for them normally.
+	["zone"] = true,
+	["instance"] = true,
+	["in"] = true,
+	["me"] = true,
+	["level"] = true,
+	["race"] = true,
+	["game"] = true,
+	["horde"] = true,
+	["alliance"] = true,
+	["mercenary"] = true,
+	["merc"] = true, -- OPie's short alias for [mercenary]
+	["prof"] = true,
+
+	-- Ported from OPie 8.3–8.8. All are out-of-combat-stable (or close enough that
+	-- the 0.5s ticker is the right cadence), which is why they are here and not in
+	-- COMBAT_SAMPLED.
+	["warbank"] = true, -- 8.8: warband bank reachable
+	["prey"] = true, -- 8.8: hunting Prey
+	["housereturn"] = true, -- 8.6: can return from a visited house
+	["myth"] = true, -- active M+ keystone
+	["coven"] = true, -- Shadowlands covenant
+	["covenant"] = true, -- OPie alias for [coven]
+	["uslot"] = true, -- equipment slot with a usable (on-use) item
+	["superflyable"] = true, -- steady/skyriding flight available here
+	["blockedflyable"] = true, -- flight suppressed despite a flyable zone
+	["anyflyable"] = true, -- any form of flight available
+	["worldhover"] = true, -- mouse over the 3D world, not the UI
+
+	-- Delves report instanceType=="scenario" like several other content types, so
+	-- native [instance:] can't identify one specifically. Out-of-combat-stable:
+	-- entering/leaving a Delve always happens via a loading screen, never mid-fight.
+	["delve"] = true,
+
+	-- Pet / weapon state.
+	["havepet"] = true,
+	["petcontrol"] = true,
+	["imbuedmh"] = true,
+	["imbuedoh"] = true,
+
+	-- Combat-sampled: value is frozen at combat entry (see COMBAT_SAMPLED).
+	["moving"] = true,
+	["falling"] = true,
+	["ready"] = true,
+	["have"] = true,
+	["buff"] = true,
+	["debuff"] = true,
+	["selfbuff"] = true,
+	["selfdebuff"] = true,
+	["combo"] = true,
 }
+
+-- Tokens whose underlying state can change mid-combat. Wise drives visibility
+-- from insecure Lua, which cannot touch secure attributes during lockdown, so
+-- these cannot re-drive visibility while combat is up. Instead their value is
+-- sampled at PLAYER_REGEN_DISABLED and held until combat ends. Out of combat
+-- they evaluate live like any other token.
+--
+-- (OPie can do better here only because it pushes values into a secure snippet
+-- environment via KR:SetStateConditionalValue. Matching that would mean a
+-- secure proxy frame; deliberately not done.)
+local COMBAT_SAMPLED = {
+	["moving"] = true,
+	["falling"] = true,
+	["ready"] = true,
+	["have"] = true,
+	["buff"] = true,
+	["debuff"] = true,
+	["selfbuff"] = true,
+	["selfdebuff"] = true,
+	["combo"] = true,
+}
+
+-- Frozen values for COMBAT_SAMPLED tokens, keyed by the full token text
+-- (e.g. "combo:3") so parameterised forms each get their own sample.
+local combatSamples = {}
+local combatSampleKeys = {}
+
+-- Record a token we evaluated, so combat entry knows what to sample.
+local function NoteCombatSampledToken(token)
+	if not combatSampleKeys[token] then
+		combatSampleKeys[token] = true
+	end
+end
+
+-- Forward declaration: the sampler needs EvalCustomToken, defined below.
+local EvalCustomToken
+
+-- Called at PLAYER_REGEN_DISABLED. Evaluates every combat-sampled token seen so
+-- far and freezes the result for the duration of combat.
+function Wise.SampleCombatConditionals()
+	if not EvalCustomToken then
+		return
+	end
+	wipe(combatSamples)
+	for token in pairs(combatSampleKeys) do
+		-- Evaluate without the frozen-value shortcut by sampling before lockdown
+		-- semantics apply. pcall keeps a bad token from breaking combat entry.
+		local ok, value = pcall(EvalCustomToken, token, nil, true)
+		combatSamples[token] = ok and value or false
+	end
+end
+
+-- Called at PLAYER_REGEN_ENABLED. Drops the frozen values so tokens go live again.
+function Wise.ClearCombatConditionalSamples()
+	wipe(combatSamples)
+end
 
 -- Availability providers for the [available] conditional, keyed by group name.
 -- A module owning a dynamically-populated interface registers a function here that
@@ -529,9 +643,437 @@ end
 
 Wise.IsGroupAvailableNow = IsGroupAvailableNow
 
+-- Case-insensitive "does this comma-free argument list contain `want`" test.
+-- OPie's parameterised tokens accept alternatives as [race:orc/troll], and a
+-- bare [zone:] with no argument is treated as "any", matching its behaviour.
+local function ArgMatches(arg, want)
+	if not arg or arg == "" then
+		return true
+	end
+	if not want then
+		return false
+	end
+	want = tostring(want):lower()
+	for piece in arg:lower():gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" and piece == want then
+			return true
+		end
+	end
+	return false
+end
+
+-- Like ArgMatches, but the VALUE side also carries /-separated alternatives —
+-- e.g. the covenant token "fae/nightfae" accepts either spelling. Matches when
+-- any requested alternative equals any value alternative.
+local function ArgMatchesAny(arg, value)
+	if not arg or arg == "" then
+		return true
+	end
+	if not value then
+		return false
+	end
+	for want in arg:lower():gmatch("[^/]+") do
+		want = want:match("^%s*(.-)%s*$")
+		if want ~= "" then
+			for have in tostring(value):lower():gmatch("[^/]+") do
+				have = have:match("^%s*(.-)%s*$")
+				if have == want then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- Numeric threshold tokens ([level:70], [combo:3]) are ">= n", per OPie.
+local function AtLeast(arg, actual)
+	local n = tonumber(arg)
+	if not n then
+		return false
+	end
+	return (tonumber(actual) or 0) >= n
+end
+
+-- [prof:name] — matches a known profession by localised name, and by the short
+-- English aliases OPie accepts so imported conditions keep working.
+local PROF_ALIASES = {
+	alch = "Alchemy",
+	bs = "Blacksmithing",
+	ench = "Enchanting",
+	engi = "Engineering",
+	herb = "Herbalism",
+	insc = "Inscription",
+	jc = "Jewelcrafting",
+	lw = "Leatherworking",
+	mine = "Mining",
+	skin = "Skinning",
+	tail = "Tailoring",
+	cook = "Cooking",
+	fish = "Fishing",
+	firstaid = "First Aid",
+}
+
+local function HasProfession(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	if not GetProfessions then
+		return false
+	end
+	-- Resolve aliases to their English names before comparing.
+	local wanted = {}
+	for piece in arg:lower():gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" then
+			wanted[piece] = true
+			local full = PROF_ALIASES[piece]
+			if full then
+				wanted[full:lower()] = true
+			end
+		end
+	end
+	for _, index in ipairs({ GetProfessions() }) do
+		local name = index and GetProfessionInfo(index)
+		if name and wanted[name:lower()] then
+			return true
+		end
+	end
+	return false
+end
+
+-- Spell 61304 is the shared global-cooldown "spell"; reading its cooldown is how
+-- you get the CURRENT gcd, which is haste-scaled and differs by class (1.0s for
+-- some, 1.5s baseline). Never hardcode 1.5 — that misreports readiness for any
+-- hasted character. Returns the timestamp the GCD ends, or math.huge if unknown.
+local function GCDEndTime()
+	if not (C_Spell and C_Spell.GetSpellCooldown) then
+		return math.huge
+	end
+	local ok, info = pcall(C_Spell.GetSpellCooldown, 61304)
+	if not ok or not info or not info.startTime or not info.duration then
+		return math.huge
+	end
+	return info.startTime + info.duration
+end
+
+-- [ready:spell] — spell or item is off cooldown, ignoring the GCD.
+-- A spell whose cooldown ends within the GCD counts as ready, matching OPie: you
+-- are about to be able to cast it, and a bar that hides for the length of every
+-- global would flicker constantly.
+local function IsSpellOrItemReady(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	local gcdEnd = GCDEndTime()
+
+	-- Each /-separated alternative is checked; any one ready satisfies the token.
+	for piece in tostring(arg):gmatch("[^/]+") do
+		piece = piece:match("^%s*(.-)%s*$")
+		if piece ~= "" then
+			local id = tonumber(piece) or piece
+
+			-- Spell first. An unknown spell yields no usable cooldown info, in which
+			-- case we must FALL THROUGH to the item lookup rather than returning —
+			-- C_Spell.GetSpellCooldown can hand back a table for a name it does not
+			-- know, which would otherwise swallow every item argument.
+			local handled = false
+			if C_Spell and C_Spell.GetSpellCooldown then
+				local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+				if ok and info and info.duration then
+					handled = true
+					local duration = info.duration or 0
+					if duration == 0 then
+						return true
+					end
+					local endsAt = (info.startTime or 0) + duration
+					if endsAt <= gcdEnd then
+						return true
+					end
+				end
+			end
+
+			-- Item fallback. C_Item.GetItemCooldown returns start=0,duration=0 for an
+			-- item that DOES NOT EXIST, which is indistinguishable from a real item
+			-- that is off cooldown — so [ready:NoSuchThing] reported true. Confirm
+			-- the item resolves first; GetItemInfoInstant returns nil for garbage.
+			if not handled and C_Item and C_Item.GetItemCooldown then
+				local resolves = false
+				if C_Item.GetItemInfoInstant then
+					local infoOk, itemID = pcall(C_Item.GetItemInfoInstant, id)
+					resolves = infoOk and itemID ~= nil
+				end
+				if resolves then
+					local ok, start, duration = pcall(C_Item.GetItemCooldown, id)
+					if ok and start then
+						if (duration or 0) == 0 then
+							return true
+						end
+						if (start + duration) <= gcdEnd then
+							return true
+						end
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- [have:item] — item is present in bags.
+local function HasItemInBags(arg)
+	if not arg or arg == "" then
+		return false
+	end
+	if not (C_Item and C_Item.GetItemCount) then
+		return false
+	end
+	local id = tonumber(arg) or arg
+	local ok, count = pcall(C_Item.GetItemCount, id)
+	return ok and (count or 0) > 0
+end
+
+-- ── Ported OPie conditionals ────────────────────────────────────────────────
+
+-- [warbank] — the warband bank is reachable. FetchBankLockedReason(2) returns a
+-- reason code when it is NOT available, and nil when it is.
+local function IsWarbandBankAvailable()
+	if not (C_Bank and C_Bank.FetchBankLockedReason) then
+		return false
+	end
+	local ok, reason = pcall(C_Bank.FetchBankLockedReason, 2)
+	return ok and reason == nil
+end
+
+-- [delve] — currently inside a Delve. Native [instance:] can't distinguish a
+-- Delve from other scenario-type content, since Delves report
+-- instanceType == "scenario" just like several other content types.
+local function IsInActiveDelve()
+	if not (C_DelvesUI and C_DelvesUI.HasActiveDelve) then
+		return false
+	end
+	local ok, v = pcall(C_DelvesUI.HasActiveDelve)
+	return ok and v and true or false
+end
+
+-- [prey] / [prey:questID] — hunting Prey. OPie gates on the widget's shownState
+-- as well as the quest being active, because the quest can linger while the hunt
+-- is not actually running.
+local PREY_WIDGET_ID = 7663
+local function GetActivePrey()
+	if not (C_QuestLog and C_QuestLog.GetActivePreyQuest) then
+		return nil
+	end
+	local ok, qid = pcall(C_QuestLog.GetActivePreyQuest)
+	if not ok or not qid then
+		return nil
+	end
+	local doneOk, isComplete = pcall(C_QuestLog.IsComplete, qid)
+	if doneOk and isComplete then
+		return nil
+	end
+	if C_UIWidgetManager and C_UIWidgetManager.GetPreyHuntProgressWidgetVisualizationInfo then
+		local vOk, viz = pcall(C_UIWidgetManager.GetPreyHuntProgressWidgetVisualizationInfo, PREY_WIDGET_ID)
+		if not vOk or not viz or viz.shownState ~= 1 then
+			return nil
+		end
+	end
+	return tostring(qid)
+end
+
+-- [myth] / [myth:token] — an M+ keystone run is active. The bare form is true
+-- during any run; the argument form matches the dungeon's map ID or its name.
+local function GetActiveKeystone()
+	if not (C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo) then
+		return nil
+	end
+	local ok, level = pcall(C_ChallengeMode.GetActiveKeystoneInfo)
+	if not ok or not level or level <= 0 then
+		return nil
+	end
+	local mapOk, mapID = pcall(C_ChallengeMode.GetActiveChallengeMapID)
+	if not mapOk or not mapID then
+		return tostring(level)
+	end
+	local nameOk, name = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+	return (nameOk and name) and (tostring(mapID) .. "/" .. tostring(name)) or tostring(mapID)
+end
+
+-- [coven:kyrian/venthyr/fae/necro] — Shadowlands covenant. Index order matches
+-- Blizzard's covenant IDs; each entry carries OPie's short and long spellings.
+local COVENANT_TOKENS = {
+	[1] = "kyrian",
+	[2] = "venthyr",
+	[3] = "fae/nightfae",
+	[4] = "necro/necrolord",
+}
+local function GetCovenantToken()
+	if not (C_Covenants and C_Covenants.GetActiveCovenantID) then
+		return nil
+	end
+	local ok, id = pcall(C_Covenants.GetActiveCovenantID)
+	if not ok or not id or id == 0 then
+		return nil
+	end
+	return COVENANT_TOKENS[id]
+end
+
+-- [uslot:trinket1/head/...] — an equipped item in that slot has an ON-USE effect.
+-- OPie resolves the item's spell and rejects passives; a slot whose item merely
+-- has a passive proc must not satisfy this.
+local USLOT_SLOTS = {
+	head = "HEADSLOT",
+	neck = "NECKSLOT",
+	shoulders = "SHOULDERSLOT",
+	shirt = "SHIRTSLOT",
+	chest = "CHESTSLOT",
+	waist = "WAISTSLOT",
+	legs = "LEGSSLOT",
+	feet = "FEETSLOT",
+	wrist = "WRISTSLOT",
+	hands = "HANDSSLOT",
+	finger1 = "FINGER0SLOT",
+	finger2 = "FINGER1SLOT",
+	trinket1 = "TRINKET0SLOT",
+	trinket2 = "TRINKET1SLOT",
+	back = "BACKSLOT",
+	tabard = "TABARDSLOT",
+}
+local function SlotHasUsableItem(token)
+	local slotKey = USLOT_SLOTS[token]
+	if not slotKey then
+		return false
+	end
+	local okSlot, slotIndex = pcall(GetInventorySlotInfo, slotKey)
+	if not okSlot or not slotIndex then
+		return false
+	end
+	local link = GetInventoryItemLink and GetInventoryItemLink("player", slotIndex)
+	local ref = link or (GetInventoryItemID and GetInventoryItemID("player", slotIndex))
+	if not ref then
+		return false
+	end
+	if not (C_Item and C_Item.GetItemSpell) then
+		return false
+	end
+	local okSpell, _, spellID = pcall(C_Item.GetItemSpell, ref)
+	if not okSpell or not spellID then
+		return false
+	end
+	local okPassive, isPassive = pcall(IsPassiveSpell, spellID)
+	return okPassive and not isPassive
+end
+
+-- Flight state. OPie splits this three ways because "can I fly here" is not one
+-- question: the zone may permit flight, the character may have skyriding, and a
+-- buff/zone effect may suppress it despite both.
+local function IsSuperFlyable()
+    -- Advanced (skyriding) flight available in this area.
+	local ok, v = pcall(function()
+		return IsAdvancedFlyableArea and IsAdvancedFlyableArea()
+	end)
+	return ok and v and true or false
+end
+local function IsPlainFlyable()
+	local ok, v = pcall(function()
+		return IsFlyableArea and IsFlyableArea()
+	end)
+	return ok and v and true or false
+end
+-- [worldhover] — the cursor is over the 3D world rather than any UI frame.
+--
+-- OPie answers this with a full-screen secure frame at strata BACKGROUND and
+-- IsMouseMotionFocus, which works in combat. Wise has no such frame, so we ask
+-- GetMouseFoci() whether anything other than WorldFrame/UIParent is under the
+-- cursor. That is accurate out of combat, which is where Wise can act on it.
+local function IsMouseOverWorld()
+	local foci
+	if GetMouseFoci then
+		local ok, result = pcall(GetMouseFoci)
+		foci = ok and result or nil
+	elseif GetMouseFocus then
+		local ok, result = pcall(GetMouseFocus)
+		foci = ok and result and { result } or nil
+	end
+	if not foci then
+		return false
+	end
+	for _, frame in ipairs(foci) do
+		if frame and frame ~= WorldFrame and frame ~= UIParent then
+			-- A real UI frame has the cursor: not hovering the world.
+			return false
+		end
+	end
+	return true
+end
+
+local function IsFlightBlocked()
+	-- Flyable zone, but the character cannot actually take off: the usual cause is
+	-- a zone/phase restriction. Approximated as "zone says flyable, neither flight
+	-- mode is usable" — Wise has no secure driver to ask the way OPie does.
+	if not IsPlainFlyable() then
+		return false
+	end
+	local mounted = IsMounted and IsMounted()
+	local gliding = false
+	if C_PlayerInfo and C_PlayerInfo.GetGlidingInfo then
+		local ok, info = pcall(C_PlayerInfo.GetGlidingInfo)
+		gliding = ok and info and true or false
+	end
+	return not (mounted or gliding) and not IsSuperFlyable()
+end
+
+-- [buff:]/[debuff:]/[selfbuff:]/[selfdebuff:] — aura present on a unit.
+-- Matches by aura name, case-insensitively, across the /-separated alternatives.
+--
+-- Aura secrecy: while the client withholds aura data (12.0+ combat in M+/raid/
+-- PvP content) names read back as secret values, and comparing them yields
+-- nonsense. OPie returns "lockdown" in that state; Wise has no such tri-state
+-- here, so we report false — the token simply stops matching for the duration.
+-- Combined with the combat-sampling freeze above, an aura token evaluated BEFORE
+-- combat keeps its entry value anyway, so the practical effect is limited to
+-- tokens first seen mid-fight.
+local function HasAura(unit, arg, filter)
+	if not arg or arg == "" then
+		return false
+	end
+	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+		return false
+	end
+	if not UnitExists(unit) then
+		return false
+	end
+	-- Never compare secret aura names; the result would be meaningless.
+	if Wise.Compat and Wise.Compat.AreAurasSecret and Wise.Compat.AreAurasSecret() then
+		return false
+	end
+	for i = 1, 40 do
+		local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, filter)
+		if not ok or not data then
+			break
+		end
+		local name = data.name
+		-- A secret name must not reach the comparison even if the query above
+		-- reported clear (state can flip between the two calls). checkSecret is
+		-- the hoisted probe used everywhere else in this file; it must be pcall'd
+		-- because touching a secret value can itself throw.
+		local secretOk, isSecret = pcall(checkSecret, name)
+		if name and secretOk and not isSecret and ArgMatches(arg, name) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Evaluate a single custom conditional token. Returns true/false.
 -- `groupName` provides context for group-scoped tokens such as [available].
-local function EvalCustomToken(token, groupName)
+-- `forceLive` bypasses the frozen-sample shortcut; the combat-entry sampler uses
+-- it to read the true value at the moment lockdown begins.
+--
+-- Assigns to the local forward-declared above so SampleCombatConditionals can
+-- reach it — do not turn this back into `local function`.
+function EvalCustomToken(token, groupName, forceLive)
 	local negated = false
 	local t = token:match("^%s*(.-)%s*$") -- trim
 	if t:sub(1, 2) == "no" and not CUSTOM_VIS_CONDITIONALS[t:lower()] then
@@ -540,6 +1082,27 @@ local function EvalCustomToken(token, groupName)
 	end
 	local base = t:match("^([^:]+)") or t
 	base = base:lower()
+	local arg = t:match("^[^:]+:(.+)$")
+
+	-- Combat-sampled tokens: out of combat evaluate live and record the token so
+	-- combat entry knows to sample it; in combat return the frozen value.
+	if COMBAT_SAMPLED[base] then
+		NoteCombatSampledToken(t)
+		-- InCombatLockdown is hoisted to an upvalue at the top of this file, so a
+		-- test cannot stub it via _G. Wise._forceCombatSampling is the seam that
+		-- makes the freeze path reachable from tests; it is nil in normal play.
+		local locked = Wise._forceCombatSampling
+		if locked == nil then
+			locked = InCombatLockdown()
+		end
+		if locked and not forceLive then
+			local result = combatSamples[t] or false
+			if negated then
+				result = not result
+			end
+			return result
+		end
+	end
 
 	local result = false
 	if base == "bank" then
@@ -558,6 +1121,111 @@ local function EvalCustomToken(token, groupName)
 		-- providers match it against their own slot names.
 		local key = t:match("^[^:]+:(.+)$")
 		result = IsGroupAvailableNow(groupName, key)
+
+	-- Location. [zone:] matches either the real zone or the sub-zone, as OPie does,
+	-- so [zone:Dornogal] and [zone:The Radiant Sanctum] both work.
+	elseif base == "zone" then
+		result = ArgMatches(arg, GetRealZoneText()) or ArgMatches(arg, GetSubZoneText())
+	elseif base == "instance" or base == "in" then
+		local _, instanceType = GetInstanceInfo()
+		result = ArgMatches(arg, instanceType)
+
+	-- Character identity.
+	elseif base == "me" then
+		local _, class = UnitClass("player")
+		result = ArgMatches(arg, UnitName("player")) or ArgMatches(arg, class)
+	elseif base == "level" then
+		result = AtLeast(arg, UnitLevel("player"))
+	elseif base == "race" then
+		local raceName, raceToken = UnitRace("player")
+		result = ArgMatches(arg, raceToken) or ArgMatches(arg, raceName)
+	elseif base == "game" then
+		-- Wise is retail-only, so the only version token that can match is "modern".
+		result = ArgMatches(arg, "modern")
+	elseif base == "horde" then
+		result = UnitFactionGroup("player") == "Horde"
+	elseif base == "alliance" then
+		result = UnitFactionGroup("player") == "Alliance"
+	elseif base == "mercenary" or base == "merc" then
+		result = (C_PvP and C_PvP.IsMercenary and C_PvP.IsMercenary()) or false
+	elseif base == "prof" then
+		result = HasProfession(arg)
+
+	-- ── Ported from OPie ────────────────────────────────────────────────
+	elseif base == "warbank" then
+		result = IsWarbandBankAvailable()
+	elseif base == "delve" then
+		result = IsInActiveDelve()
+	elseif base == "prey" then
+		-- Bare [prey] = hunting anything; [prey:12345] = that specific quest.
+		local qid = GetActivePrey()
+		result = qid ~= nil and ArgMatches(arg, qid)
+	elseif base == "housereturn" then
+		local ok, v = pcall(function()
+			return C_HousingNeighborhood
+				and C_HousingNeighborhood.CanReturnAfterVisitingHouse
+				and C_HousingNeighborhood.CanReturnAfterVisitingHouse()
+		end)
+		result = ok and v and true or false
+	elseif base == "myth" then
+		-- Value is "mapID/name", so alternatives exist on both sides.
+		local key = GetActiveKeystone()
+		result = key ~= nil and ArgMatchesAny(arg, key)
+	elseif base == "coven" or base == "covenant" then
+		local cov = GetCovenantToken()
+		result = cov ~= nil and (arg == nil or arg == "" or ArgMatchesAny(arg, cov))
+	elseif base == "uslot" then
+		if arg and arg ~= "" then
+			for piece in arg:lower():gmatch("[^/]+") do
+				piece = piece:match("^%s*(.-)%s*$")
+				if piece ~= "" and SlotHasUsableItem(piece) then
+					result = true
+					break
+				end
+			end
+		end
+	elseif base == "superflyable" then
+		result = IsSuperFlyable()
+	elseif base == "blockedflyable" then
+		result = IsFlightBlocked()
+	elseif base == "anyflyable" then
+		result = IsSuperFlyable() or (IsPlainFlyable() and not IsFlightBlocked())
+	elseif base == "worldhover" then
+		result = IsMouseOverWorld()
+
+	-- Pet / weapon state.
+	elseif base == "havepet" then
+		result = UnitExists("pet") and ArgMatches(arg, UnitName("pet")) or false
+	elseif base == "petcontrol" then
+		result = (HasPetUI and HasPetUI()) and true or false
+	elseif base == "imbuedmh" then
+		local hasMH = GetWeaponEnchantInfo()
+		result = hasMH and true or false
+	elseif base == "imbuedoh" then
+		local _, _, _, _, hasOH = GetWeaponEnchantInfo()
+		result = hasOH and true or false
+
+	-- Combat-sampled. Reached only out of combat; the in-combat path returned the
+	-- frozen sample above.
+	elseif base == "moving" then
+		local speedFn = GetUnitSpeed or _G.GetUnitSpeed
+		result = speedFn and (speedFn("player") or 0) > 0 or false
+	elseif base == "falling" then
+		result = IsFalling and IsFalling() and true or false
+	elseif base == "ready" then
+		result = IsSpellOrItemReady(arg)
+	elseif base == "have" then
+		result = HasItemInBags(arg)
+	elseif base == "buff" then
+		result = HasAura("target", arg, "HELPFUL")
+	elseif base == "debuff" then
+		result = HasAura("target", arg, "HARMFUL")
+	elseif base == "selfbuff" then
+		result = HasAura("player", arg, "HELPFUL")
+	elseif base == "selfdebuff" then
+		result = HasAura("player", arg, "HARMFUL")
+	elseif base == "combo" then
+		result = AtLeast(arg, UnitPower("player", Enum.PowerType.ComboPoints))
 	end
 
 	if negated then
@@ -9358,6 +10026,17 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	-- UNIT_*_VEHICLE fire for every unit; only the player matters here.
 	if (event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE") and arg1 ~= "player" then
 		return
+	end
+
+	-- Freeze combat-sampled conditionals ([moving], [combo:3], [buff:name], ...)
+	-- at combat entry, and drop the samples on exit so they evaluate live again.
+	-- Wise drives visibility from insecure Lua and cannot write secure attributes
+	-- during lockdown, so holding the entry value is the honest behaviour: it beats
+	-- reporting a stale-and-drifting live value that can never reach the driver.
+	if event == "PLAYER_REGEN_DISABLED" then
+		Wise.SampleCombatConditionals()
+	elseif event == "PLAYER_REGEN_ENABLED" then
+		Wise.ClearCombatConditionalSamples()
 	end
 	-- Spec/spell changes need a full rebuild (they invalidate the per-character
 	-- graph macroText the snapshot-diff can't see). PLAYER_SPECIALIZATION_CHANGED

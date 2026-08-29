@@ -100,6 +100,11 @@ local VALID_CONDITIONALS = {
 	["@targettarget"] = true,
 
 	-- Wise Custom Conditionals (Handled via Lua/Custom State)
+	--
+	-- Every entry below must also appear in CUSTOM_VIS_CONDITIONALS in core/GUI.lua,
+	-- which is what actually dispatches the token at runtime. A token accepted here
+	-- but missing there validates fine, falls through to SecureCmdOptionParse, and
+	-- silently evaluates false forever.
 	["guildbank"] = true,
 	["bank"] = true,
 	["mailbox"] = true,
@@ -108,6 +113,54 @@ local VALID_CONDITIONALS = {
 	["zoneability"] = true,
 	["undermouse"] = true,
 	["available"] = true,
+
+	-- Ported from OPie: location and character identity.
+	["zone"] = true,
+	["instance"] = true,
+	["in"] = true,
+	["me"] = true,
+	["level"] = true,
+	["race"] = true,
+	["game"] = true,
+	["horde"] = true,
+	["alliance"] = true,
+	["mercenary"] = true,
+	["merc"] = true,
+	["prof"] = true,
+
+	-- Ported from OPie 8.3–8.8.
+	["warbank"] = true,
+	["prey"] = true,
+	["housereturn"] = true,
+	["myth"] = true,
+	["coven"] = true,
+	["covenant"] = true,
+	["uslot"] = true,
+	["superflyable"] = true,
+	["blockedflyable"] = true,
+	["anyflyable"] = true,
+	["worldhover"] = true,
+
+	-- New Wise-only conditional (not from OPie): Delves report instanceType ==
+	-- "scenario" like other content, so native [instance:] can't identify one.
+	["delve"] = true,
+
+	-- Ported from OPie: pet and weapon state.
+	["havepet"] = true,
+	["petcontrol"] = true,
+	["imbuedmh"] = true,
+	["imbuedoh"] = true,
+
+	-- Ported from OPie: combat-sampled (frozen at combat entry, see COMBAT_SAMPLED).
+	["moving"] = true,
+	["falling"] = true,
+	["ready"] = true,
+	["have"] = true,
+	["buff"] = true,
+	["debuff"] = true,
+	["selfbuff"] = true,
+	["selfdebuff"] = true,
+	["combo"] = true,
 }
 
 -- Built-in Conditionals List
@@ -212,7 +265,10 @@ Wise.opieConditionals = {
 
 	-- Location
 	{ name = "zone:name", desc = "Real Zone, Sub Zone, or Zone text", skipeval = true },
-	{ name = "instance:type", desc = "Instance type (dungeon, raid, arena, etc)", skipeval = true },
+	{
+		name = "instance:type",
+		desc = "Instance type: none, party, raid, pvp, arena, or scenario (Delves report as scenario — use [delve] instead)",
+	},
 	{ name = "in:type", desc = "Alias for instance", skipeval = true },
 
 	-- Player Status
@@ -253,20 +309,44 @@ Wise.opieConditionals = {
 	{ name = "zoneability", desc = "Zone ability is available (garrison, covenant, etc)" },
 	{ name = "aml:slot name", desc = "Addon Loading Magic slot is active", skipeval = true },
 
-	-- Non-Secure (Combat Restricted)
-	{ type = "header", text = "Non-Secure Conditionals" },
+	-- Flight (ported from OPie). Three tokens because "can I fly here" is not one
+	-- question: the zone may allow it, the character may have skyriding, and it may
+	-- be suppressed despite both.
+	{ type = "header", text = "Flight" },
+	{ name = "superflyable", desc = "Skyriding / advanced flight available here" },
+	{ name = "blockedflyable", desc = "Flyable zone, but flight is currently suppressed" },
+	{ name = "anyflyable", desc = "Any form of flight is usable here" },
+
+	-- Content state (ported from OPie, plus the new Wise-only [delve])
+	{ type = "header", text = "Content State" },
+	{ name = "warbank", desc = "Warband bank is reachable" },
+	{ name = "prey", desc = "Currently hunting Prey" },
+	{ name = "prey:questID", desc = "Hunting a specific Prey quest", skipeval = true },
+	{ name = "myth", desc = "A Mythic+ keystone run is active" },
+	{ name = "myth:map", desc = "M+ run in a specific dungeon (map ID or name)", skipeval = true },
+	{ name = "housereturn", desc = "Can return after visiting a house" },
+	{ name = "coven:name", desc = "Shadowlands covenant (kyrian/venthyr/fae/necro)", skipeval = true },
+	{ name = "uslot:slot", desc = "Equipped item with an on-use effect (trinket1, head, ...)", skipeval = true },
+	{ name = "worldhover", desc = "Mouse is over the 3D world, not the UI" },
+	{ name = "delve", desc = "Currently inside a Delve" },
+
+	-- Combat-sampled. These evaluate live out of combat. On entering combat their
+	-- value is frozen and held until combat ends, because Wise drives visibility
+	-- from insecure Lua and cannot write secure attributes during lockdown.
+	{ type = "header", text = "Combat-Sampled Conditionals (frozen at combat entry)" },
 	{ name = "moving", desc = "Player is moving", combatRestricted = true },
 	{ name = "falling", desc = "Player is falling", combatRestricted = true },
-	{ name = "ready:spell", desc = "Spell/Item cooldown is ready", combatRestricted = true, skipeval = true },
-	{ name = "have:item", desc = "Player has item in bags", combatRestricted = true, skipeval = true },
-	{ name = "buff:name", desc = "Target has helpful aura", combatRestricted = true, skipeval = true },
-	{ name = "debuff:name", desc = "Target has harmful aura", combatRestricted = true, skipeval = true },
-	{ name = "selfbuff:name", desc = "Player has helpful aura", combatRestricted = true, skipeval = true },
-	{ name = "selfdebuff:name", desc = "Player has harmful aura", combatRestricted = true, skipeval = true },
-	{ name = "cleanse", desc = "Target can be cleansed by player", combatRestricted = true },
-	{ name = "combo:n", desc = "Combo points >= n", combatRestricted = true, skipeval = true },
-	{ name = "near:object", desc = "Near specific object/creature", combatRestricted = true, skipeval = true },
-	{ name = "bar:n", desc = "Action bar page is n (Future-aware)", combatRestricted = true, skipeval = true },
+	{ name = "ready:spell", desc = "Spell/Item cooldown is ready", combatRestricted = true },
+	{ name = "have:item", desc = "Player has item in bags", combatRestricted = true },
+	{ name = "buff:name", desc = "Target has helpful aura", combatRestricted = true },
+	{ name = "debuff:name", desc = "Target has harmful aura", combatRestricted = true },
+	{ name = "selfbuff:name", desc = "Player has helpful aura", combatRestricted = true },
+	{ name = "selfdebuff:name", desc = "Player has harmful aura", combatRestricted = true },
+	{ name = "combo:n", desc = "Combo points >= n", combatRestricted = true },
+	-- [near:] and [bar:] are intentionally absent: [near:] needs OPie's object
+	-- proximity scanner, and [bar:] its future-aware paging. Use the native
+	-- [actionbar:n] for the latter. Listing them here without an implementation is
+	-- what made the whole tab untrustworthy.
 
 	-- UI Interaction
 	{ type = "header", text = "UI Interaction" },
@@ -569,11 +649,13 @@ function Wise:EvaluateCustomCondition(name, args)
 
 	-- Combat Restricted (OOC only checks)
 	elseif check == "moving" then
-		return GetUnitSpeed("player") > 0
+		-- GetUnitSpeed is absent under wow-ui-sim (not stubbed outside its Mists
+		-- bootstrap); calling it unguarded threw and took the whole options-tab
+		-- refresh down with it. Missing API = "not moving".
+		local speedFn = GetUnitSpeed or _G.GetUnitSpeed
+		return speedFn and (speedFn("player") or 0) > 0 or false
 	elseif check == "falling" then
-		return IsFalling()
-	elseif check == "cleanse" then
-		return false
+		return IsFalling and IsFalling() or false
 
 	-- Bank Checks
 	elseif check == "bank" then
@@ -589,6 +671,14 @@ function Wise:EvaluateCustomCondition(name, args)
 	elseif check == "zoneability" then
 		local zoneBtn = Wise:GetZoneAbilitySpellButton()
 		return zoneBtn and zoneBtn.spellID ~= nil
+
+	-- Delve state (new Wise-only conditional, see EvalCustomToken in core/GUI.lua)
+	elseif check == "delve" then
+		if not (C_DelvesUI and C_DelvesUI.HasActiveDelve) then
+			return false
+		end
+		local ok, v = pcall(C_DelvesUI.HasActiveDelve)
+		return ok and v and true or false
 	end
 
 	return false

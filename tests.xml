@@ -404,4 +404,18 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_ConditionalsRestoreAndDelve" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Restored OPie Conditionals + New [delve] Token" type="string"/>
+            <KeyValue key="instructions" value="Verify the ~35 OPie-ported visibility conditionals (lost when a backup branch was never merged, then wiped by a git reset) are evaluable again, and that the new Wise-only [delve] token works.
+1. Open Options &gt; Wise Conditionals tab. Every row under Content State, Flight, Combat-Sampled Conditionals, and the location/character rows near the top must show a live ACTIVE/Inactive status (not stuck on &apos;-&apos;) — this proves EvalCustomToken (core/GUI.lua) has a real branch for each, not just an entry in the display list.
+2. Set a bar&apos;s Custom Show to &apos;[zone:Dornogal]&apos; while in Dornogal and confirm it shows; move to another zone and confirm it hides.
+3. Set Custom Show to &apos;[instance:party]&apos; and confirm it evaluates correctly in/out of a dungeon. Confirm the tooltip/description text for instance:type lists the real GetInstanceInfo() keyword set (none/party/raid/pvp/arena/scenario) and calls out that Delves report as scenario.
+4. NEW TOKEN: enter a Delve. Set Custom Show to &apos;[delve]&apos; on a test bar and confirm it shows only while inside the Delve, and hides immediately on leaving (via loading screen — delve entry/exit cannot happen in combat, so this is intentionally NOT in COMBAT_SAMPLED). Confirm &apos;[instance:delve]&apos; does NOT work (delve reports instanceType=scenario) — this is exactly the failure case [delve] exists to fix.
+5. COMBAT FREEZE: out of combat, set Custom Show to &apos;[moving]&apos; and confirm it tracks live. Enter combat while moving, then stop moving — the slot must stay visible (frozen at the combat-entry sample) until combat ends, then re-evaluate live.
+6. Confirm &apos;[cleanse]&apos;, &apos;[near:...]&apos;, and &apos;[bar:n]&apos; are gone from the Wise Conditionals list (deliberately not restored/ported) and that a saved condition using them now fails ValidateVisibilityCondition instead of silently evaluating false." type="string"/>
+            <KeyValue key="action" value="print(&apos;Conditionals restore test: CUSTOM_VIS_CONDITIONALS/EvalCustomToken in core/GUI.lua and VALID_CONDITIONALS/opieConditionals in core/Conditionals.lua were re-ported from the abandoned snapshot-turtle-hotkeys-backup branch after a git reset --hard wiped main. All three tables must agree on every token or it validates but silently evaluates false forever. [delve] is a NEW Wise-only token (not from OPie) using C_DelvesUI.HasActiveDelve, added because native [instance:] cannot distinguish a Delve from other scenario-type content.&apos;)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>
