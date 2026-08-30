@@ -94,6 +94,8 @@ local HideAllModDropZones
 local RenderConditionalList
 local RenderNodesCanvas
 local RenderActiveTab
+local SyncSlotToggleControls
+local UpdatePasteButtonState
 
 -- UI element pools
 local cellPool = {}
@@ -297,6 +299,53 @@ local function BuildConditionString(groups)
 
 	return table.concat(parts, "")
 end
+
+Wise.ParseConditionString = ParseConditionString
+Wise.BuildConditionString = BuildConditionString
+
+-- Commit active condition builder state back into the target node, row, action, or callback
+local function CommitConditionPicker()
+	if not Wise.pickingCondition or not Wise._conditionPickerState then
+		return
+	end
+	local ps = Wise._conditionPickerState
+	local newCond = BuildConditionString(ps.groups)
+
+	local node = Wise._configuratorConditionNode
+	if node then
+		if node.condition ~= newCond then
+			node.condition = newCond
+			configuratorState.isDirty = true
+		end
+	end
+
+	local row = Wise._configuratorConditionRow
+	if row and configuratorState.rowConditions then
+		if configuratorState.rowConditions[row] ~= newCond then
+			configuratorState.rowConditions[row] = newCond
+			configuratorState.isDirty = true
+		end
+	end
+
+	local act = Wise._conditionPickerAction
+	if act then
+		act.conditions = (newCond ~= "") and newCond or nil
+		if Wise.RefreshActionsView and Wise.OptionsFrame and Wise.OptionsFrame.Middle then
+			Wise:RefreshActionsView(Wise.OptionsFrame.Middle.Content)
+		end
+		C_Timer.After(0, function()
+			if not InCombatLockdown() then
+				Wise:UpdateGroupDisplay(Wise.selectedGroup)
+			end
+		end)
+	end
+
+	if Wise._conditionPickerCallback then
+		Wise._conditionPickerCallback(newCond)
+	end
+end
+Wise.CommitConditionPicker = CommitConditionPicker
+
 
 -- ═══════════════════════════════════════════════════════════════
 -- Import: Slot Data -> Grid
@@ -629,6 +678,116 @@ local function ComputeNodeLayout(graph)
 	end
 
 	return cols, rows
+end
+
+-- Returns the list of nodes in a graph ordered by their visual and execution
+-- sequence in the node graph (lane left-to-right, depth top-to-bottom).
+function Wise:GetOrderedGraphNodes(graph)
+	if not graph or not graph.nodes or #graph.nodes == 0 then
+		return {}
+	end
+
+	local nodes = graph.nodes
+	local conns = graph.connections or {}
+
+	local byId = {}
+	local indeg = {}
+	for _, n in ipairs(nodes) do
+		byId[n.id] = n
+		indeg[n.id] = 0
+	end
+
+	local adj = {}
+	for _, c in ipairs(conns) do
+		if byId[c.from] and byId[c.to] then
+			adj[c.from] = adj[c.from] or {}
+			tinsert(adj[c.from], c.to)
+			indeg[c.to] = (indeg[c.to] or 0) + 1
+		end
+	end
+
+	local laneOf = {}
+	local depthOf = {}
+	local nextLane = 0
+	local laneSeq = {}
+
+	local function newLane()
+		local lane = nextLane
+		nextLane = nextLane + 1
+		tinsert(laneSeq, lane)
+		return lane
+	end
+
+	local function assign(nodeId, lane, depth, visited)
+		if visited[nodeId] then
+			return
+		end
+		visited[nodeId] = true
+		laneOf[nodeId] = lane
+		depthOf[nodeId] = depth
+
+		local kids = adj[nodeId]
+		if not kids or #kids == 0 then
+			return
+		end
+		if #kids == 1 then
+			assign(kids[1], lane, depth + 1, visited)
+		else
+			for _, kid in ipairs(kids) do
+				assign(kid, newLane(), depth + 1, visited)
+			end
+		end
+	end
+
+	local visited = {}
+	for _, node in ipairs(nodes) do
+		if (indeg[node.id] or 0) == 0 then
+			assign(node.id, newLane(), 1, visited)
+		end
+	end
+
+	for _, node in ipairs(nodes) do
+		if not visited[node.id] then
+			assign(node.id, newLane(), 1, visited)
+		end
+	end
+
+	local laneNodes = {}
+	for _, node in ipairs(nodes) do
+		local lane = laneOf[node.id]
+		if lane ~= nil then
+			laneNodes[lane] = laneNodes[lane] or {}
+			tinsert(laneNodes[lane], node)
+		end
+	end
+
+	for _, list in pairs(laneNodes) do
+		table.sort(list, function(a, b)
+			return (depthOf[a.id] or 0) < (depthOf[b.id] or 0)
+		end)
+	end
+
+	local ordered = {}
+	local seen = {}
+	for _, lane in ipairs(laneSeq) do
+		if laneNodes[lane] then
+			for _, node in ipairs(laneNodes[lane]) do
+				if not seen[node.id] then
+					seen[node.id] = true
+					tinsert(ordered, node)
+				end
+			end
+		end
+	end
+
+	for _, node in ipairs(nodes) do
+		if not seen[node.id] then
+			seen[node.id] = true
+			tinsert(ordered, node)
+		end
+	end
+
+	return ordered
 end
 
 local function RebuildGridFromGraph()
@@ -1313,6 +1472,10 @@ local function ExportToSlotData()
 		return
 	end
 
+	if Wise.pickingCondition and Wise._conditionPickerState then
+		CommitConditionPicker()
+	end
+
 	local newActions = CompileGraphToActions(state.graph, actions)
 	group.actions[slotIdx] = newActions
 
@@ -1355,11 +1518,22 @@ local function GetOrCreateMacroPreviewPopup()
 	p.title:SetText("Compiled Macro")
 	p.title:SetTextColor(1, 0.82, 0)
 
+	local closeBtn = CreateFrame("Button", nil, p, "UIPanelCloseButton")
+	closeBtn:SetSize(22, 22)
+	closeBtn:SetPoint("TOPRIGHT", -4, -4)
+	closeBtn:SetScript("OnClick", function()
+		p.pinned = false
+		p:Hide()
+	end)
+
 	p.footer = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	p.footer:SetPoint("BOTTOMLEFT", 12, 10)
 	p.footer:SetPoint("BOTTOMRIGHT", -12, 10)
 	p.footer:SetJustifyH("LEFT")
 	p.footer:SetText("Reflects unsaved changes. Click Apply to commit.")
+
+	_G["WiseMacroPreviewPopup"] = p
+	tinsert(UISpecialFrames, "WiseMacroPreviewPopup")
 
 	-- Scrollable body so very tall macros stay fully readable.
 	p.scroll = CreateFrame("ScrollFrame", "WiseMacroPreviewPopupScroll", p, "UIPanelScrollFrameTemplate")
@@ -2099,12 +2273,7 @@ local function RenderCanvas()
 			rowHdr.editBox:Hide()
 			rowHdr.editBtn:SetScript("OnClick", function()
 				-- Save any currently open condition picker
-				if Wise.pickingCondition and Wise._conditionPickerState then
-					local prevRow = Wise._configuratorConditionRow
-					if prevRow and state.rowConditions then
-						state.rowConditions[prevRow] = BuildConditionString(Wise._conditionPickerState.groups)
-					end
-				end
+				CommitConditionPicker()
 				-- Parse current row condition into structured model
 				Wise._conditionPickerState = {
 					row = r,
@@ -2112,6 +2281,9 @@ local function RenderCanvas()
 					activeGroup = 1,
 				}
 				Wise._configuratorConditionRow = r
+				Wise._configuratorConditionNode = nil
+				Wise._conditionPickerAction = nil
+				Wise._conditionPickerCallback = nil
 				Wise.pickingCondition = true
 				Wise:RefreshPropertiesPanel()
 			end)
@@ -2281,13 +2453,9 @@ local function RenderCanvas()
 							RenderCanvas()
 						end)
 
-						local stackedType = stacked.type
 						sr:SetScript("OnEnter", function(self)
-							GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-							GameTooltip:SetText(sName, 1, 1, 1)
-							if stackedType then
-								GameTooltip:AddLine("Type: " .. stackedType, 0.8, 0.8, 0.8)
-							end
+							Wise:ShowActionTooltip(self, stacked.type, stacked.value, stacked, "ANCHOR_RIGHT")
+							GameTooltip:AddLine(" ")
 							GameTooltip:AddLine("Stacked — fires together with this step.", 0.7, 0.7, 0.9, true)
 							GameTooltip:Show()
 						end)
@@ -2411,15 +2579,11 @@ local function RenderCanvas()
 						RenderCanvas()
 					end)
 
-					local headType = head.type
 					local stackForTip = stackSize
 					cell:SetScript("OnEnter", function(self)
-						GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-						GameTooltip:SetText(name, 1, 1, 1)
-						if headType then
-							GameTooltip:AddLine("Type: " .. headType, 0.8, 0.8, 0.8)
-						end
+						Wise:ShowActionTooltip(self, head.type, head.value, head, "ANCHOR_RIGHT")
 						if stackForTip > 1 then
+							GameTooltip:AddLine(" ")
 							GameTooltip:AddLine(
 								"Stack of " .. stackForTip .. " actions — all fire together.",
 								0.7,
@@ -3224,18 +3388,16 @@ RenderNodesCanvas = function()
 		end
 
 		card.condBtn:SetScript("OnClick", function()
-			if Wise.pickingCondition and Wise._conditionPickerState then
-				local prevNode = Wise._configuratorConditionNode
-				if prevNode then
-					prevNode.condition = BuildConditionString(Wise._conditionPickerState.groups)
-				end
-			end
+			CommitConditionPicker()
 			-- The condition picker is its own overlay — close any other overlay
 			-- (node Properties / availability) so only one occupies the popup area.
 			Wise.editingNodeProperties = false
 			Wise.editingNodePropertiesNode = nil
 			Wise.pickingRestrictions = false
 			Wise.pickingRestrictionsAction = nil
+			Wise._configuratorConditionRow = nil
+			Wise._conditionPickerAction = nil
+			Wise._conditionPickerCallback = nil
 			Wise._conditionPickerState = {
 				groups = ParseConditionString(node.condition or ""),
 				activeGroup = 1,
@@ -3270,6 +3432,21 @@ RenderNodesCanvas = function()
 			Wise._conditionPickerState = nil
 			Wise._configuratorConditionNode = nil
 			Wise:RefreshPropertiesPanel()
+		end)
+
+		card:SetScript("OnEnter", function(self)
+			if drawState.active then
+				return
+			end
+			Wise:ShowActionTooltip(self, a.type, a.value, a, "ANCHOR_RIGHT")
+			if node.condition and node.condition ~= "" then
+				GameTooltip:AddLine(" ")
+				GameTooltip:AddLine("Condition: |cff00ccff" .. node.condition .. "|r", 0.8, 0.8, 0.8, true)
+				GameTooltip:Show()
+			end
+		end)
+		card:SetScript("OnLeave", function()
+			GameTooltip:Hide()
 		end)
 
 		-- The border encodes GCD status: light green when the action is off-GCD
@@ -3882,26 +4059,13 @@ end
 function Wise:OpenConfiguratorPicker(targetRow, targetCol, mode)
 	-- Save and close condition picker if open (without full refresh)
 	if Wise.pickingCondition and Wise._conditionPickerState then
-		local prevRow = Wise._configuratorConditionRow
-		if prevRow and configuratorState.rowConditions then
-			local newCond = BuildConditionString(Wise._conditionPickerState.groups)
-			if configuratorState.rowConditions[prevRow] ~= newCond then
-				configuratorState.rowConditions[prevRow] = newCond
-				configuratorState.isDirty = true
-			end
-		end
-		local prevNode = Wise._configuratorConditionNode
-		if prevNode then
-			local newCond = BuildConditionString(Wise._conditionPickerState.groups)
-			if prevNode.condition ~= newCond then
-				prevNode.condition = newCond
-				configuratorState.isDirty = true
-			end
-		end
+		CommitConditionPicker()
 		Wise.pickingCondition = false
 		Wise._conditionPickerState = nil
 		Wise._configuratorConditionRow = nil
 		Wise._configuratorConditionNode = nil
+		Wise._conditionPickerAction = nil
+		Wise._conditionPickerCallback = nil
 	end
 
 	-- mode: "stack" → push onto existing cell stack; "node" → add new node; default → replace cell.
@@ -3991,21 +4155,23 @@ end
 
 -- Close the condition picker, saving current state
 local function CloseConditionPicker()
-	if Wise.pickingCondition and Wise._conditionPickerState then
-		local row = Wise._configuratorConditionRow
-		if row and configuratorState.rowConditions then
-			local newCond = BuildConditionString(Wise._conditionPickerState.groups)
-			if configuratorState.rowConditions[row] ~= newCond then
-				configuratorState.rowConditions[row] = newCond
-				configuratorState.isDirty = true
-			end
-		end
+	CommitConditionPicker()
+	if configuratorState.isDirty and Wise.ExportSlotConfiguratorData then
+		Wise:ExportSlotConfiguratorData()
 	end
 	Wise.pickingCondition = false
 	Wise._conditionPickerState = nil
 	Wise._configuratorConditionRow = nil
+	Wise._configuratorConditionNode = nil
+	Wise._conditionPickerAction = nil
+	Wise._conditionPickerCallback = nil
+	Wise._conditionPickerTitle = nil
+	if RenderNodesCanvas then
+		RenderNodesCanvas()
+	end
 	Wise:RefreshPropertiesPanel()
 end
+Wise.CloseConditionPicker = CloseConditionPicker
 
 -- Refresh the builder area and preview inside the condition picker
 local function RefreshConditionBuilder(pickerFrame)
@@ -4267,6 +4433,29 @@ local function RefreshConditionBuilder(pickerFrame)
 		content._previewLabel:SetText("Preview: |cff00ccff" .. previewStr .. "|r")
 	end
 	content._previewLabel:Show()
+
+	-- Live-sync current condition back to the target node / row / action / callback
+	local node = Wise._configuratorConditionNode
+	if node then
+		if node.condition ~= previewStr then
+			node.condition = previewStr
+			configuratorState.isDirty = true
+		end
+	end
+	local row = Wise._configuratorConditionRow
+	if row and configuratorState.rowConditions then
+		if configuratorState.rowConditions[row] ~= previewStr then
+			configuratorState.rowConditions[row] = previewStr
+			configuratorState.isDirty = true
+		end
+	end
+	local act = Wise._conditionPickerAction
+	if act then
+		act.conditions = (previewStr ~= "") and previewStr or nil
+	end
+	if Wise._conditionPickerCallback then
+		Wise._conditionPickerCallback(previewStr)
+	end
 
 	-- Update total height
 	content:SetHeight(math.abs(yOff) + 24)
@@ -4602,7 +4791,7 @@ function Wise:CreateNodePropertiesPanel(host)
 	y = y - 20
 
 	local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-	condEdit:SetSize(220, 20)
+	condEdit:SetSize(160, 20)
 	condEdit:SetPoint("TOPLEFT", 14, y)
 	condEdit:SetAutoFocus(false)
 	condEdit:SetText(node.condition or "")
@@ -4622,6 +4811,32 @@ function Wise:CreateNodePropertiesPanel(host)
 		self:ClearFocus()
 	end)
 	tinsert(panel.controls, condEdit)
+
+	local buildBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	buildBtn:SetSize(60, 20)
+	buildBtn:SetPoint("LEFT", condEdit, "RIGHT", 6, 0)
+	buildBtn:SetText("Build...")
+	buildBtn:SetNormalFontObject("GameFontHighlightSmall")
+	buildBtn:SetScript("OnClick", function()
+		CommitConditionPicker()
+		Wise.editingNodeProperties = false
+		Wise.editingNodePropertiesNode = nil
+		Wise.pickingRestrictions = false
+		Wise.pickingRestrictionsAction = nil
+		Wise._configuratorConditionRow = nil
+		Wise._conditionPickerAction = nil
+		Wise._conditionPickerCallback = nil
+		Wise._conditionPickerState = {
+			groups = ParseConditionString(node.condition or ""),
+			activeGroup = 1,
+		}
+		Wise._configuratorConditionNode = node
+		Wise.pickingCondition = true
+		Wise:RefreshPropertiesPanel()
+	end)
+	Wise:AddTooltip(buildBtn, "Open visual Condition Creator")
+	tinsert(panel.controls, buildBtn)
+
 	if Wise.CreateConditionValidator then
 		tinsert(panel.controls, Wise:CreateConditionValidator(condEdit, panel))
 	end
@@ -4693,16 +4908,36 @@ function Wise:CreateConditionPickerUI(host)
 		return
 	end
 
+	local isNode = (Wise._configuratorConditionNode ~= nil)
+	local isRow = (Wise._configuratorConditionRow ~= nil)
 	local row = Wise._configuratorConditionRow or 1
+
+	local titleText = "Condition Creator"
+	if isNode then
+		local action = Wise._configuratorConditionNode.action
+		local actName = action and Wise:GetActionName(action.type, action.value, action)
+		titleText = "Conditions" .. (actName and (": " .. actName) or "")
+	elseif isRow then
+		titleText = "Row " .. row .. " Condition"
+	elseif Wise._conditionPickerAction then
+		local act = Wise._conditionPickerAction
+		local actName = Wise:GetActionName(act.type, act.value, act)
+		titleText = "Conditions" .. (actName and (": " .. actName) or "")
+	elseif Wise._conditionPickerTitle then
+		titleText = Wise._conditionPickerTitle
+	end
 
 	-- Reuse existing UI if same host
 	if cp and cp.host == host then
-		cp.titleLabel:SetText("Row " .. row .. " Condition")
+		cp.titleLabel:SetText(titleText)
 		cp.backBtn:Show()
+		if cp.doneBtn then
+			cp.doneBtn:Show()
+		end
+		if cp.clearBtn then
+			cp.clearBtn:Show()
+		end
 		cp.titleLabel:Show()
-		cp.exclusiveCheck:Show()
-		cp.exclusiveLabel:Show()
-		cp.inheritedLabel:Show()
 		cp.divider:Show()
 		cp.builderScroll:Show()
 		cp.listDivider:Show()
@@ -4710,10 +4945,26 @@ function Wise:CreateConditionPickerUI(host)
 		cp.tabWise:Show()
 		cp.listScroll:Show()
 
-		cp.exclusiveCheck:SetChecked(configuratorState.rowExclusive[row] or false)
+		if isRow then
+			cp.exclusiveCheck:Show()
+			cp.exclusiveLabel:Show()
+			cp.inheritedLabel:Show()
+			cp.exclusiveCheck:SetChecked(configuratorState.rowExclusive[row] or false)
+			Wise:UpdateConditionPickerExclusionDisplay(cp, row)
+		elseif isNode then
+			cp.exclusiveCheck:Show()
+			cp.exclusiveLabel:Show()
+			cp.inheritedLabel:Hide()
+			local nodeAct = Wise._configuratorConditionNode.action
+			cp.exclusiveCheck:SetChecked(nodeAct and nodeAct.exclusive or false)
+		else
+			cp.exclusiveCheck:Hide()
+			cp.exclusiveLabel:Hide()
+			cp.inheritedLabel:Hide()
+		end
+
 		RefreshConditionBuilder(cp.frame)
 		RenderConditionalList(cp.frame, cp._activeTab or "builtin")
-		Wise:UpdateConditionPickerExclusionDisplay(cp, row)
 		return
 	end
 
@@ -4726,33 +4977,69 @@ function Wise:CreateConditionPickerUI(host)
 	-- Picker is anchored to host's TOPLEFT. The host now occupies only the right
 	-- half of the configurator, so size the layout to the host's actual width
 	-- (minus a small inset) instead of a fixed 600 that would overflow the popup.
-	-- Clamped to a usable minimum and a sensible maximum (the content is just a
-	-- name + description column, so it needn't span an entire maximized window).
 	local hostW = host:GetWidth() or 0
 	local PICKER_WIDTH = math.max(240, math.min(600, hostW - 16))
 
 	-- Back button
 	cp.backBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
-	cp.backBtn:SetSize(70, 22)
+	cp.backBtn:SetSize(60, 22)
 	cp.backBtn:SetPoint("TOPLEFT", 8, -8)
 	cp.backBtn:SetText("< Back")
 	cp.backBtn:SetScript("OnClick", function()
 		CloseConditionPicker()
 	end)
 
+	-- Done / Save button
+	cp.doneBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+	cp.doneBtn:SetSize(60, 22)
+	cp.doneBtn:SetPoint("TOPRIGHT", host, "TOPRIGHT", -8, -8)
+	cp.doneBtn:SetText("Done")
+	cp.doneBtn:SetScript("OnClick", function()
+		CloseConditionPicker()
+	end)
+	Wise:AddTooltip(cp.doneBtn, "Save conditions and close creator.")
+
+	-- Clear button
+	cp.clearBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+	cp.clearBtn:SetSize(55, 22)
+	cp.clearBtn:SetPoint("RIGHT", cp.doneBtn, "LEFT", -4, 0)
+	cp.clearBtn:SetText("Clear")
+	cp.clearBtn:SetScript("OnClick", function()
+		if Wise._conditionPickerState then
+			Wise._conditionPickerState.groups = { {} }
+			Wise._conditionPickerState.activeGroup = 1
+			RefreshConditionBuilder(host)
+			RenderConditionalList(host, cp._activeTab or "builtin")
+		end
+	end)
+	Wise:AddTooltip(cp.clearBtn, "Clear all conditions (always active).")
+
 	-- Title
 	cp.titleLabel = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	cp.titleLabel:SetPoint("LEFT", cp.backBtn, "RIGHT", 8, 0)
-	cp.titleLabel:SetText("Row " .. row .. " Condition")
+	cp.titleLabel:SetPoint("LEFT", cp.backBtn, "RIGHT", 6, 0)
+	cp.titleLabel:SetPoint("RIGHT", cp.clearBtn, "LEFT", -6, 0)
+	cp.titleLabel:SetJustifyH("LEFT")
+	cp.titleLabel:SetText(titleText)
 
 	-- Exclusive checkbox
 	cp.exclusiveCheck = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
 	cp.exclusiveCheck:SetSize(22, 22)
 	cp.exclusiveCheck:SetPoint("TOPLEFT", host, "TOPLEFT", 8, -34)
-	cp.exclusiveCheck:SetChecked(configuratorState.rowExclusive[row] or false)
+	if isRow then
+		cp.exclusiveCheck:SetChecked(configuratorState.rowExclusive[row] or false)
+	elseif isNode then
+		local nodeAct = Wise._configuratorConditionNode.action
+		cp.exclusiveCheck:SetChecked(nodeAct and nodeAct.exclusive or false)
+	end
 	cp.exclusiveCheck:SetScript("OnClick", function(self)
-		configuratorState.rowExclusive[row] = self:GetChecked() and true or false
-		Wise:UpdateConditionPickerExclusionDisplay(cp, row)
+		local checked = self:GetChecked() and true or false
+		if Wise._configuratorConditionNode and Wise._configuratorConditionNode.action then
+			Wise._configuratorConditionNode.action.exclusive = checked
+			configuratorState.isDirty = true
+		elseif Wise._configuratorConditionRow then
+			configuratorState.rowExclusive[Wise._configuratorConditionRow] = checked
+			Wise:UpdateConditionPickerExclusionDisplay(cp, Wise._configuratorConditionRow)
+		end
 	end)
 
 	cp.exclusiveLabel = host:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -4765,7 +5052,19 @@ function Wise:CreateConditionPickerUI(host)
 	cp.inheritedLabel:SetJustifyH("LEFT")
 	cp.inheritedLabel:SetMaxLines(3)
 
-	Wise:UpdateConditionPickerExclusionDisplay(cp, row)
+	if isRow then
+		Wise:UpdateConditionPickerExclusionDisplay(cp, row)
+		cp.exclusiveCheck:Show()
+		cp.exclusiveLabel:Show()
+	elseif isNode then
+		cp.inheritedLabel:Hide()
+		cp.exclusiveCheck:Show()
+		cp.exclusiveLabel:Show()
+	else
+		cp.exclusiveCheck:Hide()
+		cp.exclusiveLabel:Hide()
+		cp.inheritedLabel:Hide()
+	end
 
 	-- Divider
 	cp.divider = host:CreateTexture(nil, "ARTWORK")
@@ -4898,6 +5197,205 @@ local function GetCurrentSlotActions()
 	return group.actions[slotIdx]
 end
 
+local function CloneNodeGraph(srcGraph)
+	if not srcGraph then
+		return nil
+	end
+	local cloned = {
+		nodes = {},
+		connections = {},
+	}
+	if srcGraph.nodes then
+		for _, n in ipairs(srcGraph.nodes) do
+			local cond = n.condition or ""
+			if cond ~= "" then
+				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
+			end
+			tinsert(cloned.nodes, {
+				id = n.id,
+				action = ShallowCopyAction(n.action),
+				condition = cond,
+			})
+		end
+	end
+	if srcGraph.connections then
+		for _, c in ipairs(srcGraph.connections) do
+			tinsert(cloned.connections, {
+				from = c.from,
+				to = c.to,
+				type = c.type,
+			})
+		end
+	end
+	return cloned
+end
+
+local function UpdatePasteButtonState()
+	local sc = Wise.SlotConfigurator
+	if not sc or not sc.pasteNodesBtn then
+		return
+	end
+	local clip = Wise._copiedNodesClipboard
+	local hasData = clip ~= nil
+		and clip.graph ~= nil
+		and clip.graph.nodes ~= nil
+		and #clip.graph.nodes > 0
+
+	if hasData then
+		sc.pasteNodesBtn:Enable()
+	else
+		sc.pasteNodesBtn:Disable()
+	end
+	if sc.pasteNodesBtn.GetNormalTexture and sc.pasteNodesBtn:GetNormalTexture() then
+		sc.pasteNodesBtn:GetNormalTexture():SetDesaturated(not hasData)
+	end
+	for _, region in ipairs({ sc.pasteNodesBtn:GetRegions() }) do
+		if region:IsObjectType("Texture") then
+			region:SetDesaturated(not hasData)
+		end
+	end
+end
+
+function Wise:CopyCurrentSlotNodes()
+	local state = configuratorState
+	if not state.graph or not state.graph.nodes or #state.graph.nodes == 0 then
+		print("|cff00ccff[Wise]|r No nodes in current slot to copy.")
+		return
+	end
+
+	-- Only copy visible nodes and their bridged connections under the active filter
+	local visibleGraph = GetFilteredGraph(state.graph)
+	if not visibleGraph or not visibleGraph.nodes or #visibleGraph.nodes == 0 then
+		print("|cff00ccff[Wise]|r No visible nodes to copy under the current filter.")
+		return
+	end
+
+	local slot = GetCurrentSlotActions()
+	Wise._copiedNodesClipboard = {
+		graph = CloneNodeGraph(visibleGraph),
+		suppressErrors = slot and slot.suppressErrors,
+		resetOnCombat = slot and slot.resetOnCombat,
+		pressAndHold = slot and slot.pressAndHold,
+		conflictStrategy = slot and slot.conflictStrategy,
+	}
+
+	local sc = Wise.SlotConfigurator
+	if sc and sc.copyNodesBtn then
+		sc.copyNodesBtn:SetText("Copied!")
+		C_Timer.After(1.0, function()
+			if sc and sc.copyNodesBtn then
+				sc.copyNodesBtn:SetText("Copy Nodes")
+			end
+		end)
+	end
+
+	UpdatePasteButtonState()
+end
+
+function Wise:PasteCopiedNodes()
+	local clip = Wise._copiedNodesClipboard
+	if not clip or not clip.graph or not clip.graph.nodes or #clip.graph.nodes == 0 then
+		return
+	end
+
+	local state = configuratorState
+	if not state.groupName or not state.slotIdx then
+		return
+	end
+
+	if not state.graph then
+		state.graph = { nodes = {}, connections = {} }
+	end
+	if not state.graph.nodes then
+		state.graph.nodes = {}
+	end
+	if not state.graph.connections then
+		state.graph.connections = {}
+	end
+
+	local isSlotEmpty = (#state.graph.nodes == 0)
+
+	-- Find current max node ID in target slot to avoid collisions
+	local maxId = 0
+	for _, n in ipairs(state.graph.nodes) do
+		if type(n.id) == "number" and n.id > maxId then
+			maxId = n.id
+		end
+	end
+
+	-- Additional paste: Append copied nodes with remapped unique IDs
+	local idMap = {}
+	for _, n in ipairs(clip.graph.nodes) do
+		maxId = maxId + 1
+		idMap[n.id] = maxId
+
+		local cond = n.condition or ""
+		if cond ~= "" then
+			cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
+		end
+		tinsert(state.graph.nodes, {
+			id = maxId,
+			action = ShallowCopyAction(n.action),
+			condition = cond,
+		})
+	end
+
+	-- Append copied connections with remapped node IDs
+	if clip.graph.connections then
+		for _, c in ipairs(clip.graph.connections) do
+			local fromId = idMap[c.from]
+			local toId = idMap[c.to]
+			if fromId and toId then
+				tinsert(state.graph.connections, {
+					from = fromId,
+					to = toId,
+					type = c.type or "waterfall",
+				})
+			end
+		end
+	end
+
+	-- If target slot was empty, adopt slot-level settings
+	local slot = GetCurrentSlotActions()
+	if slot and isSlotEmpty then
+		if clip.suppressErrors ~= nil then
+			slot.suppressErrors = clip.suppressErrors
+		end
+		if clip.resetOnCombat ~= nil then
+			slot.resetOnCombat = clip.resetOnCombat
+		end
+		if clip.pressAndHold ~= nil then
+			slot.pressAndHold = clip.pressAndHold
+		end
+	end
+
+	-- Export to slot data so changes are immediately compiled, saved, and rendered
+	ExportToSlotData()
+
+	-- Sync controls and re-render canvas
+	if SyncSlotToggleControls then
+		SyncSlotToggleControls()
+	end
+	if RenderNodesCanvas then
+		RenderNodesCanvas()
+	end
+
+	-- One paste per copy click: clear clipboard
+	Wise._copiedNodesClipboard = nil
+
+	local sc = Wise.SlotConfigurator
+	if sc and sc.pasteNodesBtn then
+		sc.pasteNodesBtn:SetText("Pasted!")
+		C_Timer.After(1.0, function()
+			if sc and sc.pasteNodesBtn then
+				sc.pasteNodesBtn:SetText("Paste Nodes")
+			end
+		end)
+	end
+
+	UpdatePasteButtonState()
+end
+
 local function SyncSlotToggleControls()
 	local sc = Wise.SlotConfigurator
 	if not sc or not sc.suppressCheck then
@@ -5020,6 +5518,7 @@ local function ApplyTabVisibility()
 	end
 
 	SyncSlotToggleControls()
+	UpdatePasteButtonState()
 	RenderActiveTab()
 end
 
@@ -5045,6 +5544,12 @@ function Wise:CreateSlotConfiguratorUI(host)
 			if sc.macroViewBtn then
 				sc.macroViewBtn:Hide()
 			end
+			if sc.pasteNodesBtn then
+				sc.pasteNodesBtn:Hide()
+			end
+			if sc.copyNodesBtn then
+				sc.copyNodesBtn:Hide()
+			end
 			if sc.nodesAddBtn then
 				sc.nodesAddBtn:Hide()
 			end
@@ -5059,9 +5564,16 @@ function Wise:CreateSlotConfiguratorUI(host)
 			if sc.macroViewBtn then
 				sc.macroViewBtn:Show()
 			end
+			if sc.pasteNodesBtn then
+				sc.pasteNodesBtn:Show()
+			end
+			if sc.copyNodesBtn then
+				sc.copyNodesBtn:Show()
+			end
 			if sc.nodesAddBtn then
 				sc.nodesAddBtn:Show()
 			end
+			UpdatePasteButtonState()
 		end
 		ApplyTabVisibility()
 		return
@@ -5118,9 +5630,10 @@ function Wise:CreateSlotConfiguratorUI(host)
 
 	-- Apply button (right-aligned)
 	sc.applyBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
-	sc.applyBtn:SetSize(110, 22)
+	sc.applyBtn:SetSize(95, 22)
 	sc.applyBtn:SetPoint("TOPRIGHT", -8, -8)
 	sc.applyBtn:SetText("Apply Changes")
+	sc.applyBtn:SetNormalFontObject("GameFontHighlightSmall")
 	sc.applyBtn:SetScript("OnClick", function()
 		ExportToSlotData()
 		sc.applyBtn:SetText("Applied!")
@@ -5137,9 +5650,10 @@ function Wise:CreateSlotConfiguratorUI(host)
 	-- A dedicated popup (not GameTooltip) is used so long macro lines are shown
 	-- in full without truncation.
 	sc.macroViewBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
-	sc.macroViewBtn:SetSize(110, 22)
-	sc.macroViewBtn:SetPoint("RIGHT", sc.applyBtn, "LEFT", -6, 0)
+	sc.macroViewBtn:SetSize(85, 22)
+	sc.macroViewBtn:SetPoint("RIGHT", sc.applyBtn, "LEFT", -4, 0)
 	sc.macroViewBtn:SetText("View Macro")
+	sc.macroViewBtn:SetNormalFontObject("GameFontHighlightSmall")
 	-- Click pins the popup open (stays until clicked again); mouseover shows it
 	-- transiently and it hides on mouse-out unless it has been pinned.
 	sc.macroViewBtn:SetScript("OnClick", function(self)
@@ -5152,11 +5666,32 @@ function Wise:CreateSlotConfiguratorUI(host)
 		Wise:HideMacroPreviewPopup()
 	end)
 
-	-- "+ Add Node" button — top toolbar, centered in the configurator header in line
-	-- with View Macro / Apply Changes (moved up from the bottom of the canvas).
+	-- Paste Nodes button (to the left of View Macro)
+	sc.pasteNodesBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+	sc.pasteNodesBtn:SetSize(85, 22)
+	sc.pasteNodesBtn:SetPoint("RIGHT", sc.macroViewBtn, "LEFT", -4, 0)
+	sc.pasteNodesBtn:SetText("Paste Nodes")
+	sc.pasteNodesBtn:SetNormalFontObject("GameFontHighlightSmall")
+	sc.pasteNodesBtn:SetScript("OnClick", function()
+		Wise:PasteCopiedNodes()
+	end)
+	Wise:AddTooltip(sc.pasteNodesBtn, "Paste copied nodes into this slot (one paste per copy click).")
+
+	-- Copy Nodes button (to the left of Paste Nodes)
+	sc.copyNodesBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
+	sc.copyNodesBtn:SetSize(85, 22)
+	sc.copyNodesBtn:SetPoint("RIGHT", sc.pasteNodesBtn, "LEFT", -4, 0)
+	sc.copyNodesBtn:SetText("Copy Nodes")
+	sc.copyNodesBtn:SetNormalFontObject("GameFontHighlightSmall")
+	sc.copyNodesBtn:SetScript("OnClick", function()
+		Wise:CopyCurrentSlotNodes()
+	end)
+	Wise:AddTooltip(sc.copyNodesBtn, "Copy all nodes in this slot to the clipboard.")
+
+	-- "+ Add Node" button — top toolbar, to the left of Copy Nodes
 	sc.nodesAddBtn = CreateFrame("Button", nil, host, "GameMenuButtonTemplate")
-	sc.nodesAddBtn:SetSize(140, 22)
-	sc.nodesAddBtn:SetPoint("TOP", host, "TOP", 0, -8)
+	sc.nodesAddBtn:SetSize(85, 22)
+	sc.nodesAddBtn:SetPoint("RIGHT", sc.copyNodesBtn, "LEFT", -4, 0)
 	sc.nodesAddBtn:SetText("+ Add Node")
 	sc.nodesAddBtn:SetNormalFontObject("GameFontHighlightSmall")
 	sc.nodesAddBtn:SetScript("OnClick", function()
@@ -5164,10 +5699,12 @@ function Wise:CreateSlotConfiguratorUI(host)
 	end)
 	Wise:AddTooltip(sc.nodesAddBtn, "Add another action node to the flow.")
 
-	-- Info label (right of modifiers, before apply)
+	-- Info label (left of add node)
 	sc.infoLabel = host:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	sc.infoLabel:SetPoint("RIGHT", sc.macroViewBtn, "LEFT", -10, 0)
+	sc.infoLabel:SetPoint("RIGHT", sc.nodesAddBtn, "LEFT", -8, 0)
 	sc.infoLabel:SetText("")
+
+	UpdatePasteButtonState()
 
 	-- Divider line
 	sc.divider = host:CreateTexture(nil, "ARTWORK")
@@ -5562,11 +6099,18 @@ function Wise:CloseSlotConfigurator(discard)
 		return
 	end
 	if not discard then
+		if Wise.pickingCondition and Wise._conditionPickerState then
+			CommitConditionPicker()
+		end
 		ExportToSlotData()
 	end
 	Wise.pickingCondition = false
 	Wise._conditionPickerState = nil
 	Wise._configuratorConditionRow = nil
+	Wise._configuratorConditionNode = nil
+	Wise._conditionPickerAction = nil
+	Wise._conditionPickerCallback = nil
+	Wise._conditionPickerTitle = nil
 	Wise.editingNodeProperties = false
 	Wise.editingNodePropertiesNode = nil
 	Wise.configuringSlot = false

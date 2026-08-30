@@ -8,7 +8,7 @@
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1473207
 ## SavedVariables: WiseDB
-## OptionalDeps: LargerMacroIconSelection, Masque, MechanicLib
+## OptionalDeps: LargerMacroIconSelection, Masque, MechanicLib, ConsolePort
 ## IconTexture: Interface\AddOns\Wise\Media\WiseLogoSquare_512.tga
 
 # Libraries
@@ -17,6 +17,13 @@ Libs\LibDBIcon\LibDBIcon-1.0\lib.xml
 Libs\LibSharedMedia-3.0\lib.xml
 Libs\LibSharedMedia-3.0\WiseMedia.lua
 Libs\exui\exui.xml
+
+# Bindings.xml is deliberately absent from this list: the client auto-loads
+# any root-level file named exactly "Bindings.xml" for every enabled addon,
+# independent of the .toc — listing it here would load it (and register its
+# bindings) twice. It declares WISE_OPEN_OPTIONS for Blizzard's Key Bindings
+# UI (including its Gamepad tab) and ConsolePort_Config, which reads the same
+# BINDING_HEADER_*/BINDING_NAME_* globals (see core/Bindings.lua).
 
 # Debug (tests.xml only exists in dev — stripped by packager)
 #@debug@

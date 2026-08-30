@@ -96,6 +96,9 @@ local function CreateSelectionPopup()
 	popup.closeBtn = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
 	popup.closeBtn:SetPoint("TOPRIGHT", -2, -2)
 	popup.closeBtn:SetSize(20, 20)
+	popup.closeBtn:SetScript("OnClick", function()
+		popup:Hide()
+	end)
 
 	-- X/Y Offset Controls
 	local controlsX = 15

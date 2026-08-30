@@ -1627,6 +1627,9 @@ function frame:OnEvent(event, arg1)
 		if Wise.Initialize then
 			Wise:Initialize()
 		end
+		if Wise.DetectConsolePort then
+			Wise:DetectConsolePort()
+		end
 		if Wise.RegisterBlizzardUIHooks then
 			Wise:RegisterBlizzardUIHooks()
 		end
@@ -3264,6 +3267,12 @@ function Wise:ToggleOptions()
 		Wise.OptionsFrame:Hide()
 	else
 		Wise.OptionsFrame:Show()
+	end
+end
+
+function Wise:HideOptions()
+	if Wise.OptionsFrame and Wise.OptionsFrame:IsShown() then
+		Wise.OptionsFrame:Hide()
 	end
 end
 

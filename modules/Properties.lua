@@ -832,7 +832,9 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		return y
 	end
 	local isGraphSlot = actions.graph and actions.graph.nodes and true or false
-	local graphNode = isGraphSlot and actions.graph.nodes[stateIdx]
+	local orderedNodes = isGraphSlot
+		and (Wise.GetOrderedGraphNodes and Wise:GetOrderedGraphNodes(actions.graph) or actions.graph.nodes)
+	local graphNode = orderedNodes and orderedNodes[stateIdx]
 	local action = graphNode and graphNode.action or actions[stateIdx]
 	if not action then
 		return y
@@ -863,7 +865,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
 		y = y - 20
 		local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-		condEdit:SetSize(180, 20)
+		condEdit:SetSize(130, 20)
 		condEdit:SetPoint("TOPLEFT", 14, y)
 		condEdit:SetAutoFocus(false)
 		condEdit:SetText(graphNode.condition or "")
@@ -905,6 +907,30 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 			UpdateCondData(self)
 		end)
 		tinsert(panel.controls, condEdit)
+
+		local buildBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+		buildBtn:SetSize(55, 20)
+		buildBtn:SetPoint("LEFT", condEdit, "RIGHT", 4, 0)
+		buildBtn:SetText("Build...")
+		buildBtn:SetNormalFontObject("GameFontHighlightSmall")
+		buildBtn:SetScript("OnClick", function()
+			if Wise.CommitConditionPicker then
+				Wise.CommitConditionPicker()
+			end
+			Wise._conditionPickerState = {
+				groups = Wise.ParseConditionString and Wise:ParseConditionString(graphNode.condition or "") or { {} },
+				activeGroup = 1,
+			}
+			Wise._configuratorConditionNode = graphNode
+			Wise._configuratorConditionRow = nil
+			Wise._conditionPickerAction = nil
+			Wise._conditionPickerCallback = nil
+			Wise.pickingCondition = true
+			Wise:RefreshPropertiesPanel()
+		end)
+		Wise:AddTooltip(buildBtn, "Open visual Condition Creator")
+		tinsert(panel.controls, buildBtn)
+
 		if Wise.CreateConditionValidator then
 			tinsert(panel.controls, Wise:CreateConditionValidator(condEdit, panel))
 		end
@@ -1389,7 +1415,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 
 	y = y - 20
 	local condEdit = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-	condEdit:SetSize(180, 20)
+	condEdit:SetSize(130, 20)
 	condEdit:SetPoint("TOPLEFT", 14, y)
 	condEdit:SetAutoFocus(false)
 	condEdit:SetText(action.conditions or "")
@@ -1428,6 +1454,30 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 		UpdateCondData(self) -- Revert visual state
 	end)
 	tinsert(panel.controls, condEdit)
+
+	local buildBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
+	buildBtn:SetSize(55, 20)
+	buildBtn:SetPoint("LEFT", condEdit, "RIGHT", 4, 0)
+	buildBtn:SetText("Build...")
+	buildBtn:SetNormalFontObject("GameFontHighlightSmall")
+	buildBtn:SetScript("OnClick", function()
+		if Wise.CommitConditionPicker then
+			Wise.CommitConditionPicker()
+		end
+		Wise._conditionPickerState = {
+			groups = Wise.ParseConditionString and Wise:ParseConditionString(action.conditions or "") or { {} },
+			activeGroup = 1,
+		}
+		Wise._conditionPickerAction = action
+		Wise._configuratorConditionNode = nil
+		Wise._configuratorConditionRow = nil
+		Wise._conditionPickerCallback = nil
+		Wise.pickingCondition = true
+		Wise:RefreshPropertiesPanel()
+	end)
+	Wise:AddTooltip(buildBtn, "Open visual Condition Creator")
+	tinsert(panel.controls, buildBtn)
+
 	tinsert(panel.controls, CreateConditionValidator(condEdit, panel))
 
 	y = y - 25
@@ -2034,98 +2084,31 @@ local function AttachSlotKeybindCapture(bindBtn, group, slotIdx, getSlot)
 			Wise:UpdateOptionsUI()
 		elseif button == "LeftButton" then
 			self:SetText("Press Key...")
-			self:EnableKeyboard(true)
-			self:EnableMouseWheel(true)
-
-			local function FinishSlotBinding(key)
-				if not key then
-					return
-				end
-
-				if key == "ESCAPE" then
-					self:EnableKeyboard(false)
-					self:EnableMouseWheel(false)
-					self:SetScript("OnKeyDown", nil)
-					self:SetScript("OnMouseWheel", nil)
-					self:SetScript("OnMouseDown", nil)
-					self:SetText(slot.keybind or "None")
-					return
-				end
-
-				if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
-					return
-				end
-
-				local mods = ""
-				if IsAltKeyDown() then
-					mods = mods .. "ALT-"
-				end
-				if IsControlKeyDown() then
-					mods = mods .. "CTRL-"
-				end
-				if IsShiftKeyDown() then
-					mods = mods .. "SHIFT-"
-				end
-
-				-- Check MouseWheel Validation
-				if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
-					local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
-					if not isValid then
-						EnsureBindingErrorPopup()
-						StaticPopup_Show("WISE_BINDING_ERROR", err)
-						self:EnableKeyboard(false)
-						self:EnableMouseWheel(false)
-						self:SetScript("OnKeyDown", nil)
-						self:SetScript("OnMouseWheel", nil)
-						self:SetScript("OnMouseDown", nil)
-						self:SetText(slot.keybind or "None")
-						return
+			Wise:StartKeybindCapture(self, {
+				getCurrentText = function()
+					return slot.keybind
+				end,
+				allowMouseWheel = true,
+				group = group,
+				slotIdx = slotIdx,
+				isSlotBinding = true,
+				validateKey = function(fullKey)
+					if fullKey == "MOUSEWHEELUP" or fullKey == "MOUSEWHEELDOWN" then
+						return Wise:ValidateMouseWheelBinding(group, true)
 					end
-				end
-
-				local fullKey = mods .. key
-				self:EnableKeyboard(false)
-				self:EnableMouseWheel(false)
-				self:SetScript("OnKeyDown", nil)
-				self:SetScript("OnMouseWheel", nil)
-				self:SetScript("OnMouseDown", nil)
-
-				if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
-					return
-				end
-
-				slot.keybind = fullKey
-				self:SetText(fullKey)
-
-				Wise:UpdateBindings()
-				Wise:UpdateOptionsUI()
-			end
-
-			self:SetScript("OnKeyDown", function(_, key)
-				FinishSlotBinding(key)
-			end)
-
-			self:SetScript("OnMouseWheel", function(_, delta)
-				local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
-				FinishSlotBinding(key)
-			end)
-
-			self:SetScript("OnMouseDown", function(_, btn)
-				if btn == "LeftButton" or btn == "RightButton" then
-					return
-				end
-				local key = btn
-				if btn == "MiddleButton" then
-					key = "BUTTON3"
-				end
-				if btn == "Button4" then
-					key = "BUTTON4"
-				end
-				if btn == "Button5" then
-					key = "BUTTON5"
-				end
-				FinishSlotBinding(key)
-			end)
+					return true
+				end,
+				onInvalid = function(err)
+					EnsureBindingErrorPopup()
+					StaticPopup_Show("WISE_BINDING_ERROR", err)
+				end,
+				onBound = function(fullKey)
+					slot.keybind = fullKey
+					self:SetText(fullKey)
+					Wise:UpdateBindings()
+					Wise:UpdateOptionsUI()
+				end,
+			})
 		end
 	end)
 end
@@ -2370,98 +2353,31 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
 				Wise:UpdateOptionsUI()
 			elseif button == "LeftButton" then
 				self:SetText("Press Key...")
-				self:EnableKeyboard(true)
-				self:EnableMouseWheel(true)
-
-				local function FinishSlotBinding(key)
-					if not key then
-						return
-					end
-
-					if key == "ESCAPE" then
-						self:EnableKeyboard(false)
-						self:EnableMouseWheel(false)
-						self:SetScript("OnKeyDown", nil)
-						self:SetScript("OnMouseWheel", nil)
-						self:SetScript("OnMouseDown", nil)
-						self:SetText(slot.keybind or "None")
-						return
-					end
-
-					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
-						return
-					end
-
-					local mods = ""
-					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
-					end
-					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
-					end
-					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
-					end
-
-					-- Check MouseWheel Validation
-					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
-						local isValid, err = Wise:ValidateMouseWheelBinding(group, true)
-						if not isValid then
-							EnsureBindingErrorPopup()
-							StaticPopup_Show("WISE_BINDING_ERROR", err)
-							self:EnableKeyboard(false)
-							self:EnableMouseWheel(false)
-							self:SetScript("OnKeyDown", nil)
-							self:SetScript("OnMouseWheel", nil)
-							self:SetScript("OnMouseDown", nil)
-							self:SetText(slot.keybind or "None")
-							return
+				Wise:StartKeybindCapture(self, {
+					getCurrentText = function()
+						return slot.keybind
+					end,
+					allowMouseWheel = true,
+					group = group,
+					slotIdx = slotIdx,
+					isSlotBinding = true,
+					validateKey = function(fullKey)
+						if fullKey == "MOUSEWHEELUP" or fullKey == "MOUSEWHEELDOWN" then
+							return Wise:ValidateMouseWheelBinding(group, true)
 						end
-					end
-
-					local fullKey = mods .. key
-					self:EnableKeyboard(false)
-					self:EnableMouseWheel(false)
-					self:SetScript("OnKeyDown", nil)
-					self:SetScript("OnMouseWheel", nil)
-					self:SetScript("OnMouseDown", nil)
-
-					if Wise:CheckBindingConflict(fullKey, group, slotIdx, true, self) then
-						return
-					end
-
-					slot.keybind = fullKey
-					self:SetText(fullKey)
-
-					Wise:UpdateBindings()
-					Wise:UpdateOptionsUI()
-				end
-
-				self:SetScript("OnKeyDown", function(self, key)
-					FinishSlotBinding(key)
-				end)
-
-				self:SetScript("OnMouseWheel", function(self, delta)
-					local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
-					FinishSlotBinding(key)
-				end)
-
-				self:SetScript("OnMouseDown", function(self, button)
-					if button == "LeftButton" or button == "RightButton" then
-						return
-					end
-					local key = button
-					if button == "MiddleButton" then
-						key = "BUTTON3"
-					end
-					if button == "Button4" then
-						key = "BUTTON4"
-					end
-					if button == "Button5" then
-						key = "BUTTON5"
-					end
-					FinishSlotBinding(key)
-				end)
+						return true
+					end,
+					onInvalid = function(err)
+						EnsureBindingErrorPopup()
+						StaticPopup_Show("WISE_BINDING_ERROR", err)
+					end,
+					onBound = function(fullKey)
+						slot.keybind = fullKey
+						self:SetText(fullKey)
+						Wise:UpdateBindings()
+						Wise:UpdateOptionsUI()
+					end,
+				})
 			end
 		end)
 		tinsert(panel.controls, bindBtn)
@@ -4918,69 +4834,20 @@ function Wise:RenderGroupProperties(panel, group, y)
 				self:SetText("None")
 			else
 				self:SetText("Press Key...")
-				self:EnableKeyboard(true)
-
-				local function FinishSlotBinding(key)
-					if not key then
-						return
-					end
-					if key == "ESCAPE" then
-						self:EnableKeyboard(false)
-						self:SetScript("OnKeyDown", nil)
-						self:SetScript("OnMouseDown", nil)
-						self:SetText(group.actions[Wise.selectedSlot].keybind or "None")
-						return
-					end
-					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
-						return
-					end
-
-					local mods = ""
-					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
-					end
-					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
-					end
-					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
-					end
-
-					local fullKey = mods .. key
-					self:EnableKeyboard(false)
-					self:SetScript("OnKeyDown", nil)
-					self:SetScript("OnMouseDown", nil)
-
-					if Wise:CheckBindingConflict(fullKey, group, Wise.selectedSlot, true, self) then
-						return
-					end
-
-					group.actions[Wise.selectedSlot].keybind = fullKey
-					self:SetText(fullKey)
-
-					Wise:UpdateBindings()
-				end
-
-				self:SetScript("OnKeyDown", function(self, key)
-					FinishSlotBinding(key)
-				end)
-
-				self:SetScript("OnMouseDown", function(self, button)
-					if button == "LeftButton" or button == "RightButton" then
-						return
-					end
-					local key = button
-					if button == "MiddleButton" then
-						key = "BUTTON3"
-					end
-					if button == "Button4" then
-						key = "BUTTON4"
-					end
-					if button == "Button5" then
-						key = "BUTTON5"
-					end
-					FinishSlotBinding(key)
-				end)
+				Wise:StartKeybindCapture(self, {
+					getCurrentText = function()
+						return group.actions[Wise.selectedSlot].keybind
+					end,
+					allowMouseWheel = false,
+					group = group,
+					slotIdx = Wise.selectedSlot,
+					isSlotBinding = true,
+					onBound = function(fullKey)
+						group.actions[Wise.selectedSlot].keybind = fullKey
+						self:SetText(fullKey)
+						Wise:UpdateBindings()
+					end,
+				})
 			end
 		end)
 		tinsert(panel.controls, slotBindBtn)
@@ -5440,108 +5307,43 @@ function Wise:RenderGroupProperties(panel, group, y)
 				Wise:UpdateOptionsUI()
 			elseif button == "LeftButton" then
 				self:SetText("Press Key...")
-				self:EnableKeyboard(true)
-				self:EnableMouseWheel(true)
-
-				local function FinishBinding(key)
-					if not key then
-						return
-					end
-
-					if key == "ESCAPE" then
-						self:EnableKeyboard(false)
-						self:EnableMouseWheel(false)
-						self:SetScript("OnKeyDown", nil)
-						self:SetScript("OnMouseWheel", nil)
-						self:SetScript("OnMouseDown", nil)
+				Wise:StartKeybindCapture(self, {
+					getCurrentText = function()
+						return group.binding
+					end,
+					allowMouseWheel = true,
+					group = group,
+					slotIdx = nil,
+					isSlotBinding = false,
+					onCancelled = function()
 						Wise:RefreshPropertiesPanel()
-						return
-					end
-
-					if key:find("SHIFT") or key:find("CTRL") or key:find("ALT") then
-						return
-					end
-
-					local mods = ""
-					if IsAltKeyDown() then
-						mods = mods .. "ALT-"
-					end
-					if IsControlKeyDown() then
-						mods = mods .. "CTRL-"
-					end
-					if IsShiftKeyDown() then
-						mods = mods .. "SHIFT-"
-					end
-
-					-- Check MouseWheel Validation
-					if key == "MOUSEWHEELUP" or key == "MOUSEWHEELDOWN" then
-						-- If this is an initial binding (no previous binding), auto-fix settings
-						if not group.binding or group.binding == "" then
-							if not group.keybindSettings then
-								group.keybindSettings = {}
+					end,
+					validateKey = function(fullKey)
+						if fullKey == "MOUSEWHEELUP" or fullKey == "MOUSEWHEELDOWN" then
+							-- If this is an initial binding (no previous binding), auto-fix settings
+							if not group.binding or group.binding == "" then
+								if not group.keybindSettings then
+									group.keybindSettings = {}
+								end
+								group.keybindSettings.trigger = "press"
+								if group.visibilitySettings then
+									group.visibilitySettings.held = false
+								end
 							end
-							group.keybindSettings.trigger = "press"
-							if group.visibilitySettings then
-								group.visibilitySettings.held = false
-							end
+							return Wise:ValidateMouseWheelBinding(group, false)
 						end
-
-						local isValid, err = Wise:ValidateMouseWheelBinding(group, false)
-						if not isValid then
-							EnsureBindingErrorPopup()
-							StaticPopup_Show("WISE_BINDING_ERROR", err)
-							self:EnableKeyboard(false)
-							self:EnableMouseWheel(false)
-							self:SetScript("OnKeyDown", nil)
-							self:SetScript("OnMouseWheel", nil)
-							self:SetScript("OnMouseDown", nil)
-							Wise:RefreshPropertiesPanel()
-							return
-						end
-					end
-
-					local fullKey = mods .. key
-					self:EnableKeyboard(false)
-					self:EnableMouseWheel(false)
-					self:SetScript("OnKeyDown", nil)
-					self:SetScript("OnMouseWheel", nil)
-					self:SetScript("OnMouseDown", nil)
-
-					if Wise:CheckBindingConflict(fullKey, group, nil, false, self) then
-						return
-					end
-
-					group.binding = fullKey
-
-					Wise:UpdateBindings()
-					Wise:UpdateOptionsUI()
-				end
-
-				self:SetScript("OnKeyDown", function(self, key)
-					FinishBinding(key)
-				end)
-
-				self:SetScript("OnMouseWheel", function(self, delta)
-					local key = (delta > 0) and "MOUSEWHEELUP" or "MOUSEWHEELDOWN"
-					FinishBinding(key)
-				end)
-
-				self:SetScript("OnMouseDown", function(self, button)
-					if button == "LeftButton" or button == "RightButton" then
-						return
-					end
-					local key = button
-					if button == "MiddleButton" then
-						key = "BUTTON3"
-					end
-					if button == "Button4" then
-						key = "BUTTON4"
-					end
-					if button == "Button5" then
-						key = "BUTTON5"
-					end
-					FinishBinding(key)
-				end)
+						return true
+					end,
+					onInvalid = function(err)
+						EnsureBindingErrorPopup()
+						StaticPopup_Show("WISE_BINDING_ERROR", err)
+					end,
+					onBound = function(fullKey)
+						group.binding = fullKey
+						Wise:UpdateBindings()
+						Wise:UpdateOptionsUI()
+					end,
+				})
 			end
 		end)
 		tinsert(panel.controls, bindBtn)

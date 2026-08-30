@@ -23,7 +23,10 @@ function Wise:CreateOptionsFrame()
 	local maxBtn = CreateFrame("Button", nil, f)
 	maxBtn:SetSize(24, 24)
 	if f.CloseButton then
-		maxBtn:SetPoint("RIGHT", f.CloseButton, "LEFT", 4, 0)
+		f.CloseButton:SetScript("OnClick", function()
+			f:Hide()
+		end)
+		maxBtn:SetPoint("RIGHT", f.CloseButton, "LEFT", -2, 0)
 		maxBtn:SetFrameLevel(f.CloseButton:GetFrameLevel() + 2)
 	else
 		maxBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -4)
@@ -34,6 +37,22 @@ function Wise:CreateOptionsFrame()
 	maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
 	maxBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
 	Wise:AddTooltip(maxBtn, "Maximize / Minimize Options Window")
+
+	-- Reload UI button in title bar
+	local reloadBtn = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
+	reloadBtn:SetSize(80, 20)
+	if f.CloseButton then
+		reloadBtn:SetPoint("RIGHT", maxBtn, "LEFT", -6, 0)
+	else
+		reloadBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -65, -6)
+	end
+	reloadBtn:SetText("Reload UI")
+	reloadBtn:SetNormalFontObject("GameFontNormalSmall")
+	reloadBtn:SetHighlightFontObject("GameFontHighlightSmall")
+	reloadBtn:SetScript("OnClick", function()
+		ReloadUI()
+	end)
+	Wise:AddTooltip(reloadBtn, "Reload the User Interface (/reload)")
 
 	local maximized = true
 	maxBtn:SetScript("OnClick", function()
@@ -79,7 +98,14 @@ function Wise:CreateOptionsFrame()
 	end
 
 	Wise.OptionsFrame = f
-	-- Note: NOT added to UISpecialFrames so it stays open when other panels are opened
+	_G["WiseOptionsFrame"] = f
+	tinsert(UISpecialFrames, "WiseOptionsFrame")
+
+	-- ConsolePort integration: let its virtual cursor scan into this window
+	-- (see Wise:RegisterConsolePortFrame in core/Bindings.lua).
+	if Wise.RegisterConsolePortFrame then
+		Wise:RegisterConsolePortFrame(f)
+	end
 
 	-- Hook visibility for Edit Mode exit frame
 	f:HookScript("OnShow", function()
@@ -96,6 +122,9 @@ function Wise:CreateOptionsFrame()
 		end
 		if Wise.UpdateMouseWheelState then
 			Wise:UpdateMouseWheelState()
+		end
+		if Wise.pickingCondition and Wise.CloseConditionPicker then
+			Wise:CloseConditionPicker()
 		end
 	end)
 

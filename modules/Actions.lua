@@ -3358,18 +3358,7 @@ function Wise:PickerRefresh(filter)
 			btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
 
 			btn:SetScript("OnEnter", function(self)
-				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-				if self.data.tooltipFunc then
-					self.data.tooltipFunc(self.data.value)
-				elseif self.data.type == "spell" then
-					local tooltipID = Wise:GetOverrideSpellID(self.data.value) or self.data.value
-					GameTooltip:SetSpellByID(tooltipID)
-				elseif self.data.type == "item" or self.data.type == "toy" then
-					GameTooltip:SetItemByID(self.data.value)
-				else
-					GameTooltip:SetText(self.data.name)
-				end
-				GameTooltip:Show()
+				Wise:ShowActionTooltip(self, self.data.type, self.data.value, self.data, "ANCHOR_RIGHT")
 			end)
 			btn:SetScript("OnLeave", function()
 				GameTooltip:Hide()
@@ -5184,6 +5173,50 @@ function Wise:RefreshActionsView(container)
 			end
 		end)
 
+		local displayActions = actions
+		if actions.graph and actions.graph.nodes then
+			displayActions = {}
+			local orderedNodes = Wise.GetOrderedGraphNodes and Wise:GetOrderedGraphNodes(actions.graph)
+				or actions.graph.nodes
+			for _, node in ipairs(orderedNodes) do
+				local actCopy = {}
+				for k, v in pairs(node.action) do
+					actCopy[k] = v
+				end
+				actCopy.conditions = node.condition
+				actCopy.nodeId = node.id
+				tinsert(displayActions, actCopy)
+			end
+		end
+
+		local totalStates = #displayActions
+
+		-- Slot Frame Tooltip
+		slotFrame:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			local title = Wise:GetSlotDisplayName(group, sIdx)
+			GameTooltip:SetText(title, 1, 0.82, 0)
+			local kb = Wise:GetKeybind(groupName, sIdx)
+			if kb then
+				GameTooltip:AddLine("Keybind: |cffffffff" .. kb .. "|r", 0.8, 0.8, 0.8)
+			end
+			if totalStates == 0 then
+				GameTooltip:AddLine("Empty slot — no actions configured.", 0.7, 0.7, 0.7)
+			else
+				GameTooltip:AddLine(
+					totalStates .. (totalStates == 1 and " action" or " actions") .. " configured",
+					0.8,
+					0.8,
+					0.8
+				)
+			end
+			GameTooltip:AddLine("Drag to reorder slots. Click to select.", 0.5, 0.8, 1, true)
+			GameTooltip:Show()
+		end)
+		slotFrame:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
+
 		-- Format slot header (show custom name if set)
 		local slotDisplayName = Wise:GetSlotDisplayName(group, sIdx)
 		if sIdx ~= math.floor(sIdx) then
@@ -5209,20 +5242,6 @@ function Wise:RefreshActionsView(container)
 			b:Hide()
 		end
 
-		local displayActions = actions
-		if actions.graph and actions.graph.nodes then
-			displayActions = {}
-			for _, node in ipairs(actions.graph.nodes) do
-				local actCopy = {}
-				for k, v in pairs(node.action) do
-					actCopy[k] = v
-				end
-				actCopy.conditions = node.condition
-				tinsert(displayActions, actCopy)
-			end
-		end
-
-		local totalStates = #displayActions
 		for aIdx, action in ipairs(displayActions) do
 			local btn = slotFrame.ActionButtons[aIdx]
 			if not btn then
@@ -5426,12 +5445,16 @@ function Wise:RefreshActionsView(container)
 				end)
 
 				btn:SetScript("OnEnter", function(self)
-					if self.condError then
-						GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-						GameTooltip:SetText("Invalid Condition", 1, 0, 0)
-						GameTooltip:AddLine(self.condError, 1, 1, 1)
-						GameTooltip:Show()
+					Wise:ShowActionTooltip(self, action.type, action.value, action, "ANCHOR_RIGHT")
+					if action.conditions and action.conditions ~= "" then
+						GameTooltip:AddLine(" ")
+						GameTooltip:AddLine("Condition: |cff00ccff" .. action.conditions .. "|r", 0.8, 0.8, 0.8, true)
 					end
+					if self.condError then
+						GameTooltip:AddLine(" ")
+						GameTooltip:AddLine("Invalid Condition: " .. self.condError, 1, 0.2, 0.2, true)
+					end
+					GameTooltip:Show()
 				end)
 				btn:SetScript("OnLeave", function()
 					GameTooltip:Hide()

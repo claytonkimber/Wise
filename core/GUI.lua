@@ -5293,6 +5293,23 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				end
 			end
 
+			-- Re-derive the conflict strategy from the SURVIVING step count. The value
+			-- copied above is canonical (compiled across all characters), and the
+			-- compiler's rule is "more than one path => sequence, a single path =>
+			-- waterfall" (CompileGraphToActions). The per-character passes above can
+			-- collapse a multi-path graph down to one step — an off-spec branch whose
+			-- only distinct cast was filtered out (e.g. a Resto-rooted Revitalize branch
+			-- on a Guardian druid) is dropped as a duplicate/subset. Without this the
+			-- slot keeps the canonical "sequence" and the secure snippet takes the
+			-- sequence path: it fires ONE line per press and advances isa_seq, instead
+			-- of stacking every match like waterfall. The result is a single-chain slot
+			-- where most steps appear dead because the press only walks one entry.
+			-- The View Macro preview already recomputes this from the visible count
+			-- (BuildSlotMacroPreview), so the bar and the preview disagreed.
+			if #validStates <= 1 then
+				validStates.conflictStrategy = "waterfall"
+			end
+
 			if #validStates > 0 then
 				-- Evaluate conditions to pick the active state from VALID states
 				local conflictStrategy = validStates.conflictStrategy or "priority"
@@ -5490,6 +5507,12 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 								end
 							end
 						end
+						-- Same canonical-strategy correction as the main slot loop: a single
+						-- surviving state is a waterfall, never a sequence (see above).
+						if #validStates <= 1 then
+							validStates.conflictStrategy = "waterfall"
+						end
+
 						if #validStates > 0 then
 							local cs = validStates.conflictStrategy or "priority"
 							-- childGroupName so [available:<slot>] resolves for a nested

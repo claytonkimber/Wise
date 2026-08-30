@@ -874,3 +874,73 @@ function Wise:UpdateConditionalsValues()
 		end
 	end
 end
+
+-- ═══════════════════════════════════════════════════════════════
+-- Condition String <-> Structured Groups Conversion
+-- ═══════════════════════════════════════════════════════════════
+-- Parses "[combat,flying][mounted]" into { {tokens}, {tokens} }
+-- Each token: { token = "combat", negated = false }
+function Wise:ParseConditionString(str)
+	if not str or str == "" then
+		return { {} } -- one empty group
+	end
+
+	local groups = {}
+	for bracket in string.gmatch(str, "%[([^%]]*)%]") do
+		local group = {}
+		for part in string.gmatch(bracket, "[^,]+") do
+			part = part:match("^%s*(.-)%s*$") -- trim
+			if part ~= "" then
+				local negated = false
+				local token = part
+				-- Detect "no" prefix (but not "none", not targets like @...)
+				if not string.find(part, "^@") and string.sub(part, 1, 2) == "no" then
+					-- Check it's not a real conditional that starts with "no"
+					local stripped = string.sub(part, 3)
+					if stripped ~= "" and stripped ~= "ne" then
+						negated = true
+						token = stripped
+					end
+				end
+				table.insert(group, { token = token, negated = negated })
+			end
+		end
+		table.insert(groups, group)
+	end
+
+	-- If nothing was parsed (no brackets found), treat whole string as a single token
+	if #groups == 0 then
+		if str ~= "" then
+			groups = { { { token = str, negated = false } } }
+		else
+			groups = { {} }
+		end
+	end
+
+	return groups
+end
+
+-- Converts structured groups back to bracket string
+function Wise:BuildConditionString(groups)
+	if not groups or #groups == 0 then
+		return ""
+	end
+
+	local parts = {}
+	for _, group in ipairs(groups) do
+		if #group > 0 then
+			local tokens = {}
+			for _, item in ipairs(group) do
+				local t = item.token
+				if item.negated then
+					t = "no" .. t
+				end
+				table.insert(tokens, t)
+			end
+			table.insert(parts, "[" .. table.concat(tokens, ",") .. "]")
+		end
+	end
+
+	return table.concat(parts, "")
+end
+

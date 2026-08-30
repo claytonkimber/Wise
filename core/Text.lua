@@ -50,6 +50,28 @@ function Wise:Text_ApplyPosition(fs, position, extraX, extraY)
 	end
 end
 
+--- Position and show a gamepad-glyph texture at the same anchor points used
+--- for keybind text (see POSITION_MAP), sized off the keybind font size.
+---@param tex Texture
+---@param position string
+---@param icon string  Atlas name or texture path (see Wise:GetGamepadIcon)
+---@param isAtlas boolean
+---@param kbSize number
+function Wise:Text_ApplyGamepadIcon(tex, position, icon, isAtlas, kbSize)
+	local info = POSITION_MAP[position] or POSITION_MAP["BOTTOMRIGHT"]
+	local anchor, ox, oy = info[1], info[2], info[3]
+	local size = (kbSize or 12) + 4
+	tex:ClearAllPoints()
+	tex:SetSize(size, size)
+	tex:SetPoint(anchor, tex:GetParent(), anchor, ox, oy)
+	if isAtlas then
+		tex:SetAtlas(icon)
+	else
+		tex:SetTexture(icon)
+	end
+	tex:Show()
+end
+
 --- Create the three Text FontStrings on a button (count, keybind, customText).
 --- Call once during button creation. Safe to call again (skips if already set up).
 ---@param btn Button
@@ -76,11 +98,19 @@ function Wise:Text_CreateFontStrings(btn)
 		btn.keybind = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 		btn.keybind:SetShadowOffset(1, -1)
 	end
+	-- Gamepad glyph shown instead of btn.keybind's text when the slot's
+	-- binding is a PAD* key and ConsolePort can supply a device-accurate icon.
+	if not btn.keybindGamepadIcon then
+		btn.keybindGamepadIcon = overlay:CreateTexture(nil, "OVERLAY")
+	end
 
 	-- Interface Keybind (group-level toggle binding)
 	if not btn.interfaceKeybind then
 		btn.interfaceKeybind = overlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 		btn.interfaceKeybind:SetShadowOffset(1, -1)
+	end
+	if not btn.interfaceKeybindGamepadIcon then
+		btn.interfaceKeybindGamepadIcon = overlay:CreateTexture(nil, "OVERLAY")
 	end
 
 	-- Countdown (new)
@@ -145,22 +175,35 @@ function Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
 
 	if not showKeybinds then
 		btn.keybind:Hide()
+		if btn.keybindGamepadIcon then
+			btn.keybindGamepadIcon:Hide()
+		end
 		return
 	end
 
 	local _, _, _, _, kbPos, kbSize = Wise:GetGroupDisplaySettings(groupName)
-	local text = Wise.GetKeybind and Wise:GetKeybind(groupName, btn.slot) or nil
+	local text, rawKey = Wise.GetKeybind and Wise:GetKeybind(groupName, btn.slot) or nil
 
-	if text then
+	local pos = kbPos or "BOTTOM"
+	local icon, isAtlas = Wise.GetGamepadIcon and Wise:GetGamepadIcon(rawKey) or nil
+
+	if icon and btn.keybindGamepadIcon then
+		btn.keybind:Hide()
+		Wise:Text_ApplyGamepadIcon(btn.keybindGamepadIcon, pos, icon, isAtlas, kbSize)
+	elseif text then
+		if btn.keybindGamepadIcon then
+			btn.keybindGamepadIcon:Hide()
+		end
 		btn.keybind:SetText(text)
 		local fontPath = WiseDB.settings.font or "Fonts\\FRIZQT__.TTF"
 		btn.keybind:SetFont(fontPath, kbSize, "OUTLINE")
-
-		local pos = kbPos or "BOTTOM"
 		Wise:Text_ApplyPosition(btn.keybind, pos)
 		btn.keybind:Show()
 	else
 		btn.keybind:Hide()
+		if btn.keybindGamepadIcon then
+			btn.keybindGamepadIcon:Hide()
+		end
 	end
 end
 
@@ -176,22 +219,35 @@ function Wise:Text_UpdateInterfaceKeybind(btn, groupName, showInterfaceKeybind)
 
 	if not showInterfaceKeybind then
 		btn.interfaceKeybind:Hide()
+		if btn.interfaceKeybindGamepadIcon then
+			btn.interfaceKeybindGamepadIcon:Hide()
+		end
 		return
 	end
 
 	local _, _, _, _, kbPos, kbSize = Wise:GetGroupDisplaySettings(groupName)
-	local text = Wise.GetInterfaceKeybind and Wise:GetInterfaceKeybind(groupName) or nil
+	local text, rawKey = Wise.GetInterfaceKeybind and Wise:GetInterfaceKeybind(groupName) or nil
 
-	if text then
+	local pos = kbPos or "BOTTOM"
+	local icon, isAtlas = Wise.GetGamepadIcon and Wise:GetGamepadIcon(rawKey) or nil
+
+	if icon and btn.interfaceKeybindGamepadIcon then
+		btn.interfaceKeybind:Hide()
+		Wise:Text_ApplyGamepadIcon(btn.interfaceKeybindGamepadIcon, pos, icon, isAtlas, kbSize)
+	elseif text then
+		if btn.interfaceKeybindGamepadIcon then
+			btn.interfaceKeybindGamepadIcon:Hide()
+		end
 		btn.interfaceKeybind:SetText(text)
 		local fontPath = WiseDB.settings.font or "Fonts\\FRIZQT__.TTF"
 		btn.interfaceKeybind:SetFont(fontPath, kbSize, "OUTLINE")
-
-		local pos = kbPos or "BOTTOM"
 		Wise:Text_ApplyPosition(btn.interfaceKeybind, pos)
 		btn.interfaceKeybind:Show()
 	else
 		btn.interfaceKeybind:Hide()
+		if btn.interfaceKeybindGamepadIcon then
+			btn.interfaceKeybindGamepadIcon:Hide()
+		end
 	end
 end
 
