@@ -514,11 +514,6 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["anyflyable"] = true, -- any form of flight available
 	["worldhover"] = true, -- mouse over the 3D world, not the UI
 
-	-- Delves report instanceType=="scenario" like several other content types, so
-	-- native [instance:] can't identify one specifically. Out-of-combat-stable:
-	-- entering/leaving a Delve always happens via a loading screen, never mid-fight.
-	["delve"] = true,
-
 	-- Pet / weapon state.
 	["havepet"] = true,
 	["petcontrol"] = true,
@@ -847,9 +842,10 @@ local function IsWarbandBankAvailable()
 	return ok and reason == nil
 end
 
--- [delve] — currently inside a Delve. Native [instance:] can't distinguish a
--- Delve from other scenario-type content, since Delves report
--- instanceType == "scenario" just like several other content types.
+-- Delves report instanceType == "scenario" just like several other content
+-- types, so native [instance:scenario] can't tell a Delve apart from the rest.
+-- [instance:delve]/[in:delve] is a Wise-only synonym for the narrower check;
+-- [instance:scenario] is untouched and still matches ALL scenario content.
 local function IsInActiveDelve()
 	if not (C_DelvesUI and C_DelvesUI.HasActiveDelve) then
 		return false
@@ -1129,7 +1125,25 @@ function EvalCustomToken(token, groupName, forceLive)
 		result = ArgMatches(arg, GetRealZoneText()) or ArgMatches(arg, GetSubZoneText())
 	elseif base == "instance" or base == "in" then
 		local _, instanceType = GetInstanceInfo()
-		result = ArgMatches(arg, instanceType)
+		if arg and arg ~= "" then
+			for piece in arg:lower():gmatch("[^/]+") do
+				piece = piece:match("^%s*(.-)%s*$")
+				-- "delve" is a Wise-only synonym: matches only the narrower Delve
+				-- check, not every scenario. [instance:scenario] is untouched and
+				-- still matches ALL scenario content, delves included.
+				if piece == "delve" then
+					if IsInActiveDelve() then
+						result = true
+						break
+					end
+				elseif piece == instanceType then
+					result = true
+					break
+				end
+			end
+		else
+			result = true
+		end
 
 	-- Character identity.
 	elseif base == "me" then
@@ -1155,8 +1169,6 @@ function EvalCustomToken(token, groupName, forceLive)
 	-- ── Extended content-state tokens ──────────────────────────────────
 	elseif base == "warbank" then
 		result = IsWarbandBankAvailable()
-	elseif base == "delve" then
-		result = IsInActiveDelve()
 	elseif base == "prey" then
 		-- Bare [prey] = hunting anything; [prey:12345] = that specific quest.
 		local qid = GetActivePrey()
@@ -3454,6 +3466,12 @@ function Wise:CreateGroupFrame(name, instanceId)
         self:SetAttribute("state-wise-hide", shouldHide and "show" or "hide")
     ]]
 	)
+
+	-- ConsolePort integration: tell its virtual cursor about this frame so it
+	-- can scan into it. Once scanned, ConsolePort's own Secure cursor code
+	-- auto-binds PAD1/PAD2/PAD4 to whatever node it's hovering — no per-button
+	-- registration needed on Wise's side (see core/Bindings.lua).
+	Wise:RegisterConsolePortFrame(f)
 
 	Wise.frames[frameKey] = f
 	return f

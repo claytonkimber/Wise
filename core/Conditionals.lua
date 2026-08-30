@@ -141,10 +141,6 @@ local VALID_CONDITIONALS = {
 	["anyflyable"] = true,
 	["worldhover"] = true,
 
-	-- Wise-only conditional: Delves report instanceType == "scenario" like other
-	-- content, so native [instance:] can't identify one.
-	["delve"] = true,
-
 	-- Pet and weapon state.
 	["havepet"] = true,
 	["petcontrol"] = true,
@@ -267,7 +263,8 @@ Wise.extendedConditionals = {
 	{ name = "zone:name", desc = "Real Zone, Sub Zone, or Zone text", skipeval = true },
 	{
 		name = "instance:type",
-		desc = "Instance type: none, party, raid, pvp, arena, or scenario (Delves report as scenario — use [delve] instead)",
+		desc = "Instance type: none, party, raid, pvp, arena, scenario, or delve (delve is a Wise-only synonym matching just Delves; scenario still matches all scenario content)",
+		skipeval = true,
 	},
 	{ name = "in:type", desc = "Alias for instance", skipeval = true },
 
@@ -317,7 +314,7 @@ Wise.extendedConditionals = {
 	{ name = "blockedflyable", desc = "Flyable zone, but flight is currently suppressed" },
 	{ name = "anyflyable", desc = "Any form of flight is usable here" },
 
-	-- Content state (includes the Wise-only [delve])
+	-- Content state
 	{ type = "header", text = "Content State" },
 	{ name = "warbank", desc = "Warband bank is reachable" },
 	{ name = "prey", desc = "Currently hunting Prey" },
@@ -328,7 +325,6 @@ Wise.extendedConditionals = {
 	{ name = "coven:name", desc = "Shadowlands covenant (kyrian/venthyr/fae/necro)", skipeval = true },
 	{ name = "uslot:slot", desc = "Equipped item with an on-use effect (trinket1, head, ...)", skipeval = true },
 	{ name = "worldhover", desc = "Mouse is over the 3D world, not the UI" },
-	{ name = "delve", desc = "Currently inside a Delve" },
 
 	-- Combat-sampled. These evaluate live out of combat. On entering combat their
 	-- value is frozen and held until combat ends, because Wise drives visibility
@@ -586,8 +582,17 @@ function Wise:GetConditionalValue(name)
 	elseif base == "zone" then
 		return GetRealZoneText() or "Unknown"
 	elseif base == "instance" or base == "in" then
-		local _, type = GetInstanceInfo()
-		return type or "none"
+		local _, instanceType = GetInstanceInfo()
+		-- Delves report as "scenario" like several other content types; show the
+		-- more specific "delve" here so the display matches what [instance:delve]
+		-- actually tests for (see EvalCustomToken in core/GUI.lua).
+		if instanceType == "scenario" and C_DelvesUI and C_DelvesUI.HasActiveDelve then
+			local ok, isDelve = pcall(C_DelvesUI.HasActiveDelve)
+			if ok and isDelve then
+				return "delve"
+			end
+		end
+		return instanceType or "none"
 	elseif base == "me" then
 		local name = UnitName("player")
 		local _, class = UnitClass("player")
@@ -671,14 +676,6 @@ function Wise:EvaluateCustomCondition(name, args)
 	elseif check == "zoneability" then
 		local zoneBtn = Wise:GetZoneAbilitySpellButton()
 		return zoneBtn and zoneBtn.spellID ~= nil
-
-	-- Delve state (new Wise-only conditional, see EvalCustomToken in core/GUI.lua)
-	elseif check == "delve" then
-		if not (C_DelvesUI and C_DelvesUI.HasActiveDelve) then
-			return false
-		end
-		local ok, v = pcall(C_DelvesUI.HasActiveDelve)
-		return ok and v and true or false
 	end
 
 	return false
