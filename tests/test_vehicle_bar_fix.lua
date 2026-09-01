@@ -213,7 +213,7 @@ assert(Wise:NegateConditional("[nocombat]") == "[combat]", "nocombat negate fail
 local negated = Wise:NegateConditional("[overridebar][canexitvehicle]")
 assert(negated == "[nooverridebar,nocanexitvehicle]", "multi-group negate failed, got: " .. tostring(negated))
 local negatedPos = Wise:NegateConditional("[possessbar][bonusbar:5]")
-assert(negatedPos == "[nopossessbar,nobonusbar:5]", "possess negate failed, got: " .. tostring(negatedPos))
+assert(negatedPos == "[nopossessbar]", "possess negate failed, got: " .. tostring(negatedPos))
 print("  TEST 1 PASSED!")
 
 -- =========================================================================
@@ -232,8 +232,8 @@ local c3 = Wise:ComputeEffectiveConditions(states, 3)
 
 assert(c1 == "[overridebar][canexitvehicle]", "State 1 negated state 2 erroneously: " .. tostring(c1))
 assert(c2 == "[possessbar][bonusbar:5]", "State 2 negated state 1 erroneously: " .. tostring(c2))
-assert(c3:find("nooverridebar", 1, true) and c3:find("nocanexitvehicle", 1, true) and c3:find("nopossessbar", 1, true) and c3:find("nobonusbar:5", 1, true),
-	"State 3 must inherit all special bar negations, got: " .. tostring(c3))
+assert(c3:find("nooverridebar", 1, true) and c3:find("nocanexitvehicle", 1, true) and c3:find("nopossessbar", 1, true) and not c3:find("nobonusbar", 1, true),
+	"State 3 must inherit valid special bar negations, got: " .. tostring(c3))
 print("  TEST 2 PASSED!")
 
 -- =========================================================================

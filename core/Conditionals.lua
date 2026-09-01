@@ -880,8 +880,9 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- Parses "[combat,flying][mounted]" into { {tokens}, {tokens} }
 -- Each token: { token = "combat", negated = false }
-function Wise:ParseConditionString(str)
-	if not str or str == "" then
+function Wise:ParseConditionString(maybeStr)
+	local str = (type(self) == "string" and self) or (type(maybeStr) == "string" and maybeStr) or ""
+	if str == "" then
 		return { {} } -- one empty group
 	end
 

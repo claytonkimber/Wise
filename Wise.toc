@@ -70,3 +70,4 @@ wiser\BarCopy.lua
 wiser\AddonMagic.lua
 wiser\SpecAndEquip.lua
 wiser\DisenchantConvert.lua
+wiser\Cursor.lua

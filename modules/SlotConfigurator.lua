@@ -236,8 +236,9 @@ end
 -- ═══════════════════════════════════════════════════════════════
 -- Parses "[combat,flying][mounted]" into { {tokens}, {tokens} }
 -- Each token: { token = "combat", negated = false }
-local function ParseConditionString(str)
-	if not str or str == "" then
+local function ParseConditionString(selfOrStr, maybeStr)
+	local str = (type(selfOrStr) == "string" and selfOrStr) or (type(maybeStr) == "string" and maybeStr) or ""
+	if str == "" then
 		return { {} } -- one empty group
 	end
 
@@ -952,6 +953,20 @@ end
 -- original macroText when there is no graph to filter from. This is what the
 -- runtime should fire/show, and it must be recomputed whenever availability
 -- changes (PLAYER_SPECIALIZATION_CHANGED, TRAIT/talent updates, login).
+-- True for the override/possess "head" nodes a slot stacks in front of its real
+-- action (Override Bar Button N / Possess Bar Button N, action ids 121-156, and
+-- the overridebar/possessbar misc markers). These only ever emit /click lines at
+-- a Blizzard bar button that is hidden unless the player is actually in a
+-- vehicle/possess state, so on their own they cast nothing.
+local function IsSpecialBarAction(a)
+	if not a then
+		return false
+	end
+	local v = tonumber(a.value)
+	return (a.type == "action" and v and v >= 121 and v <= 156)
+		or (a.type == "misc" and (a.value == "overridebar" or a.value == "possessbar"))
+end
+
 function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 	if type(compiledAction) ~= "table" then
 		return compiledAction and compiledAction.macroText or ""
@@ -984,6 +999,25 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 		end
 	end
 
+	-- A step whose surviving nodes are ALL override/possess heads has no castable
+	-- content for this character: the branch's real spell was filtered out (wrong
+	-- class/spec/talent) and only the shared head remains. Its /click lines still
+	-- make the step look alive to the caller's "has a /cast|/use|/click" drop test,
+	-- so it survives as a dead step that the sequence strategy walks through —
+	-- pressing the slot fires nothing and, when such a step sorts ahead of the real
+	-- one, the slot appears completely unbound. Return no macro so the caller drops
+	-- it; if every step drops the slot is genuinely empty for this character.
+	local hasCastableNode = false
+	for _, node in ipairs(allowedNodes) do
+		if not IsSpecialBarAction(node.action) then
+			hasCastableNode = true
+			break
+		end
+	end
+	if not hasCastableNode then
+		return "", "", nil
+	end
+
 	local nodeStates = buildNodeStates(allowedNodes)
 	local macroLines = { "#showtooltip" }
 	local seenLines = { ["#showtooltip"] = true }
@@ -997,12 +1031,7 @@ function Wise:FilterMacroTextForCharacter(compiledAction, graph)
 
 	for i, node in ipairs(allowedNodes) do
 		local a = node.action
-		local v = a and tonumber(a.value)
-		local isSpecial = a
-			and (
-				(a.type == "action" and v and v >= 121 and v <= 156)
-				or (a.type == "misc" and (a.value == "overridebar" or a.value == "possessbar"))
-			)
+		local isSpecial = IsSpecialBarAction(a)
 		if i == 1 and isSpecial then
 			startsWithSpecialBar = true
 		end

@@ -27,6 +27,12 @@ function Wise:NegateConditional(cond)
 		if part == "" or string.find(part, "@") then
 			return
 		end
+		-- WoW macro conditionals like [bonusbar:N], [bar:N], [actionbar:N] do not have
+		-- a "no" negation form in the WoW client (e.g. [nobonusbar:5] is invalid syntax
+		-- and causes the entire condition bracket to fail). Omit them from negation.
+		if part:find("^bonusbar") or part:find("^bar") or part:find("^actionbar") then
+			return
+		end
 		local negated
 		if part:sub(1, 2) == "no" then
 			negated = part:sub(3)

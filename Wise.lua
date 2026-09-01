@@ -81,6 +81,60 @@ function Wise:GetOverrideSpellID(spellID)
 	return spellID
 end
 
+function Wise:GetCastableMacroSpellName(spellID, fallbackName)
+	if not spellID then
+		return fallbackName or ""
+	end
+	local numID = tonumber(spellID)
+	if not numID then
+		return fallbackName or tostring(spellID)
+	end
+
+	-- 1. Check if Blizzard's API identifies this ID as an override of a base spell
+	if FindBaseSpellByID then
+		local ok, baseID = pcall(FindBaseSpellByID, numID)
+		if ok and baseID and baseID ~= numID then
+			local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(baseID)
+			if info and info.name then
+				return info.name
+			end
+		end
+	end
+
+	-- 2. Scan the player's active spellbook: check if any learned base ability's
+	-- active override matches our spellID (e.g. Berserk -> Incarnation, Maul -> Raze)
+	if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+		local numSkillLines = C_SpellBook.GetNumSpellBookSkillLines()
+		for i = 1, numSkillLines do
+			local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(i)
+			if lineInfo then
+				local offset = lineInfo.itemIndexOffset
+				local count = lineInfo.numSpellBookItems
+				for j = 1, count do
+					local spellType, bookSpellID =
+						C_SpellBook.GetSpellBookItemType(offset + j, Enum.SpellBookSpellBank.Player)
+					if spellType == Enum.SpellBookItemType.Spell and bookSpellID then
+						local activeOverride = Wise:GetOverrideSpellID(bookSpellID)
+						if (activeOverride == numID or bookSpellID == numID) and bookSpellID ~= numID then
+							local baseInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(bookSpellID)
+							if baseInfo and baseInfo.name then
+								return baseInfo.name
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Standard ability: return its resolved spell name
+	local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(numID)
+	if info and info.name then
+		return info.name
+	end
+	return fallbackName or tostring(spellID)
+end
+
 -- Update Function - Core Info
 function Wise:UpdateCharacterInfo(sourceEvent)
 	local _, className = UnitClass("player")
@@ -1587,6 +1641,28 @@ function frame:OnEvent(event, arg1)
 						end
 					end
 				end
+
+				-- Migration V5: Recompile all graph-backed slots to purge invalid [nobonusbar:5] tokens and map Incarnation to Berserk
+				if not WiseDB.migrations.specialBarVehicleExclusivityV5 then
+					if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+						local recompiled = 0
+						for _, g in pairs(WiseDB.groups) do
+							if type(g.actions) == "table" then
+								for slotKey, slotActions in pairs(g.actions) do
+									if type(slotKey) == "number" and type(slotActions) == "table" and slotActions.graph then
+										if Wise:RepairCompiledSlotFromGraph(slotActions) then
+											recompiled = recompiled + 1
+										end
+									end
+								end
+							end
+						end
+						WiseDB.migrations.specialBarVehicleExclusivityV5 = true
+						if recompiled > 0 then
+							Wise:DebugPrint("Recompiled " .. recompiled .. " slot(s) for clean special-bar exclusivity V5")
+						end
+					end
+				end
 			end
 
 			-- Scope-waterfall backfill: the All/Class/Spec/Build/Character filter
@@ -2584,6 +2660,27 @@ SlashCmdList["WISE"] = function(msg)
 		end
 
 		print("|cff00ccff[Wise]|r Blizzard Bars " .. (newState and "Hidden" or "Shown"))
+		return
+	end
+
+	if cmd == "cursor" then
+		-- Diagnostic: report what the UnitPower secrecy probe observed, or
+		-- `/wise cursor test [pct]` to force the ring on and check rendering
+		-- independently of the power read. See wiser/Cursor.lua.
+		if not (Wise.Cursor and Wise.Cursor.Report) then
+			print("|cff00ccff[Wise]|r Cursor module not loaded.")
+			return
+		end
+		local sub, subArg = arg:match("^(%S*)%s*(.*)")
+		if sub == "test" then
+			Wise.Cursor:ToggleTest(subArg)
+		elseif sub == "probe" then
+			Wise.Cursor:Probe()
+		elseif sub == "bar" then
+			Wise.Cursor:ToggleBar()
+		else
+			Wise.Cursor:Report()
+		end
 		return
 	end
 

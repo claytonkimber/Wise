@@ -3739,15 +3739,17 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 		end
 		-- Final fallback: use the stored display name from the action data
 		local fallbackName = spellName or actionData.name or aValue
+		-- Dynamically resolve the castable macro name (e.g. queries spellbook reverse-override and FindBaseSpellByID)
+		local castableName = Wise.GetCastableMacroSpellName and Wise:GetCastableMacroSpellName(castID or n, fallbackName) or fallbackName
 		-- Build subtext-qualified name for /cast commands (e.g. "Whirling Surge(Skyriding)")
 		-- Only append subtext "Skyriding" — those abilities share names across subsystems
 		-- and require the qualifier.  Other subtexts (e.g. form-specific labels on Wild
 		-- Charge) are form-dependent and break /cast when the player changes shapeshift form.
-		local castName = fallbackName
+		local castName = castableName
 		if n and C_Spell.GetSpellSubtext then
 			local subtext = C_Spell.GetSpellSubtext(castID or n)
 			if subtext and subtext == "Skyriding" then
-				castName = fallbackName .. "(" .. subtext .. ")"
+				castName = castableName .. "(" .. subtext .. ")"
 			end
 		end
 		if hasCond then
@@ -3766,7 +3768,7 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			secureType = "spell"
 			secureAttr = "spell"
 			-- type="spell" accepts both spell names and spell IDs
-			secureValue = spellName or castID or aValue
+			secureValue = castName or spellName or castID or aValue
 		end
 	elseif aType == "item" or aType == "toy" then
 		if hasCond then
@@ -6088,6 +6090,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- Store all states as secure attributes for condition evaluation
 		local allStates = actionInfo.states
 		local stateCount = allStates and #allStates or 1
+		btn:SetAttribute("isa_action_on_down", GetCVarBool("ActionButtonUseKeyDown"))
 		if stateCount > 1 then
 			for sIdx = 1, stateCount do
 				local stateAction = allStates[sIdx]
@@ -6108,10 +6111,11 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					-- (e.g. "Whirling Surge(Skyriding)") so skyriding abilities resolve correctly.
 					local spellVal = ""
 					if sAttr == "spell" then
-						local rawName = tostring(sValue)
 						local sid = tonumber(stateAction.value)
+						local castID = sid and (Wise:GetOverrideSpellID(sid) or sid) or sid
+						local castableName = (sid and Wise.GetCastableMacroSpellName) and Wise:GetCastableMacroSpellName(castID, tostring(sValue)) or tostring(sValue)
+						local rawName = castableName
 						if sid and C_Spell.GetSpellSubtext then
-							local castID = Wise:GetOverrideSpellID(sid) or sid
 							local subtext = C_Spell.GetSpellSubtext(castID) or C_Spell.GetSpellSubtext(sid)
 							if subtext and subtext == "Skyriding" then
 								rawName = rawName .. "(" .. subtext .. ")"
@@ -6155,30 +6159,34 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			btn:SetAttribute("isa_count", stateCount)
 			btn:SetAttribute("isa_conflict", actionInfo.conflictStrategy or "priority")
 			btn:SetAttribute("isa_suppress", actionInfo.suppressErrors and 1 or 0)
-			btn:SetAttribute("isa_action_on_down", GetCVarBool("ActionButtonUseKeyDown"))
 			btn:SetAttribute("isa_seq", 1)
+		else
+			btn:SetAttribute("isa_count", 0)
+			btn:SetAttribute("isa_conflict", nil)
+			btn:SetAttribute("isa_suppress", actionInfo.suppressErrors and 1 or 0)
+		end
 
-			-- PreClick secure snippet: uses the SAME RESOLVE_BLOCK as the keybind path
-			-- to guarantee identical condition evaluation, sequencing, and macro generation.
-			if not btn.isaConditionWrapped then
-				local condSnippet = [[
-                    local downOnly = self:GetAttribute("isa_action_on_down")
-                    local keybind = self:GetAttribute("keybind") or ""
-                    local isMouseWheel = keybind:find("MOUSEWHEEL")
-                    if not isMouseWheel and ((down and not downOnly) or (not down and downOnly)) then return end
-                    
-                    local _rv_ref = self
-                    local _rv_t, _rv_s, _rv_i, _rv_m
-                ]] .. Wise.RESOLVE_BLOCK .. [[
-                    if _rv_t then
-                        self:SetAttribute("type", _rv_t)
-                        self:SetAttribute("spell", _rv_s)
-                        self:SetAttribute("item", _rv_i)
-                        self:SetAttribute("macrotext", _rv_m)
-                    end
-                ]]
-				SecureHandlerWrapScript(btn, "PreClick", btn, condSnippet)
-				btn.isaConditionWrapped = true
+		-- PreClick secure snippet: uses the SAME RESOLVE_BLOCK as the keybind path
+		-- to guarantee identical condition evaluation, sequencing, and macro generation.
+		if not btn.isaConditionWrapped then
+			local condSnippet = [[
+				local downOnly = self:GetAttribute("isa_action_on_down")
+				local keybind = self:GetAttribute("keybind") or ""
+				local isMouseWheel = keybind:find("MOUSEWHEEL")
+				if not isMouseWheel and ((down and not downOnly) or (not down and downOnly)) then return end
+				
+				local _rv_ref = self
+				local _rv_t, _rv_s, _rv_i, _rv_m
+			]] .. Wise.RESOLVE_BLOCK .. [[
+				if _rv_t then
+					self:SetAttribute("type", _rv_t)
+					self:SetAttribute("spell", _rv_s)
+					self:SetAttribute("item", _rv_i)
+					self:SetAttribute("macrotext", _rv_m)
+				end
+			]]
+			SecureHandlerWrapScript(btn, "PreClick", btn, condSnippet)
+			btn.isaConditionWrapped = true
 
 				-- Error suppression hook (insecure, once per button)
 				btn:HookScript("PreClick", function(self, mouseButton, isDown)
@@ -6251,10 +6259,6 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end)
 			end
-		else
-			-- Single state: clear multi-state attributes
-			btn:SetAttribute("isa_count", 0)
-		end
 
 		Wise:DebugPrint(
 			string.format(
