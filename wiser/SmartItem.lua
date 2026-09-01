@@ -174,14 +174,14 @@ function Wise:CreateSmartItemInterface(searchTerm, callback)
 		interfaceName = baseName .. " " .. counter
 	end
 
-	print("|cff00ccff[Wise]|r Searching for items matching: " .. searchTerm)
+	print("|cff00ccff[Wise]|r Searching for items matching:", searchTerm)
 
 	-- Default sources for new interface (Bags only)
 	local sources = { bags = true, bank = false, warband = false, guild = false }
 
 	self:SearchItems(searchTerm, function(items)
 		if #items == 0 then
-			print("|cff00ccff[Wise]|r No items found matching: " .. searchTerm)
+			print("|cff00ccff[Wise]|r No items found matching:", searchTerm)
 			if callback then
 				callback(false)
 			end
@@ -218,7 +218,7 @@ function Wise:CreateSmartItemInterface(searchTerm, callback)
 			})
 		end
 
-		print("|cff00ccff[Wise]|r Created Smart Item interface '" .. interfaceName .. "' with " .. #items .. " items")
+		print("|cff00ccff[Wise]|r Created Smart Item interface '", interfaceName, "' with", #items, "items")
 
 		-- Update UI
 		Wise:UpdateGroupDisplay(interfaceName)
@@ -242,7 +242,7 @@ function Wise:RefreshSmartItemInterface(interfaceName, silent)
 	local sources = group.smartSources or { bags = true }
 
 	if not silent then
-		print("|cff00ccff[Wise]|r Refreshing Smart Item interface: " .. interfaceName)
+		print("|cff00ccff[Wise]|r Refreshing Smart Item interface:", interfaceName)
 	end
 
 	self:SearchItems(searchTerm, function(items)
@@ -260,7 +260,7 @@ function Wise:RefreshSmartItemInterface(interfaceName, silent)
 		end
 
 		if not silent then
-			print("|cff00ccff[Wise]|r Updated '" .. interfaceName .. "' with " .. #items .. " items")
+			print("|cff00ccff[Wise]|r Updated '", interfaceName, "' with", #items, "items")
 		end
 
 		-- Update UI
