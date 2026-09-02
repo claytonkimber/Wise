@@ -10,7 +10,7 @@ local addonName, Wise = ...
 -- is not a protected action in WoW (OxedHub plays via PlaySoundFile/"Master").
 --
 -- Patterns mirror the Abundance indicator (modules/AbundanceTest.lua): a dirty
--- flag + C_Timer.After(0) coalescer (AGENTS.md Rule 9 #2) and a transition gate
+-- flag + C_Timer.After(0) coalescer (AGENTS.md Rule 12 #2) and a transition gate
 -- so a held condition doesn't re-trigger. Shared sound + dropdown helpers come
 -- from modules/Audio.lua.
 

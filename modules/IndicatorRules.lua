@@ -1024,7 +1024,7 @@ function Wise:UpdateIndicatorRules()
 	end
 end
 
--- Coalesce event bursts: one scan on the next frame (AGENTS.md Rule 9 #2).
+-- Coalesce event bursts: one scan on the next frame (AGENTS.md Rule 12 #2).
 local indicatorDirty = false
 function Wise:ScheduleIndicatorUpdate()
 	if indicatorDirty then

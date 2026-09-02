@@ -1,5 +1,59 @@
 # Wise Addon: Technical Constitution
 
+## Keeping This File Current (MANDATORY)
+
+This file is the shared contract between the agents working on Wise (Claude Code,
+Gemini, Jules) and the human. An agent that solves a problem and leaves the
+knowledge only in a chat transcript has done half the work: the next agent — or
+the next model — starts from zero and re-derives, or worse, re-breaks it.
+
+**Write it down when the learning is durable.** The test is not "was this hard?"
+but "would someone reasonably do the wrong thing without knowing this?"
+
+Record here:
+
+- **A behaviour of the WoW client that contradicts the obvious assumption** —
+  an API that returns secret/nil where you'd expect a value, a call that silently
+  no-ops, a version gate. These are the most expensive things to rediscover
+  because the code looks correct.
+- **An invariant that spans files** — "these three tables must agree", "this
+  field must be carried through that filter". Anything a future edit can break
+  from a distance, where the failure surfaces somewhere else.
+- **A design decision with a rejected alternative** — especially a feature
+  deliberately *not* shipped, or a route already tested and closed. Without the
+  "we tried that, here's why it can't work", it gets re-attempted.
+- **A tool's real behaviour vs its documented behaviour** — where the sim, the
+  scanners, or CodeSight lie or mislead.
+
+Do **not** record: one-off bug fixes with no general lesson, routine
+troubleshooting steps, restatements of what the code plainly says, or a
+changelog entry (that is what `CHANGELOG.md` and git history are for).
+
+**Rules of upkeep:**
+
+1. **Correct in place; never append a contradiction.** When a measurement
+   supersedes an earlier claim, *delete the wrong claim* and say what replaced
+   it. Two conflicting paragraphs are worse than none — the reader cannot tell
+   which is current. (See the Combat Aura Secrecy section: an earlier, wrong
+   theory was deleted outright rather than left alongside the correction.)
+2. **Date and attribute measured facts.** Client behaviour is version-specific.
+   A claim about secrecy or an API shape should say when it was measured and on
+   what build, so a later patch can invalidate it honestly.
+3. **Say what was tested and what was assumed.** "Verified in-game 12.1" and
+   "inferred from PTR notes" carry different weight for the next agent deciding
+   whether to trust it.
+4. **A code comment pointing at `AGENTS.md "<Section>"` must resolve.** Several
+   modules cross-reference sections by name; if you rename or remove one, fix
+   the referring comments (`grep -rn 'AGENTS.md' --include='*.lua'`).
+5. **Prune.** If a section describes a workaround for a bug the client has since
+   fixed, or a file that no longer exists, remove it. Stale guidance is followed
+   just as faithfully as current guidance.
+
+**For cross-project learnings** (the simulator, Mechanic, Perfy), put the fact in
+the project it belongs to and cross-reference rather than duplicating — a copy
+drifts. Simulator behaviour goes in `_dev_/wow-ui-sim/AGENTS.md`; how *Wise* uses
+those tools stays here.
+
 ## Project Goal
 A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use libraries if they provide a significant improvement in performance or usability.
 
@@ -8,7 +62,12 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - Framework:
 - IDE: Antigravity 2026
 - Agent Trio: Claude Code (Logic), Jules (Background Ops), Gemini (Arch)
-- Tooling: Mechanic MCP (addon lifecycle automation); CodeSight MCP (codebase structure / blast-radius analysis); wow-ui-sim (headless WoW client for UI-layout & visual verification — see its own section)
+- Tooling: Mechanic (addon lifecycle automation — MCP when connected, otherwise the
+  file-queue bridge below); CodeSight MCP (structural map; see its section for current
+  limits); wow-ui-sim (headless WoW client for UI-layout & visual verification);
+  Perfy (`_dev_/Perfy`, flame-graph profiler for the live addon) — each has its own
+  section below
+- Docs: this file is the shared agent contract — see "Keeping This File Current"
 
 ### Mechanic Usage Policy (token cost)
 
@@ -18,6 +77,67 @@ Mechanic tool calls return very large outputs and burn context tokens fast. **Us
 - Reserve Mechanic for what only it can do: in-game execution (`lua-queue`/`lua-results`/`addon-output`), sandbox runs with WoW API stubs, and the security/deprecation scanners before a release.
 - Run the heavy scanners (`addon-security`, `addon-deprecations`, `addon-deadcode`, `addon-complexity`) once per change-set as a pre-merge gate, not after every edit.
 - Never call Mechanic tools speculatively or "just to check" — each call should answer a specific question you cannot answer locally.
+
+### Mechanic: the file-queue bridge (when the MCP is not connected)
+
+**The Mechanic MCP is frequently NOT connected in Claude Code sessions.** When
+`mcp__mechanic__*` tools are unavailable, in-game evaluation is still possible —
+via a file, which is the path that actually gets used in practice:
+
+- Write `MECHANIC_LUA_QUEUE = { { label = "...", code = [==[ ... ]==] } }` into
+  `_dev_/!Mechanic/MechanicQueue.lua`. It executes at `!Mechanic`'s
+  `ADDON_LOADED` **on every login and `/reload`** until the file is reset to
+  `MECHANIC_LUA_QUEUE = {}`. Reset it when you are done, or your probe keeps
+  firing for the rest of the user's play session.
+- **It runs before other addons load.** Wrap any probe that inspects Wise (or
+  any addon) in `C_Timer.After(n, ...)` — a probe that reads `Wise.VDC` at
+  `ADDON_LOADED` sees `nil` and reports a false negative.
+- Synchronous return values land in
+  `MechanicDB.profiles.Default.luaEvalResults`; **deferred probes must print to
+  chat and/or stash into `MechanicDB.profiles.Default.<key>` themselves.**
+  SavedVariables are written **at logout**, so a probe result cannot be read back
+  until the user exits or reloads.
+- Read results from
+  `WTF/Account/CLAYTONKIMBER/SavedVariables/!Mechanic.lua`.
+- **This is a request to the human, not a self-service tool.** Queuing a probe
+  requires the user to reload and, for SavedVariables results, to log out. Batch
+  everything you want to learn into one probe rather than iterating one question
+  per reload.
+
+### Perfy: flame-graph profiling of the live addon
+
+`_dev_/Perfy` is a fork of Perfy (branch `midnight-compat`) — a Lua flame-graph
+profiler. Perfy's core APIs survived the 12.0 API break intact; the fork exists
+for toolchain/compat fixes, not a rewrite. It is declared an **optional**
+dependency, never a required one.
+
+**Full workflow lives in `tools/README-profiling.md` — read it before profiling.**
+`tools/perfy-profile.ps1` instruments the **real** addon at its real path (no
+copies, no junction swapping), so what you profile is exactly what runs.
+
+The non-obvious parts worth knowing before you start:
+
+- **Instrumentation rewrites `.lua`/`.toc` files in place, so "restore" means
+  git.** Uncommitted tracked changes block `-Instrument`; `-Force` auto-stashes
+  and `-Restore` pops that exact stash back by commit sha. Untracked files are
+  never touched. `-Restore` is idempotent and safe after a failed run.
+- **`/reload` after `/perfy stop` is REQUIRED** — that is what writes the capture
+  to disk. Skipping it loses the run.
+- **30 seconds is the recommended capture.** The analyzer is the binding
+  constraint (~400 bytes of RAM per trace entry: 30s ≈ 2.2M entries ≈ 0.8 GB;
+  240s+ tends to OOM), and the client grows ~1 GB/min while tracing because
+  Perfy disables the GC to keep measurements clean. **Longer is not better** — a
+  long capture averages away the thing you are hunting.
+- **Captures are not comparable unless you control the conditions.** Perfy's own
+  instrumentation inflates absolute numbers, so only compare runs to each other,
+  and only with matched duration, visible button count (the dominant scaling
+  factor), and activity level. Wait a few seconds after `/reload` before starting
+  so the one-time rebuild does not land in the trace.
+- **Choosing between profilers:** `/wise cpu` (see Performance) is the cheap
+  first stop for "is Wise costing anything, and where — frames or handlers".
+  Reach for Perfy when you need a **call-graph attribution** of that cost, since
+  it names the actual functions. Do not instrument to answer a question
+  `/wise cpu` already answers.
 
 ### UI & Visual Verification (wow-ui-sim)
 
@@ -51,6 +171,66 @@ MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
 - `MSYS_NO_PATHCONV=1` stops git-bash mangling the `:/app/...` mount path.
 - **`screenshot` renders via software Vulkan (Mesa lavapipe) baked into the image** — no GPU/`--gpus` needed, deterministic, ~1600x1200 `.webp`. The `XDG_RUNTIME_DIR is invalid` warning it prints is harmless (offscreen render, no Wayland session). Read the resulting `.webp` to see the rendered UI.
 - New UI test cases go in `Wise/tests/*.lua` using the simulator's `test(...)`/`async_test(...)` + `assertEquals` framework — this is separate from the in-client `tests.xml` QA checklist.
+
+#### Simulator gotchas that have cost real debugging time
+
+These are behaviours of the sim itself, not of Wise. A green suite here is not
+proof of a working addon, and a red one is not always your bug.
+
+- **Use the `12.0.7` image for `run-tests`, not `12.1.0`.** The same tree scores
+  82/82 on 12.0.7 and 80/82 on 12.1.0: `compat121.lua` explicitly asserts the
+  12.1 intrinsics are **absent**, which is true on 12.0.7 and false on 12.1.0, so
+  the newer image inverts the test's expectations. Do not debug those two —
+  switch images.
+- **A failing sync test prints no failure text — the file just vanishes from the
+  output** while its failures still count in the total. To see *why* one failed,
+  run the assertions at **file scope** and `error()`: the load-error branch does
+  print, with full text. Delete the probe file afterwards.
+- **Never stub the global `print` in a test helper.** The runner reports failures
+  through it, so a helper that silences `print` swallows every later file's
+  failure output and makes a red suite look green.
+- **`--exec-lua` is the fastest way to see a failure.** It is a **global** flag,
+  not a `run-tests` option, so pair it with a cheap subcommand:
+  `--exec-lua '<code>' dump-tree -f NoSuchFrame`. Its `print` output *does*
+  reach the output, unlike per-test failure text. A host mount for a script file
+  often will not resolve — inline the code rather than using `@/path`.
+- **Sim absence ≠ API removal.** `GetUnitSpeed` reads nil under the sim but
+  exists in the live client. Before "fixing" a nil API the sim reports, check
+  whether other live addons call it, and guard defensively
+  (`local fn = Localized or _G.Name`) rather than migrating to a replacement that
+  may not exist.
+- **Hoisted upvalues defeat `_G` stubbing.** `core/GUI.lua` hoists
+  `local InCombatLockdown = InCombatLockdown` at the top, so a test that stubs
+  `_G.InCombatLockdown` silently exercises the **live** path and passes for the
+  wrong reason. Where a test must control such a value, add an explicit seam
+  (e.g. `Wise._forceCombatSampling`, nil in normal play) and **mutation-test** to
+  prove the guarded branch is actually reached. APIs resolved at call time
+  (`_G.Foo` *inside* the function) remain stubbable.
+- **Frame globals and `C_*` namespaces cannot be replaced from test code.**
+  `MerchantFrame = {...}` or `_G.C_UnitAuras = {stub}` silently do nothing —
+  both resolve through the sim's registries. Patch **fields** on the existing
+  table (`C_UnitAuras.GetPlayerAuraBySpellID = stub`) and restore the originals
+  afterwards; for frames use `_G.MerchantFrame`, or just `:Show()`/`:Hide()` the
+  real one and restore its prior state.
+- **Only three non-Blizzard addons exist in the sim:** `Wise`, `TestFramework`,
+  `__BuiltIn`. A test needing a second real installed addon must use
+  `TestFramework` — anything else returns nil from `C_AddOns.GetAddOnInfo` and
+  silently changes what the code under test does.
+- **`OnGamePadButtonDown`/`OnGamePadStick` are not recognised script handlers**
+  in the sim and throw on `SetScript`, though real WoW and ConsolePort both rely
+  on them. See the Gamepad section — the `pcall` lives in the addon code.
+- **UIPanel mutual exclusivity is not modelled.** The sim does not reproduce the
+  real panel manager's area competition (opening `CharacterFrame` should close
+  `MerchantFrame`; they share the "left" slot). A passing suite is not proof that
+  code touching two `UIPanelWindows`-registered frames together is safe — verify
+  that class of interaction against Blizzard source or in-game.
+- **Known harmless noise:** Blizzard `MoneyFormatter`/`GameTooltipConstants`
+  errors (`Enum.CurrencyType`, `MoneyFormatterUtil` nil) are pre-existing sim
+  gaps, not addon faults.
+- **Docker Desktop must be running first** (`Start-Process "C:\Program
+  Files\Docker\Docker\Docker Desktop.exe"`, ~1 min to become ready). If the
+  daemon is down, the run fails with a `npipe:////./pipe/dockerDesktopLinuxEngine`
+  connect error — that is the daemon, not your test.
 
 ### Choosing the tool: wow-ui-sim vs Mechanic (token efficiency)
 
@@ -324,21 +504,81 @@ Before merging any code, verify:
 
 ## Codebase Navigation (CodeSight MCP)
 
-CodeSight is a local, patched MCP that maps Wise's structure. Because WoW addons share one global `Wise.*` table instead of importing by path, CodeSight has a **Tier 2 patch** that builds a namespace symbol graph (which file reads a `Wise.Foo`/`Wise:Foo` that another file defines). Use it to orient before edits — it is faster and cheaper than grepping the whole tree.
+CodeSight is a local, patched MCP that maps Wise's structure. Because WoW addons
+share one global `Wise.*` table instead of importing by path, CodeSight has a
+**Tier 2 patch** that builds a namespace symbol graph (which file reads a
+`Wise.Foo`/`Wise:Foo` that another file defines).
 
-- **Before changing a foundational file**, run `mcp__codesight__codesight_get_blast_radius` (file path) to see which files depend on it. This answers "what could this change break." Verified examples: editing `core/Polyfill.lua` affects ~26 files, `core/Text.lua` ~25; a leaf or internally-wired file like `core/Dispatcher.lua` correctly returns 0. A `0` result means no *symbol* dependents — trust it, don't grep again "just in case."
-- **To find the load-bearing files**, use `mcp__codesight__codesight_get_hot_files` (most depended-upon: `Wise.lua`, `core/Polyfill`, `core/Text`, `core/Bindings`, `core/GUI`, `modules/States`).
-- **For a one-shot overview**, use `mcp__codesight__codesight_get_summary`.
-- **After editing addon `.lua`/`.toc` files**, the MCP serves a cached scan — call `mcp__codesight__codesight_refresh` so blast-radius/hot-files reflect your changes.
-- **Scope:** CodeSight answers *structural* questions (load order, who-depends-on-whom). For *API-level* WoW analysis (taint, deprecations, API signatures) use the Mechanic tools below — the two are complementary, not interchangeable.
+**Status (verified 2026-09-02): installed, patched, and running — but blast
+radius has saturated and is currently NOT trustworthy as a risk signal.**
+
+- The scan itself works. `node node_modules/codesight/dist/index.js .` completes
+  in ~100ms, detects the project as `lua` (proving the patch is applied — stock
+  CodeSight calls Wise a JavaScript project), and picks up all 97 files
+  including everything added since June (`Compat121`, `Filters`,
+  `IndicatorRules`, `AudioCues`, `SlotConfigurator`, `wiser/Cursor`,
+  `wiser/DisenchantConvert`).
+- **Blast radius has degenerated to a binary answer.** As the addon grew, the
+  graph became fully connected at the default 3-hop depth, so nearly every
+  non-leaf file now returns *the entire addon*. Measured 2026-09-02:
+  `core/Polyfill.lua` 47, `core/Text.lua` 47, `modules/Audio.lua` 48, and
+  `wiser/Cursor.lua` **47** — even though `Cursor.lua` is a self-contained probe
+  module whose only dependent is the `/wise cursor` slash command in `Wise.lua`.
+  True leaves (`core/Dispatcher.lua`, `bench.lua`, `tests/smoke.lua`) still
+  correctly return 0.
+- **Therefore: a large blast-radius number means nothing — do not use it to
+  judge whether a change is risky.** It no longer distinguishes `core/Polyfill`
+  (genuinely foundational) from a leaf module. Only the `0` answer still carries
+  information: it reliably means "nothing reads this file's symbols."
+  *(Earlier revisions of this file cited `Polyfill ~26` / `Text ~25` as evidence
+  the tool discriminates. Those counts are stale and that conclusion no longer
+  holds; they have been removed rather than left to mislead.)*
+- **What CodeSight is still good for:** the one-shot orientation map
+  (`codesight_get_summary`), the hot-files ranking (`codesight_get_hot_files`) —
+  ordering is still meaningful even where absolute counts are not — and
+  confirming a file is genuinely unreferenced before deleting it.
+- **To answer "what could this change break", read the code.** `Grep` for the
+  specific `Wise.Foo` symbol you are changing. That is precise, cheap, and
+  currently more reliable than the graph.
+- **After editing addon `.lua`/`.toc` files** the MCP serves a cached scan — call
+  `mcp__codesight__codesight_refresh` (or re-run the CLI) so the map reflects
+  your changes. The map at `.codesight/` is gitignored and regenerates freely.
+- **Scope:** CodeSight answers *structural* questions. For *API-level* WoW
+  analysis (taint, deprecations, API signatures) use Mechanic — complementary,
+  not interchangeable.
+
+**If blast radius is worth repairing**, the lever is in the patch, not upstream:
+lower the traversal depth (3 hops is what saturates it) and/or lower
+`WOW_HUB_DEFINE_THRESHOLD` in `dist/detectors/graph.js` so more shared-state
+symbols are treated as hubs and excluded. Re-measure against a known leaf like
+`wiser/Cursor.lua` (expected: a small number, not 47) and a known hub like
+`core/Polyfill.lua`; the tool is only useful again when those two differ.
 
 ### Maintaining CodeSight (MANDATORY when editing its source)
 
-CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is versioned in git but **excluded from CurseForge packaging** (listed in `.pkgmeta` `ignore:`), so never add CodeSight files to `Wise.toc` or expect them in the shipped `.zip`.
+CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is
+versioned in git but **excluded from CurseForge packaging** (listed in `.pkgmeta`
+`ignore:`), so never add CodeSight files to `Wise.toc` or expect them in the
+shipped `.zip`.
 
-- The patch is `patches/codesight+1.14.0.patch`; it modifies only `node_modules/codesight/dist/scanner.js` (Lua/`.toc` detection) and `dist/detectors/graph.js` (the symbol graph). `node_modules/` and `.codesight/` are gitignored and regenerate via `npm install`, which re-applies the patch through the `postinstall` hook.
-- **If you edit anything under `node_modules/codesight/dist/`, you MUST regenerate the patch** or the change is lost on the next `npm install`: with node on PATH (`export PATH="/c/Program Files/nodejs:$PATH"` in git-bash, since `patch-package` shells out to bare `node`), run `npx patch-package codesight`, then commit the updated `patches/codesight+1.14.0.patch`.
-- The hub threshold (symbols defined in ≥4 files are skipped as shared mutable state) and namespace-token detection live in `graph.js`; tune there if the symbol graph over- or under-connects after the addon's structure changes.
+- The patch is `patches/codesight+1.14.0.patch`; it modifies only
+  `node_modules/codesight/dist/scanner.js` (Lua/`.toc` detection) and
+  `dist/detectors/graph.js` (the symbol graph). `node_modules/` and `.codesight/`
+  are gitignored and regenerate via `npm install`, which re-applies the patch
+  through the `postinstall` hook.
+- **If you edit anything under `node_modules/codesight/dist/`, you MUST
+  regenerate the patch** or the change is lost on the next `npm install`: with
+  node on PATH (`export PATH="/c/Program Files/nodejs:$PATH"` in git-bash, since
+  `patch-package` shells out to bare `node`), run `npx patch-package codesight`,
+  then commit the updated `patches/codesight+1.14.0.patch`.
+- `dist/` files are **minified/bundled** — `grep` for a constant like
+  `WOW_HUB_DEFINE_THRESHOLD` reports "Binary file matches". Use
+  `grep -a` (or `strings`) to read them.
+- The hub threshold (symbols defined in ≥4 files are skipped as shared mutable
+  state) and namespace-token detection live in `graph.js`; tune there if the
+  symbol graph over- or under-connects after the addon's structure changes.
+- If CodeSight is bumped off `1.14.0`, the patch filename version must match the
+  installed version — re-run `npx patch-package codesight` after the bump.
 
 ## Verification Workflow
 - **WoW API:** Assume Retail 11.0+ (The War Within/Midnight) API names. Only when genuinely unsure of a signature, use `mcp__mechanic__api-search` / `mcp__mechanic__api-info` for a specific API — avoid `mcp__mechanic__api-list` namespace browsing, which returns huge outputs (see Mechanic Usage Policy).
@@ -347,7 +587,7 @@ CodeSight's WoW Lua support lives entirely in a **patch**, not upstream. It is v
 - **Syntax Validation:** Use `mcp__mechanic__addon-lint` (Luacheck) to validate Lua syntax and catch code quality issues. Use `mcp__mechanic__addon-validate` to validate the `.toc` file for common issues before release.
 - **Unit Testing:** Unit tests that mock core APIs via monkey-patching should be excluded from `Wise.toc` and should always restore the original functions immediately after execution to prevent side effects in the production environment.
 - **Sandbox Testing:** Use `mcp__mechanic__sandbox-exec` to test Lua code with WoW API stubs without launching the game. This is the preferred method for quick validation of logic.
-- **In-Game Testing:** Use `mcp__mechanic__lua-queue` to queue Lua snippets for in-game execution (requires `/reload` in WoW), then `mcp__mechanic__lua-results` to read the output. Use `mcp__mechanic__addon-output` to get the latest errors, test results, and console output from the game.
+- **In-Game Testing:** Use `mcp__mechanic__lua-queue` to queue Lua snippets for in-game execution (requires `/reload` in WoW), then `mcp__mechanic__lua-results` to read the output. Use `mcp__mechanic__addon-output` to get the latest errors, test results, and console output from the game. **When the Mechanic MCP is not connected — which is common in Claude Code sessions — use the file-queue bridge instead** (see "Mechanic: the file-queue bridge"). Either way this needs the human to reload, so batch your questions into one probe.
 - **UI-Layout / Visual Verification:** For out-of-client checks of frame placement, anchoring, or rendered graphics (and headless load-time regression), use the `wow-ui-sim` Docker image — see "UI & Visual Verification (wow-ui-sim)" above for when (UI placement / graphics / refinements only) and how. Do not invoke it for non-visual logic, API, or taint questions.
 
 ## Textures and Media
@@ -419,7 +659,11 @@ combat.** What actually happens:
 
 **Net rule: in combat a stack count is DISPLAYABLE but not INSPECTABLE.**
 `FontString:SetText(secret)` is accepted and the client renders it — this is why
-the Abundance counter works. `StatusBar:SetValue(secret)` is **refused**.
+the Abundance counter works. **`StatusBar:SetMinMaxValues`/`SetValue` also accept
+raw secret numbers and the client renders the fill correctly** (measured live
+2026-09-01 via `/wise cursor bar`; an earlier note here claiming `SetValue` is
+*refused* was wrong and has been removed). Widget pass-through is therefore the
+general escape hatch: hand the secret to a widget, never inspect it.
 Anything that *branches* on the value (border colour, glow, threshold sounds)
 cannot work in combat and must degrade to "unknown" — never to 0, which lights
 `<=N` rules for an entire fight. Out of combat, everything works normally.
@@ -453,11 +697,194 @@ reads work again in combat.
 - **Dynamic/linked cooldowns** (`linkedSpellIDs` non-empty, e.g. Flying Serpent Kick / Wild Charge) represent several per-form spell variants; resolving via the child frame's `GetSpellID()` returns one arbitrary currently-active variant. Prefer the cooldown info's `overrideSpellID or spellID` as the representative spell.
 - Never let an empty read (0 spells) destructively overwrite an existing populated interface — guard with a `#spells==0` check and a bounded retry before wiping.
 
+### Patch 12.1 Readiness (`core/Compat121.lua`)
+
+*(This is the section `core/Compat121.lua` cross-references by name. Keep it in sync.)*
+
+The `.toc` ships one build for every supported interface version
+(`120000..120100`), so every 12.1-only call needs a guard. `core/Compat121.lua`
+is the single place those guards live — **detection and thin wrappers only; no
+behaviour is switched on merely because a capability exists.** Callers opt in.
+One place to read to answer "what does Wise do differently on 12.1?", and one
+place to delete when 12.0.x support is dropped.
+
+- **Probe the capability, not the template name.** `CreateFrame` with an unknown
+  template does **not** throw — it silently returns an ordinary `Frame`
+  (verified in wow-ui-sim 12.0.7). A name-only probe for `AuraContainerTemplate`
+  therefore reports a **false positive on every 12.0.x client**, sending callers
+  down the 12.1 path to fail at the first `AddAuraSlot`. `Compat.hasAuraWidgets`
+  creates the frame and then checks `type(frame.AddAuraSlot) == "function"`.
+  This generalises: for any new intrinsic, test the method.
+- **`Compat.AreAurasSecret()` is deliberately conservative.** It prefers
+  `C_Secrets.ShouldAurasBeSecret()`; the `InCombatLockdown()` fallback
+  *over-reports* secrecy in open-world combat, where reads would have worked.
+  Callers must treat `true` as "don't trust aura reads", **never** as "hide the
+  UI" — over-reporting must cost accuracy, not function.
+- **Aura widgets must be created and configured OUT OF COMBAT.**
+  `AuraContainer`/`AuraButton` carry Forbidden Aspects while auras are secret
+  (script handlers, event registration and input APIs all refuse tainted
+  callers), so `Compat.CanUseAuraWidgets()` gates on `not InCombatLockdown()` as
+  well as on the intrinsics existing. Showing/hiding afterwards is fine.
+- **Why the widget route works where reads do not:** the client owns the number
+  and renders it, so Wise never touches — and never taints — the aura record.
+  Contrast the removed 12.0.7 slot-scan resolver (see Combat Aura Secrecy).
+  By-spellID addressing is the access path that survives secrecy in 12.1; index,
+  slot and instanceID lookups hard Lua-error while auras are secret.
+- **`Compat.SetOnUpdateWhenVisible(frame)`** asks the client to stop dispatching
+  a hidden frame's `OnUpdate` entirely (12.1 `SetOnUpdateMode`). It is a safe
+  no-op pre-12.1, so **keep the handler's own early-return** (Rule 12 #5) rather
+  than relying on it.
+- `/wise compat` prints `Compat.GetReport()` — what this client actually
+  supports, including `aurasSecretNow`.
+
+### Self-Resource Secrecy (12.1) — measured 2026-08-31
+
+**`UnitPower("player")` returns a SECRET NUMBER — in the open world, out of
+combat, on your own character.** Established by `wiser/Cursor.lua`, a probe
+module built specifically to settle the question.
+
+- The prior expectation was that this would work, reasoning that
+  `C_Secrets.ShouldAurasBeSecret()` concerns *aura* data and that 12.0 secrecy
+  targets what you can learn about *other* units. **That reasoning was wrong:
+  self-resource reads are secret too.** This is exactly the class of assumption
+  the Abundance investigation warns about — verify, do not infer.
+- The verdict is the API's, not a probe fault: `/wise cursor probe` calibrates
+  `issecretvalue` against literals (`42`, `0`, `"hello"` and `nil` all report
+  READABLE) before trusting its answer on `UnitPower`. Calibrate any future
+  secrecy probe the same way.
+- UltimateMouseCursor gates its power *and* health rings behind
+  `if CURRENT_API >= 120000 then return end`, disabling both outright on 12.x.
+  That blanket version gate turns out to be **correct**, if bluntly implemented.
+- **Consequence: no addon-side numeric read of self-resources works in 12.1** —
+  no amount of `pcall` hygiene helps, because the number never reaches addon
+  code. **But the display path WORKS** (confirmed live 2026-09-01):
+  `StatusBar:SetMinMaxValues`/`SetValue` accept the raw secret numbers and the
+  client renders the fill correctly — `/wise cursor bar` is the working proof.
+  So a resource display IS buildable, but **only as pass-through**: hand the
+  secret to a widget and never inspect it. No percent math, no thresholds, no
+  value-derived colours — anything needing the number itself stays impossible.
+  (Survival inside instanced content — delve/M+ — is still untested.)
+- `wiser/Cursor.lua` reads **only** `"player"` resource state and performs no
+  aura scan, deliberately: the 12.0.7 taint storm came from scanning shared aura
+  records. Do not extend it to aura reads without revisiting that history.
+
+**`issecretvalue` is the only reliable secrecy test.** A `tostring`→`tonumber`
+round-trip does **not** detect a secret — `tostring` returns a *secret string*
+that explodes on the next comparison. An **error from `issecretvalue` means "no
+answer", not "secret"**. And there is no safe `v == nil` pre-check: even
+comparing a true secret can throw, so the round-trip goes inside the `pcall`.
+See also "Numeric Taint Stripping".
+
+### Custom Conditionals: the Three-Table Rule
+
+Wise implements ~58 visibility tokens WoW's secure state driver does not
+understand (`[bank]`, `[mailbox]`, `[zoneability]`, `[undermouse]`,
+`[available]`, plus ~35 ported from OPie: zone, instance/in, race, buff/debuff,
+moving, ready, combo, and so on).
+
+- **Three tables must agree, and only one of them actually dispatches.**
+  `CUSTOM_VIS_CONDITIONALS` (`core/GUI.lua`) is the authority — a token **must**
+  be listed there to have any effect. `VALID_CONDITIONALS`
+  (`core/Conditionals.lua`) accepts/rejects in the editor, and
+  `extendedConditionals` is the displayed reference list. **A token present in
+  the latter two but missing from the first passes validation, falls through to
+  `SecureCmdOptionParse`, and silently evaluates false forever** — the options UI
+  advertises a conditional that does nothing. This has shipped once already (a
+  branch reset lost the evaluator while leaving the UI lists intact). When adding
+  or removing a token, edit all three.
+- **Do not add a token for something an existing one can express.** `[delve]`
+  began as its own token and was folded into `instance`/`in` as a synonym
+  (`[instance:delve]`, `[in:delve]`, via `C_DelvesUI.HasActiveDelve`): a second
+  token for "narrow down scenario content" meant authors had to know about two
+  overlapping tokens, and the options tab showed two rows for one underlying
+  state. `[instance:scenario]` still matches all scenario content, delves
+  included.
+- **Never list a conditional that is not implemented.** `[cleanse]`, `[near:]`
+  and `[bar:n]` were advertised but never built, and were dropped rather than
+  left as false advertising.
+- **Negation is not universal.** `NegateConditional` must not emit
+  `[nobonusbar:5]` — `bonusbar` has no negation prefix in WoW macros, and the
+  invalid token poisons the whole condition string.
+- **Combat freeze/thaw:** tokens whose inputs cannot be read in combat are
+  *sampled* at `PLAYER_REGEN_DISABLED` and frozen for its duration
+  (`Wise.SampleCombatConditionals`), then released at `PLAYER_REGEN_ENABLED`.
+  Each `pcall` is isolated so one bad token cannot break combat entry.
+- **`[available]` is provider-backed.** A module owning a dynamically-populated
+  interface registers `Wise:RegisterAvailabilityProvider(groupName, fn)`;
+  interfaces with no registered provider report available whenever they hold any
+  action, so `[available]` stays meaningful on ordinary bars too.
+
+### Indicator Rules and Withdrawn Features (`modules/IndicatorRules.lua`)
+
+Per-action rules (`action.indicatorRules`: operator/value/color/glow/sound)
+matched against that action's own live state — the generalisation of the old
+global, Resto-only "Abundance Colors, Glows & Sounds".
+
+- **"Aura stacks" is deliberately absent from the metric list.** Under combat
+  secrecy a stack count is *displayable but not inspectable*, so a stacks-driven
+  colour/glow/sound can never fire in combat — the only time it would matter.
+  **Shipping it would produce an indicator that silently does nothing in a raid,
+  so the option is withdrawn rather than shipped broken.** The stack count still
+  *displays* on the button corner; only branching on it is gone. Everything
+  cooldown- or usability-derived (charges, available, on-cooldown, buff
+  active/missing) reads fine in combat and is unaffected.
+  **Do not "restore" the stacks metric** without first proving a readable source.
+- `Wise.INDICATOR_RULES_REV` is bumped on behaviour changes so an in-game probe
+  can confirm which revision the client actually loaded — invaluable when a fix
+  appears not to work and the real cause is a stale load.
+
+### Gamepad / ConsolePort Support (`core/Bindings.lua`)
+
+- **`Bindings.xml` is deliberately absent from `Wise.toc`.** The client
+  auto-loads any root-level file named exactly `Bindings.xml` for every enabled
+  addon, independent of the `.toc` — listing it there would register the bindings
+  **twice**. It declares `BINDING_HEADER_WISE`/`BINDING_NAME_*`, which both
+  Blizzard's Key Bindings UI (including its Gamepad tab) and `ConsolePort_Config`
+  read from the same globals.
+- **`Wise:StartKeybindCapture` is the single capture path** (keyboard, mouse,
+  mousewheel, gamepad), centralised from several duplicated call sites in
+  `modules/Properties.lua` so gamepad capture only needed adding once. New
+  binding widgets go through it rather than re-implementing capture.
+- **`SetScript(..., "OnGamePadButtonDown", ...)` is wrapped in `pcall` in the
+  addon itself, not just in tests.** Real WoW and ConsolePort both rely on that
+  handler existing on any frame, but **wow-ui-sim rejects it as an invalid script
+  handler** — the pcall makes gamepad capture degrade to keyboard/mouse under the
+  sim instead of throwing. `EnableGamePadButton(true)` itself needs no guard.
+- **`Wise:RegisterConsolePortFrame(f)`** adds a frame to ConsolePort's virtual
+  cursor stack. It is safe to call unconditionally and at any time — including
+  before ConsolePort has loaded, or when it is not installed at all.
+  `Wise.HasConsolePort` exists for gating ConsolePort-*specific* extras (such as
+  icon glyphs), not for this call.
+
+### Disenchant/Convert (`wiser/DisenchantConvert.lua`)
+
+A wiser interface that queues bag items worth destroying, priced from whichever
+auction-house data addon is present.
+
+- **Pricing is provider-ranked and every provider is optional:** `TSM_API` →
+  `PP` (ProfitProphet) → `Auctionator`, each detected by probing for the actual
+  function (`TSM_API.GetCustomPriceValue`, `PP.Destroying.deValueOf`,
+  `Auctionator.API.v1`), with every call `pcall`-wrapped. The interface must stay
+  functional with none of them installed.
+- **Salvage spells are per-expansion, and batch sizes changed.** The base
+  Prospecting/Milling spells no longer work on current-expansion ore/herbs, so
+  the spell IDs are keyed by expansion. **Milling consumed 5 through
+  Dragonflight but eats 10 in TWW and Midnight** — a hardcoded 5 silently
+  under-counts what a cast will consume.
+- **The reagent bag is NOT covered by `NUM_TOTAL_EQUIPPED_BAG_SLOTS`.** Scanning
+  `BACKPACK_CONTAINER..NUM_TOTAL_EQUIPPED_BAG_SLOTS` misses it entirely; append
+  `Enum.BagIndex.ReagentBag` explicitly.
+- Equipment-set protection and the `ignoreMarket` filter exist so the queue can
+  never propose destroying gear the player has assigned to an equipment set.
+- Each slot is a secure button written **out of combat only**, and the queue
+  refreshes on coalesced events rather than a ticker (Rule 12).
+
 ## Performance
 - **In-game profiler:** `/wise cpu start`, play/idle ~30s, then `/wise cpu` reports a time-boxed CPU delta for Wise-owned frames (split into "in frames" vs "elsewhere"). Requires the `scriptProfile` CVar (the command enables it + prompts a reload on first use). This is the source of truth for idle cost — addon-CPU displays misattribute `UIParent`/child time to whichever addon parents those frames.
 - **Design rule:** Updates are event-driven, not ticker-polled — see Rule 12. The central `DynamicRefreshDriver` (`core/GUI.lua`) is where dynamic-group refresh events are registered; add new triggers there rather than introducing tickers.
 - **Baselines:** Use `mcp__mechanic__perf-baseline` to record memory/CPU baselines after stable releases. Use `mcp__mechanic__perf-compare` to check for regressions against the baseline after changes.
 - **Reports:** Use `mcp__mechanic__perf-report` to view performance history and trends.
+- **Call-graph profiling:** when `/wise cpu` says *that* something is expensive but not *what*, instrument with Perfy (`tools/perfy-profile.ps1`, workflow in `tools/README-profiling.md` and the Perfy section above). Restore with `-Restore` when done — instrumentation rewrites source files in place.
 
 ## Research
 - **Web Search:** Use `mcp__mechanic__research-query` to search the web for addon development information, WoW API behavior, and best practices when documentation is insufficient.
