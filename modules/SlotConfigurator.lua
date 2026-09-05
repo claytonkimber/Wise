@@ -1185,6 +1185,84 @@ local function EnumerateGraphPaths(graph)
 	return paths
 end
 
+-- Commands that only select a unit. Tracked for the duplicate-targeting warning
+-- below, NOT to decide whether a step is real: a macro that only sets your
+-- target (/cleartarget + /target Foo) does visible work when pressed and is a
+-- legitimate thing to bind. Requiring a "real" command here discarded those
+-- macros silently.
+local TARGETING_COMMANDS = {
+	target = true,
+	cleartarget = true,
+	targetenemy = true,
+	targetfriend = true,
+	targetlasttarget = true,
+	focus = true,
+	clearfocus = true,
+}
+
+-- True if the macro issues ANY slash command. Matches at line start (gmatch over
+-- lines) rather than "\n/cast", so a macro whose very FIRST line is the command
+-- is not missed when no header precedes it.
+--
+-- Deliberately NOT an allowlist. It was one (/cast|/use|/click), and it silently
+-- discarded every macro built from anything else — /ping, /cancelaura, and then
+-- /target — leaving a slot with a stored graph, zero compiled steps, and no way
+-- to tell from the UI what had happened. A bare "#showtooltip" with no command
+-- is still correctly rejected.
+local function MacroTextHasRealLine(macroText)
+	if type(macroText) ~= "string" then
+		return false
+	end
+	for line in macroText:gmatch("[^\r\n]+") do
+		if line:match("^%s*/%a") then
+			return true
+		end
+	end
+	return false
+end
+
+-- Warn when a MERGED (multi-node) step stacks targeting commands that fight each
+-- other — e.g. one node adds "/target Foo" and another "/cleartarget", or two
+-- nodes target different units. Only the last one wins at cast time, so the
+-- earlier nodes silently do nothing and the step misbehaves in a way the graph
+-- view does not show. Byte-identical lines are already deduped by
+-- BuildMacroTextFromNodes, so anything reaching here is a genuine conflict.
+--
+-- Single-node steps are exempt: /cleartarget followed by /target is the normal,
+-- correct way to write one of those by hand.
+local function WarnOnConflictingTargeting(macroText, pathNodes, slotLabel)
+	if type(macroText) ~= "string" or #pathNodes < 2 then
+		return
+	end
+	local seen, conflicts = {}, {}
+	for line in macroText:gmatch("[^\r\n]+") do
+		local cmd = line:match("^%s*/(%a+)")
+		if cmd and TARGETING_COMMANDS[cmd:lower()] then
+			tinsert(seen, (line:match("^%s*(.-)%s*$")))
+		end
+	end
+	if #seen > 1 then
+		for _, l in ipairs(seen) do
+			tinsert(conflicts, l)
+		end
+		print(
+			"|cffffd700Wise:|r "
+				.. (slotLabel or "A slot")
+				.. " merges "
+				.. #conflicts
+				.. " targeting commands into one macro — only the last takes effect: "
+				.. table.concat(conflicts, "  |  ")
+		)
+	end
+end
+
+-- Exposed because the runtime display path in core/GUI.lua applies the SAME
+-- "is this a real step?" test when re-filtering a graph step per character.
+-- The two must agree: when only the compiler was fixed, the compiler stored a
+-- /ping macro and the display path then dropped it again on every refresh, so
+-- the slot stayed invisible with correct data sitting in saved variables.
+Wise.MacroTextHasRealLine = MacroTextHasRealLine
+
 local function CompileGraphToActions(graph, originalActions)
 	-- Layout drives the on-canvas card positions; the compiler builds steps from
 	-- the connection topology (paths), so the two stay in sync visually & logically.
@@ -1218,14 +1296,19 @@ local function CompileGraphToActions(graph, originalActions)
 			-- a.value for spells/items is the numeric ID, which /cast and /use
 			-- cannot consume directly — only the resolved name/ref works in a macro.
 			local macroText = BuildMacroTextFromNodes(pathNodes)
-			-- A real step must actually CAST or USE something. Some nodes emit only
-			-- support lines (e.g. a Healer Target node => "/target [@mouseover...]").
-			-- A path that reduces to nothing but #showtooltip + /target/#-lines is not
-			-- a real step — emitting it inserts a dead press that just retargets and
-			-- casts nothing (the spurious "Step 2" on the Disc branch). Require at
-			-- least one /cast, /use, or /click line. This is the CANONICAL macro
-			-- (all characters); live per-character filtering happens at runtime.
-			if macroText:match("\n/cast") or macroText:match("\n/use") or macroText:match("\n/click") then
+			-- A step is real if it issues ANY slash command. This is the CANONICAL
+			-- macro (all characters); live per-character filtering happens at runtime.
+			--
+			-- This was an allowlist (/cast|/use|/click) and it silently discarded
+			-- every macro built from anything else — /ping, /cancelaura, and plain
+			-- targeting macros — leaving a slot with a stored graph, zero compiled
+			-- steps, and nothing in the UI to explain the disappearance.
+			--
+			-- The original guard existed to suppress a spurious empty step when a
+			-- node contributes only a "/target [@mouseover]" helper line to a MERGED
+			-- macro. That case is now handled by warning about conflicting targeting
+			-- (below) rather than by discarding the author's macro.
+			if MacroTextHasRealLine(macroText) then
 				-- Record this step's node ids so the runtime can re-filter just this
 				-- path per character without re-enumerating the graph.
 				local pathNodeIds = {}
@@ -1282,7 +1365,28 @@ local function CompileGraphToActions(graph, originalActions)
 					compiledAction.addedBySpec = firstAct.addedBySpec
 					compiledAction.talentRequirements = firstAct.talentRequirements
 					compiledAction.category = firstAct.category
+
+					-- A SINGLE-node step is just that one action rewritten as a macro, so
+					-- its name and icon still describe it exactly — carry them over. The
+					-- tooltip falls back to `name` whenever the macro resolves to no
+					-- spell/item (a /ping or /target macro never resolves), and without
+					-- it such a slot showed no tooltip at all.
+					--
+					-- Multi-node steps are deliberately excluded: a merged macro spanning
+					-- several abilities has no single correct name or icon, and borrowing
+					-- the first node's would mislabel the whole step.
+					if #pathNodes == 1 then
+						compiledAction.name = firstAct.name
+						compiledAction.icon = firstAct.icon
+					end
 				end
+
+				-- Merged steps only: flag targeting commands that overwrite each other.
+				WarnOnConflictingTargeting(
+					macroText,
+					pathNodes,
+					(metaNode and metaNode.action and metaNode.action.name) or "A merged slot"
+				)
 
 				tinsert(newActions, compiledAction)
 			end
@@ -1323,7 +1427,13 @@ function Wise:RepairCompiledSlotFromGraph(slotActions)
 			end
 		end
 	end
-	if not sawCompiled then
+	-- A slot with a graph but NO compiled states is exactly what a compiler bug
+	-- leaves behind (e.g. the old /cast|/use|/click allowlist dropping a macro
+	-- built only from /ping or /cancelaura). Requiring sawCompiled here made the
+	-- repair skip the very slots that most needed it — the empty result was the
+	-- damage. The loop above already proved nothing hand-authored is present, so
+	-- an empty slot is safe to rebuild from its graph.
+	if not sawCompiled and #slotActions > 0 then
 		return false
 	end
 

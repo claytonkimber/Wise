@@ -937,6 +937,7 @@ local function ScheduleCooldownWake(remaining)
 end
 
 function Wise:UpdateIndicatorRules()
+	local tStart = debugprofilestop()
 	if not Wise.frames or not Wise.buttonMeta then
 		return
 	end
@@ -1021,6 +1022,9 @@ function Wise:UpdateIndicatorRules()
 				end
 			end
 		end
+	end
+	if Wise._inCombatExitTransition and Wise._cpuExitStats and tStart then
+		Wise._cpuExitStats.indicatorsMs = (Wise._cpuExitStats.indicatorsMs or 0) + (debugprofilestop() - tStart)
 	end
 end
 

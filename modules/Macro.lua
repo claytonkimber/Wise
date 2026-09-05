@@ -6,6 +6,90 @@ function Wise:GetMacroText(action)
 	return action.macroText or ""
 end
 
+-- ============================================================================
+-- Slash command validation
+-- ============================================================================
+--
+-- Catches typos (/taget, /casst) that would otherwise compile into a macro that
+-- silently does nothing when pressed.
+--
+-- WHY IT IS NOT A LIST: /cast, /use, /target and friends live in SecureCmdList,
+-- a C-side table that enumerates as EMPTY (`for k in pairs(SecureCmdList)` yields
+-- 0 keys on 12.1), so the valid set cannot be walked. IsSecureCmd(cmd) probes it
+-- by name instead, which is what OPie's Rewire does for the same reason.
+-- Addon commands come from SlashCmdList, whose aliases are NOT table keys but
+-- numbered globals (SLASH_TARGET2 == "/tar"), so those need expanding.
+--
+-- WHY IT IS LAZY: addons register their slash commands while loading, so a table
+-- built at PLAYER_LOGIN would miss them and false-warn on valid commands. This
+-- builds on first use — the macro editor, which is only reachable from the
+-- options panel, long after every addon has loaded.
+local aliasCache, aliasCacheBuilt = {}, false
+
+local function BuildAliasCache()
+	aliasCache, aliasCacheBuilt = {}, true
+	if type(SlashCmdList) ~= "table" then
+		return
+	end
+	for k in pairs(SlashCmdList) do
+		for n = 1, 20 do
+			local v = _G["SLASH_" .. k .. n]
+			if type(v) ~= "string" then
+				break
+			end
+			aliasCache[v:lower()] = true
+		end
+	end
+end
+
+-- Rebuilt on demand: an addon loaded on demand (LoadOnDemand) can add commands
+-- after the cache was built, so the options panel drops it to stay accurate.
+function Wise:InvalidateSlashCommandCache()
+	aliasCacheBuilt = false
+end
+
+-- True if `cmd` (leading slash included) is a command the client will act on.
+function Wise:IsKnownSlashCommand(cmd)
+	if type(cmd) ~= "string" or cmd == "" then
+		return false
+	end
+	cmd = cmd:lower()
+	-- Secure/macro commands (/cast, /target, /use …) — probe, cannot enumerate.
+	if IsSecureCmd and IsSecureCmd(cmd) then
+		return true
+	end
+	if type(SlashCmdList) == "table" and SlashCmdList[cmd:sub(2):upper()] then
+		return true
+	end
+	if not aliasCacheBuilt then
+		BuildAliasCache()
+	end
+	return aliasCache[cmd] == true
+end
+
+-- Every unrecognized command in a macro body, in order, deduped.
+-- Returns nil when everything is recognized (or nothing looks like a command),
+-- so callers can treat "no news" as good news.
+function Wise:FindUnknownSlashCommands(macroText)
+	if type(macroText) ~= "string" then
+		return nil
+	end
+	local unknown, seen
+	for line in macroText:gmatch("[^\r\n]+") do
+		local cmd = line:match("^%s*(/%a[%w]*)")
+		if cmd then
+			local lower = cmd:lower()
+			seen = seen or {}
+			if not seen[lower] and not Wise:IsKnownSlashCommand(cmd) then
+				seen[lower] = true
+				unknown = unknown or {}
+				table.insert(unknown, cmd)
+			end
+		end
+	end
+	return unknown
+end
+
 function Wise:SetMacroText(action, text)
 	action.macroText = text
 	-- Auto-rename if currently default
@@ -155,6 +239,32 @@ function Wise:CreateMacroEditor(panel, action, y)
 	charCount:SetText("0/255")
 	table.insert(panel.controls, charCount)
 
+	-- Unknown-command notice. Sits under the body box and only takes space when
+	-- there is something to say. This WARNS, it does not block: the macro still
+	-- saves and still compiles. A command this check does not recognize is far
+	-- more likely to be an addon command registered late than a real mistake,
+	-- and silently discarding a macro is the failure mode this whole area of the
+	-- code has been bitten by repeatedly.
+	local cmdWarning = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	cmdWarning:SetPoint("TOPLEFT", bg, "BOTTOMLEFT", 5, -2)
+	cmdWarning:SetPoint("RIGHT", bg, "RIGHT", -60, 0)
+	cmdWarning:SetJustifyH("LEFT")
+	cmdWarning:SetTextColor(1, 0.82, 0)
+	cmdWarning:SetText("")
+	table.insert(panel.controls, cmdWarning)
+
+	local function UpdateCommandWarning(text)
+		local unknown = Wise.FindUnknownSlashCommands and Wise:FindUnknownSlashCommands(text)
+		if unknown and #unknown > 0 then
+			cmdWarning:SetText(
+				(#unknown == 1 and "Unrecognized command: " or "Unrecognized commands: ")
+					.. table.concat(unknown, ", ")
+			)
+		else
+			cmdWarning:SetText("")
+		end
+	end
+
 	local function UpdateCharCount(text)
 		local count = string.len(text or "")
 		charCount:SetText(count .. "/255")
@@ -163,6 +273,7 @@ function Wise:CreateMacroEditor(panel, action, y)
 		else
 			charCount:SetTextColor(1, 1, 1, 1) -- White
 		end
+		UpdateCommandWarning(text)
 	end
 
 	-- Helper: Strip colors for saving

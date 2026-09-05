@@ -5184,11 +5184,25 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						and Wise.FilterMacroTextForCharacter
 					then
 						local liveMacro, liveCond, liveIcon = Wise:FilterMacroTextForCharacter(state, states.graph)
-						-- A step that filters down to no castable line for this character is
+						-- A step that filters down to no real line for this character is
 						-- dropped entirely (it would be a dead press / blank icon).
-						if
-							not (liveMacro:match("\n/cast") or liveMacro:match("\n/use") or liveMacro:match("\n/click"))
-						then
+						-- Uses the SAME test as the compiler (Wise.MacroTextHasRealLine):
+						-- "does any line do more than pure targeting?", not an allowlist of
+						-- /cast|/use|/click. An allowlist here silently dropped legitimate
+						-- macros built from /ping, /cancelaura, /stopcasting etc. on every
+						-- refresh — even when the compiler had stored them correctly.
+						-- Falls back to the old test if SlotConfigurator has not loaded yet.
+						local hasRealLine
+						if Wise.MacroTextHasRealLine then
+							hasRealLine = Wise.MacroTextHasRealLine(liveMacro)
+						else
+							hasRealLine = (
+								liveMacro:match("\n/cast")
+								or liveMacro:match("\n/use")
+								or liveMacro:match("\n/click")
+							) ~= nil
+						end
+						if not hasRealLine then
 							state = nil
 						elseif seenLiveMacro[liveMacro] then
 							-- Identical to an earlier accepted step after filtering — a collapsed
@@ -7073,6 +7087,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end
 				if changed then
+					if Wise._inCombatExitTransition and Wise._cpuExitStats then
+						Wise._cpuExitStats.rebuiltGroups = Wise._cpuExitStats.rebuiltGroups or {}
+						table.insert(Wise._cpuExitStats.rebuiltGroups, name)
+					end
 					Wise:UpdateGroupDisplay(name)
 					return
 				end
@@ -7104,6 +7122,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 					end
 				end
 				if changed then
+					if Wise._inCombatExitTransition and Wise._cpuExitStats then
+						Wise._cpuExitStats.rebuiltGroups = Wise._cpuExitStats.rebuiltGroups or {}
+						table.insert(Wise._cpuExitStats.rebuiltGroups, name)
+					end
 					Wise:UpdateGroupDisplay(name)
 					return
 				end
@@ -9276,6 +9298,7 @@ function Wise:UpdateButtonCooldown(btn)
 end
 
 function Wise:UpdateAllCooldowns()
+	local btnCount = 0
 	for name, frame in pairs(Wise.frames) do
 		-- Skip if group data is missing (stale frame check)
 		if not WiseDB.groups[name] then
@@ -9288,11 +9311,13 @@ function Wise:UpdateAllCooldowns()
 				local visualClone = (meta and meta.visualClone) or btn.visualClone
 
 				if btn:IsShown() or (visualClone and visualClone:IsShown()) then
+					btnCount = btnCount + 1
 					Wise:UpdateButtonCooldown(btn)
 				end
 			end
 		end
 	end
+	Wise._lastCooldownButtonCount = btnCount
 end
 
 -- Charge Count Update Functions
@@ -9989,6 +10014,7 @@ local function RefreshAllDynamicGroups()
 	if not reg then
 		return
 	end
+	local tDyn = debugprofilestop()
 	for frame in pairs(reg) do
 		local fn = frame._dynamicRefresh
 		if fn then
@@ -9996,6 +10022,9 @@ local function RefreshAllDynamicGroups()
 		else
 			reg[frame] = nil
 		end
+	end
+	if Wise._inCombatExitTransition and Wise._cpuExitStats then
+		Wise._cpuExitStats.dynRefreshMs = (Wise._cpuExitStats.dynRefreshMs or 0) + (debugprofilestop() - tDyn)
 	end
 end
 local function scheduleDynamicRefresh()
@@ -10082,7 +10111,11 @@ dynEventFrame:SetScript("OnEvent", function(_, event, arg1)
 	if event == "PLAYER_REGEN_DISABLED" then
 		Wise.SampleCombatConditionals()
 	elseif event == "PLAYER_REGEN_ENABLED" then
+		local tClear = debugprofilestop()
 		Wise.ClearCombatConditionalSamples()
+		if Wise._inCombatExitTransition and Wise._cpuExitStats then
+			Wise._cpuExitStats.clearSamplesMs = debugprofilestop() - tClear
+		end
 	end
 	-- Spec/spell changes need a full rebuild (they invalidate the per-character
 	-- graph macroText the snapshot-diff can't see). PLAYER_SPECIALIZATION_CHANGED
@@ -10232,16 +10265,29 @@ local pendingFrame = CreateFrame("Frame")
 pendingFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 pendingFrame:SetScript("OnEvent", function(self, event)
 	if Wise.pendingUpdates then
+		local tPend = debugprofilestop()
+		local pCount = 0
 		local updates = Wise.pendingUpdates
 		Wise.pendingUpdates = nil -- Clear first to avoid loops if errors occur
 
 		for name, _ in pairs(updates) do
+			pCount = pCount + 1
 			Wise:UpdateGroupDisplay(name)
+		end
+		if Wise._inCombatExitTransition and Wise._cpuExitStats then
+			Wise._cpuExitStats.pendingUpdateMs = debugprofilestop() - tPend
+			Wise._cpuExitStats.pendingCount = pCount
 		end
 	end
 	-- Refresh all cooldowns on combat end so start/duration secret numbers
 	-- are replaced with real values for accurate countdown text.
+	local tCd = debugprofilestop()
+	Wise._lastCooldownButtonCount = 0
 	Wise:UpdateAllCooldowns()
+	if Wise._inCombatExitTransition and Wise._cpuExitStats then
+		Wise._cpuExitStats.cooldownMs = debugprofilestop() - tCd
+		Wise._cpuExitStats.cooldownButtons = Wise._lastCooldownButtonCount or 0
+	end
 end)
 
 function Wise:ResetSequences()

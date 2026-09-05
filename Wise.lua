@@ -1663,6 +1663,48 @@ function frame:OnEvent(event, arg1)
 						end
 					end
 				end
+
+				-- Migration V6: the compiler used to require a /cast, /use or /click
+				-- line for a graph path to become a step. A macro made only of other
+				-- commands (/ping, /cancelaura, /stopcasting, /petattack) compiled to
+				-- NOTHING, so the slot kept its graph but held zero states — and with
+				-- hideEmptySlots the bar dropped it entirely. The guard now asks
+				-- whether any line does more than pure targeting, so rebuild every
+				-- graph-backed slot to recover the steps that were silently lost.
+			end
+
+			-- Migration V6: the compiler used to require a /cast, /use or /click
+			-- line for a graph path to become a step. A macro made only of other
+			-- commands (/ping, /cancelaura, /stopcasting, /petattack) compiled to
+			-- NOTHING, so the slot kept its graph but held zero states — and with
+			-- hideEmptySlots the bar dropped it entirely. The guard now asks
+			-- whether any line does more than pure targeting, so rebuild every
+			-- graph-backed slot to recover the steps that were silently lost.
+			--
+			-- Deliberately OUTSIDE the compiledMacroIDsToNames block above: every
+			-- migration nested in there only runs on profiles that have never set
+			-- that first flag, so on an existing profile they are dead code. This
+			-- one must run for exactly those profiles, so it is guarded solely by
+			-- its own flag (as scopeWaterfallBackfillV1 below already is).
+			if not WiseDB.migrations.nonCastMacroRecompileV6 then
+				if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+					local recovered = 0
+					for _, g in pairs(WiseDB.groups) do
+						if type(g.actions) == "table" then
+							for slotKey, slotActions in pairs(g.actions) do
+								if type(slotKey) == "number" and type(slotActions) == "table" and slotActions.graph then
+									if Wise:RepairCompiledSlotFromGraph(slotActions) then
+										recovered = recovered + 1
+									end
+								end
+							end
+						end
+					end
+					WiseDB.migrations.nonCastMacroRecompileV6 = true
+					if recovered > 0 then
+						Wise:DebugPrint("Recompiled " .. recovered .. " slot(s) for non-cast macro recovery V6")
+					end
+				end
 			end
 
 			-- Scope-waterfall backfill: the All/Class/Spec/Build/Character filter
@@ -1674,6 +1716,57 @@ function frame:OnEvent(event, arg1)
 			-- rewrites already-tagged actions, so prior builds keep working unchanged.
 			-- Runs independently of the migrations above (their flags may already be
 			-- set on profiles created before this fix existed).
+			-- Migration V7: compiled steps never carried the source node's name or
+			-- icon, so a single-node macro that resolves to no spell/item (/ping,
+			-- /target, /cancelaura) had nothing for the tooltip to label it with and
+			-- showed no tooltip at all. The compiler now copies name/icon for
+			-- single-node steps; recompile so existing slots pick them up.
+			if not WiseDB.migrations.compiledStepNameIconV7 then
+				if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+					local relabelled = 0
+					for _, g in pairs(WiseDB.groups) do
+						if type(g.actions) == "table" then
+							for slotKey, slotActions in pairs(g.actions) do
+								if type(slotKey) == "number" and type(slotActions) == "table" and slotActions.graph then
+									if Wise:RepairCompiledSlotFromGraph(slotActions) then
+										relabelled = relabelled + 1
+									end
+								end
+							end
+						end
+					end
+					WiseDB.migrations.compiledStepNameIconV7 = true
+					if relabelled > 0 then
+						Wise:DebugPrint("Recompiled " .. relabelled .. " slot(s) for step name/icon carry-over V7")
+					end
+				end
+			end
+
+			-- Migration V8: the "is this a real step?" test still rejected macros made
+			-- only of targeting commands (/target, /cleartarget), so a plain targeting
+			-- macro compiled to nothing exactly like the /ping case before it. Any
+			-- slash command now counts; recompile so those steps come back.
+			if not WiseDB.migrations.targetingMacroRecompileV8 then
+				if Wise.RepairCompiledSlotFromGraph and WiseDB.groups then
+					local recovered = 0
+					for _, g in pairs(WiseDB.groups) do
+						if type(g.actions) == "table" then
+							for slotKey, slotActions in pairs(g.actions) do
+								if type(slotKey) == "number" and type(slotActions) == "table" and slotActions.graph then
+									if Wise:RepairCompiledSlotFromGraph(slotActions) then
+										recovered = recovered + 1
+									end
+								end
+							end
+						end
+					end
+					WiseDB.migrations.targetingMacroRecompileV8 = true
+					if recovered > 0 then
+						Wise:DebugPrint("Recompiled " .. recovered .. " slot(s) for targeting-macro recovery V8")
+					end
+				end
+			end
+
 			if not WiseDB.migrations.scopeWaterfallBackfillV1 then
 				if Wise.MigrateGroupToActions and WiseDB.groups then
 					local checked = 0
@@ -1813,29 +1906,45 @@ function frame:OnEvent(event, arg1)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		-- Process pending updates that were blocked during combat
 		if Wise.pendingUpdates then
+			local tPend = debugprofilestop()
 			for name, _ in pairs(Wise.pendingUpdates) do
 				if Wise.UpdateGroupDisplay then
 					Wise:UpdateGroupDisplay(name)
 				end
 			end
 			Wise.pendingUpdates = nil
+			if Wise._inCombatExitTransition and Wise._cpuExitStats then
+				Wise._cpuExitStats.pendingUpdateMs = (Wise._cpuExitStats.pendingUpdateMs or 0) + (debugprofilestop() - tPend)
+			end
 		end
 		if Wise.ResetSequences then
+			local tSeq = debugprofilestop()
 			Wise:ResetSequences()
+			if Wise._inCombatExitTransition and Wise._cpuExitStats then
+				Wise._cpuExitStats.resetSeqMs = debugprofilestop() - tSeq
+			end
 		end
 		if Wise.pendingBlizzardUIUpdate then
+			local tBUI = debugprofilestop()
 			if Wise.UpdateBlizzardUI then
 				Wise:UpdateBlizzardUI()
+			end
+			if Wise._inCombatExitTransition and Wise._cpuExitStats then
+				Wise._cpuExitStats.blizzUIMs = debugprofilestop() - tBUI
 			end
 		end
 		-- Flush any CooldownViewer syncs that were deferred during combat
 		if Wise._pendingViewerSync then
+			local tView = debugprofilestop()
 			local pending = Wise._pendingViewerSync
 			Wise._pendingViewerSync = nil
 			for groupName, viewerName in pairs(pending) do
 				if Wise._ReadCooldownViewer then
 					Wise:_ReadCooldownViewer(groupName, viewerName)
 				end
+			end
+			if Wise._inCombatExitTransition and Wise._cpuExitStats then
+				Wise._cpuExitStats.viewerSyncMs = debugprofilestop() - tView
 			end
 		end
 	elseif event == "UPDATE_BINDINGS" then
@@ -2973,6 +3082,8 @@ SlashCmdList["WISE"] = function(msg)
 			local again = "/wise cpu"
 			if arg == "enter" or arg == "enter clear" then
 				again = "/wise cpu enter"
+			elseif arg == "leave" or arg == "leave clear" or arg == "exit" or arg == "exit clear" then
+				again = "/wise cpu leave"
 			elseif arg == "start" then
 				again = "/wise cpu start"
 			end
@@ -3098,6 +3209,229 @@ SlashCmdList["WISE"] = function(msg)
 			return
 		end
 
+		-- Per-event combat-EXIT spike profiler.
+		--   /wise cpu leave / exit   → arm a PLAYER_REGEN_ENABLED hook + show captured spikes
+		--   /wise cpu leave clear    → wipe captured samples
+		-- Times the combat-exit frame (debugprofilestop delta) and subsequent deferred
+		-- frame (dynamic refresh pass, indicators), breaking down addon CPU and Wise internals.
+		if arg == "leave" or arg == "leave clear" or arg == "exit" or arg == "exit clear" then
+			if arg == "leave clear" or arg == "exit clear" then
+				Wise._cpuLeaveSamples = nil
+				print("|cff00ccff[Wise CPU]|r Combat-exit samples cleared.")
+				return
+			end
+
+			if not Wise._cpuLeaveFrame then
+				local ef = CreateFrame("Frame")
+				ef._wiseProfileName = "CpuLeaveProbe"
+				ef:RegisterEvent("PLAYER_REGEN_ENABLED")
+				ef:SetScript("OnEvent", function()
+					local t0 = debugprofilestop()
+					local hasProfile = (GetCVar("scriptProfile") == "1")
+					local before = {}
+					local n = hasProfile and (C_AddOns.GetNumAddOns() or 0) or 0
+					if hasProfile then
+						UpdateAddOnCPUUsage()
+						for i = 1, n do
+							if C_AddOns.IsAddOnLoaded(i) then
+								before[i] = GetAddOnCPUUsage(i) or 0
+							end
+						end
+					end
+
+					Wise._cpuExitStats = {
+						cooldownMs = 0,
+						cooldownButtons = 0,
+						pendingUpdateMs = 0,
+						pendingCount = 0,
+						dynRefreshMs = 0,
+						rebuiltGroups = {},
+						resetSeqMs = 0,
+						blizzUIMs = 0,
+						viewerSyncMs = 0,
+						clearSamplesMs = 0,
+						indicatorsMs = 0,
+					}
+					Wise._inCombatExitTransition = true
+
+					-- Frame 0 ends after this frame's OnEvent handlers finish.
+					C_Timer.After(0, function()
+						local t1 = debugprofilestop()
+						local frame0Ms = t1 - t0
+
+						-- Frame 1 captures deferred work (scheduleDynamicRefresh, ScheduleIndicatorUpdate)
+						C_Timer.After(0, function()
+							local t2 = debugprofilestop()
+							local frame1Ms = t2 - t1
+							local totalMs = t2 - t0
+							Wise._inCombatExitTransition = false
+
+							local rows, sum = {}, 0
+							if hasProfile then
+								UpdateAddOnCPUUsage()
+								for i = 1, n do
+									if before[i] then
+										local d = (GetAddOnCPUUsage(i) or 0) - before[i]
+										if d > 0 then
+											rows[#rows + 1] = { name = (C_AddOns.GetAddOnInfo(i)), ms = d }
+											sum = sum + d
+										end
+									end
+								end
+								table.sort(rows, function(a, b)
+									return a.ms > b.ms
+								end)
+							end
+
+							Wise._cpuLeaveSamples = Wise._cpuLeaveSamples or {}
+							local top = {}
+							for i = 1, math.min(6, #rows) do
+								top[i] = rows[i]
+							end
+							local sample = {
+								totalMs = totalMs,
+								frame0Ms = frame0Ms,
+								frame1Ms = frame1Ms,
+								addonSum = sum,
+								top = top,
+								stats = Wise._cpuExitStats,
+								hasProfile = hasProfile,
+							}
+							table.insert(Wise._cpuLeaveSamples, sample)
+							while #Wise._cpuLeaveSamples > 10 do
+								table.remove(Wise._cpuLeaveSamples, 1)
+							end
+
+							local wiseMs = 0
+							local parts = {}
+							for _, r in ipairs(top) do
+								if r.name == "Wise" then
+									wiseMs = r.ms
+								end
+								parts[#parts + 1] = string.format("%s:%.1f", r.name, r.ms)
+							end
+							local blizzMs = totalMs - sum
+							if not hasProfile then
+								print(string.format(
+									"|cff00ccff[Wise CPU]|r Combat-exit hitch: |cffffd700%.1f ms|r (event frame %.1fms, deferred frame %.1fms)",
+									totalMs, frame0Ms, frame1Ms
+								))
+							else
+								print(string.format(
+									"|cff00ccff[Wise CPU]|r Combat-exit hitch: |cffffd700%.1f ms|r (Wise |cff00ff00%.1f|r, addons %.1f, Blizz/secure ~%.1f)  %s",
+									totalMs,
+									wiseMs,
+									sum,
+									blizzMs > 0 and blizzMs or 0,
+									table.concat(parts, ", ")
+								))
+							end
+
+							local st = sample.stats
+							if st then
+								local wParts = {}
+								if st.cooldownMs and st.cooldownMs > 0.5 then
+									wParts[#wParts + 1] = string.format("UpdateAllCooldowns: %.1fms (%d btns)", st.cooldownMs, st.cooldownButtons or 0)
+								end
+								if st.pendingUpdateMs and st.pendingUpdateMs > 0.5 then
+									wParts[#wParts + 1] = string.format("pendingUpdates: %.1fms (%d groups)", st.pendingUpdateMs, st.pendingCount or 0)
+								end
+								if st.dynRefreshMs and st.dynRefreshMs > 0.5 then
+									local extra = ""
+									if st.rebuiltGroups and #st.rebuiltGroups > 0 then
+										extra = " (rebuilt: " .. table.concat(st.rebuiltGroups, ", ") .. ")"
+									end
+									wParts[#wParts + 1] = string.format("DynamicRefresh: %.1fms%s", st.dynRefreshMs, extra)
+								end
+								if st.indicatorsMs and st.indicatorsMs > 0.5 then
+									wParts[#wParts + 1] = string.format("Indicators: %.1fms", st.indicatorsMs)
+								end
+								if st.resetSeqMs and st.resetSeqMs > 0.5 then
+									wParts[#wParts + 1] = string.format("ResetSequences: %.1fms", st.resetSeqMs)
+								end
+								if st.blizzUIMs and st.blizzUIMs > 0.5 then
+									wParts[#wParts + 1] = string.format("UpdateBlizzardUI: %.1fms", st.blizzUIMs)
+								end
+								if #wParts > 0 then
+									print("  |cff00ff00Wise breakdown:|r " .. table.concat(wParts, " | "))
+								end
+							end
+						end)
+					end)
+				end)
+				Wise._cpuLeaveFrame = ef
+				print(
+					"|cff00ccff[Wise CPU]|r Combat-exit probe |cff00ff00armed|r. Leave combat to capture hitch."
+						.. " Results will print live to chat and store in |cffffd700/wise cpu leave|r."
+				)
+			end
+
+			local samples = Wise._cpuLeaveSamples
+			if not samples or #samples == 0 then
+				print("|cff00ccff[Wise CPU]|r No combat-exit samples yet — exit combat, then re-run.")
+				return
+			end
+
+			print(string.format("|cff00ccff[Wise CPU]|r Last %d combat-exit frame(s):", #samples))
+			for i = #samples, math.max(1, #samples - 4), -1 do
+				local s = samples[i]
+				local wiseMs = 0
+				local parts = {}
+				for _, r in ipairs(s.top) do
+					if r.name == "Wise" then
+						wiseMs = r.ms
+					end
+					parts[#parts + 1] = string.format("%s:%.1f", r.name, r.ms)
+				end
+				local blizzMs = s.totalMs - s.addonSum
+				if not s.hasProfile then
+					print(string.format(
+						"  |cffffd700%.1f ms|r hitch (event frame: %.1f, deferred frame: %.1f)",
+						s.totalMs, s.frame0Ms, s.frame1Ms
+					))
+				else
+					print(string.format(
+						"  |cffffd700%.1f ms|r hitch (Wise |cff00ff00%.2f|r, addons %.1f, Blizz/secure ~%.1f)  %s",
+						s.totalMs,
+						wiseMs,
+						s.addonSum,
+						blizzMs > 0 and blizzMs or 0,
+						table.concat(parts, ", ")
+					))
+				end
+				local st = s.stats
+				if st then
+					local wParts = {}
+					if st.cooldownMs and st.cooldownMs > 0.5 then
+						wParts[#wParts + 1] = string.format("UpdateAllCooldowns: %.1fms (%d btns)", st.cooldownMs, st.cooldownButtons or 0)
+					end
+					if st.pendingUpdateMs and st.pendingUpdateMs > 0.5 then
+						wParts[#wParts + 1] = string.format("pendingUpdates: %.1fms (%d groups)", st.pendingUpdateMs, st.pendingCount or 0)
+					end
+					if st.dynRefreshMs and st.dynRefreshMs > 0.5 then
+						local extra = ""
+						if st.rebuiltGroups and #st.rebuiltGroups > 0 then
+							extra = " (rebuilt: " .. table.concat(st.rebuiltGroups, ", ") .. ")"
+						end
+						wParts[#wParts + 1] = string.format("DynamicRefresh: %.1fms%s", st.dynRefreshMs, extra)
+					end
+					if st.indicatorsMs and st.indicatorsMs > 0.5 then
+						wParts[#wParts + 1] = string.format("Indicators: %.1fms", st.indicatorsMs)
+					end
+					if st.resetSeqMs and st.resetSeqMs > 0.5 then
+						wParts[#wParts + 1] = string.format("ResetSequences: %.1fms", st.resetSeqMs)
+					end
+					if st.blizzUIMs and st.blizzUIMs > 0.5 then
+						wParts[#wParts + 1] = string.format("UpdateBlizzardUI: %.1fms", st.blizzUIMs)
+					end
+					if #wParts > 0 then
+						print("    |cff00ff00Wise:|r " .. table.concat(wParts, " | "))
+					end
+				end
+			end
+			return
+		end
+
 		-- Per-FUNCTION breakdown (12.0.7 restored GetFunctionCPUUsage).
 		--   /wise cpu funcs  → rank Wise's own methods (Wise.*) by CPU since start.
 		-- Fills the gap the per-frame report flags: cost in tickers / hooked scripts
@@ -3219,7 +3553,7 @@ SlashCmdList["WISE"] = function(msg)
 			end
 		end
 		print(
-			"  |cff999999For a one-time stutter the instant combat starts, use |cffffd700/wise cpu enter|cff999999.|r"
+			"  |cff999999For transition stutters, use |cffffd700/wise cpu enter|cff999999 or |cffffd700/wise cpu leave|cff999999.|r"
 		)
 		return
 	end

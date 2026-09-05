@@ -115,6 +115,14 @@ function Wise:CreateOptionsFrame()
 		if Wise.UpdateMouseWheelState then
 			Wise:UpdateMouseWheelState()
 		end
+		-- Drop the cached slash-command alias table so the macro editor's
+		-- unknown-command check reflects addons loaded since it was last built
+		-- (LoadOnDemand addons register their commands only once loaded).
+		-- Opening this panel is the earliest point we know the game is fully
+		-- up, which is why the check lives here rather than at PLAYER_LOGIN.
+		if Wise.InvalidateSlashCommandCache then
+			Wise:InvalidateSlashCommandCache()
+		end
 	end)
 	f:HookScript("OnHide", function()
 		if Wise.UpdateExitEditModeFrameVisibility then
