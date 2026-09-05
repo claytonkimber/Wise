@@ -5381,6 +5381,9 @@ function Wise:RefreshActionsView(container)
 
 				local capturedSlotForDrag = sIdx
 				local capturedStateForDrag = aIdx
+				-- Set only for rows built from a slot graph (see displayActions above);
+				-- nil for plain action lists.
+				local capturedNodeId = action.nodeId
 
 				btn:SetScript("OnReceiveDrag", function()
 					Wise:OnDragReceive(groupName, capturedSlotForDrag, false, capturedStateForDrag)
@@ -5438,8 +5441,20 @@ function Wise:RefreshActionsView(container)
 						return
 					end
 					Wise.selectedSlot = sIdx
-					Wise.selectedState = aIdx
 					Wise.pickingIcon = false
+
+					-- Node of a visually-configured slot: open the configurator with this
+					-- node's Properties already showing. Selecting the state instead would
+					-- render a panel holding only this condition and an "Open Slot
+					-- Configurator" button, a strict subset of what Properties shows.
+					if capturedNodeId then
+						Wise.selectedState = nil
+						Wise:RefreshActionsView(container)
+						Wise:OpenSlotConfiguratorAtNode(groupName, sIdx, capturedNodeId)
+						return
+					end
+
+					Wise.selectedState = aIdx
 					Wise:RefreshActionsView(container)
 					Wise:RefreshPropertiesPanel()
 				end)

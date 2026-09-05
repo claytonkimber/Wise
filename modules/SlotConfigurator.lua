@@ -6115,6 +6115,51 @@ function Wise:OpenSlotConfigurator(groupName, slotIdx)
 	Wise:RefreshPropertiesPanel()
 end
 
+-- Open the configurator for a slot with one node's Properties overlay already
+-- open. Clicking a node in the Slots and Actions list routes here instead of
+-- selecting a state: the old state view for graph slots only repeated the node's
+-- condition and an "Open Slot Configurator" button, so it cost an extra click and
+-- showed strictly less than this does.
+--
+-- nodeId is matched against the configurator's freshly imported copy (ImportSlotData
+-- preserves node ids), never against the caller's node table -- the imported nodes are
+-- distinct tables, and the Properties panel edits its node in place.
+function Wise:OpenSlotConfiguratorAtNode(groupName, slotIdx, nodeId)
+	Wise:OpenSlotConfigurator(groupName, slotIdx)
+
+	-- OpenSlotConfigurator bails out in combat; don't pin a node onto a configurator
+	-- that never opened.
+	if not Wise.configuringSlot then
+		return
+	end
+
+	local node
+	local graph = configuratorState.graph
+	if nodeId and graph and graph.nodes then
+		for _, n in ipairs(graph.nodes) do
+			if n.id == nodeId then
+				node = n
+				break
+			end
+		end
+	end
+
+	-- No id match (a grid-converted slot, or a stale row) -- leave the canvas open
+	-- rather than opening Properties on the wrong node.
+	if not node then
+		return
+	end
+
+	Wise.editingNodeProperties = true
+	Wise.editingNodePropertiesNode = node
+	Wise.pickingRestrictions = false
+	Wise.pickingRestrictionsAction = nil
+	Wise.pickingCondition = false
+	Wise._conditionPickerState = nil
+	Wise._configuratorConditionNode = nil
+	Wise:RefreshPropertiesPanel()
+end
+
 -- Decide whether a slot selection should auto-enter the embedded node
 -- configurator in the Right panel, and (re)import its data when the selection
 -- changes. Called from RefreshPropertiesPanel before the configurator block.
