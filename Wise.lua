@@ -210,12 +210,26 @@ function Wise:ForceRefreshAllDisplays()
 		end
 	end
 
-	-- Rebuild all group displays
+	-- Rebuild all group displays.
+	-- UpdateGroupDisplay() would otherwise call the global UpdateBindings() once
+	-- per group; batch those into a single rebuild after the loop.
 	if WiseDB and WiseDB.groups then
-		for name, _ in pairs(WiseDB.groups) do
-			if Wise.UpdateGroupDisplay then
-				Wise:UpdateGroupDisplay(name)
+		Wise._deferBindingRebuild = true
+		Wise._bindingRebuildPending = false
+		local ok, err = pcall(function()
+			for name, _ in pairs(WiseDB.groups) do
+				if Wise.UpdateGroupDisplay then
+					Wise:UpdateGroupDisplay(name)
+				end
 			end
+		end)
+		Wise._deferBindingRebuild = nil
+		if Wise._bindingRebuildPending and Wise.UpdateBindings then
+			Wise._bindingRebuildPending = false
+			Wise:UpdateBindings()
+		end
+		if not ok then
+			error(err, 0)
 		end
 	end
 

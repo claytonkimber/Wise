@@ -7639,9 +7639,16 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		f._dynamicRefresh = nil
 	end
 
-	-- Ensure bindings are active (fixes potential staleness on new groups)
+	-- Ensure bindings are active (fixes potential staleness on new groups).
+	-- UpdateBindings() is a *global* rebuild (it walks every group), so during a
+	-- bulk refresh the caller batches it: we just record that a rebuild is owed
+	-- and it runs once at the end instead of once per group (was O(groups^2)).
 	if Wise.UpdateBindings then
-		Wise:UpdateBindings()
+		if Wise._deferBindingRebuild then
+			Wise._bindingRebuildPending = true
+		else
+			Wise:UpdateBindings()
+		end
 	end
 
 	-- Propagate to parents that embed this group
@@ -8561,7 +8568,6 @@ function Wise:UpdateBindings()
 		-- 2. Slot Bindings (Direct Mode only)
 		-- Nested bindings are handled by the SecureFrame itself (via attributes)
 		local f = Wise.frames[name]
-		local _, _, _, showKeybinds = Wise:GetGroupDisplaySettings(name)
 
 		if group.actions then
 			local nested = (group.keybindSettings and group.keybindSettings.nested)
@@ -8625,11 +8631,14 @@ function Wise:UpdateBindings()
 
 		-- 3. Refresh Keybind UI Text
 		if f and f.buttons then
-			local _, _, _, showKeybinds, _, _, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind =
+			local _, _, _, showKeybinds2, kbPos, kbSize, _, _, _, _, _, _, _, _, _, _, _, showInterfaceKeybind =
 				Wise:GetGroupDisplaySettings(name)
+			-- Text_UpdateKeybind re-resolves the same group settings for every
+			-- button; hand it the already-resolved position/size so a group with
+			-- N buttons costs one lookup instead of N.
 			for _, btn in ipairs(f.buttons) do
 				if btn:IsShown() and btn.actionType ~= "empty" then
-					Wise:Text_UpdateKeybind(btn, name, showKeybinds)
+					Wise:Text_UpdateKeybind(btn, name, showKeybinds2, kbPos, kbSize)
 					Wise:Text_UpdateInterfaceKeybind(btn, name, showInterfaceKeybind)
 				end
 			end

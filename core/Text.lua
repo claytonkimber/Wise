@@ -168,7 +168,9 @@ end
 ---@param btn Button
 ---@param groupName string
 ---@param showKeybinds boolean
-function Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
+---@param kbPos string|nil pre-resolved keybind position (optional)
+---@param kbSize number|nil pre-resolved keybind text size (optional)
+function Wise:Text_UpdateKeybind(btn, groupName, showKeybinds, kbPos, kbSize)
 	if not btn.keybind then
 		return
 	end
@@ -181,7 +183,13 @@ function Wise:Text_UpdateKeybind(btn, groupName, showKeybinds)
 		return
 	end
 
-	local _, _, _, _, kbPos, kbSize = Wise:GetGroupDisplaySettings(groupName)
+	-- Callers looping over many buttons in one group pass the already-resolved
+	-- settings; only pay for the lookup when they didn't.
+	if kbPos == nil or kbSize == nil then
+		local _, _, _, _, p, sz = Wise:GetGroupDisplaySettings(groupName)
+		kbPos = kbPos or p
+		kbSize = kbSize or sz
+	end
 	local text, rawKey = Wise.GetKeybind and Wise:GetKeybind(groupName, btn.slot) or nil
 
 	local pos = kbPos or "BOTTOM"
