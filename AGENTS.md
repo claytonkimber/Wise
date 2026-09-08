@@ -76,6 +76,17 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 - **Always use git diffs and direct replacements instead of Python scripts.** When making changes to any file, always use direct text/block replacement tools (e.g. `replace_file_content`, `multi_replace_file_content`) or standard git diffs/patches.
 - **Never write or execute ad-hoc Python scripts to edit files.** Creating temporary Python scripts or one-liners to perform search-and-replace, regex edits, or file rewrites wastes context tokens, incurs unnecessary execution round-trips, risks formatting/newline drift, and leaves extraneous scratch files in the workspace. Direct, targeted replacements and git diffs are significantly more token-efficient, transparent, and deterministic.
 
+### Module Sizing & Architectural Granularity (MANDATORY)
+
+**The aim for modules across this addon is to stay under the size threshold where file length impedes accurate, efficient LLM agent comprehension and modification:**
+
+- **Target Module Size (100–300 lines):** Monolithic files (e.g., 2,000+ lines) must be broken up where possible into focused, single-responsibility modules of approximately 100–300 lines.
+- **Why Granularity Matters for LLM Pair Programming:**
+  - **Context Window & Token Efficiency:** Compact files can be viewed, analyzed, and edited without saturating context or incurring huge token penalties from chunk offsets.
+  - **Pinpoint Editing Accuracy:** Targeted direct replacements (`replace_file_content`) are much more reliable, deterministic, and resilient against misaligned blocks in smaller modules.
+  - **Debugging & Isolation:** Decoupled 100–300 line files make localized debugging, unit testing, and sandbox execution (`sandbox-exec`) vastly simpler, faster, and less error-prone.
+- **Incremental Refactoring:** When touching or adding to large existing files (such as `core/GUI.lua`), actively look for opportunities to carve out self-contained systems (e.g., specific overlay panels, animation handlers, widget builders, or discrete event drivers) into separate submodules registered in `Wise.toc`.
+
 ### Mechanic Usage Policy (token cost)
 
 Mechanic tool calls return very large outputs and burn context tokens fast. **Use Mechanic sparingly:**
