@@ -69,6 +69,13 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
   section below
 - Docs: this file is the shared agent contract — see "Keeping This File Current"
 
+### Code Editing & Token Efficiency: Direct Replacements & Diffs (MANDATORY)
+
+**This policy applies to every agent working in this repository (Claude Code, Gemini, Jules, etc.):**
+
+- **Always use git diffs and direct replacements instead of Python scripts.** When making changes to any file, always use direct text/block replacement tools (e.g. `replace_file_content`, `multi_replace_file_content`) or standard git diffs/patches.
+- **Never write or execute ad-hoc Python scripts to edit files.** Creating temporary Python scripts or one-liners to perform search-and-replace, regex edits, or file rewrites wastes context tokens, incurs unnecessary execution round-trips, risks formatting/newline drift, and leaves extraneous scratch files in the workspace. Direct, targeted replacements and git diffs are significantly more token-efficient, transparent, and deterministic.
+
 ### Mechanic Usage Policy (token cost)
 
 Mechanic tool calls return very large outputs and burn context tokens fast. **Use Mechanic sparingly:**
@@ -250,9 +257,10 @@ These two are **complementary, not overlapping** — they answer different quest
 
 **Rules of thumb for a robust, token-cheap workflow:**
 1. **Default to neither** — Read/Grep/Glob + your WoW knowledge + shell `luacheck`/`stylua` answer most questions for free.
-2. **Reach for Mechanic** for API truth, in-game runs, and pre-merge static scans (used sparingly per the policy above).
-3. **Reach for wow-ui-sim** only for the UI-layout / visual / load-time questions in its scope — when "does it look/sit right" genuinely can't be read from the code.
-4. **Never run both for the same question.** If you can answer it statically or via API lookup, don't boot the sim; if you need pixels or resolved geometry, the sim is the *only* answer and Mechanic won't help.
+2. **Direct replacements over Python scripts** — Always use git diffs and direct editor replacements (`replace_file_content`, `multi_replace_file_content`) instead of Python scripts to modify files, conserving tokens and execution steps.
+3. **Reach for Mechanic** for API truth, in-game runs, and pre-merge static scans (used sparingly per the policy above).
+4. **Reach for wow-ui-sim** only for the UI-layout / visual / load-time questions in its scope — when "does it look/sit right" genuinely can't be read from the code.
+5. **Never run both for the same question.** If you can answer it statically or via API lookup, don't boot the sim; if you need pixels or resolved geometry, the sim is the *only* answer and Mechanic won't help.
 
 ## Taint Avoidance (MANDATORY)
 
