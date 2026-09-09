@@ -39,6 +39,18 @@ core\Compat121.lua
 core\Text.lua
 core\Bindings.lua
 core\Dispatcher.lua
+
+# Custom-conditional engine (extracted from GUI.lua). Order matters: each file
+# takes the previous ones' internals as upvalues off Wise.CondEngine at load
+# time. All must load before GUI.lua, which does the same.
+core\conditionals\ZoneAbility.lua
+core\conditionals\Vocabulary.lua
+core\conditionals\ArgMatch.lua
+core\conditionals\Predicates.lua
+core\conditionals\Environment.lua
+core\conditionals\EvalToken.lua
+core\conditionals\ConditionString.lua
+
 core\GUI.lua
 core\Conditionals.lua
 
