@@ -40,6 +40,11 @@ core\Text.lua
 core\Bindings.lua
 core\Dispatcher.lua
 
+# Cooldown primitives (extracted from GUI.lua). SecretValues probes client
+# capabilities, so it must load before anything that reads Wise.HAS_*.
+core\cooldown\SecretValues.lua
+core\cooldown\SwipeCache.lua
+
 # Custom-conditional engine (extracted from GUI.lua). Order matters: each file
 # takes the previous ones' internals as upvalues off Wise.CondEngine at load
 # time. All must load before GUI.lua, which does the same.

@@ -10,37 +10,6 @@ local addonName, Wise = ...
 -- ID 6: Bright Green - #9fe870 / RGB: 159, 232, 112
 -- ID 7: Forest Green - #163300 / RGB: 22, 51, 0
 
--- Capability flags for patch-12.0.5+ cooldown APIs. The `ignoreGCD` second arg on
--- GetSpellCooldownDuration / GetActionCooldownDuration arrived in interface 120005;
--- we can't introspect arity, so gate on the interface number (extra arg is ignored
--- as a no-op on clients that don't support it, but gating keeps intent explicit).
-local INTERFACE_VERSION = select(4, GetBuildInfo()) or 0
-local HAS_IGNORE_GCD = INTERFACE_VERSION >= 120005
-Wise.HAS_IGNORE_GCD = HAS_IGNORE_GCD
-
--- 12.0.5 native countdown formatters: Cooldown:SetCountdownFormatter lets us style
--- the built-in (combat / secret-mode) countdown text to match Wise's own out-of-
--- combat format, instead of being stuck with Blizzard's default whole-second look.
--- Probe by method presence (more robust than a version number for widget methods).
-local HAS_COUNTDOWN_FORMATTER = false
--- 12.0.5 Cooldown:SetCountdownMillisecondsThreshold(seconds): below the given
--- remaining time, Blizzard's native countdown text shows one decimal place.
--- We use it on the combat / secret-mode path so the built-in text ticks as
--- smoothly as our out-of-combat decimal format. Method is protected; probe by
--- presence and always pcall the call site.
-local HAS_COUNTDOWN_MS_THRESHOLD = false
-do
-	local probe = CreateFrame("Cooldown", nil, UIParent, "CooldownFrameTemplate")
-	HAS_COUNTDOWN_FORMATTER = type(probe.SetCountdownFormatter) == "function"
-		and type(C_StringUtil) == "table"
-		and type(C_StringUtil.CreateSecondsFormatter) == "function"
-	HAS_COUNTDOWN_MS_THRESHOLD = type(probe.SetCountdownMillisecondsThreshold) == "function"
-	probe:Hide()
-	probe:SetParent(nil)
-end
-Wise.HAS_COUNTDOWN_FORMATTER = HAS_COUNTDOWN_FORMATTER
-Wise.HAS_COUNTDOWN_MS_THRESHOLD = HAS_COUNTDOWN_MS_THRESHOLD
-
 -- Helper: Resolve per-group display settings with fallback to global
 local _G = _G
 local GetTime = GetTime
@@ -62,148 +31,27 @@ local C_SpellActivationOverlay = C_SpellActivationOverlay
 local SecureHandlerWrapScript = SecureHandlerWrapScript
 local RegisterStateDriver = RegisterStateDriver
 
--- Countdown text format. The 12.0.5 patch can render cooldown text in two styles:
---   "short"    — bare number, no unit   (9, 30, 5, 1)   [default]
---   "extended" — number + 1-letter unit (9s, 30s, 5m, 1h)
--- This is resolved per group (with global fallback) via GetGroupDisplaySettings,
--- and the same convention is applied to both the out-of-combat numeric path (where
--- Wise writes its own text) and the combat / secret-mode path (where Blizzard's
--- native countdown drives the text via SetCountdownFormatter).
-local COUNTDOWN_FORMAT_DEFAULT = "short"
-Wise.COUNTDOWN_FORMAT_DEFAULT = COUNTDOWN_FORMAT_DEFAULT
+-- Cooldown primitives, extracted to core/cooldown/ (SecretValues, SwipeCache).
+-- Both load before this file. Bound as upvalues rather than reached through
+-- Wise.CooldownUtil per call: these run on the per-button cooldown/charge paths
+-- thousands of times per second in combat, which is the whole reason they are
+-- shaped the way they are (see SecretValues.lua's header on closure churn).
+local CooldownUtil = Wise.CooldownUtil
+local FormatWiseCountdownText = CooldownUtil.FormatWiseCountdownText
+local GetWiseCountdownFormatter = CooldownUtil.GetWiseCountdownFormatter
+local SafeReadField = CooldownUtil.SafeReadField
+local CleanSecretNumber = CooldownUtil.CleanSecretNumber
+local COUNTDOWN_FORMAT_DEFAULT = CooldownUtil.COUNTDOWN_FORMAT_DEFAULT
+local COUNTDOWN_DECIMAL_THRESHOLD = CooldownUtil.COUNTDOWN_DECIMAL_THRESHOLD
+local storeCDCache = CooldownUtil.storeCDCache
+local applyCD = CooldownUtil.applyCD
+local applyCDFromDuration = CooldownUtil.applyCDFromDuration
+local clearCD = CooldownUtil.clearCD
 
--- Below this many seconds remaining, the countdown shows one decimal place
--- (e.g. 2.9, 0.4) so it ticks smoothly like Blizzard's native cooldown text,
--- instead of jumping a whole second at a time. Matches Blizzard's default
--- decimal threshold. The combat / secret-mode path mirrors this via
--- Cooldown:SetCountdownMillisecondsThreshold (see below).
-local COUNTDOWN_DECIMAL_THRESHOLD = 3
-Wise.COUNTDOWN_DECIMAL_THRESHOLD = COUNTDOWN_DECIMAL_THRESHOLD
-
--- Shared text helper for the out-of-combat numeric path. `rem` is a plain number
--- of seconds remaining; `format` is "short" or "extended".
-local function FormatWiseCountdownText(rem, format)
-	-- Sub-threshold: one decimal place for a smooth, native-feeling tick.
-	-- Clamp at 0 so we never print "-0.0" on the frame the cooldown expires.
-	if rem < COUNTDOWN_DECIMAL_THRESHOLD then
-		if rem < 0 then
-			rem = 0
-		end
-		if format == "extended" then
-			return strformat("%.1fs", rem)
-		end
-		return strformat("%.1f", rem)
-	end
-	if format == "extended" then
-		if rem >= 3600 then
-			return strformat("%dh", ceil(rem / 3600))
-		elseif rem >= 60 then
-			return strformat("%dm", ceil(rem / 60))
-		else
-			return strformat("%ds", ceil(rem))
-		end
-	end
-	-- "short": bare number, no unit.
-	if rem >= 3600 then
-		return strformat("%d", ceil(rem / 3600))
-	elseif rem >= 60 then
-		return strformat("%d", ceil(rem / 60))
-	else
-		return strformat("%d", ceil(rem))
-	end
-end
-Wise.FormatWiseCountdownText = FormatWiseCountdownText
-
--- Lazily-built shared SecondsFormatter objects for the combat / secret-mode path,
--- one per format style, reused across all buttons. We can't compute remaining time
--- in combat (secret numbers), so we hand Blizzard's native countdown a formatter
--- that mirrors our own text convention.
---   extended → Enum.SecondsFormatterAbbreviation.OneLetter (9s / 5m / 1h)
---   short    → nil formatter (Blizzard default: whole seconds, no unit) — matches
---              our bare-number look for the sub-minute durations that dominate the
---              combat/secret path. (longer combat cooldowns are rare; best-effort.)
-local _wiseSecondsFormatters = {}
-local function GetWiseCountdownFormatter(format)
-	if not HAS_COUNTDOWN_FORMATTER then
-		return nil
-	end
-	if format ~= "extended" then
-		-- "short" maps to the native default formatter (nil).
-		return nil
-	end
-	local cached = _wiseSecondsFormatters[format]
-	if cached == nil then
-		local ok, fmt = pcall(C_StringUtil.CreateSecondsFormatter)
-		if ok and fmt then
-			-- OneLetter abbreviation → "9s" / "5m" / "1h", matching the extended
-			-- numeric path. Guard each setter: the method set has shifted between
-			-- builds, and a missing one shouldn't nil out the whole formatter.
-			local abbrev = _G.Enum and _G.Enum.SecondsFormatterAbbreviation
-			if abbrev and abbrev.OneLetter ~= nil and fmt.SetDefaultAbbreviation then
-				pcall(fmt.SetDefaultAbbreviation, fmt, abbrev.OneLetter)
-			end
-			if fmt.SetStripIntervalWhitespace then
-				local ws = _G.Enum and _G.Enum.SecondsFormatterIntervalWhitespace
-				if ws and ws.StripIgnoreLocale ~= nil then
-					pcall(fmt.SetStripIntervalWhitespace, fmt, ws.StripIgnoreLocale)
-				end
-			end
-		end
-		cached = (ok and fmt) or false
-		_wiseSecondsFormatters[format] = cached
-	end
-	return cached or nil
-end
-
-local issecretvalue = issecretvalue or (_G and _G.issecretvalue)
-
--- Helper: Safely read a field from a table that may contain secret number values.
--- Returns the raw value only if it can be accessed without error.
--- Accepts a table and a key (string) rather than the already-read value,
--- because even *reading* the field `table.key` can crash on secret values.
--- Indexing helper hoisted out of SafeReadField: passing it to pcall along with
--- the arguments avoids allocating a fresh closure on every read. SafeReadField
--- runs on the per-button cooldown/charge paths many thousands of times per
--- second in combat, so the closure churn was showing up in GC pressure.
-local function rawIndex(tbl, key)
-	return tbl[key]
-end
-
--- Secret-value probe hoisted for the same reason as rawIndex: passed to pcall
--- by reference so no closure is allocated per call.
-local function checkSecret(val)
-	return issecretvalue and issecretvalue(val)
-end
-
-local function SafeReadField(tbl, key)
-	local ok, val = pcall(rawIndex, tbl, key)
-	if not ok then
-		return nil
-	end
-	return val
-end
-
--- Helper: Clean secret number values in WoW 11.1+/12.0+ to prevent comparison errors in tainted execution.
--- Pass the *containing table* and *key* instead of the value directly when the
--- field might be secret; use CleanSecretNumber(SafeReadField(t, k)) together.
-local function CleanSecretNumber(val)
-	if val == nil then
-		return nil
-	end
-	-- Fast-path: issecretvalue() is available in WoW 12.0+
-	-- checkSecret is hoisted (see rawIndex above) so this pcall doesn't allocate
-	-- a closure — CleanSecretNumber runs on every charge/cooldown field read.
-	local svOk, isSecret = pcall(checkSecret, val)
-	if svOk and isSecret then
-		return nil
-	end
-	-- tostring() on a secret value will also throw, so wrap it too
-	local ok, str = pcall(tostring, val)
-	if ok and str then
-		return tonumber(str)
-	end
-	return nil
-end
+-- Client-capability flags, probed in SecretValues.lua.
+local HAS_IGNORE_GCD = Wise.HAS_IGNORE_GCD
+local HAS_COUNTDOWN_FORMATTER = Wise.HAS_COUNTDOWN_FORMATTER
+local HAS_COUNTDOWN_MS_THRESHOLD = Wise.HAS_COUNTDOWN_MS_THRESHOLD
 
 -- Mouse button keys need the 5th arg to SetOverrideBindingClick so the
 -- simulated click uses the correct button name; without it WoW silently
@@ -7115,104 +6963,6 @@ function Wise:UpdateBindings()
 end
 
 -- Cooldown Update Functions
-
--- Swipe-repaint guard: Cooldown:SetCooldown() and SetCooldownFromDurationObject()
--- always restart the swipe animation, even when called with identical values.
--- Because UNIT_AURA (player + target) fires frequently during combat — DoT ticks,
--- buff refreshes, nearby enemy auras — UpdateAllCooldowns() re-runs often, which
--- would re-paint every active swipe on every tick and cause visible "pulsing" on
--- short timers like the GCD. The helpers below short-circuit redundant writes by
--- caching the last applied tuple per-cooldown-frame.
--- The cache tuple is (start, duration, reverse) — source is stored for
--- debugging but not compared, because the rendered swipe is determined
--- entirely by the numeric tuple + reverse flag. Comparing source would
--- cause false-negatives across layers (CD → buff → CD) where nothing
--- actually changed from the Cooldown frame's perspective.
---
--- These live at file scope rather than inside UpdateButtonCooldown: they take
--- everything they need as arguments and capture no per-call state, and that
--- function runs ~160x per pass. Defining them per call allocated three closures
--- (plus one per pcall) every time, which measured as ~58% of all addon garbage
--- in a 30s raid trace. Hoisting them makes it zero.
-
--- Body of the cache comparison, kept separate so cdTupleMatches can hand it to
--- pcall as a plain function reference with its arguments passed through. The old
--- form wrapped an inline closure over the locals, which allocated on every call;
--- pcall(f, a, b, ...) forwards arguments natively and allocates nothing.
-local function cdCacheEquals(cache, newStart, newDur, reverse)
-	return cache.start == newStart and cache.duration == newDur and cache.reverse == reverse
-end
-
--- Compare the cached swipe tuple without ever letting a secret number escape.
--- The values may be "secret numbers" in combat (WoW 11.1+) which throw on any
--- comparison, so the whole check is wrapped: a throw means "not matched", which
--- forces a re-write — always safe, just not skipped.
-local function cdTupleMatches(cache, newStart, newDur, reverse)
-	if not cache then
-		return false
-	end
-	local ok, matched = pcall(cdCacheEquals, cache, newStart, newDur, reverse)
-	return ok and matched
-end
-
--- Record the applied tuple on the Cooldown frame, reusing the existing cache
--- table instead of replacing it. A cache MISS is the common case for a ticking
--- cooldown (the values genuinely change), so allocating a fresh 4-field table
--- per write produced steady garbage. The table is private to the frame and only
--- ever read back by cdTupleMatches, so overwriting in place is safe -- but every
--- field must be written each time, or a stale one would survive into the next
--- comparison and could wrongly report a match.
-local function storeCDCache(cdFrame, newStart, newDur, reverse, source)
-	local cache = cdFrame._wiseLastCD
-	if not cache then
-		cache = {}
-		cdFrame._wiseLastCD = cache
-	end
-	cache.start = newStart
-	cache.duration = newDur
-	cache.reverse = reverse
-	cache.source = source
-end
-
-local function applyCD(cdFrame, newStart, newDur, reverse, source)
-	if not cdFrame then
-		return
-	end
-	if cdTupleMatches(cdFrame._wiseLastCD, newStart, newDur, reverse) then
-		return
-	end
-	if cdFrame.SetReverse then
-		cdFrame:SetReverse(reverse == true)
-	end
-	cdFrame:SetCooldown(newStart, newDur)
-	storeCDCache(cdFrame, newStart, newDur, reverse, source)
-end
-
-local function applyCDFromDuration(cdFrame, durObj, numStart, numDur, reverse)
-	if not cdFrame then
-		return
-	end
-	if cdTupleMatches(cdFrame._wiseLastCD, numStart, numDur, reverse) then
-		return
-	end
-	if cdFrame.SetReverse then
-		cdFrame:SetReverse(reverse == true)
-	end
-	cdFrame:SetCooldownFromDurationObject(durObj, true)
-	-- Store the raw values; next comparison will pcall too.
-	storeCDCache(cdFrame, numStart, numDur, reverse, "durObj")
-end
-
-local function clearCD(cdFrame)
-	if not cdFrame then
-		return
-	end
-	if cdTupleMatches(cdFrame._wiseLastCD, 0, 0, false) then
-		return
-	end
-	cdFrame:SetCooldown(0, 0)
-	storeCDCache(cdFrame, 0, 0, false, "clear")
-end
 
 function Wise:UpdateButtonCooldown(btn)
 	if not btn or not btn.cooldown then
