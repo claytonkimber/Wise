@@ -33,6 +33,14 @@ modules\Debug.lua
 
 # Core
 Wise.lua
+
+# Blizzard-UI suppression (extracted from Wise.lua). These install hooks and
+# register events at load time, so they must follow Wise.lua; Registry defines
+# the frame catalogue the other two read.
+core\blizzui\Registry.lua
+core\blizzui\Hiding.lua
+core\blizzui\Apply.lua
+
 core\Filters.lua
 core\Polyfill.lua
 core\Compat121.lua
