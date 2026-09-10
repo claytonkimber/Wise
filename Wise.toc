@@ -56,6 +56,10 @@ core\conditionals\ConditionString.lua
 core\effects\OverlayGlow.lua
 core\effects\HoverIndication.lua
 
+# Layout helpers (extracted from GUI.lua). Must load before GUI.lua, which
+# binds them as upvalues off Wise.Layout.
+core\layout\ListLayout.lua
+
 core\GUI.lua
 core\Conditionals.lua
 
