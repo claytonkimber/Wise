@@ -80,11 +80,11 @@ A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use lib
 
 **The aim for modules across this addon is to stay under the size threshold where file length impedes accurate, efficient LLM agent comprehension and modification:**
 
-- **Target Module Size (100–300 lines):** Monolithic files (e.g., 2,000+ lines) must be broken up where possible into focused, single-responsibility modules of approximately 100–300 lines.
+- **Target Module Size (100–400 lines):** Monolithic files (e.g., 2,000+ lines) must be broken up where possible into focused, single-responsibility modules of approximately 100–400 lines. Prefer a natural behavioural seam inside that range over an arbitrary cut that merely hits a line count — a cohesive 380-line module beats two 190-line halves that have to reach into each other.
 - **Why Granularity Matters for LLM Pair Programming:**
   - **Context Window & Token Efficiency:** Compact files can be viewed, analyzed, and edited without saturating context or incurring huge token penalties from chunk offsets.
   - **Pinpoint Editing Accuracy:** Targeted direct replacements (`replace_file_content`) are much more reliable, deterministic, and resilient against misaligned blocks in smaller modules.
-  - **Debugging & Isolation:** Decoupled 100–300 line files make localized debugging, unit testing, and sandbox execution (`sandbox-exec`) vastly simpler, faster, and less error-prone.
+  - **Debugging & Isolation:** Decoupled 100–400 line files make localized debugging, unit testing, and sandbox execution (`sandbox-exec`) vastly simpler, faster, and less error-prone.
 - **Incremental Refactoring:** When touching or adding to large existing files (such as `core/GUI.lua`), actively look for opportunities to carve out self-contained systems (e.g., specific overlay panels, animation handlers, widget builders, or discrete event drivers) into separate submodules registered in `Wise.toc`.
 
 ### Mechanic Usage Policy (token cost)

@@ -51,6 +51,11 @@ core\conditionals\Environment.lua
 core\conditionals\EvalToken.lua
 core\conditionals\ConditionString.lua
 
+# Visual effects (extracted from GUI.lua). Both must load before GUI.lua, which
+# binds the hover helpers as upvalues off Wise.Effects.
+core\effects\OverlayGlow.lua
+core\effects\HoverIndication.lua
+
 core\GUI.lua
 core\Conditionals.lua
 
