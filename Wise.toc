@@ -85,7 +85,14 @@ modules\Settings.lua
 modules\Macro.lua
 modules\Options.lua
 modules\Properties.lua
-modules\Nesting.lua
+# Nesting. Rules first (the legality matrix backs IsNestingAllowed); the rest
+# only attach methods to Wise, so the remaining order is presentational.
+modules\nesting\Rules.lua
+modules\nesting\Options.lua
+modules\nesting\Conditionals.lua
+modules\nesting\Layout.lua
+modules\nesting\Position.lua
+modules\nesting\CloseMonitor.lua
 modules\States.lua
 modules\SlotConfigurator.lua
 modules\Info.lua
@@ -95,7 +102,13 @@ modules\BugReport.lua
 modules\Audio.lua
 modules\AbundanceTest.lua
 modules\AudioCues.lua
-modules\IndicatorRules.lua
+# Indicator rules. Metrics first (everything reads METRICS); Paint last, as it
+# consumes the indexes Index.lua builds.
+modules\indicators\Metrics.lua
+modules\indicators\State.lua
+modules\indicators\Render.lua
+modules\indicators\Index.lua
+modules\indicators\Paint.lua
 
 # Wiser
 wiser\Cooldowns.lua
