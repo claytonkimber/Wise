@@ -257,7 +257,7 @@ function Wise:PopulateActionTooltip(tooltip, owner, actionType, actionValue, act
 				local name
 				if val then
 					if val <= 10 then
-						local _, sName = GetSpecializationInfo(val)
+						local _, sName = C_SpecializationInfo.GetSpecializationInfo(val)
 						name = sName
 					elseif GetSpecializationInfoByID then
 						local _, sName = GetSpecializationInfoByID(val)

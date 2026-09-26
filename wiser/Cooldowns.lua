@@ -171,7 +171,7 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 				-- repopulate the mirror if the category API is ever unavailable
 				-- (see the pre-12.0.5 fallback below).
 				group.displayedCooldownIDs = group.displayedCooldownIDs or {}
-				local specIndex = GetSpecialization()
+				local specIndex = C_SpecializationInfo.GetSpecialization()
 				group.displayedCooldownIDs[specIndex or 0] = displayedCooldownIDs
 			end
 		end
@@ -182,7 +182,7 @@ function Wise:_ReadCooldownViewer(groupName, viewerName)
 	-- and a Shadow Priest (spec 3) could collide — acceptable only as a fallback
 	-- of last resort since the category API above has no such ambiguity.
 	if not readFromCategory and group.displayedCooldownIDs and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
-		local specIndex = GetSpecialization() or 0
+		local specIndex = C_SpecializationInfo.GetSpecialization() or 0
 		local cached = group.displayedCooldownIDs[specIndex]
 		if cached then
 			for _, cid in ipairs(cached) do

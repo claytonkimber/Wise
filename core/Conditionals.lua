@@ -13,8 +13,10 @@ local GetRealZoneText = GetRealZoneText
 local GetInstanceInfo = GetInstanceInfo
 local UnitName = UnitName
 local UnitClass = UnitClass
-local GetSpecialization = GetSpecialization
-local GetSpecializationInfo = GetSpecializationInfo
+-- Namespaced, never the bare globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
 local UnitLevel = UnitLevel
 local UnitRace = UnitRace
 local GetBuildInfo = GetBuildInfo

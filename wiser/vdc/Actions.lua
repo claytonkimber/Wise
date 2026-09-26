@@ -324,7 +324,7 @@ function VDC:BuildSlotTooltip(tooltip, button, actionData)
 	for i = 1, shown do
 		local entry = list[i]
 		local label = entry.itemLink or "?"
-		local gain = GetCoinTextureString(math.floor(entry.gain or 0))
+		local gain = C_CurrencyInfo.GetCoinTextureString(math.floor(entry.gain or 0))
 		if i == 1 then
 			-- Mark the head of the queue: this is what the next press acts on.
 			tooltip:AddDoubleLine("> " .. label, gain, 0.4, 1, 0.4, 1, 0.82, 0)

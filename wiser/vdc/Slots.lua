@@ -109,7 +109,7 @@ function VDC:Refresh()
 						slotKey,
 						top.itemLink,
 						#list,
-						GetCoinTextureString(math.floor(top.gain or 0))
+						C_CurrencyInfo.GetCoinTextureString(math.floor(top.gain or 0))
 					),
 					icon = C_Item.GetItemIconByID(top.itemID),
 					category = "global",

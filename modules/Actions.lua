@@ -28,6 +28,11 @@ local GetSpellBaseCooldown = (C_Spell and C_Spell.GetSpellBaseCooldown) or GetSp
 local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
 local GetFlyoutInfo = GetFlyoutInfo
 local GetFlyoutSlotInfo = GetFlyoutSlotInfo
+-- Namespaced, never the bare globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
+local GetItemCount = C_Item and C_Item.GetItemCount
 
 local function IsSpellPassive(spellId)
 	if not spellId then
@@ -1709,7 +1714,7 @@ function Wise:GetActionName(actionType, value, extraData)
 				local info = C_Spell.GetSpellInfo(id)
 				return info and info.name or "Action " .. value
 			elseif actionTypeStr == "item" and id then
-				return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or GetItemInfo(id) or "Action " .. value
+				return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or "Action " .. value
 			elseif actionTypeStr == "macro" and id then
 				return GetMacroInfo(id) or "Action " .. value
 			end
@@ -1725,11 +1730,9 @@ function Wise:GetActionName(actionType, value, extraData)
 		local name = GetSpellInfo(overrideValue)
 		return name or value
 	elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
-		if C_Item and C_Item.GetItemInfo then
-			local name = C_Item.GetItemInfo(value)
-			return name or value
-		end
-		local name = GetItemInfo(value)
+		-- No bare GetItemInfo fallback: on retail it was only a deprecation shim
+		-- aliasing this same function, and on WoW Forever it does not exist.
+		local name = C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(value)
 		return name or value
 	elseif actionType == "macro" then
 		local name = GetMacroInfo(value)
@@ -1965,11 +1968,11 @@ function Wise:GetActionIcon(actionType, value, extraData)
 		end
 	elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
 		local icon = nil
+		-- No bare GetItemIcon fallback: on retail it was only a deprecation shim
+		-- aliasing GetItemIconByID (so it could never succeed where this failed),
+		-- and on WoW Forever it does not exist.
 		if C_Item and C_Item.GetItemIconByID then
 			icon = C_Item.GetItemIconByID(value)
-		end
-		if not icon then
-			icon = GetItemIcon(value)
 		end
 		if icon then
 			texture = icon

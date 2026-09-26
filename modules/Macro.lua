@@ -95,8 +95,8 @@ function Wise:SetMacroText(action, text)
 	-- Auto-rename if currently default
 	if not action.name or action.name == "Custom Macro" then
 		local class = UnitClass("player")
-		local spec = GetSpecialization()
-		local specID = spec and GetSpecializationInfo(spec)
+		local spec = C_SpecializationInfo.GetSpecialization()
+		local specID = spec and C_SpecializationInfo.GetSpecializationInfo(spec)
 		local _, specName = specID and GetSpecializationInfoByID(specID)
 		if class and specName then
 			action.name = string.format("Macro - %s %s", class, specName)
@@ -301,8 +301,8 @@ function Wise:CreateMacroEditor(panel, action, y)
 			if C_Spell.DoesSpellExist(id) then
 				name = C_Spell.GetSpellName(id)
 				valid = true
-			elseif GetItemInfo(id) then
-				name = GetItemInfo(id)
+			elseif C_Item.GetItemInfo(id) then
+				name = C_Item.GetItemInfo(id)
 				valid = true
 			end
 

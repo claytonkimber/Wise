@@ -33,8 +33,10 @@ local GetNumSpecializations = GetNumSpecializations
 local GetProfessionInfo = GetProfessionInfo
 local GetProfessions = GetProfessions
 local GetRealmName = GetRealmName
-local GetSpecialization = GetSpecialization
-local GetSpecializationInfo = GetSpecializationInfo
+-- Namespaced, never the bare globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
 local GetTime = GetTime
 local InCombatLockdown = InCombatLockdown
 local StaticPopupDialogs = StaticPopupDialogs
@@ -2992,6 +2994,13 @@ SlashCmdList["WISE"] = function(msg)
 			"|cff00ccff[Wise]|r Resolve debug "
 				.. (Wise.debugResolve and "|cff00ff00ON|r — press keys to see what fires" or "|cffff0000OFF|r")
 		)
+		return
+	end
+
+	if cmd == "client" then
+		-- Diagnostic: client flavour + the WoW Forever port's runtime checks.
+		-- See core/Client.lua and docs/forever-port-plan.md (Phase 0).
+		Wise.Client.Report()
 		return
 	end
 

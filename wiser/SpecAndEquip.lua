@@ -23,8 +23,8 @@ local function EnsureData()
 				end
 			end
 			if not isMatch and slot.talentConfigID and C_ClassTalents then
-				local specIndex = GetSpecialization()
-				local specID = specIndex and GetSpecializationInfo(specIndex)
+				local specIndex = C_SpecializationInfo.GetSpecialization()
+				local specID = specIndex and C_SpecializationInfo.GetSpecializationInfo(specIndex)
 				if specID and C_ClassTalents.GetConfigIDsBySpecID then
 					local configs = C_ClassTalents.GetConfigIDsBySpecID(specID) or {}
 					for _, cid in ipairs(configs) do
@@ -52,7 +52,7 @@ local function EnsureData()
 			elseif slot.specIndex and slot.name then
 				-- Scan all classes and their specs to see if the slot's specIndex + spec name matches
 				for classID = 1, 13 do
-					local numSpecs = GetNumSpecializationsForClassID(classID) or 0
+					local numSpecs = C_SpecializationInfo.GetNumSpecializationsForClassID(classID) or 0
 					for si = 1, numSpecs do
 						if si == slot.specIndex then
 							local _, specName = GetSpecializationInfoForClassID(classID, si)
@@ -89,7 +89,7 @@ end
 local function BuildAutoName(slot)
 	local parts = {}
 	if slot.specIndex then
-		local _, specName = GetSpecializationInfo(slot.specIndex)
+		local _, specName = C_SpecializationInfo.GetSpecializationInfo(slot.specIndex)
 		if specName then
 			tinsert(parts, specName)
 		end
@@ -132,7 +132,7 @@ function Wise:ExecuteSpecEquip(slotIndex)
 	local needsSpecChange = false
 
 	if slot.specIndex then
-		local currentSpec = GetSpecialization()
+		local currentSpec = C_SpecializationInfo.GetSpecialization()
 		if slot.specIndex ~= currentSpec then
 			local canSwitch = true
 			if C_SpecializationInfo and C_SpecializationInfo.CanPlayerUseTalentSpecUI then
@@ -169,7 +169,7 @@ function Wise:ExecuteSpecEquip(slotIndex)
 		if setSpecFn then
 			setSpecFn(slot.specIndex)
 		end
-		local _, specName = GetSpecializationInfo(slot.specIndex)
+		local _, specName = C_SpecializationInfo.GetSpecializationInfo(slot.specIndex)
 		tinsert(parts, specName or ("Spec " .. slot.specIndex))
 	else
 		-- 3) No spec change — apply talent loadout immediately
@@ -243,7 +243,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 	end
 
 	local width = panel:GetWidth() - 20
-	local currentSpec = GetSpecialization()
+	local currentSpec = C_SpecializationInfo.GetSpecialization()
 	local isCurrentSpec = (slot.specIndex == nil or slot.specIndex == currentSpec)
 
 	-- Slot Name Editor
@@ -363,7 +363,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 	local specChecks = { noneCheck }
 
 	for i = 1, numSpecs do
-		local specID, specName, _, specIcon = GetSpecializationInfo(i)
+		local specID, specName, _, specIcon = C_SpecializationInfo.GetSpecializationInfo(i)
 		if specID and specName then
 			local sCheck = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
 			sCheck:SetPoint("TOPLEFT", 10, y)
@@ -414,7 +414,7 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 
 	if not isCurrentSpec then
 		-- Show greyed-out message when a different spec is selected
-		local _, targetSpecName = GetSpecializationInfo(slot.specIndex)
+		local _, targetSpecName = C_SpecializationInfo.GetSpecializationInfo(slot.specIndex)
 		local note = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		note:SetPoint("TOPLEFT", 30, y)
 		note:SetWidth(width - 40)
@@ -451,8 +451,8 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 		end
 	else
 		-- Current spec — show the loadout picker
-		local specIndex = GetSpecialization()
-		local specID = specIndex and GetSpecializationInfo(specIndex)
+		local specIndex = C_SpecializationInfo.GetSpecialization()
+		local specID = specIndex and C_SpecializationInfo.GetSpecializationInfo(specIndex)
 		local savedConfigs = {}
 		if specID and C_ClassTalents then
 			if C_ClassTalents.GetConfigIDsBySpecID then

@@ -418,4 +418,21 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_ForeverClient" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="WoW Forever Client (Phases 1-2)" type="string"/>
+            <KeyValue key="instructions" value="Verify Wise loads and its core paths run on the WoW Forever beta (interface 16001). Plan and background: docs/forever-port-plan.md. Turn on Lua errors first: /console scriptErrors 1. Fix from the FIRST error down — the client reportedly stops reporting after 100.
+1. Wise must NOT show as &apos;out of date&apos; in the AddOns list (Wise.toc lists 16001).
+2. Run /wise client. Expect IS_FOREVER=true, HAS_IGNORE_GCD=true, &apos;Retail shim globals: none present&apos;. Any MISSING native global or frame is a new Phase 3 item — note it.
+3. /reload, then /wise client again. The SavedVariables run counter MUST increase. If it resets to #1, the beta client is not reading SavedVariables back — stop and report; nothing Wise does can fix that.
+4. Open Options (/wise). No errors opening the Settings, Actions and Slot Configurator views.
+5. Add a spell, an item WITH a count, a macro and a mount to a bar. Icons, item count and clicks must all work (exercises C_Item.GetItemCount/GetItemInfo/GetItemIconByID, which replaced the retail shim globals).
+6. Ranked spell: add a spell that has ranks (e.g. Fireball). The button must cast the HIGHEST rank you know.
+7. Cooldowns: cast something with a cooldown. The swipe must NOT flash for the global cooldown when GCD display is off (HAS_IGNORE_GCD path).
+8. Icon picker: open it for a slot. Icons must be masked (rounded) — the exui MODERN flag.
+9. Retail regression: repeat steps 2, 4, 5 and 7 on retail. /wise client must show IS_FOREVER=false and the item/spec paths must behave exactly as before." type="string"/>
+            <KeyValue key="action" value="Wise.Client.Report()" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

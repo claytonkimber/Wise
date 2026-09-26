@@ -55,7 +55,7 @@ drifts. Simulator behaviour goes in `_dev_/wow-ui-sim/AGENTS.md`; how *Wise* use
 those tools stays here.
 
 ## Project Goal
-A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use libraries if they provide a significant improvement in performance or usability.
+A high-performance World of Warcraft (Retail 11.0+, plus WoW Forever — see "WoW Forever (Camelot) Support") using pure LUA. Only use libraries if they provide a significant improvement in performance or usability.
 
 ## Tech Stack
 - Language: Lua (WoW-variant)
@@ -793,6 +793,41 @@ that explodes on the next comparison. An **error from `issecretvalue` means "no
 answer", not "secret"**. And there is no safe `v == nil` pre-check: even
 comparing a true secret can throw, so the round-trip goes inside the `pcall`.
 See also "Numeric Taint Stripping".
+
+### WoW Forever (Camelot) Support (`core/Client.lua`)
+
+The full plan and status are in `docs/forever-port-plan.md`; code comments point
+here and there. Findings come from diffing Blizzard's `forever` UI source (1.60.1)
+against live 12.1 on 2026-09-26. **Not yet verified in-client:** run
+`/wise client` (Phase 0 of the plan) and correct this section with what it shows.
+
+- **Forever runs the modern Mainline UI and API, not Classic's.** Its API is almost
+  a superset of live 12.1. Wise needed no API rewrites, only the two traps below.
+- **Its interface number is `16001`.** Any `>= 1xxxxx` gate reads it as an
+  ancient client; `HAS_IGNORE_GCD` and exui's `MODERN` both fell for this.
+  **Never compare the interface number to mean "modern client."** Probe the
+  capability, or use `Wise.IS_FOREVER` for behaviour that is genuinely
+  Forever-specific. `WOW_PROJECT_ID` is reportedly `WOW_PROJECT_MAINLINE` there, so
+  it cannot tell Forever from retail.
+- **Retail's `Blizzard_Deprecated*` shims do not load on Forever.** Its game type
+  `camelot` is excluded by their `standard`/`mainline` TOC gates. So bare
+  `GetSpecialization`, `GetSpecializationInfo`, `GetItemCount`, `GetItemInfo`,
+  `GetItemIcon`, `IsEquippedItem`, `GetCoinTextureString`, etc. are **nil**. Call
+  the `C_SpecializationInfo.*` / `C_Item.*` / `C_CurrencyInfo.*` function each shim
+  aliased; they exist on both clients. On retail those shims also vanish when the
+  `loadDeprecationFallbacks` CVar is off, so this was a latent retail bug too.
+  `.luacheckrc` strips these names from the generated globals list so luacheck
+  flags any reintroduction. Don't reintroduce the `(C_X and C_X.Y) or Y` fallback
+  idiom for them, because the bare-global fallback is exactly what luacheck is
+  guarding against.
+- **Do not polyfill missing globals into `_G`.** A global defined by addon code
+  taints every Blizzard caller (Rule 8). Use file-local aliases.
+- **Testing:** `_classic_beta_\Interface\AddOns\Wise` is a junction to `_dev_\Wise`,
+  so both clients load the same tree. wow-ui-sim has **no Forever profile**, so
+  Forever is verified in-client only. The sim **auto-stubs unknown `C_*`
+  functions**: `C_GameRules.GetForeverExperiencePreset` reads as present under the
+  retail sim. That is why `IS_FOREVER` keys on the interface range first and never
+  on API presence alone.
 
 ### Custom Conditionals: the Three-Table Rule
 

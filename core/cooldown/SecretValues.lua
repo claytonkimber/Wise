@@ -45,8 +45,11 @@ local type = type
 -- GetSpellCooldownDuration / GetActionCooldownDuration arrived in interface 120005;
 -- we can't introspect arity, so gate on the interface number (extra arg is ignored
 -- as a no-op on clients that don't support it, but gating keeps intent explicit).
+-- WoW Forever reports interface 16001 yet ships the 12.1-era API, ignoreGCD
+-- included, so the numeric gate alone would read it as an old client and paint
+-- GCD swipes on every button. See core/Client.lua.
 local INTERFACE_VERSION = select(4, GetBuildInfo()) or 0
-local HAS_IGNORE_GCD = INTERFACE_VERSION >= 120005
+local HAS_IGNORE_GCD = INTERFACE_VERSION >= 120005 or Wise.IS_FOREVER == true
 Wise.HAS_IGNORE_GCD = HAS_IGNORE_GCD
 
 -- 12.0.5 native countdown formatters: Cooldown:SetCountdownFormatter lets us style
