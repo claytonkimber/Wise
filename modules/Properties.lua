@@ -117,43 +117,25 @@ local function EnsureBindingOverwritePopup()
 			button1 = "Yes",
 			button2 = "Cancel",
 			OnAccept = function(self, data)
-				if data.oldOwner then
-					if data.oldSlot == "SYSTEM" then
-						SetBinding(data.key, nil)
-						local currentSet = GetCurrentBindingSet()
-						if currentSet == 1 or currentSet == 2 then
-							SaveBindings(currentSet)
-						end
-					else
-						Wise:ClearKeybind(data.oldOwner, data.oldSlot)
+				-- Free the key from its previous owner first...
+				if data.oldSlot == "SYSTEM" then
+					SetBinding(data.key, nil)
+					local currentSet = GetCurrentBindingSet()
+					if currentSet == 1 or currentSet == 2 then
+						SaveBindings(currentSet)
 					end
+				else
+					Wise:ClearKeybind(data.oldOwner, data.oldSlot)
 				end
-
-				if data.group then
-					if data.isSlotBinding then
-						data.group.actions[data.slotIdx].keybind = data.key
-					else
-						data.group.binding = data.key
-					end
-				end
-				Wise:UpdateBindings()
-				if data.btn then
-					data.btn:SetText(data.key)
-				end
-				Wise:UpdateOptionsUI()
+				-- ...then save it through the caller's own path, so a key taken over
+				-- from a conflict is stored exactly as an unconflicted press would
+				-- be. This used to re-implement the save from `group`/`slotIdx`,
+				-- which the slot toolbar passes as nil: the old owner was cleared
+				-- but the new key was never written, so it took a second bind.
+				data.onAccept()
 			end,
 			OnCancel = function(self, data)
-				if data.btn then
-					if data.group then
-						if data.isSlotBinding then
-							data.btn:SetText(data.group.actions[data.slotIdx].keybind or "None")
-						else
-							data.btn:SetText(data.group.binding or "None")
-						end
-					else
-						data.btn:SetText("None")
-					end
-				end
+				data.onCancel()
 			end,
 			timeout = 0,
 			whileDead = true,
@@ -162,7 +144,13 @@ local function EnsureBindingOverwritePopup()
 	end
 end
 
-function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
+-- If `key` already belongs to something else, ask whether to take it over and
+-- return true; the caller must then stop and let the popup finish. `slotIdx` is
+-- the slot being bound (nil for an interface binding), used to recognise the
+-- key's current owner as the binding itself. `callbacks.onAccept` saves the new
+-- binding (after the old owner is cleared); `callbacks.onCancel` restores the
+-- capture widget.
+function Wise:CheckBindingConflict(key, slotIdx, callbacks)
 	local oldOwner, oldSlot = Wise:FindKeybindOwner(key)
 	if oldOwner then
 		local ownerText = oldOwner
@@ -181,12 +169,10 @@ function Wise:CheckBindingConflict(key, group, slotIdx, isSlotBinding, btn)
 
 		local data = {
 			key = key,
-			group = group,
-			slotIdx = slotIdx,
-			isSlotBinding = isSlotBinding,
 			oldOwner = oldOwner,
 			oldSlot = oldSlot,
-			btn = btn,
+			onAccept = callbacks.onAccept,
+			onCancel = callbacks.onCancel,
 		}
 		EnsureBindingOverwritePopup()
 		StaticPopup_Show("WISE_CONFIRM_BINDING_OVERWRITE", key, ownerText, data)
@@ -2078,6 +2064,11 @@ local function AttachSlotKeybindCapture(bindBtn, group, slotIdx, getSlot)
 		if not slot then
 			return
 		end
+		-- The toolbar passes no group/slotIdx because its selection changes under
+		-- it; resolve them at click time. The conflict check needs slotIdx to
+		-- recognise the slot's own key rather than report it as taken.
+		local ownerGroup = group or (Wise.selectedGroup and WiseDB.groups[Wise.selectedGroup])
+		local ownerSlotIdx = slotIdx or Wise.selectedSlot
 		if button == "RightButton" then
 			slot.keybind = nil
 			Wise:UpdateBindings()
@@ -2089,12 +2080,12 @@ local function AttachSlotKeybindCapture(bindBtn, group, slotIdx, getSlot)
 					return slot.keybind
 				end,
 				allowMouseWheel = true,
-				group = group,
-				slotIdx = slotIdx,
+				group = ownerGroup,
+				slotIdx = ownerSlotIdx,
 				isSlotBinding = true,
 				validateKey = function(fullKey)
 					if fullKey == "MOUSEWHEELUP" or fullKey == "MOUSEWHEELDOWN" then
-						return Wise:ValidateMouseWheelBinding(group, true)
+						return Wise:ValidateMouseWheelBinding(ownerGroup, true)
 					end
 					return true
 				end,
