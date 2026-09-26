@@ -418,6 +418,19 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_KeybindConflictAccept" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Keybind Conflict: Accept Saves First Time" type="string"/>
+            <KeyValue key="instructions" value="Regression (2026-09-26): accepting the &apos;already bound — use anyway?&apos; popup cleared the old owner but never saved the new key, so it took a second bind to stick. Automated coverage: tests/keybind_conflict.lua (wow-ui-sim).
+1. Select a slot. In the slot toolbar, left-click Direct Keybind and press a key already bound to a WoW action (e.g. B, open bags).
+2. The popup must name the WoW action. Click Yes. The button must show the key, and it must STILL show it after closing and reopening Options and after /reload. Pressing the key must trigger the slot, not the old action.
+3. Bind slot 1 to a key, then bind slot 2 to the same key and accept. Slot 2 gets the key; slot 1 shows None.
+4. Re-press a slot&apos;s own current key: no popup at all.
+5. Press a taken key and click Cancel: the slot keeps its previous key and the button shows it (not &apos;None&apos;); the WoW action keeps its key." type="string"/>
+            <KeyValue key="action" value="print(&apos;Keybind conflict test: the overwrite popup now calls the capture opts.onBound (core/Bindings.lua StartKeybindCapture) after clearing the old owner, instead of re-implementing the save from group/slotIdx — which the slot toolbar passes as nil. AttachSlotKeybindCapture resolves group/slotIdx from the selection at click time so a slot&apos;s own key is not reported as a conflict.&apos;)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
     <Frame name="WiseDebugTest_ForeverClient" inherits="WiseDebugTestsData">
         <KeyValues>
             <KeyValue key="testName" value="WoW Forever Client (Phases 1-2)" type="string"/>

@@ -48,8 +48,12 @@ end
 --   getCurrentText()      -> string shown when capture is cancelled
 --   allowMouseWheel       -> bool, wire OnMouseWheel as MOUSEWHEELUP/DOWN
 --   validateKey(fullKey)  -> optional function(fullKey) -> isValid, err
---   isSlotBinding, group, slotIdx -> forwarded to Wise:CheckBindingConflict
---   onBound(fullKey)      -> called once a non-conflicting key is accepted
+--   slotIdx               -> slot being bound (nil for an interface binding);
+--                            lets Wise:CheckBindingConflict recognise the key's
+--                            current owner as this binding itself
+--   group, isSlotBinding  -> context for the caller's own callbacks
+--   onBound(fullKey)      -> saves the binding: called for a free key, and from
+--                            the overwrite popup when a taken key is accepted
 --   onInvalid(err)        -> called when validateKey rejects the input
 function Wise:StartKeybindCapture(widget, opts)
 	widget:EnableKeyboard(true)
@@ -120,7 +124,22 @@ function Wise:StartKeybindCapture(widget, opts)
 
 		StopCapture()
 
-		if Wise:CheckBindingConflict(fullKey, opts.group, opts.slotIdx, opts.isSlotBinding, widget) then
+		-- A conflicting key is saved (or abandoned) from the overwrite popup, via
+		-- the same onBound/cancel paths as everything else here.
+		if
+			Wise:CheckBindingConflict(fullKey, opts.slotIdx, {
+				onAccept = function()
+					opts.onBound(fullKey)
+				end,
+				onCancel = function()
+					if opts.onCancelled then
+						opts.onCancelled()
+					else
+						widget:SetText(opts.getCurrentText() or "None")
+					end
+				end,
+			})
+		then
 			return
 		end
 
