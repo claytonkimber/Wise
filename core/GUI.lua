@@ -6999,15 +6999,28 @@ function Wise:UpdateButtonCooldown(btn)
 	-- combat on retail 11.1+. The legacy path below compares those values
 	-- (start > 0) and passes them to the PLAIN Cooldown:SetCooldown(start, duration),
 	-- which rejects secret args while execution is tainted ("Secret values are only
-	-- allowed during untainted execution for this argument."). Unlike the
-	-- DurationObject path, plain SetCooldown can't take secrets — so force-strip the
-	-- taint at the read. tonumber(tostring(v)) round-trips through a string, which
-	-- yields a plain number and severs the secret/taint flag. See memory:
-	-- wow_taint_stripping. Falls back to 0 if the value isn't representable.
+	-- allowed during untainted execution for this argument.").
+	--
+	-- This used to be a bare `tonumber(tostring(v))` round-trip, which is exactly
+	-- the trap AGENTS.md "Numeric Taint Stripping" documents: tostring(secret) does
+	-- NOT throw, it returns a SECRET STRING that survives the round-trip and only
+	-- detonates on a LATER comparison. So a secret laundered through here looked
+	-- like a plain number, sailed past the `start > 0` GCD check, and reached
+	-- SetCooldown still secret — and because that happens inside Wise's update pass,
+	-- the tainted execution context then made BLIZZARD's own
+	-- ActionButton_UpdateCooldown fail on its next SetCooldown (the 4637x
+	-- MultiBarBottomLeftButton11Cooldown spam). The round-trip is a taint stripper,
+	-- never a secrecy test.
+	--
+	-- CleanSecretNumber asks issecretvalue() first and returns nil for a true
+	-- secret. nil means "unknown", not "zero" — but the only consumer here is the
+	-- cooldown swipe, where an unknown cooldown must render as "no swipe", so we
+	-- collapse to 0 deliberately and visibly rather than by silent coercion.
 	local function stripCooldown(start, duration)
-		local s = tonumber(tostring(start)) or 0
-		local d = tonumber(tostring(duration)) or 0
-		return s, d
+		local s = CleanSecretNumber(start)
+		local d = CleanSecretNumber(duration)
+		-- Unknown (secret/unreadable) → render no cooldown.
+		return s or 0, d or 0
 	end
 
 	-- Apply cooldown swipe direction (default: non-reversed). Overlays below
@@ -7174,7 +7187,12 @@ function Wise:UpdateButtonCooldown(btn)
 				if not usedDurationObject then
 					local cooldownInfo = C_Spell.GetSpellCooldown(zoneBtn.spellID)
 					if cooldownInfo then
-						start, duration = stripCooldown(cooldownInfo.startTime, cooldownInfo.duration)
+						-- SafeReadField, not direct indexing: reading a secret field can
+						-- throw outright, before stripCooldown ever sees the value.
+						start, duration = stripCooldown(
+							SafeReadField(cooldownInfo, "startTime"),
+							SafeReadField(cooldownInfo, "duration")
+						)
 					end
 				end
 			end
