@@ -174,15 +174,10 @@ The non-obvious parts worth knowing before you start:
 DOCKER="/c/Program Files/Docker/Docker/resources/bin/docker.exe"
 WISE="C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\Wise"
 
-# run-tests MUST use 12.0.7 — see "Use the 12.0.7 image for run-tests" below
+# tests / frame geometry / lua errors — use the current tag (12.1.5, matches live client)
 MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
   -v "${WISE}:/app/Interface/AddOns/Wise" \
-  wow-ui-sim:12.0.7 run-tests Wise
-
-# frame geometry / lua errors — use the current tag (12.1.5, matches live client)
-MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
-  -v "${WISE}:/app/Interface/AddOns/Wise" \
-  wow-ui-sim:12.1.5 <command>      # dump-tree [-f Filter] | lua-errors
+  wow-ui-sim:12.1.5 <command>      # run-tests Wise | dump-tree [-f Filter] | lua-errors
 
 # screenshot — also mount a host output dir, then Read the .webp back
 OUTDIR="<some scratch dir>"; mkdir -p "$OUTDIR"
@@ -194,9 +189,7 @@ MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
 - `MSYS_NO_PATHCONV=1` stops git-bash mangling the `:/app/...` mount path.
 - The Dockerfile's `BLIZZARD_UI_TAG` default tracks the live client (`12.1.5` as
   of 2026-11-07); rebuild with `--build-arg BLIZZARD_UI_TAG=<tag>` after a
-  client patch to keep frame-geometry/screenshot checks current. `run-tests`
-  stays pinned to `12.0.7` regardless (see below) — it is testing compat-gating
-  logic itself, not current-patch rendering.
+  client patch to keep every command (including `run-tests`) current.
 - **`screenshot` renders via software Vulkan (Mesa lavapipe) baked into the image** — no GPU/`--gpus` needed, deterministic, ~1600x1200 `.webp`. The `XDG_RUNTIME_DIR is invalid` warning it prints is harmless (offscreen render, no Wayland session). Read the resulting `.webp` to see the rendered UI.
 - New UI test cases go in `Wise/tests/*.lua` using the simulator's `test(...)`/`async_test(...)` + `assertEquals` framework — this is separate from the in-client `tests.xml` QA checklist.
 
@@ -205,11 +198,17 @@ MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
 These are behaviours of the sim itself, not of Wise. A green suite here is not
 proof of a working addon, and a red one is not always your bug.
 
-- **Use the `12.0.7` image for `run-tests`, not `12.1.0`.** The same tree scores
-  82/82 on 12.0.7 and 80/82 on 12.1.0: `compat121.lua` explicitly asserts the
-  12.1 intrinsics are **absent**, which is true on 12.0.7 and false on 12.1.0, so
-  the newer image inverts the test's expectations. Do not debug those two —
-  switch images.
+- **There is no test asserting 12.1 intrinsics are absent — a prior version of
+  this file claimed one existed (82/82 on 12.0.7 vs 80/82 on 12.1.0) and that
+  was wrong; no such test file exists in the repo.** `run-tests` is not pinned
+  to any particular image tag; use whichever tag `BLIZZARD_UI_TAG` currently
+  defaults to (verified 2026-11-07: `run-tests Wise` scores identically, 93/102,
+  on both `12.0.7` and `12.1.5`). `Compat.hasAuraWidgets` (`core/Compat121.lua`)
+  is `false` on both images regardless of tag — the sim does not implement
+  `AuraContainerTemplate`'s `AddAuraSlot`, a sim capability gap (see "Probe the
+  capability, not the template name" above), not a version difference. If you
+  need to confirm the sim's 12.1 capability surface, probe directly with
+  `--exec-lua` rather than trusting image tag alone.
 - **A failing sync test prints no failure text — the file just vanishes from the
   output** while its failures still count in the total. To see *why* one failed,
   run the assertions at **file scope** and `error()`: the load-error branch does
