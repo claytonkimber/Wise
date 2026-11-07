@@ -448,4 +448,19 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+    <Frame name="WiseDebugTest_MenuBarKeepsUserSlots" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Menu Bar: Added Slots Are Kept" type="string"/>
+            <KeyValue key="instructions" value="Regression (2026-09-27): every wiser refresh (SPELLS_CHANGED, zoning, spec/talent change) rebuilt the Menu Bar from scratch, so a slot added to it vanished within seconds, along with any keybind on a default slot. The bar is now seeded once, after which every slot is the user&apos;s, defaults included. Automated coverage: tests/menu_bar_wiser.lua (wow-ui-sim).
+1. Open Options, select the Menu Bar wiser interface. It must list the 12 default panels once each (no duplicates after updating from an older build).
+2. Click Add Slot and pick any action. Give a default slot (e.g. Character Info) a keybind.
+3. Zone through a loading screen or change talents, then /reload. The added slot and the keybind must both still be there.
+4. Delete Slot must be enabled on EVERY slot, defaults included. Delete a default (e.g. Shop) and the added slot, then zone or /reload: the deleted default must stay gone.
+5. Remove Action must also work on a default slot&apos;s own action (the slot stays, empty).
+6. Reset to Default must bring back all 12 defaults in order, including the deleted one, and drop the added slot.
+7. Other wiser interfaces (Professions, Specs, Cooldowns) must delete/protect slots exactly as before." type="string"/>
+            <KeyValue key="action" value="local g = WiseDB.groups[&apos;Menu Bar&apos;]; if not g or not g.actions then print(&apos;Menu Bar not initialized yet.&apos;) return end; local slots, seeded = 0, 0; for _ in pairs(g.actions) do slots = slots + 1 end; for _ in pairs(g.seededDefaults or {}) do seeded = seeded + 1 end; print(string.format(&apos;Menu Bar: %d slots, %d defaults seeded (expect 12), keepsUserSlots=%s, legacy buttons cleared=%s&apos;, slots, seeded, tostring(g.keepsUserSlots), tostring(g.buttons == nil)))" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

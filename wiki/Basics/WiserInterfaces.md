@@ -34,6 +34,8 @@ A replacement for WoW's default micro-menu. Contains buttons for:
 
 Works with any layout type — a Circle makes a compact quick-access ring; a List gives you a labeled vertical menu.
 
+Unlike the other Wiser Interfaces, the Menu Bar is yours to shape. Slots you add, keybinds, extra states, and slot order are all kept, and any slot can be deleted, including the defaults. A default you delete stays gone. **Reset to Default** brings every default back and removes the slots you added.
+
 ### Forms
 
 Detects your current class's shapeshift forms and stances (Druid forms, Warrior stances, Rogue stealth, Demon Hunter Metamorphosis, etc.) and creates buttons for each. Updates automatically when you change specs or when talents add/remove available forms.

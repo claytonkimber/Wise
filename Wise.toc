@@ -119,6 +119,7 @@ wiser\SmartItem.lua
 wiser\BarCopy.lua
 wiser\AddonMagic.lua
 wiser\SpecAndEquip.lua
+wiser\MenuBar.lua
 # Disenchant/Convert wiser. Core first (everything reads its constants), Events
 # last (load-time side effects; wires up functions the others define).
 wiser\vdc\Core.lua

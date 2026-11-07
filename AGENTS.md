@@ -708,6 +708,25 @@ a fully-secret payload (never index it), and some spells are whitelisted
 non-secret — if Abundance lands on that list, plain `GetPlayerAuraBySpellID`
 reads work again in combat.
 
+### Wiser Interfaces: Rebuilt vs Seeded (`Wise:UpdateWiserInterfaces`)
+
+- **Every wiser interface is wiped and rebuilt on every refresh unless
+  `EnsureWiserGroup` (`Wise.lua`) exempts it by name.** The refresh runs on each
+  `SPELLS_CHANGED`, loading screen and spec/talent change, so anything a user
+  sets on a rebuilt interface (added slots, keybinds, extra states, slot order)
+  is gone within seconds. The Menu Bar shipped that way until 2026-09-27.
+- **To let users customise one, seed it instead**, following
+  `wiser/MenuBar.lua`. Exempt it from the wipe, set `group.keepsUserSlots`
+  (every slot, defaults included, becomes deletable), and record each default in
+  `group.seededDefaults` so it is added only once. All three are needed; without
+  the record, a default the user deleted comes back on the next refresh.
+  `Wise:IsAutoImportedSlot`/`IsAutoImportedAction` (`modules/Actions.lua`) are
+  the one delete/remove guard for every wiser interface. Reset to Default calls
+  `Wise:ResetKeptSlots`, which clears the record so every default is re-added.
+- **Drop the legacy `.buttons` once it has been copied into `.actions`.** It goes
+  stale, and `[available]` (`IsGroupAvailableNow`) falls back to it, so an
+  interface the user emptied would still read as available.
+
 ### CooldownViewer Integration (`wiser/Cooldowns.lua`)
 
 - **`C_CooldownViewer` child frames do not reliably expose `cooldownID`** when the native Cooldown Manager viewer is hidden (`hideNativeInterface=true`) — as of 12.0.7, hidden children report `cooldownID=nil`. Detect "did this child actually yield a spell" by checking `child.cooldownID ~= nil`, never by the mere presence of a `GetSpellID` method (every frame has one).
