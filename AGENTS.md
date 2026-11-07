@@ -174,19 +174,29 @@ The non-obvious parts worth knowing before you start:
 DOCKER="/c/Program Files/Docker/Docker/resources/bin/docker.exe"
 WISE="C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\Wise"
 
-# tests / frame geometry / lua errors (no extra mounts)
+# run-tests MUST use 12.0.7 — see "Use the 12.0.7 image for run-tests" below
 MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
   -v "${WISE}:/app/Interface/AddOns/Wise" \
-  wow-ui-sim:12.0.7 <command>      # run-tests Wise | dump-tree [-f Filter] | lua-errors
+  wow-ui-sim:12.0.7 run-tests Wise
+
+# frame geometry / lua errors — use the current tag (12.1.5, matches live client)
+MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
+  -v "${WISE}:/app/Interface/AddOns/Wise" \
+  wow-ui-sim:12.1.5 <command>      # dump-tree [-f Filter] | lua-errors
 
 # screenshot — also mount a host output dir, then Read the .webp back
 OUTDIR="<some scratch dir>"; mkdir -p "$OUTDIR"
 MSYS_NO_PATHCONV=1 "$DOCKER" run --rm \
   -v "${WISE}:/app/Interface/AddOns/Wise" \
   -v "${OUTDIR}:/out" \
-  wow-ui-sim:12.0.7 screenshot -o /out/wise.webp
+  wow-ui-sim:12.1.5 screenshot -o /out/wise.webp
 ```
 - `MSYS_NO_PATHCONV=1` stops git-bash mangling the `:/app/...` mount path.
+- The Dockerfile's `BLIZZARD_UI_TAG` default tracks the live client (`12.1.5` as
+  of 2026-11-07); rebuild with `--build-arg BLIZZARD_UI_TAG=<tag>` after a
+  client patch to keep frame-geometry/screenshot checks current. `run-tests`
+  stays pinned to `12.0.7` regardless (see below) — it is testing compat-gating
+  logic itself, not current-patch rendering.
 - **`screenshot` renders via software Vulkan (Mesa lavapipe) baked into the image** — no GPU/`--gpus` needed, deterministic, ~1600x1200 `.webp`. The `XDG_RUNTIME_DIR is invalid` warning it prints is harmless (offscreen render, no Wayland session). Read the resulting `.webp` to see the rendered UI.
 - New UI test cases go in `Wise/tests/*.lua` using the simulator's `test(...)`/`async_test(...)` + `assertEquals` framework — this is separate from the in-client `tests.xml` QA checklist.
 
