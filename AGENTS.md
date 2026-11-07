@@ -717,6 +717,37 @@ a fully-secret payload (never index it), and some spells are whitelisted
 non-secret — if Abundance lands on that list, plain `GetPlayerAuraBySpellID`
 reads work again in combat.
 
+### Addon Loading Magic: EnableAddOn/DisableAddOn Must Carry the Character (`wiser/AddonMagic.lua`)
+
+**Since Patch 10.2.0, `C_AddOns.EnableAddOn(name)`/`DisableAddOn(name)` with the
+character argument omitted apply account-wide, to EVERY character — not just
+the one currently logged in.** This is easy to miss because `GetAddOnEnableState`
+behaves the opposite way by convention (nil character asks about "all
+characters" as a read; a specific character scopes the read to just them), so
+it is natural to assume the write calls default to "just this character" too.
+They do not.
+
+- **Root cause of a real bug (found 2026-11-07):** Addon Loading Magic's
+  enable/reload/un-check cycle (see "Execution" comments in `AddonMagic.lua`)
+  sampled `GetAddOnEnableState(addon, playerChar)` correctly (scoped to the
+  current character) but called `EnableAddOn(addon)` and `DisableAddOn(addon)`
+  with no character — so a single press of a slot flipped those addons on for
+  every character on the account, permanently. The later un-check pass reads
+  per-character state, so on any OTHER character that already had the addon
+  enabled (e.g. AllTheThings/Zygor, commonly left on for leveling/questing
+  alts), the un-check never queues it — it was never "ours" to un-check by that
+  check's own logic — and it silently stays enabled everywhere, forever,
+  with nothing wrong-looking left behind in `WiseDB` to reveal why.
+- **Every `EnableAddOn`/`DisableAddOn` call in this module must pass
+  `UnitName("player")` explicitly**, matching the character the enable-state
+  sample already used. This generalises: any future code touching the addon
+  list must scope writes to a specific character unless account-wide is the
+  explicit intent.
+- A corrupted account-wide enable is not self-healing — fixing the code only
+  stops new damage. Any character that got silently flipped on needs its
+  addon unchecked by hand once (via the Blizzard AddOns list, picking "this
+  character" rather than "all characters") to actually come back off.
+
 ### Wiser Interfaces: Rebuilt vs Seeded (`Wise:UpdateWiserInterfaces`)
 
 - **Every wiser interface is wiped and rebuilt on every refresh unless

@@ -2,6 +2,11 @@
 
 Sorry for the long gap between updates — real life, work, and holidays kept me away from this for a while. Back on it now.
 
+## [Unreleased]
+
+### Fixed
+- **Addon Loading Magic no longer leaves addons permanently enabled on every character.** `EnableAddOn`/`DisableAddOn` were called with no character argument; since patch 10.2.0 that applies the change account-wide instead of to just the current character. A single press of a slot (e.g. a bundle containing AllTheThings/Zygor) silently flipped those addons on for every character on the account. The later un-check pass, which only checks *this* character's enable state, then saw them as "already enabled by the user" on characters that already had them on and never queued them — so they stayed on everywhere, indefinitely, with nothing visibly wrong in SavedVariables. Every `EnableAddOn`/`DisableAddOn` call is now explicitly scoped to `UnitName("player")`.
+
 ## [1.0.20260827] - 2026-08-27
 
 ### Fixed

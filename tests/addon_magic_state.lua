@@ -54,18 +54,30 @@ local function withSlots(slots, fn)
 end
 
 -- Runs fn with ReloadUI/Enable/Disable stubbed; returns what was touched.
+-- `enabled`/`disabled` are plain name lists (existing assertions index these);
+-- `enabledChars`/`disabledChars` map name -> the character argument that call
+-- received, so a regression that drops the character (and so silently flips
+-- the addon for every character on the account, not just this one -- see
+-- GetAddOnEnableState in AddonMagic.lua) fails loudly instead of passing.
 --
 -- Deliberately does NOT stub the global `print`: the sim's runner reports test
 -- failures through print, so silencing it here would swallow the failure output
 -- of every later test file and make a red suite look green.
 local function captureToggles(fn)
     local enabled, disabled, reloaded = {}, {}, false
+    local enabledChars, disabledChars = {}, {}
     local realReload = ReloadUI
     local realEnable, realDisable = C_AddOns.EnableAddOn, C_AddOns.DisableAddOn
 
     ReloadUI = function() reloaded = true end
-    C_AddOns.EnableAddOn = function(n) table.insert(enabled, n) end
-    C_AddOns.DisableAddOn = function(n) table.insert(disabled, n) end
+    C_AddOns.EnableAddOn = function(n, char)
+        table.insert(enabled, n)
+        enabledChars[n] = char
+    end
+    C_AddOns.DisableAddOn = function(n, char)
+        table.insert(disabled, n)
+        disabledChars[n] = char
+    end
 
     local ok, err = pcall(fn)
 
@@ -75,7 +87,7 @@ local function captureToggles(fn)
     if not ok then
         error(err)
     end
-    return enabled, disabled, reloaded
+    return enabled, disabled, reloaded, enabledChars, disabledChars
 end
 
 local function contains(list, value)
@@ -265,6 +277,39 @@ test("AddonMagic: the un-check runs and then clears", function()
 
         assertTrue(contains(disabled, "Wise"))
         assertNil(WiseDB.addonMagicUncheck)
+    end)
+end)
+
+-- Since patch 10.2.0, EnableAddOn/DisableAddOn apply to EVERY character on the
+-- account when the character argument is omitted, not just the current one.
+-- A press enabling an addon with no character silently flips it on account-wide;
+-- if even one other character already has it enabled, the later per-character
+-- un-check reads that OTHER character's state via GetAddOnEnableState and can
+-- never queue it, so it stays enabled everywhere, forever, with no error and
+-- nothing stuck in SavedVariables to reveal why. Every call MUST be scoped to
+-- UnitName("player") so Wise only ever touches this character's own list.
+test("AddonMagic: EnableAddOn is scoped to the current character, not every character", function()
+    withSlots({ { "Wise" } }, function()
+        -- Slot starts unloaded; pressing it takes the LOAD branch, which is the
+        -- one that calls EnableAddOn.
+        local _, _, _, enabledChars = captureToggles(function()
+            Wise:ExecuteAddonMagic(1)
+        end)
+        assertEquals(UnitName("player"), enabledChars["Wise"])
+    end)
+end)
+
+test("AddonMagic: the un-check's DisableAddOn is scoped to the current character", function()
+    withSlots({ { "Wise" } }, function()
+        WiseDB.addonMagicUncheck = { "Wise" }
+
+        local disabledChars = {}
+        local realDisable = C_AddOns.DisableAddOn
+        C_AddOns.DisableAddOn = function(n, char) disabledChars[n] = char end
+        Wise.ApplyPendingAddonMagicUncheck()
+        C_AddOns.DisableAddOn = realDisable
+
+        assertEquals(UnitName("player"), disabledChars["Wise"])
     end)
 end)
 

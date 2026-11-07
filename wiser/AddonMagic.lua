@@ -184,7 +184,14 @@ local function ApplyActiveSetAndReload()
 					if C_AddOns.GetAddOnEnableState(addon, playerChar) == 0 then
 						tinsert(toUncheck, addon)
 					end
-					C_AddOns.EnableAddOn(addon)
+					-- The character argument MUST be passed: since patch 10.2.0,
+					-- omitting it enables/disables the addon for EVERY character
+					-- on the account, not just this one. Without it, a single
+					-- press here would silently flip the addon on account-wide,
+					-- and the later un-check (also scoped to playerChar) would
+					-- then no-op if any other character already had it enabled —
+					-- leaving it enabled everywhere forever.
+					C_AddOns.EnableAddOn(addon, playerChar)
 				end
 			end
 		end
@@ -265,8 +272,9 @@ local function RestoreAddonMagic()
 
 	-- Legacy fields from older versions of this feature: drain and drop.
 	if WiseDB.addonsToDisable then
+		local playerChar = UnitName("player")
 		for _, addon in ipairs(WiseDB.addonsToDisable) do
-			C_AddOns.DisableAddOn(addon)
+			C_AddOns.DisableAddOn(addon, playerChar)
 		end
 		WiseDB.addonsToDisable = nil
 	end
@@ -292,8 +300,12 @@ local function ApplyPendingUncheck()
 	if not WiseDB or not WiseDB.addonMagicUncheck then
 		return
 	end
+	-- Must match the character EnableAddOn was scoped to above: omitting it
+	-- would disable the addon for every character on the account instead of
+	-- just undoing what this character's press turned on.
+	local playerChar = UnitName("player")
 	for _, addon in ipairs(WiseDB.addonMagicUncheck) do
-		C_AddOns.DisableAddOn(addon)
+		C_AddOns.DisableAddOn(addon, playerChar)
 	end
 	WiseDB.addonMagicUncheck = nil
 end
