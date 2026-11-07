@@ -817,8 +817,9 @@ See also "Numeric Taint Stripping".
 
 The full plan and status are in `docs/forever-port-plan.md`; code comments point
 here and there. Findings come from diffing Blizzard's `forever` UI source (1.60.1)
-against live 12.1 on 2026-09-26. **Not yet verified in-client:** run
-`/wise client` (Phase 0 of the plan) and correct this section with what it shows.
+against live 12.1, then **measured in-client with `/wise client` on 2026-09-26
+(build 70009)**. `/wise client` also saves its report to `WiseDB.clientReports`, so
+it can be read from SavedVariables after a `/reload`.
 
 - **Forever runs the modern Mainline UI and API, not Classic's.** Its API is almost
   a superset of live 12.1. Wise needed no API rewrites, only the two traps below.
@@ -826,8 +827,14 @@ against live 12.1 on 2026-09-26. **Not yet verified in-client:** run
   ancient client; `HAS_IGNORE_GCD` and exui's `MODERN` both fell for this.
   **Never compare the interface number to mean "modern client."** Probe the
   capability, or use `Wise.IS_FOREVER` for behaviour that is genuinely
-  Forever-specific. `WOW_PROJECT_ID` is reportedly `WOW_PROJECT_MAINLINE` there, so
+  Forever-specific. `WOW_PROJECT_ID` is `WOW_PROJECT_MAINLINE` there (measured), so
   it cannot tell Forever from retail.
+- **Class IDs are not contiguous.** On Forever `GetNumClasses()` is 9, but the IDs
+  are 1–5, 7–9 and 11, so `for i = 1, GetNumClasses()` **skips Druid** and visits
+  a nil hole. Iterate `Wise.Client.GetClassIDs()` instead. Loadouts use
+  `Enum.TraitConfigType.CamelotCombat` (4), not `Combat`, so test with
+  `Wise.Client.IsCombatTraitConfigType()`. Each class has a single class-named
+  "spec" with a new ID (Druid = 1484).
 - **Retail's `Blizzard_Deprecated*` shims do not load on Forever.** Its game type
   `camelot` is excluded by their `standard`/`mainline` TOC gates. So bare
   `GetSpecialization`, `GetSpecializationInfo`, `GetItemCount`, `GetItemInfo`,

@@ -57,6 +57,45 @@ Client.INTERFACE = INTERFACE
 Client.IS_FOREVER = IS_FOREVER
 Wise.IS_FOREVER = IS_FOREVER
 
+-- Class IDs that exist on this client, ascending.
+--
+-- Never loop `for classID = 1, GetNumClasses()`: class IDs are not contiguous
+-- everywhere. Measured on Forever 1.60.1 (2026-09-26): GetNumClasses() is 9 but
+-- the IDs are 1-5, 7-9 and 11, so that loop skips Druid (11) entirely and
+-- visits the missing Death Knight slot (6). Scan upward instead, until we have
+-- found as many classes as the client reports. On retail (13 contiguous IDs)
+-- this returns 1..13, exactly what the old loop did.
+local MAX_CLASS_ID_SCAN = 32
+function Client.GetClassIDs()
+	local ids = {}
+	local GetNumClasses, GetClassInfo = _G.GetNumClasses, _G.GetClassInfo
+	if type(GetNumClasses) ~= "function" or type(GetClassInfo) ~= "function" then
+		return ids
+	end
+	local want = GetNumClasses() or 0
+	for classID = 1, MAX_CLASS_ID_SCAN do
+		if #ids >= want then
+			break
+		end
+		local _, classTag = GetClassInfo(classID)
+		if classTag then
+			ids[#ids + 1] = classID
+		end
+	end
+	return ids
+end
+
+-- True for a talent config type that holds a player's combat loadout. Forever
+-- stores them as Enum.TraitConfigType.CamelotCombat (4), not Combat (1) —
+-- measured 2026-09-26 — so a `== Combat` test hides every Forever loadout.
+function Client.IsCombatTraitConfigType(configType)
+	local types = _G.Enum and _G.Enum.TraitConfigType
+	if configType == nil or not types then
+		return false
+	end
+	return configType == types.Combat or (types.CamelotCombat ~= nil and configType == types.CamelotCombat)
+end
+
 -- ─── /wise client ────────────────────────────────────────────────────
 -- Phase 0 of docs/forever-port-plan.md: everything the port inferred from
 -- Blizzard's source but could not prove without a running client. Read-only
@@ -133,8 +172,16 @@ local FRAMES = {
 	"EditModeManagerFrame",
 }
 
+-- Plain-text copy of the current report, persisted to WiseDB.clientReport so it
+-- can be read from SavedVariables after a /reload instead of transcribed from chat.
+local reportLines
+
 local function Out(fmt, ...)
-	print("|cff00ccff[Wise]|r " .. fmt:format(...))
+	local line = fmt:format(...)
+	print("|cff00ccff[Wise]|r " .. line)
+	if reportLines then
+		reportLines[#reportLines + 1] = (line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+	end
 end
 
 local function Mark(ok)
@@ -239,20 +286,14 @@ local function ReportSpecsAndClasses()
 		Out("Spec: C_SpecializationInfo.GetSpecialization %s", Mark(false))
 	end
 
-	local GetNumClasses, GetClassInfo = _G.GetNumClasses, _G.GetClassInfo
-	if type(GetNumClasses) == "function" and type(GetClassInfo) == "function" then
-		local n = GetNumClasses() or 0
-		local holes = {}
-		for i = 1, n do
-			if not GetClassInfo(i) then
-				holes[#holes + 1] = tostring(i)
-			end
+	local GetNumClasses = _G.GetNumClasses
+	if type(GetNumClasses) == "function" then
+		local ids = Client.GetClassIDs()
+		local labels = {}
+		for _, id in ipairs(ids) do
+			labels[#labels + 1] = tostring(id)
 		end
-		Out(
-			"Classes: GetNumClasses()=%d, classIDs with nil GetClassInfo: %s",
-			n,
-			#holes > 0 and tconcat(holes, ",") or "none"
-		)
+		Out("Classes: GetNumClasses()=%d, class IDs found: %s", GetNumClasses() or 0, tconcat(labels, ","))
 	end
 end
 
@@ -306,6 +347,7 @@ local function ReportSavedVariables()
 end
 
 function Client.Report()
+	reportLines = {}
 	Out("--- client report (docs/forever-port-plan.md, Phase 0) ---")
 	-- Each section isolated: one surprise on an unknown client must not hide
 	-- the rest of the report.
@@ -322,4 +364,13 @@ function Client.Report()
 			Out("|cffff5555section error|r: %s", tostring(err))
 		end
 	end
+	-- Keep a copy (written to disk on /reload or logout). Run history is kept
+	-- per run number so a before/after-reload pair can be compared.
+	local db = _G.WiseDB
+	if type(db) == "table" then
+		db.clientReports = type(db.clientReports) == "table" and db.clientReports or {}
+		local runs = tonumber(db.clientProbeRuns) or 0
+		db.clientReports[runs] = { time = _G.date and _G.date("%Y-%m-%d %H:%M:%S"), lines = reportLines }
+	end
+	reportLines = nil
 end

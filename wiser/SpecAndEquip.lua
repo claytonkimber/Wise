@@ -51,7 +51,9 @@ local function EnsureData()
 				resolvedClass = playerClass
 			elseif slot.specIndex and slot.name then
 				-- Scan all classes and their specs to see if the slot's specIndex + spec name matches
-				for classID = 1, 13 do
+				-- Real class IDs only: a hardcoded 1..13 asks about classes that
+				-- don't exist on WoW Forever (e.g. 6, Death Knight).
+				for _, classID in ipairs(Wise.Client.GetClassIDs()) do
 					local numSpecs = C_SpecializationInfo.GetNumSpecializationsForClassID(classID) or 0
 					for si = 1, numSpecs do
 						if si == slot.specIndex then
@@ -308,8 +310,8 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 		local classLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		classLabel:SetPoint("TOPLEFT", 10, y)
 		local className = slot.class
-		for i = 1, GetNumClasses() do
-			local name, tag = GetClassInfo(i)
+		for _, classID in ipairs(Wise.Client.GetClassIDs()) do
+			local name, tag = GetClassInfo(classID)
 			if tag == slot.class then
 				className = name
 				break
@@ -463,11 +465,12 @@ function Wise:CreateSpecEquipPropertiesPanel(panel, slotIndex, y)
 				local allConfigs = C_ClassTalents.GetConfigIDsByClass(classID) or {}
 				for _, cid in ipairs(allConfigs) do
 					local info = C_Traits and C_Traits.GetConfigInfo and C_Traits.GetConfigInfo(cid)
+					-- Combat OR CamelotCombat: WoW Forever stores loadouts as the latter.
 					if
 						info
 						and info.name
 						and info.name ~= ""
-						and info.type == (Enum and Enum.TraitConfigType and Enum.TraitConfigType.Combat)
+						and Wise.Client.IsCombatTraitConfigType(info.type)
 					then
 						tinsert(savedConfigs, cid)
 					end
