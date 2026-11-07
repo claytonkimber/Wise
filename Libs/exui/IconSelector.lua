@@ -1,5 +1,8 @@
 local COMPAT, _, T = select(4, GetBuildInfo()), ...
-local XU, MODERN, type = T.exUI, COMPAT > 10e4, type
+-- LOCAL PATCH (Wise): WoW Forever reports interface 16001 but runs the modern
+-- (mainline) UI, so an interface-number test alone misses it. Re-apply if exui
+-- is re-vendored. See Wise docs/forever-port-plan.md.
+local XU, MODERN, type = T.exUI, COMPAT > 10e4 or (WOW_PROJECT_ID ~= nil and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE), type
 local assert, getWidgetData, newWidgetData, setWidgetData, AddObjectMethods, CallObjectScript = XU:GetImpl()
 
 local HOLD_HOVER_HINT_DURATION, ICON_FILE_NAMES, LookupIconName = 0.2, nil

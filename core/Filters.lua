@@ -36,10 +36,14 @@ local strsplit = strsplit
 local UnitClass = UnitClass
 local UnitName = UnitName
 local GetRealmName = GetRealmName
-local GetSpecialization = GetSpecialization
-local GetSpecializationInfo = GetSpecializationInfo
+-- Namespaced, never the bare spec globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local C_SpecializationInfo = C_SpecializationInfo
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
 local GetSpecializationInfoByID = GetSpecializationInfoByID
-local GetNumSpecializationsForClassID = GetNumSpecializationsForClassID
+local GetNumSpecializationsForClassID = C_SpecializationInfo
+	and C_SpecializationInfo.GetNumSpecializationsForClassID
 local GetSpecializationInfoForClassID = GetSpecializationInfoForClassID
 local IsPlayerSpell = IsPlayerSpell
 local IsSpellKnownOrOverridesKnown = IsSpellKnownOrOverridesKnown

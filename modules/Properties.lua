@@ -1028,8 +1028,8 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 				-- Default to current spec if spec-specific but not provided?
 				-- Or keep existing? Safer to reset to current spec if it's a spec spell
 				if newCategory == "spec" then
-					local currentSpec = GetSpecialization()
-					action.addedBySpec = currentSpec and GetSpecializationInfo(currentSpec) or nil
+					local currentSpec = C_SpecializationInfo.GetSpecialization()
+					action.addedBySpec = currentSpec and C_SpecializationInfo.GetSpecializationInfo(currentSpec) or nil
 				else
 					action.addedBySpec = nil
 				end
@@ -1614,14 +1614,7 @@ function Wise:RenderActionProperties(panel, group, slotIdx, stateIdx, y)
 	end
 
 	-- Remove Action button
-	local isAutoImportedAction = false
-	if group.isWiser then
-		if group.propertyType == "CooldownWiser" then
-			isAutoImportedAction = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx) and action.autoLoaded
-		else
-			isAutoImportedAction = true
-		end
-	end
+	local isAutoImportedAction = Wise:IsAutoImportedAction(group, slotIdx, action)
 	local removeBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
 	removeBtn:SetSize(140, 22)
 	removeBtn:SetPoint("TOPLEFT", 10, y)
@@ -2256,14 +2249,7 @@ function Wise:RefreshSlotToolbar()
 	bar.bindBtn:SetText(slot.keybind or "None")
 
 	-- Auto-imported wiser slots cannot be deleted.
-	local isAutoImportedSlot = false
-	if group.isWiser then
-		if group.propertyType == "CooldownWiser" then
-			isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
-		else
-			isAutoImportedSlot = true
-		end
-	end
+	local isAutoImportedSlot = Wise:IsAutoImportedSlot(group, slotIdx)
 	if isAutoImportedSlot then
 		bar.delBtn:Disable()
 		bar.delBtn:SetScript("OnEnter", function(self)
@@ -2408,14 +2394,7 @@ function Wise:RenderSlotProperties(panel, group, slotIdx, y)
 		y = y - 30
 
 		-- Delete Slot Button
-		local isAutoImportedSlot = false
-		if group.isWiser then
-			if group.propertyType == "CooldownWiser" then
-				isAutoImportedSlot = type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
-			else
-				isAutoImportedSlot = true
-			end
-		end
+		local isAutoImportedSlot = Wise:IsAutoImportedSlot(group, slotIdx)
 		local delBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 		delBtn:SetSize(140, 24)
 		delBtn:SetPoint("TOPLEFT", 10, y)
@@ -5570,6 +5549,10 @@ function Wise:RenderGroupProperties(panel, group, y)
 						local g = WiseDB.groups[Wise.selectedGroup]
 						if g then
 							g.buttons = {}
+							-- A refresh keeps these slots, so they must be dropped here
+							if g.keepsUserSlots and Wise.ResetKeptSlots then
+								Wise:ResetKeptSlots(g)
+							end
 						end
 
 						Wise:UpdateWiserInterfaces()
@@ -5690,7 +5673,7 @@ function Wise:CreateEmbeddedSpecPicker(parent, action)
 
 	local numSpecs = GetNumSpecializations()
 	for i = 1, numSpecs do
-		local id, name, _, icon = GetSpecializationInfo(i)
+		local id, name, _, icon = C_SpecializationInfo.GetSpecializationInfo(i)
 		if id then
 			table.insert(items, {
 				specID = id,
@@ -6275,8 +6258,9 @@ function Wise:CreateEmbeddedRestrictionPicker(parent, action)
 
 	-- 3. Classes
 	local classes = {}
-	for i = 1, GetNumClasses() do
-		local name, tag, id = GetClassInfo(i)
+	-- Real class IDs, not 1..GetNumClasses(): they have gaps on WoW Forever.
+	for _, classID in ipairs(Wise.Client.GetClassIDs()) do
+		local name, tag, id = GetClassInfo(classID)
 		if tag then
 			table.insert(classes, { name = name, tag = tag, id = id })
 		end

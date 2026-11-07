@@ -17,7 +17,30 @@ std = "lua51"
 -- Load the generated WoW globals (relative to this config file). luacheck does
 -- not put the addon dir on package.path, so resolve the path explicitly.
 local config_dir = (debug.getinfo(1, "S").source:match("@?(.*[/\\])")) or "./"
-read_globals = dofile(config_dir .. "WoWGlobals.luacheckrc")
+
+-- WoW Forever guard. These names exist on retail only as Blizzard_Deprecated*
+-- shims (and only while the loadDeprecationFallbacks CVar is on); on WoW Forever
+-- they are nil. Strip them from the generated list so any bare use is reported
+-- as an undefined global. Call the C_* function they alias instead
+-- (C_SpecializationInfo.*, C_Item.*, C_CurrencyInfo.*). The generated file
+-- itself must not be hand-edited. See docs/forever-port-plan.md.
+local RETAIL_SHIM_ONLY = {
+	GetSpecialization = true,
+	GetSpecializationInfo = true,
+	GetNumSpecializationsForClassID = true,
+	GetItemCount = true,
+	GetItemInfo = true,
+	GetItemIcon = true,
+	IsEquippedItem = true,
+	GetCoinTextureString = true,
+}
+local wowGlobals = {}
+for _, name in ipairs(dofile(config_dir .. "WoWGlobals.luacheckrc")) do
+	if not RETAIL_SHIM_ONLY[name] then
+		wowGlobals[#wowGlobals + 1] = name
+	end
+end
+read_globals = wowGlobals
 
 -- Globals the Wise addon legitimately defines / mutates.
 globals = {

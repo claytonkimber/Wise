@@ -28,6 +28,11 @@ local GetSpellBaseCooldown = (C_Spell and C_Spell.GetSpellBaseCooldown) or GetSp
 local GetItemSpell = (C_Item and C_Item.GetItemSpell) or GetItemSpell
 local GetFlyoutInfo = GetFlyoutInfo
 local GetFlyoutSlotInfo = GetFlyoutSlotInfo
+-- Namespaced, never the bare globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
+local GetItemCount = C_Item and C_Item.GetItemCount
 
 local function IsSpellPassive(spellId)
 	if not spellId then
@@ -1287,19 +1292,38 @@ function Wise:AddAction(groupName, slotIndex, actionType, actionValue, category,
 	return slotIndex
 end
 
+-- Whether a slot is managed by a wiser interface, which stops the user deleting
+-- it. Which slots are managed depends on how the interface refreshes:
+--   CooldownWiser   integer keys are imported; the user's own slots are decimals
+--   keepsUserSlots  none: seeded once, then every slot is the user's (wiser/MenuBar.lua)
+--   anything else   rebuilt from scratch on every refresh, so every slot
+function Wise:IsAutoImportedSlot(group, slotIdx)
+	if not group.isWiser or group.keepsUserSlots then
+		return false
+	end
+	if group.propertyType == "CooldownWiser" then
+		return type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
+	end
+	return true
+end
+
+-- The same rule for one action (state) within a slot.
+function Wise:IsAutoImportedAction(group, slotIdx, action)
+	if not group.isWiser or group.keepsUserSlots then
+		return false
+	end
+	if group.propertyType == "CooldownWiser" then
+		local imported = action ~= nil and action.autoLoaded == true
+		return imported and type(slotIdx) == "number" and slotIdx == math.floor(slotIdx)
+	end
+	return true
+end
+
 function Wise:RemoveSlot(groupName, slotIndex)
 	local group = WiseDB.groups[groupName]
 	if group and group.actions then
-		-- Wiser interfaces: auto-imported slots cannot be deleted
-		if group.isWiser then
-			-- CooldownWiser allows user-added decimal slots to be deleted
-			if group.propertyType == "CooldownWiser" then
-				if type(slotIndex) == "number" and slotIndex == math.floor(slotIndex) then
-					return
-				end
-			else
-				return
-			end
+		if Wise:IsAutoImportedSlot(group, slotIndex) then
+			return
 		end
 
 		-- Remove the slot
@@ -1378,20 +1402,8 @@ end
 function Wise:RemoveActionFromSlot(groupName, slotIndex, actionIndex)
 	local group = WiseDB.groups[groupName]
 	if group and group.actions and group.actions[slotIndex] then
-		-- Wiser interfaces: block removal of auto-imported actions
-		if group.isWiser then
-			if group.propertyType == "CooldownWiser" then
-				-- CooldownWiser: only protect auto-loaded actions in integer slots
-				if type(slotIndex) == "number" and slotIndex == math.floor(slotIndex) then
-					local state = group.actions[slotIndex][actionIndex]
-					if state and state.autoLoaded then
-						return
-					end
-				end
-			else
-				-- All other wiser groups: all actions are auto-imported
-				return
-			end
+		if Wise:IsAutoImportedAction(group, slotIndex, group.actions[slotIndex][actionIndex]) then
+			return
 		end
 		table.remove(group.actions[slotIndex], actionIndex)
 		-- If slot is empty, WE KEEP IT (User Requirement: Explicit Delete only)
@@ -1709,7 +1721,7 @@ function Wise:GetActionName(actionType, value, extraData)
 				local info = C_Spell.GetSpellInfo(id)
 				return info and info.name or "Action " .. value
 			elseif actionTypeStr == "item" and id then
-				return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or GetItemInfo(id) or "Action " .. value
+				return C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(id) or "Action " .. value
 			elseif actionTypeStr == "macro" and id then
 				return GetMacroInfo(id) or "Action " .. value
 			end
@@ -1725,11 +1737,9 @@ function Wise:GetActionName(actionType, value, extraData)
 		local name = GetSpellInfo(overrideValue)
 		return name or value
 	elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
-		if C_Item and C_Item.GetItemInfo then
-			local name = C_Item.GetItemInfo(value)
-			return name or value
-		end
-		local name = GetItemInfo(value)
+		-- No bare GetItemInfo fallback: on retail it was only a deprecation shim
+		-- aliasing this same function, and on WoW Forever it does not exist.
+		local name = C_Item and C_Item.GetItemInfo and C_Item.GetItemInfo(value)
 		return name or value
 	elseif actionType == "macro" then
 		local name = GetMacroInfo(value)
@@ -1965,11 +1975,11 @@ function Wise:GetActionIcon(actionType, value, extraData)
 		end
 	elseif actionType == "item" or actionType == "toy" or actionType == "equipped" then
 		local icon = nil
+		-- No bare GetItemIcon fallback: on retail it was only a deprecation shim
+		-- aliasing GetItemIconByID (so it could never succeed where this failed),
+		-- and on WoW Forever it does not exist.
 		if C_Item and C_Item.GetItemIconByID then
 			icon = C_Item.GetItemIconByID(value)
-		end
-		if not icon then
-			icon = GetItemIcon(value)
 		end
 		if icon then
 			texture = icon

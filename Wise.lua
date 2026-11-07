@@ -33,8 +33,10 @@ local GetNumSpecializations = GetNumSpecializations
 local GetProfessionInfo = GetProfessionInfo
 local GetProfessions = GetProfessions
 local GetRealmName = GetRealmName
-local GetSpecialization = GetSpecialization
-local GetSpecializationInfo = GetSpecializationInfo
+-- Namespaced, never the bare globals: those are retail deprecation shims,
+-- absent on WoW Forever (see core/Client.lua).
+local GetSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+local GetSpecializationInfo = C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo
 local GetTime = GetTime
 local InCombatLockdown = InCombatLockdown
 local StaticPopupDialogs = StaticPopupDialogs
@@ -405,7 +407,14 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		end
 
 		g.isWiser = true -- Mark as Wiser
-		if name ~= "Cooldowns" and name ~= "Utilities" and name ~= "Spec and Equipment Changer" then
+		-- Everything else is rebuilt from scratch. These sync their slots in
+		-- place, and the Menu Bar must, or the slots the user adds are wiped.
+		if
+			name ~= "Cooldowns"
+			and name ~= "Utilities"
+			and name ~= "Spec and Equipment Changer"
+			and name ~= "Menu Bar"
+		then
 			g.buttons = {} -- Clear for rebuild
 			g.actions = nil -- Clear actions to force migration from new buttons list
 			g.migratedToActions = nil -- Allow re-migration from fresh buttons
@@ -448,29 +457,10 @@ function Wise:UpdateWiserInterfaces(isSpecChange)
 		Wise:UpdateGroupDisplay("Professions")
 	end
 
-	-- 2. Menu Bar
+	-- 2. Menu Bar (seeded once rather than rebuilt; see wiser/MenuBar.lua)
 	local menuGroup = EnsureWiserGroup("Menu Bar", "circle", { iconSize = 28, textSize = 12, padding = 7 })
-	-- Menu, Shop, Adventure Guide, Warband Collections, Group Finder, Guild & Communities, Housing Dashboard, Quest Log, Achievements, Spellbook, Talents, Professions, Character Info
-	local menuItems = {
-		{ type = "uipanel", value = "menu" },
-		{ type = "uipanel", value = "shop" },
-		{ type = "uipanel", value = "adventureguide" },
-		{ type = "uipanel", value = "collections" },
-		{ type = "uipanel", value = "groupfinder" },
-		{ type = "uipanel", value = "guild" },
-		{ type = "uipanel", value = "housing" },
-		{ type = "uipanel", value = "questlog" },
-		{ type = "uipanel", value = "achievements" },
-		{ type = "uipanel", value = "talents" },
-		{ type = "uipanel", value = "professions" },
-		{ type = "uipanel", value = "character" },
-	}
-	for _, item in ipairs(menuItems) do
-		table.insert(menuGroup.buttons, {
-			type = item.type,
-			value = item.value,
-			category = "global",
-		})
+	if Wise.SeedMenuBar then
+		Wise:SeedMenuBar(menuGroup)
 	end
 	if Wise.frames["Menu Bar"] and Wise.frames["Menu Bar"]:IsShown() then
 		Wise:UpdateGroupDisplay("Menu Bar")
@@ -2992,6 +2982,13 @@ SlashCmdList["WISE"] = function(msg)
 			"|cff00ccff[Wise]|r Resolve debug "
 				.. (Wise.debugResolve and "|cff00ff00ON|r — press keys to see what fires" or "|cffff0000OFF|r")
 		)
+		return
+	end
+
+	if cmd == "client" then
+		-- Diagnostic: client flavour + the WoW Forever port's runtime checks.
+		-- See core/Client.lua and docs/forever-port-plan.md (Phase 0).
+		Wise.Client.Report()
 		return
 	end
 

@@ -1,4 +1,4 @@
-## Interface: 120000, 120001, 120005, 120007, 120100
+## Interface: 120000, 120001, 120005, 120007, 120100, 16001
 ## Title: Wise
 ## Notes: A flexible action bar rework with smart features and account wide settings.
 ## Author: Wise
@@ -32,6 +32,9 @@ tests.xml
 modules\Debug.lua
 
 # Core
+# Client flavour detection (retail vs WoW Forever). First, so every later file
+# can read Wise.IS_FOREVER at load. See docs/forever-port-plan.md.
+core\Client.lua
 Wise.lua
 
 # Blizzard-UI suppression (extracted from Wise.lua). These install hooks and
@@ -116,6 +119,7 @@ wiser\SmartItem.lua
 wiser\BarCopy.lua
 wiser\AddonMagic.lua
 wiser\SpecAndEquip.lua
+wiser\MenuBar.lua
 # Disenchant/Convert wiser. Core first (everything reads its constants), Events
 # last (load-time side effects; wires up functions the others define).
 wiser\vdc\Core.lua

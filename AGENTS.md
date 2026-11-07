@@ -55,7 +55,7 @@ drifts. Simulator behaviour goes in `_dev_/wow-ui-sim/AGENTS.md`; how *Wise* use
 those tools stays here.
 
 ## Project Goal
-A high-performance World of Warcraft (Retail 11.0+) using pure LUA. Only use libraries if they provide a significant improvement in performance or usability.
+A high-performance World of Warcraft (Retail 11.0+, plus WoW Forever — see "WoW Forever (Camelot) Support") using pure LUA. Only use libraries if they provide a significant improvement in performance or usability.
 
 ## Tech Stack
 - Language: Lua (WoW-variant)
@@ -708,6 +708,25 @@ a fully-secret payload (never index it), and some spells are whitelisted
 non-secret — if Abundance lands on that list, plain `GetPlayerAuraBySpellID`
 reads work again in combat.
 
+### Wiser Interfaces: Rebuilt vs Seeded (`Wise:UpdateWiserInterfaces`)
+
+- **Every wiser interface is wiped and rebuilt on every refresh unless
+  `EnsureWiserGroup` (`Wise.lua`) exempts it by name.** The refresh runs on each
+  `SPELLS_CHANGED`, loading screen and spec/talent change, so anything a user
+  sets on a rebuilt interface (added slots, keybinds, extra states, slot order)
+  is gone within seconds. The Menu Bar shipped that way until 2026-09-27.
+- **To let users customise one, seed it instead**, following
+  `wiser/MenuBar.lua`. Exempt it from the wipe, set `group.keepsUserSlots`
+  (every slot, defaults included, becomes deletable), and record each default in
+  `group.seededDefaults` so it is added only once. All three are needed; without
+  the record, a default the user deleted comes back on the next refresh.
+  `Wise:IsAutoImportedSlot`/`IsAutoImportedAction` (`modules/Actions.lua`) are
+  the one delete/remove guard for every wiser interface. Reset to Default calls
+  `Wise:ResetKeptSlots`, which clears the record so every default is re-added.
+- **Drop the legacy `.buttons` once it has been copied into `.actions`.** It goes
+  stale, and `[available]` (`IsGroupAvailableNow`) falls back to it, so an
+  interface the user emptied would still read as available.
+
 ### CooldownViewer Integration (`wiser/Cooldowns.lua`)
 
 - **`C_CooldownViewer` child frames do not reliably expose `cooldownID`** when the native Cooldown Manager viewer is hidden (`hideNativeInterface=true`) — as of 12.0.7, hidden children report `cooldownID=nil`. Detect "did this child actually yield a spell" by checking `child.cooldownID ~= nil`, never by the mere presence of a `GetSpellID` method (every frame has one).
@@ -793,6 +812,48 @@ that explodes on the next comparison. An **error from `issecretvalue` means "no
 answer", not "secret"**. And there is no safe `v == nil` pre-check: even
 comparing a true secret can throw, so the round-trip goes inside the `pcall`.
 See also "Numeric Taint Stripping".
+
+### WoW Forever (Camelot) Support (`core/Client.lua`)
+
+The full plan and status are in `docs/forever-port-plan.md`; code comments point
+here and there. Findings come from diffing Blizzard's `forever` UI source (1.60.1)
+against live 12.1, then **measured in-client with `/wise client` on 2026-09-26
+(build 70009)**. `/wise client` also saves its report to `WiseDB.clientReports`, so
+it can be read from SavedVariables after a `/reload`.
+
+- **Forever runs the modern Mainline UI and API, not Classic's.** Its API is almost
+  a superset of live 12.1. Wise needed no API rewrites, only the two traps below.
+- **Its interface number is `16001`.** Any `>= 1xxxxx` gate reads it as an
+  ancient client; `HAS_IGNORE_GCD` and exui's `MODERN` both fell for this.
+  **Never compare the interface number to mean "modern client."** Probe the
+  capability, or use `Wise.IS_FOREVER` for behaviour that is genuinely
+  Forever-specific. `WOW_PROJECT_ID` is `WOW_PROJECT_MAINLINE` there (measured), so
+  it cannot tell Forever from retail.
+- **Class IDs are not contiguous.** On Forever `GetNumClasses()` is 9, but the IDs
+  are 1–5, 7–9 and 11, so `for i = 1, GetNumClasses()` **skips Druid** and visits
+  a nil hole. Iterate `Wise.Client.GetClassIDs()` instead. Loadouts use
+  `Enum.TraitConfigType.CamelotCombat` (4), not `Combat`, so test with
+  `Wise.Client.IsCombatTraitConfigType()`. Each class has a single class-named
+  "spec" with a new ID (Druid = 1484).
+- **Retail's `Blizzard_Deprecated*` shims do not load on Forever.** Its game type
+  `camelot` is excluded by their `standard`/`mainline` TOC gates. So bare
+  `GetSpecialization`, `GetSpecializationInfo`, `GetItemCount`, `GetItemInfo`,
+  `GetItemIcon`, `IsEquippedItem`, `GetCoinTextureString`, etc. are **nil**. Call
+  the `C_SpecializationInfo.*` / `C_Item.*` / `C_CurrencyInfo.*` function each shim
+  aliased; they exist on both clients. On retail those shims also vanish when the
+  `loadDeprecationFallbacks` CVar is off, so this was a latent retail bug too.
+  `.luacheckrc` strips these names from the generated globals list so luacheck
+  flags any reintroduction. Don't reintroduce the `(C_X and C_X.Y) or Y` fallback
+  idiom for them, because the bare-global fallback is exactly what luacheck is
+  guarding against.
+- **Do not polyfill missing globals into `_G`.** A global defined by addon code
+  taints every Blizzard caller (Rule 8). Use file-local aliases.
+- **Testing:** `_classic_beta_\Interface\AddOns\Wise` is a junction to `_dev_\Wise`,
+  so both clients load the same tree. wow-ui-sim has **no Forever profile**, so
+  Forever is verified in-client only. The sim **auto-stubs unknown `C_*`
+  functions**: `C_GameRules.GetForeverExperiencePreset` reads as present under the
+  retail sim. That is why `IS_FOREVER` keys on the interface range first and never
+  on API presence alone.
 
 ### Custom Conditionals: the Three-Table Rule
 

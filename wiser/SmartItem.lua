@@ -92,8 +92,8 @@ function Wise:SearchItems(searchTerm, callback, sourceFilter)
 						if source.character == charKey then
 							-- It's on current character. Syndicator doesn't easily distinguish bags vs bank here
 							-- Check item count to assume location
-							local bagCount = GetItemCount(r.itemID)
-							local totalCount = GetItemCount(r.itemID, true)
+							local bagCount = C_Item.GetItemCount(r.itemID)
+							local totalCount = C_Item.GetItemCount(r.itemID, true)
 							local bankCount = totalCount - bagCount
 
 							-- Bags check
@@ -116,7 +116,7 @@ function Wise:SearchItems(searchTerm, callback, sourceFilter)
 
 							if (sourceFilter.bags or sourceFilter.bank) and (bagCount == 0 and bankCount == 0) then
 								-- Maybe equipped?
-								if IsEquippedItem(r.itemID) and sourceFilter.bags then
+								if C_Item.IsEquippedItem(r.itemID) and sourceFilter.bags then
 									hasItem = true
 									break
 								end

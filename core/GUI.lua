@@ -2612,7 +2612,7 @@ function Wise:GetSecureAttributes(actionData, conditions, barIndex)
 			if val and val > 10 then
 				specIndex = 1
 				for i = 1, GetNumSpecializations() do
-					local id = GetSpecializationInfo(i)
+					local id = C_SpecializationInfo.GetSpecializationInfo(i)
 					if id == val then
 						specIndex = i
 						break
@@ -4957,8 +4957,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			end
 
 			if group.smartSources then
-				local bagCount = GetItemCount(itemVal, false)
-				local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
+				local bagCount = C_Item.GetItemCount(itemVal, false)
+				local bankCount = (C_Item.GetItemCount(itemVal, true) or 0) - bagCount
 				if bankCount < 0 then
 					bankCount = 0
 				end
@@ -4971,7 +4971,7 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 				end
 				-- Warband/Guild counts not generically available via synchronous API yet
 			else
-				count = GetItemCount(itemVal, true)
+				count = C_Item.GetItemCount(itemVal, true)
 			end
 		elseif aType == "spell" then
 			-- Check for spell charges first
@@ -7596,8 +7596,8 @@ function Wise:UpdateButtonCharges(btn)
 		local groupName = btn.groupName
 		local group = groupName and WiseDB.groups[groupName]
 		if group and group.smartSources then
-			local bagCount = GetItemCount(itemVal, false) or 0
-			local bankCount = (GetItemCount(itemVal, true) or 0) - bagCount
+			local bagCount = C_Item.GetItemCount(itemVal, false) or 0
+			local bankCount = (C_Item.GetItemCount(itemVal, true) or 0) - bagCount
 			if bankCount < 0 then
 				bankCount = 0
 			end
@@ -7609,7 +7609,7 @@ function Wise:UpdateButtonCharges(btn)
 				count = count + bankCount
 			end
 		else
-			count = GetItemCount(itemVal, true) or 0
+			count = C_Item.GetItemCount(itemVal, true) or 0
 		end
 		hasCount = true
 	elseif actionType == "spell" then
