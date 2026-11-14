@@ -4760,9 +4760,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		local texture = Wise:GetActionIcon(aType, aValue, actionData)
 
 		-- Custom Macro Dynamic Resolution (Initial)
-		local resolvedType, resolvedValue, resolvedIcon
+		local resolvedType, resolvedValue, resolvedIcon, resolvedFeedback
 		if aType == "misc" and aValue == "custom_macro" then
-			resolvedType, resolvedValue, resolvedIcon = Wise:ResolveMacroData(actionData.macroText)
+			resolvedType, resolvedValue, resolvedIcon, resolvedFeedback = Wise:ResolveMacroData(actionData.macroText)
 			local function isPlaceholderIcon(ic)
 				return not ic
 					or ic == 134400
@@ -4857,7 +4857,9 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 		-- Graph-compiled macro whose text ResolveMacroData could not resolve (12.0.7
 		-- name lookups fail for talent/passive spells): fall back to the SOURCE graph
 		-- node's numeric spell id so cooldown/usability tracking still works.
-		if aType == "misc" and aValue == "custom_macro" and not spellID and not itemID then
+		-- Not for a bare /ping line: it resolved positively to "ping", and a spell
+		-- borrowed from the graph would paint that spell's cooldown on it.
+		if aType == "misc" and aValue == "custom_macro" and not spellID and not itemID and resolvedType ~= "ping" then
 			spellID = Wise:ResolveCompiledStateSpellID(actionData, group.actions and group.actions[actionInfo.slot])
 		end
 
@@ -4877,6 +4879,10 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 			-- nil for single-state slots (no condition gating); only multi-state slots
 			-- carry a meaningful match flag that the dynamic refresh greys out on.
 			activeHadMatch = actionInfo.hadMatch,
+			-- "ping" when the macro line on display is /ping, /pingspell or
+			-- /pingitem: usable then means "can ping now", not "can cast"
+			-- (core/effects/PingFeedback.lua). Re-set by the dynamic refresh.
+			pingFeedback = resolvedFeedback,
 			-- Which override/possess bar button a misc "overridebar"/"possessbar" slot
 			-- stands for. The misc action value carries no index (it's just the string),
 			-- so without this every such button resolved base slot 133/121 and rendered
@@ -5658,7 +5664,8 @@ function Wise:UpdateGroupDisplay(name, instanceId, overrideOpts)
 						end
 					elseif meta.actionType == "misc" and meta.actionValue == "custom_macro" then
 						-- Update Custom Macro
-						local mType, mVal, mIcon = Wise:ResolveMacroData(meta.actionData.macroText)
+						local mType, mVal, mIcon, mFeedback = Wise:ResolveMacroData(meta.actionData.macroText)
+						meta.pingFeedback = mFeedback
 
 						-- Priority: stored icon (user override OR the build-pass fallback icon a graph
 						-- step carries for spells ResolveMacroData can't resolve by NAME — e.g. /cast
@@ -7204,6 +7211,9 @@ function Wise:UpdateButtonCooldown(btn)
 			start, duration = stripCooldown(GetActionCooldown(realID))
 		elseif itemID then
 			start, duration = stripCooldown(C_Item.GetItemCooldown(itemID))
+		elseif meta and meta.pingFeedback and Wise.PingFeedback then
+			-- Bare /ping has no spell or item: show the ping rate-limit cooldown.
+			start, duration = Wise.PingFeedback.GetCooldown()
 		end
 
 		if not usedDurationObject then
@@ -7690,6 +7700,13 @@ function Wise:UpdateButtonUsability(btn)
 		return
 	end
 
+	-- Ping badge before the early returns below, so a button that just stopped
+	-- being a ping macro, or is greyed out as invalid, never keeps a stale marker.
+	local PingFeedback = Wise.PingFeedback
+	if PingFeedback then
+		PingFeedback.SyncBadge(btn, Wise.buttonMeta and Wise.buttonMeta[btn])
+	end
+
 	-- If permanently disabled (filtered/unknown), do not touch
 	if btn.isValid == false then
 		return
@@ -7741,7 +7758,11 @@ function Wise:UpdateButtonUsability(btn)
 	end
 
 	-- Module 4: API Compatibility (Polyfill)
-	if actionType == "action" and tonumber(actionValue) then
+	if meta and meta.pingFeedback and PingFeedback then
+		-- /ping, /pingspell, /pingitem: lit when a ping would go out right now,
+		-- whatever the spell or item itself could do.
+		isUsable, noMana = PingFeedback.CanPingNow(), false
+	elseif actionType == "action" and tonumber(actionValue) then
 		local realID = Wise:ResolveBarActionID(tonumber(actionValue))
 		isUsable, noMana = IsUsableAction(realID)
 	elseif actionType == "misc" and actionValue == "extrabutton" then
@@ -7792,26 +7813,29 @@ function Wise:UpdateButtonUsability(btn)
 		end
 	end
 
-	if isUsable then
-		btn.icon:SetDesaturated(false)
-		btn.icon:SetVertexColor(1, 1, 1)
-		btn.icon:SetAlpha(1)
-		if vIcon then
-			vIcon:SetDesaturated(false)
-			vIcon:SetVertexColor(1, 1, 1)
-			vIcon:SetAlpha(1)
+	if isUsable or noMana then
+		-- White when usable, blue when out of mana, red when the target is out of
+		-- range. Range wins over the mana tint, as on Blizzard's bars.
+		-- btn._wiseOutOfRange is maintained by core/effects/RangeTint.lua, which
+		-- calls back here whenever it flips; this stays the only icon painter.
+		local r, g, b = 1, 1, 1
+		if btn._wiseOutOfRange then
+			r, g, b = 0.8, 0.1, 0.1
+		elseif not isUsable then
+			r, g, b = 0.5, 0.5, 1.0
 		end
-	elseif noMana then
-		-- Blue tint for OOM
 		btn.icon:SetDesaturated(false)
-		btn.icon:SetVertexColor(0.5, 0.5, 1.0)
+		btn.icon:SetVertexColor(r, g, b)
 		btn.icon:SetAlpha(1)
 		if vIcon then
 			vIcon:SetDesaturated(false)
-			vIcon:SetVertexColor(0.5, 0.5, 1.0)
+			vIcon:SetVertexColor(r, g, b)
 			vIcon:SetAlpha(1)
 		end
 	else
+		-- Reset the tint too: a red (range) or blue (mana) icon that then turns
+		-- unusable would otherwise stay tinted under the dimming.
+		btn.icon:SetVertexColor(1, 1, 1)
 		btn.icon:SetAlpha(0.3) -- Lower alpha to make it harder to see
 		if vIcon then
 			vIcon:SetDesaturated(true)

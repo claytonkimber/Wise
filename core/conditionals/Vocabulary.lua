@@ -59,6 +59,10 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["mercenary"] = true,
 	["merc"] = true, -- short alias for [mercenary]
 	["prof"] = true,
+	["hero"] = true, -- active hero talent tree (name or subTreeID); cannot change in combat
+	["holiday"] = true, -- an in-game world event is running (calendar-backed cache)
+	["encounter"] = true, -- a boss encounter is in progress (ENCOUNTER_START/END)
+	["encount"] = true, -- alias for [encounter]
 
 	-- Extended content-state conditionals. All are out-of-combat-stable (or close
 	-- enough that the 0.5s ticker is the right cadence), which is why they are
@@ -88,6 +92,8 @@ local CUSTOM_VIS_CONDITIONALS = {
 	["have"] = true,
 	["buff"] = true,
 	["debuff"] = true,
+	["ownbuff"] = true,
+	["owndebuff"] = true,
 	["selfbuff"] = true,
 	["selfdebuff"] = true,
 	["combo"] = true,
@@ -109,6 +115,8 @@ local COMBAT_SAMPLED = {
 	["have"] = true,
 	["buff"] = true,
 	["debuff"] = true,
+	["ownbuff"] = true,
+	["owndebuff"] = true,
 	["selfbuff"] = true,
 	["selfdebuff"] = true,
 	["combo"] = true,

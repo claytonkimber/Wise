@@ -275,6 +275,69 @@ local function SlotHasUsableItem(token)
 	return okPassive and not isPassive
 end
 
+-- Active hero talent tree, backing [hero] / [hero:<name or subTreeID>].
+--
+-- Cached because custom tokens are evaluated per slot per refresh. The hero tree
+-- cannot change in combat and the read is not secret, so the token is NOT combat
+-- sampled; the cache is simply dropped by the events that can change it and
+-- refilled lazily by the next read. Every API is resolved at call time off _G and
+-- guarded: WoW Forever and the simulator may lack them, and absent means
+-- "no hero tree" (token false), never an error.
+local heroDirty = true
+local heroSubTreeID = nil
+local heroNameLower = nil
+
+local function ResolveHeroTree()
+	heroSubTreeID, heroNameLower = nil, nil
+	local ct = _G.C_ClassTalents
+	if not (ct and ct.GetActiveHeroTalentSpec) then
+		return
+	end
+	local subTreeID = ct.GetActiveHeroTalentSpec()
+	if type(subTreeID) ~= "number" then
+		return
+	end
+	heroSubTreeID = subTreeID
+	local traits = _G.C_Traits
+	if ct.GetActiveConfigID and traits and traits.GetSubTreeInfo then
+		local configID = ct.GetActiveConfigID()
+		local info = configID and traits.GetSubTreeInfo(configID, subTreeID)
+		local name = info and info.name
+		if type(name) == "string" then
+			heroNameLower = name:lower()
+		end
+	end
+end
+
+-- Returns subTreeID, lowercased name (either may be nil; both nil = no hero tree).
+-- A cache read in the steady state: no allocation, no API call.
+local function GetActiveHeroTree()
+	if heroDirty then
+		heroDirty = false
+		if not pcall(ResolveHeroTree) then
+			heroSubTreeID, heroNameLower = nil, nil
+		end
+	end
+	return heroSubTreeID, heroNameLower
+end
+
+local function InvalidateHeroTree()
+	heroDirty = true
+end
+
+-- One small event frame, no ticker. Registration is pcall'd per event so a client
+-- that lacks one of these names cannot take the rest down.
+local heroEventFrame = CreateFrame("Frame")
+heroEventFrame:SetScript("OnEvent", InvalidateHeroTree)
+for _, event in ipairs({
+	"TRAIT_CONFIG_UPDATED",
+	"PLAYER_SPECIALIZATION_CHANGED",
+	"ACTIVE_COMBAT_CONFIG_CHANGED",
+	"PLAYER_ENTERING_WORLD",
+}) do
+	pcall(heroEventFrame.RegisterEvent, heroEventFrame, event)
+end
+
 -- Published to the engine's internals for EvalToken.lua. Flight, mouse-over-world
 -- and aura checks live in Environment.lua, which loads next.
 E.IsSpellOrItemReady = IsSpellOrItemReady
@@ -285,3 +348,6 @@ E.GetActivePrey = GetActivePrey
 E.GetActiveKeystone = GetActiveKeystone
 E.GetCovenantToken = GetCovenantToken
 E.SlotHasUsableItem = SlotHasUsableItem
+E.GetActiveHeroTree = GetActiveHeroTree
+E.InvalidateHeroTree = InvalidateHeroTree
+E.heroEventFrame = heroEventFrame

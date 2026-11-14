@@ -1160,6 +1160,78 @@ function Wise:PopulateSettingsView(panel)
 		end)
 	end)
 	table.insert(panel.children, showGlows.text)
+	ry = ry - 28
+
+	-- Assisted Combat suggestion glow (core/effects/AssistGlow.lua). Off by
+	-- default: it is new behaviour, unlike the range tint below.
+	local showAssist = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+	AddToContent(rightContent, showAssist, rx, ry)
+	showAssist:SetChecked(WiseDB.settings.showAssistGlow == true)
+	showAssist.text = showAssist:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	showAssist.text:SetPoint("LEFT", showAssist, "RIGHT", 5, 0)
+	showAssist.text:SetText("Highlight Blizzard's Suggested Spell")
+	showAssist:SetScript("OnClick", function(self)
+		WiseDB.settings.showAssistGlow = self:GetChecked() and true or false
+		Wise:RefreshAssistGlow(true)
+	end)
+	showAssist:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Assisted Combat Suggestion")
+		GameTooltip:AddLine(
+			"Glows the Wise button holding the spell Blizzard's Assisted Combat recommends next. Works in combat. Only for specs where Blizzard offers Assisted Combat.",
+			1,
+			1,
+			1,
+			true
+		)
+		GameTooltip:Show()
+	end)
+	showAssist:SetScript("OnLeave", GameTooltip_Hide)
+	table.insert(panel.children, showAssist.text)
+	ry = ry - 28
+
+	-- Suggestion glow style: one button that cycles through the styles, so it
+	-- never reads as a proc (Pixel by default).
+	local function AssistStyleLabel()
+		local style = WiseDB.settings.assistGlowStyle or "pixel"
+		return "Suggestion Glow: " .. ((Wise.GLOW_STYLE_LABELS and Wise.GLOW_STYLE_LABELS[style]) or style)
+	end
+	local assistStyleBtn = CreateFrame("Button", nil, rightContent, "UIPanelButtonTemplate")
+	assistStyleBtn:SetSize(200, 22)
+	AddToContent(rightContent, assistStyleBtn, rx + 4, ry)
+	assistStyleBtn:SetText(AssistStyleLabel())
+	assistStyleBtn:SetScript("OnClick", function(self)
+		local styles = Wise.GLOW_STYLES or { "pixel" }
+		local current = WiseDB.settings.assistGlowStyle or "pixel"
+		local nextStyle = styles[1]
+		for i, style in ipairs(styles) do
+			if style == current then
+				nextStyle = styles[i % #styles + 1]
+				break
+			end
+		end
+		WiseDB.settings.assistGlowStyle = nextStyle
+		self:SetText(AssistStyleLabel())
+		Wise:RefreshAssistGlow(true)
+	end)
+	ry = ry - 32
+
+	-- Out-of-range tint (core/effects/RangeTint.lua). Default on, matching the
+	-- default action bars; existing installs have no value yet.
+	if WiseDB.settings.rangeTint == nil then
+		WiseDB.settings.rangeTint = true
+	end
+	local rangeTint = CreateFrame("CheckButton", nil, rightContent, "UICheckButtonTemplate")
+	AddToContent(rightContent, rangeTint, rx, ry)
+	rangeTint:SetChecked(WiseDB.settings.rangeTint)
+	rangeTint.text = rangeTint:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	rangeTint.text:SetPoint("LEFT", rangeTint, "RIGHT", 5, 0)
+	rangeTint.text:SetText("Tint Out-of-Range Spells Red")
+	rangeTint:SetScript("OnClick", function(self)
+		WiseDB.settings.rangeTint = self:GetChecked() and true or false
+		Wise:RefreshRangeTint()
+	end)
+	table.insert(panel.children, rangeTint.text)
 	ry = ry - 40
 
 	-- Buff Durations

@@ -16,7 +16,7 @@ end
 -- WHY IT IS NOT A LIST: /cast, /use, /target and friends live in SecureCmdList,
 -- a C-side table that enumerates as EMPTY (`for k in pairs(SecureCmdList)` yields
 -- 0 keys on 12.1), so the valid set cannot be walked. IsSecureCmd(cmd) probes it
--- by name instead, which is what OPie's Rewire does for the same reason.
+-- one name at a time instead.
 -- Addon commands come from SlashCmdList, whose aliases are NOT table keys but
 -- numbered globals (SLASH_TARGET2 == "/tar"), so those need expanding.
 --

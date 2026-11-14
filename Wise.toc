@@ -17,6 +17,9 @@ Libs\LibDBIcon\LibDBIcon-1.0\lib.xml
 Libs\LibSharedMedia-3.0\lib.xml
 Libs\LibSharedMedia-3.0\WiseMedia.lua
 Libs\exui\exui.xml
+# LibCustomGlow-1.0: upstream MIT release (minor 25), vendored unmodified.
+# Needs LibStub, which the LibDBIcon embeds above load.
+Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.xml
 
 # Bindings.xml is deliberately absent from this list: the client auto-loads
 # any root-level file named exactly "Bindings.xml" for every enabled addon,
@@ -64,6 +67,7 @@ core\conditionals\Vocabulary.lua
 core\conditionals\ArgMatch.lua
 core\conditionals\Predicates.lua
 core\conditionals\Environment.lua
+core\conditionals\WorldEvents.lua
 core\conditionals\EvalToken.lua
 core\conditionals\ConditionString.lua
 
@@ -71,6 +75,9 @@ core\conditionals\ConditionString.lua
 # binds the hover helpers as upvalues off Wise.Effects.
 core\effects\OverlayGlow.lua
 core\effects\HoverIndication.lua
+# Keyed LibCustomGlow styles + the shared per-interface effect setting getter.
+# After OverlayGlow (its no-library fallback); before the drivers below.
+core\effects\StyledGlow.lua
 
 # Layout helpers (extracted from GUI.lua). Must load before GUI.lua, which
 # binds them as upvalues off Wise.Layout.
@@ -78,6 +85,12 @@ core\layout\ListLayout.lua
 
 core\GUI.lua
 core\Conditionals.lua
+
+# Effect drivers. They call into GUI.lua (UpdateButtonUsability, buttonMeta) at
+# runtime and register their gate events at load, so they come after it.
+core\effects\AssistGlow.lua
+core\effects\RangeTint.lua
+core\effects\PingFeedback.lua
 
 # Modules
 modules\DragAndDrop.lua

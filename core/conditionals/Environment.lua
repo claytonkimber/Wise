@@ -22,7 +22,6 @@ local addonName, Wise = ...
 local ipairs = ipairs
 local pcall = pcall
 local C_UnitAuras = C_UnitAuras
-local UnitExists = UnitExists
 local UIParent = UIParent
 local WorldFrame = WorldFrame
 
@@ -111,7 +110,8 @@ local function HasAura(unit, arg, filter)
 	if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
 		return false
 	end
-	if not UnitExists(unit) then
+	-- Resolved off _G at call time (not the hoisted upvalue) so a test can stub it.
+	if not _G.UnitExists(unit) then
 		return false
 	end
 	-- Never compare secret aura names; the result would be meaningless.

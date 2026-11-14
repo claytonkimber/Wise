@@ -1529,6 +1529,78 @@ local function ResolveMacroTarget(result)
 	return nil
 end
 
+-- Macro commands whose argument names what a slot should DISPLAY. "any" lines
+-- resolve through ResolveMacroTarget (action button, spell, item, numeric ID).
+-- The ping commands (patch 12.1) ping instead of casting, so they resolve more
+-- narrowly and tag the result with feedback = "ping": the button shows the
+-- spell or item, but its usable state means "can I ping right now"
+-- (core/effects/PingFeedback.lua). Bare /ping names a ping TYPE (attack,
+-- warning, ...), not a spell, so it resolves to the pseudo-type "ping".
+local MACRO_DISPLAY_KINDS = {
+	["/cast"] = "any",
+	["/use"] = "any",
+	["/castsequence"] = "any",
+	["/randomcast"] = "any",
+	["/castrandom"] = "any",
+	["/click"] = "any",
+	["/ping"] = "ping",
+	["/pingspell"] = "pingspell",
+	["/pingitem"] = "pingitem",
+}
+
+-- Other spellings of the ping commands from the client's SLASH_PING* globals,
+-- merged in once on first use. The English names above always work.
+local pingAliasesMerged = false
+local PING_SLASH_PREFIXES = {
+	SLASH_PING = "ping",
+	SLASH_PING_SPELL = "pingspell",
+	SLASH_PING_ITEM = "pingitem",
+}
+local function MergePingAliases()
+	pingAliasesMerged = true
+	for prefix, kind in pairs(PING_SLASH_PREFIXES) do
+		for i = 1, 8 do
+			local name = _G[prefix .. i]
+			if type(name) == "string" and name ~= "" then
+				name = name:lower()
+				if not MACRO_DISPLAY_KINDS[name] then
+					MACRO_DISPLAY_KINDS[name] = kind
+				end
+			end
+		end
+	end
+end
+
+-- Resolve the argument of a ping line into (type, value, icon), or nil when a
+-- /pingspell or /pingitem argument names nothing this client knows. Bare /ping
+-- always resolves: it pings whatever its target is, so there is nothing to look
+-- up and the slot keeps its own icon.
+local function ResolvePingTarget(kind, result)
+	if kind == "ping" then
+		return "ping", nil, nil
+	end
+	if not result or result == "" then
+		return nil
+	end
+	local ref = tonumber(result) or result
+	if kind == "pingspell" then
+		local ok, sInfo = pcall(C_Spell.GetSpellInfo, ref)
+		if ok and sInfo then
+			return "spell", sInfo.spellID, sInfo.iconID
+		end
+		return nil
+	end
+	-- /pingitem: an item ID, a link, or the name of an item the client has cached.
+	local ok, itemID, _, _, _, icon = pcall(C_Item.GetItemInfoInstant, ref)
+	if ok and itemID then
+		return "item", itemID, icon or C_Item.GetItemIconByID(itemID)
+	end
+	return nil
+end
+
+-- Returns type, value, icon, feedback. `feedback` is "ping" when the line that
+-- resolved is a ping command (see MACRO_DISPLAY_KINDS), nil otherwise; callers
+-- that only read the first three values are unaffected.
 function Wise:ResolveMacroData(macroText)
 	if not macroText or macroText == "" then
 		return nil, nil, nil
@@ -1540,12 +1612,19 @@ function Wise:ResolveMacroData(macroText)
 		macroText = Wise.Retoken:Expand(macroText)
 	end
 
+	if not pingAliasesMerged then
+		MergePingAliases()
+	end
+
 	-- Collect candidate target lines in priority order: an explicit #show(tooltip)
-	-- argument first, otherwise every castable line (/cast, /use, /click, …). We try
-	-- each in turn and return the FIRST that resolves to a real spell/item/action —
-	-- this matches how a real macro picks its #showtooltip icon and is the behavior
-	-- normal slots (e.g. [combat] Abundance) and override /click lines both rely on.
+	-- argument first, otherwise every display line (/cast, /use, /click, the ping
+	-- commands, …). We try each in turn and return the FIRST that resolves to a
+	-- real spell/item/action — this matches how a real macro picks its
+	-- #showtooltip icon and is the behavior normal slots (e.g. [combat] Abundance)
+	-- and override /click lines both rely on. kinds[i] is candidates[i]'s
+	-- MACRO_DISPLAY_KINDS entry.
 	local candidates = {}
+	local kinds = {}
 	local explicitTarget = nil
 
 	for line in string.gmatch(macroText, "[^\r\n]+") do
@@ -1568,24 +1647,16 @@ function Wise:ResolveMacroData(macroText)
 
 	if explicitTarget then
 		candidates[1] = explicitTarget
+		kinds[1] = "any"
 	else
 		for line in string.gmatch(macroText, "[^\r\n]+") do
 			local clean = strtrim(line)
-			local cmd, args = clean:match("^(%S+)%s+(.*)")
-			if cmd then
-				cmd = string.lower(cmd)
-				if
-					(
-						cmd == "/cast"
-						or cmd == "/use"
-						or cmd == "/castsequence"
-						or cmd == "/randomcast"
-						or cmd == "/castrandom"
-						or cmd == "/click"
-					) and args
-				then
-					candidates[#candidates + 1] = args
-				end
+			local cmd, args = clean:match("^(%S+)%s*(.*)$")
+			local kind = cmd and MACRO_DISPLAY_KINDS[string.lower(cmd)]
+			-- Only bare /ping is meaningful with no argument (it pings the target).
+			if kind and (args ~= "" or kind == "ping") then
+				candidates[#candidates + 1] = args
+				kinds[#kinds + 1] = kind
 			end
 		end
 	end
@@ -1605,9 +1676,20 @@ function Wise:ResolveMacroData(macroText)
 
 	-- PASS 1: Live conditional matching via SecureCmdOptionParse.
 	-- If any line's condition matches right now, that is the authoritative line.
-	for _, targetLine in ipairs(candidates) do
-		local result = SecureCmdOptionParse(targetLine)
-		if result and result ~= "" then
+	for i, targetLine in ipairs(candidates) do
+		local kind = kinds[i]
+		-- A bare "/ping" has no options to parse and always fires.
+		local result = (targetLine == "" and kind == "ping") and "" or SecureCmdOptionParse(targetLine)
+		if kind ~= "any" then
+			-- Ping line whose conditions pass. Bare /ping parses to "", which is
+			-- still a match: it pings the line's target.
+			if result then
+				local rType, rVal, rIcon = ResolvePingTarget(kind, cleanTarget(result))
+				if rType then
+					return rType, rVal, rIcon, "ping"
+				end
+			end
+		elseif result and result ~= "" then
 			result = cleanTarget(result)
 			local rType, rVal, rIcon = ResolveMacroTarget(result)
 			if rType == "empty_override" then
@@ -1622,7 +1704,8 @@ function Wise:ResolveMacroData(macroText)
 
 	-- PASS 2: Fallback when NO live condition matched (e.g. out of combat with [combat] Spell).
 	-- Strip [conditions] from candidates and find the first valid target.
-	for _, targetLine in ipairs(candidates) do
+	for i, targetLine in ipairs(candidates) do
+		local kind = kinds[i]
 		local strippedTarget = nil
 		for clause in string.gmatch(targetLine, "[^;]+") do
 			local stripped = strtrim((clause:gsub("%b[]", "")))
@@ -1632,7 +1715,12 @@ function Wise:ResolveMacroData(macroText)
 			end
 		end
 
-		if strippedTarget and strippedTarget ~= "" then
+		if kind ~= "any" then
+			local rType, rVal, rIcon = ResolvePingTarget(kind, strippedTarget and cleanTarget(strippedTarget))
+			if rType then
+				return rType, rVal, rIcon, "ping"
+			end
+		elseif strippedTarget and strippedTarget ~= "" then
 			strippedTarget = cleanTarget(strippedTarget)
 			local rType, rVal, rIcon = ResolveMacroTarget(strippedTarget)
 			if rType and rType ~= "empty_override" then
@@ -2461,9 +2549,78 @@ function Wise:IsActionKnown(actionType, value)
 	return true
 end
 
--- Check if an action is currently on cooldown (> 1.5s remaining to ignore GCD)
--- Uses pcall for comparisons because cooldown API return values can be tainted
--- if earlier addon code touched protected state.
+-- Secret-value-safe readers (core/cooldown/SecretValues.lua, loaded before this
+-- file). Bound once: IsActionOnCooldown runs per slot on every dynamic refresh.
+local SafeReadField = Wise.CooldownUtil.SafeReadField
+local SafeReadFlag = Wise.CooldownUtil.SafeReadFlag
+local CleanSecretNumber = Wise.CooldownUtil.CleanSecretNumber
+
+-- A cooldown at or under this length is treated as the global cooldown.
+local GCD_WINDOW = 1.5
+-- The global cooldown's own spell; its isActive flag says whether a GCD is running.
+local GCD_SPELL_ID = 61304
+
+local function TimesOnCooldown(start, duration)
+	if duration <= GCD_WINDOW then
+		return false
+	end
+	return (start + duration) - GetTime() > GCD_WINDOW
+end
+
+-- On-cooldown verdict for a SpellCooldownInfo, ignoring the GCD.
+-- Returns onCooldown, known. known=false means the client hid everything the
+-- verdict needs; onCooldown is then false, the answer this function always gave.
+--
+-- 12.x can make startTime/duration secret ("SecretWhenCooldownsRestricted" in
+-- Blizzard's API docs). The old code compared them inside a pcall, so a secret
+-- made the comparison throw and EVERY spell read "off cooldown" -- the waterfall
+-- icon, dynamic-group filtering and the indicator "available"/"cooldown"
+-- metrics all believed it. isActive and isOnGCD are documented NeverSecret, so
+-- the yes/no answer survives when the remaining time does not. Difference from
+-- the timed path: with flags only, a spell's own cooldown counts until it ends
+-- rather than until its last 1.5s.
+local function SpellInfoOnCooldown(info)
+	local start = CleanSecretNumber(SafeReadField(info, "startTime"))
+	local duration = CleanSecretNumber(SafeReadField(info, "duration"))
+	if start and duration then
+		return TimesOnCooldown(start, duration), true
+	end
+	local active = SafeReadFlag(info, "isActive")
+	if active == false then
+		return false, true
+	elseif active == nil then
+		return false, false
+	end
+	-- Something is running on this spell. With no GCD running, it can only be
+	-- the spell's own cooldown.
+	local gcdInfo = C_Spell.GetSpellCooldown(GCD_SPELL_ID)
+	if gcdInfo and SafeReadFlag(gcdInfo, "isActive") == false then
+		return true, true
+	end
+	-- A GCD is running too, so the spell's own flag decides. Blizzard notes
+	-- isOnGCD is only guaranteed fresh inside SPELL_UPDATE_COOLDOWN; a stale
+	-- value can mislead only until that GCD ends, when the check above takes over.
+	local onGCD = SafeReadFlag(info, "isOnGCD")
+	if onGCD == nil then
+		return false, false
+	end
+	return not onGCD, true
+end
+
+-- Items carry no never-secret flags, so a hidden time is simply unknown.
+local function ItemOnCooldown(itemID)
+	local start, duration = C_Item.GetItemCooldown(itemID)
+	start, duration = CleanSecretNumber(start), CleanSecretNumber(duration)
+	if start and duration then
+		return TimesOnCooldown(start, duration), true
+	end
+	return false, false
+end
+
+-- Is the action on cooldown, ignoring the GCD (> 1.5s remaining)?
+-- Returns onCooldown, known. Callers that only read the first value get the same
+-- "false when unknown" default as before; callers that must not guess (indicator
+-- rules) check `known`. See SpellInfoOnCooldown for the secret-value handling.
 function Wise:IsActionOnCooldown(actionType, value, actionData)
 	if actionType == "spell" then
 		local spellID = value
@@ -2476,56 +2633,19 @@ function Wise:IsActionOnCooldown(actionType, value, actionData)
 		spellID = tonumber(spellID)
 		if spellID then
 			local overrideID = Wise:GetOverrideSpellID(spellID)
-			local checkID = overrideID or spellID
-			local info = C_Spell.GetSpellCooldown(checkID)
+			local info = C_Spell.GetSpellCooldown(overrideID or spellID)
 			if info then
-				local ok, onCD = pcall(function()
-					if info.duration and info.duration > 1.5 then
-						local remaining = (info.startTime + info.duration) - GetTime()
-						return remaining > 1.5
-					end
-					return false
-				end)
-				if ok and onCD then
-					return true
-				end
+				return SpellInfoOnCooldown(info)
 			end
 		end
-	elseif actionType == "item" then
+	elseif actionType == "item" or actionType == "toy" then
 		local itemID = tonumber(value)
 		if itemID then
-			local start, duration = C_Item.GetItemCooldown(itemID)
-			local ok, onCD = pcall(function()
-				if duration and duration > 1.5 then
-					local remaining = (start + duration) - GetTime()
-					return remaining > 1.5
-				end
-				return false
-			end)
-			if ok and onCD then
-				return true
-			end
+			return ItemOnCooldown(itemID)
 		end
-	elseif actionType == "toy" then
-		local toyID = tonumber(value)
-		if toyID then
-			local start, duration = C_Item.GetItemCooldown(toyID)
-			local ok, onCD = pcall(function()
-				if duration and duration > 1.5 then
-					local remaining = (start + duration) - GetTime()
-					return remaining > 1.5
-				end
-				return false
-			end)
-			if ok and onCD then
-				return true
-			end
-		end
-	elseif actionType == "mount" then
-		-- Mounts don't have meaningful cooldowns to filter on
-		return false
 	end
-	return false
+	-- Mounts and other action types have no cooldown worth filtering on.
+	return false, true
 end
 
 -- Extract the runnable macro body for an action so its GCD can be judged by what
@@ -2570,8 +2690,11 @@ function Wise:GetCastTimeText(actionType, value, actionData)
 	if isMacroAction then
 		local body = GetActionMacroBody(actionType, value, actionData)
 		if body ~= "" then
-			local rType, rID = Wise:ResolveMacroData(body)
-			if rType == "spell" then
+			local rType, rID, _, feedback = Wise:ResolveMacroData(body)
+			if feedback == "ping" then
+				-- /pingspell Fireball pings the spell, it never casts it: instant, off-GCD.
+				return "Inst", "Off-GCD", true
+			elseif rType == "spell" then
 				-- Recurse with the resolved spell so cast time + GCD come from it.
 				return Wise:GetCastTimeText("spell", rID)
 			elseif rType == "item" then

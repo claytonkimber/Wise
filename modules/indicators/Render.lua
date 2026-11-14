@@ -17,8 +17,8 @@ local tinsert = table.insert
 local IR = Wise.IndicatorRules
 local BOLD_COLORS = IR.BOLD_COLORS
 local GetColorRGB = IR.GetColorRGB
-local METRICS = IR.METRICS
-local METRIC_LABELS = IR.METRIC_LABELS
+local MetricLabel = IR.MetricLabel
+local OfferedMetrics = IR.OfferedMetrics
 local RuleMetric = IR.RuleMetric
 local IsNumericMetric = IR.IsNumericMetric
 local DefaultMetricForAction = IR.DefaultMetricForAction
@@ -67,8 +67,11 @@ function Wise:RenderIndicatorRules(panel, action, y, commit)
 	for _, c in ipairs(BOLD_COLORS) do
 		tinsert(colorNames, c.name)
 	end
+	-- Offered metrics for THIS character: "resource" is omitted for classes
+	-- without a secondary resource, and labelled per class ("Holy Power").
+	local offered = OfferedMetrics()
 	local metricNames = {}
-	for _, m in ipairs(METRICS) do
+	for _, m in ipairs(offered) do
 		tinsert(metricNames, m.label)
 	end
 
@@ -82,10 +85,10 @@ function Wise:RenderIndicatorRules(panel, action, y, commit)
 			panel,
 			130,
 			20,
-			METRIC_LABELS[metricKey],
+			MetricLabel(metricKey),
 			metricNames,
 			function(label)
-				for _, m in ipairs(METRICS) do
+				for _, m in ipairs(offered) do
 					if m.label == label then
 						rule.metric = m.key
 						break

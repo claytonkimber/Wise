@@ -59,9 +59,21 @@ local function ActionSpell(action)
 	return nil, action.value
 end
 
+-- Does any rule in the list watch the class resource? Decides whether the pass
+-- reads UnitPower and whether power events are worth a repaint.
+local function RulesUseResource(rules)
+	for _, rule in ipairs(rules) do
+		if type(rule) == "table" and rule.metric == "resource" then
+			return true
+		end
+	end
+	return false
+end
+
 function Wise:RebuildIndicatorRules()
 	wipe(rulesBySpell)
 	wipe(rulesByName)
+	IR.anyResourceRule = false
 	if not WiseDB or not WiseDB.groups then
 		return
 	end
@@ -94,7 +106,11 @@ function Wise:RebuildIndicatorRules()
 										spellID = sid,
 										name = sname,
 										condition = cond,
+										usesResource = RulesUseResource(a.indicatorRules),
 									}
+									if entry.usesResource then
+										IR.anyResourceRule = true
+									end
 									rulesBySpell[sid] = entry
 									if sname then
 										rulesByName[sname:lower()] = entry

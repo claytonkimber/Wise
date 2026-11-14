@@ -129,6 +129,10 @@ local VALID_CONDITIONALS = {
 	["mercenary"] = true,
 	["merc"] = true,
 	["prof"] = true,
+	["hero"] = true,
+	["holiday"] = true,
+	["encounter"] = true,
+	["encount"] = true,
 
 	-- Extended content-state conditionals.
 	["warbank"] = true,
@@ -156,6 +160,8 @@ local VALID_CONDITIONALS = {
 	["have"] = true,
 	["buff"] = true,
 	["debuff"] = true,
+	["ownbuff"] = true,
+	["owndebuff"] = true,
 	["selfbuff"] = true,
 	["selfdebuff"] = true,
 	["combo"] = true,
@@ -275,7 +281,25 @@ Wise.extendedConditionals = {
 	{ name = "spec:id/name", desc = "Specialization ID or Name", skipeval = true },
 	{ name = "level:n", desc = "Player level >= n", skipeval = true },
 	{ name = "race:name", desc = "Player Race", skipeval = true },
-	{ name = "game:version", desc = "Game Version (modern, era, cata, etc)", skipeval = true },
+	{ name = "hero", desc = "A hero talent tree is active" },
+	{ name = "hero:name", desc = "Active hero talent tree (name or ID)", skipeval = true },
+	{
+		name = "game:version",
+		desc = "Game flavor: modern (retail), remix (Timerunning), forever (WoW Forever), hc (Forever Hardcore)",
+		skipeval = true,
+	},
+	{ name = "holiday", desc = "A world event (Brewfest, Winter Veil, ...) is running" },
+	{
+		name = "holiday:event",
+		desc = "A holiday is running: veil, brew, hend, fire, east, luna, love (or the long name, ID, or calendar title)",
+		skipeval = true,
+	},
+	{ name = "encounter", desc = "A boss encounter is in progress (alias: encount)" },
+	{
+		name = "encounter:id",
+		desc = "A specific boss encounter is in progress: encounter ID (e.g. 2837 or e-2837) or name. Names with commas can't be written in a conditional, so prefer the ID",
+		skipeval = true,
+	},
 	{ name = "horde", desc = "Player faction is Horde" },
 	{ name = "alliance", desc = "Player faction is Alliance" },
 	{ name = "mercenary", desc = "Player is in mercenary mode" },
@@ -338,6 +362,8 @@ Wise.extendedConditionals = {
 	{ name = "have:item", desc = "Player has item in bags", combatRestricted = true },
 	{ name = "buff:name", desc = "Target has helpful aura", combatRestricted = true },
 	{ name = "debuff:name", desc = "Target has harmful aura", combatRestricted = true },
+	{ name = "ownbuff:name", desc = "Target has a helpful aura you cast", combatRestricted = true },
+	{ name = "owndebuff:name", desc = "Target has a harmful aura you cast", combatRestricted = true },
 	{ name = "selfbuff:name", desc = "Player has helpful aura", combatRestricted = true },
 	{ name = "selfdebuff:name", desc = "Player has harmful aura", combatRestricted = true },
 	{ name = "combo:n", desc = "Combo points >= n", combatRestricted = true },
@@ -583,6 +609,16 @@ function Wise:GetConditionalValue(name)
 		return "Reference"
 	elseif base == "zone" then
 		return GetRealZoneText() or "Unknown"
+	elseif base == "hero" then
+		local engine = Wise.CondEngine
+		local id, nameLower
+		if engine and engine.GetActiveHeroTree then
+			id, nameLower = engine.GetActiveHeroTree()
+		end
+		if not id then
+			return "None"
+		end
+		return nameLower and string.format("%s (%d)", nameLower, id) or tostring(id)
 	elseif base == "instance" or base == "in" then
 		local _, instanceType = GetInstanceInfo()
 		-- Delves report as "scenario" like several other content types; show the
@@ -613,7 +649,31 @@ function Wise:GetConditionalValue(name)
 		return race
 	elseif base == "game" then
 		local version = GetBuildInfo()
+		local engine = Wise.CondEngine
+		if engine and engine.GetGameFlavor then
+			return string.format("%s (%s)", engine.GetGameFlavor(), tostring(version))
+		end
 		return version
+	elseif base == "holiday" then
+		local engine = Wise.CondEngine
+		if not (engine and engine.GetActiveHolidays) then
+			return "None"
+		end
+		local _, tracked = engine.GetActiveHolidays()
+		return #tracked > 0 and table.concat(tracked, ", ") or "None"
+	elseif base == "encounter" or base == "encount" then
+		local engine = Wise.CondEngine
+		if not (engine and engine.GetActiveEncounter) then
+			return "None"
+		end
+		local id, nameLower, active = engine.GetActiveEncounter()
+		if not active then
+			return "None"
+		end
+		if not id then
+			return "In progress"
+		end
+		return string.format("%s (%d)", nameLower or "?", id)
 	elseif base == "form" or base == "stance" then
 		return tostring(GetShapeshiftForm())
 	elseif base == "actionbar" then

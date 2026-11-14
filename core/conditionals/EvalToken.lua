@@ -18,7 +18,7 @@
 -- token, add it in both places and in the two tables named in that file's
 -- warning comment.
 --
--- Loaded after Predicates.lua and before ConditionString.lua.
+-- Loaded after WorldEvents.lua and before ConditionString.lua.
 
 local addonName, Wise = ...
 
@@ -68,12 +68,16 @@ local IsInActiveDelve = E.IsInActiveDelve
 local GetActivePrey = E.GetActivePrey
 local GetActiveKeystone = E.GetActiveKeystone
 local GetCovenantToken = E.GetCovenantToken
+local GetActiveHeroTree = E.GetActiveHeroTree
 local SlotHasUsableItem = E.SlotHasUsableItem
 local IsSuperFlyable = E.IsSuperFlyable
 local IsPlainFlyable = E.IsPlainFlyable
 local IsMouseOverWorld = E.IsMouseOverWorld
 local IsFlightBlocked = E.IsFlightBlocked
 local HasAura = E.HasAura
+local GetGameFlavor = E.GetGameFlavor
+local GetActiveHolidays = E.GetActiveHolidays
+local GetActiveEncounter = E.GetActiveEncounter
 
 -- Evaluate a single custom conditional token. Returns true/false.
 -- `groupName` provides context for group-scoped tokens such as [available].
@@ -164,8 +168,24 @@ local function EvalCustomToken(token, groupName, forceLive)
 		local raceName, raceToken = UnitRace("player")
 		result = ArgMatches(arg, raceToken) or ArgMatches(arg, raceName)
 	elseif base == "game" then
-		-- Wise is retail-only, so the only version token that can match is "modern".
-		result = ArgMatches(arg, "modern")
+		-- Flavour is a "/"-joined string ("forever/hc"), so [game:forever] and
+		-- [game:hc] both match on Hardcore. Bare [game] is always true.
+		result = ArgMatchesAny(arg, GetGameFlavor())
+	elseif base == "holiday" then
+		-- [holiday:<token|id|title>] matches any running calendar holiday. Bare
+		-- [holiday] counts only the tracked world events, or it would almost always
+		-- be true (weekly bonus events, Timewalking, ...).
+		local value, tracked = GetActiveHolidays()
+		if arg == nil or arg == "" then
+			result = #tracked > 0
+		else
+			result = ArgMatchesAny(arg, value)
+		end
+	elseif base == "encounter" or base == "encount" then
+		-- Bare = a boss encounter is in progress; the argument is the encounter ID,
+		-- "e-<id>", or its lowercased name.
+		local _, _, active, value = GetActiveEncounter()
+		result = active and (arg == nil or arg == "" or ArgMatchesAny(arg, value)) or false
 	elseif base == "horde" then
 		result = UnitFactionGroup("player") == "Horde"
 	elseif base == "alliance" then
@@ -174,6 +194,11 @@ local function EvalCustomToken(token, groupName, forceLive)
 		result = (C_PvP and C_PvP.IsMercenary and C_PvP.IsMercenary()) or false
 	elseif base == "prof" then
 		result = HasProfession(arg)
+	elseif base == "hero" then
+		-- Bare [hero] = any hero tree; [hero:<name>] matches the tree's name, and
+		-- [hero:<n>] its numeric subTreeID. Cache read, no allocation.
+		local subTreeID, nameLower = GetActiveHeroTree()
+		result = subTreeID ~= nil and (ArgMatches(arg, nameLower) or ArgMatches(arg, subTreeID))
 
 	-- ── Extended content-state tokens ──────────────────────────────────
 	elseif base == "warbank" then
@@ -242,6 +267,11 @@ local function EvalCustomToken(token, groupName, forceLive)
 		result = HasAura("target", arg, "HELPFUL")
 	elseif base == "debuff" then
 		result = HasAura("target", arg, "HARMFUL")
+	elseif base == "ownbuff" then
+		-- Same as [buff:] but only auras the player applied.
+		result = HasAura("target", arg, "HELPFUL|PLAYER")
+	elseif base == "owndebuff" then
+		result = HasAura("target", arg, "HARMFUL|PLAYER")
 	elseif base == "selfbuff" then
 		result = HasAura("player", arg, "HELPFUL")
 	elseif base == "selfdebuff" then

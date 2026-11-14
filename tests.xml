@@ -463,4 +463,76 @@
             <KeyValue key="clearAction" value="" type="string"/>
         </KeyValues>
     </Frame>
+
+    <Frame name="WiseDebugTest_SecretCooldowns" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Cooldowns and Charges Under 12.x Secrecy" type="string"/>
+            <KeyValue key="instructions" value="Regression (2026-11-13): when the client hid cooldown times, Wise read every spell as OFF cooldown, and a hidden charge count read as 0. Blizzard documents the cooldown flags (isActive/isOnGCD) and maxCharges as never secret; Wise now falls back to them. The secret case is expected in M+/raid/rated PvP, so steps 3-5 must be done there (a follower dungeon or open world will likely NOT reproduce it).\n1. /reload and run this test&apos;s action: it must print revision 5.\n2. Out of combat: on a Wise slot, give a long-cooldown spell an indicator rule &quot;On cooldown -&gt; Red&quot; and a second slot&apos;s spell &quot;Available (off CD) -&gt; White&quot;. Cast each: Red appears while cooling down; White disappears while cooling down and returns when ready.\n3. Repeat step 2 inside an M+ key or on a raid boss. Before the fix Red never appeared and White never cleared.\n4. On a charge spell, add &quot;Charges &lt;= 0 -&gt; Red&quot; and &quot;Charges &gt;= (max) -&gt; White&quot;. In M+/raid: Red must NOT sit on the button for the whole fight; White should light whenever the spell is fully recharged.\n5. Waterfall slot (cooldown spell first, filler second): in M+/raid the icon must show the filler while the cooldown is running, not the cooldown spell.\n6. Run the action again in combat in M+/raid while a cooldown is running: &apos;times hidden: true&apos; confirms the secret path was exercised; &apos;onCD true known true&apos; confirms the flags answered." type="string"/>
+            <KeyValue key="action" value="print(&apos;Indicator rules rev&apos;, Wise.INDICATOR_RULES_REV); local id = 61304; local ci = C_Spell.GetSpellCooldown(id); print(&apos;GCD isActive&apos;, ci and ci.isActive); for _, f in pairs(Wise.frames or {}) do for _, b in ipairs(f.buttons or {}) do local m = Wise.buttonMeta and Wise.buttonMeta[b]; local sid = m and m.spellID; if sid then local info = C_Spell.GetSpellCooldown(sid); local hidden = info and issecretvalue and issecretvalue(info.startTime); local onCD, known = Wise:IsActionOnCooldown(&apos;spell&apos;, sid); if hidden or onCD then print(C_Spell.GetSpellName(sid) or sid, &apos;times hidden:&apos;, hidden and true or false, &apos;onCD&apos;, onCD, &apos;known&apos;, known) end end end end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_AssistGlow" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Assisted Combat Suggestion Glow" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-13. Wise lights the button holding Blizzard&apos;s Assisted Combat suggestion (C_AssistedCombat.GetNextCastSpell).\n1. Settings &gt; Proc Glows: tick &quot;Highlight Blizzard&apos;s Suggested Spell&quot;. Run this test&apos;s action: &apos;available true&apos; on a spec Blizzard supports.\n2. Put your rotation spells on a Wise interface and target a training dummy: the suggested spell&apos;s button glows (cyan Pixel) and the glow moves as you follow the suggestions. Optional cross-check: enable Blizzard&apos;s own Assisted Highlight on the default bars; both must point at the same spell.\n3. Click &quot;Suggestion Glow&quot; in Settings: the lit button switches style immediately (Pixel, Autocast, Button glow, Proc).\n4. When a procced spell is also the suggestion, the gold proc glow and the suggestion glow show together; when the suggestion moves on, the proc glow must stay.\n5. Hide Blizzard&apos;s action bars (Wise option): the glow must still work.\n6. Out of combat, clear your target: the glow disappears and the action prints &apos;driver running false&apos;. /wise cpu idle cost must be unchanged.\n7. In M+/raid combat the glow keeps following the suggestion.\n8. Untick the setting: no glow anywhere." type="string"/>
+            <KeyValue key="action" value="local a = C_AssistedCombat; if not a then print(&apos;C_AssistedCombat missing on this client&apos;) return end; print(&apos;available&apos;, a.IsAvailable()); print(&apos;suggestion&apos;, a.GetNextCastSpell(false), &apos;(Blizzard bars only:&apos;, a.GetNextCastSpell(true), &apos;)&apos;); print(&apos;driver running&apos;, Wise.AssistGlow and Wise.AssistGlow.IsRunning(), &apos;custom glow lib&apos;, Wise.HAS_CUSTOM_GLOW)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_RangeTint" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Out-of-Range Tint" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-13. Spells that cannot reach the target get a red icon (default on).\n1. Target a mob or dummy and walk out of range of a ranged spell on a Wise slot: its icon turns red within ~0.2s. Walk back: it returns to normal.\n2. Melee abilities turn red as soon as you leave melee range.\n3. Spells with no range (self buffs, cooldowns) never turn red.\n4. A spell you lack mana for AND are out of range of shows red, not blue; back in range it shows blue.\n5. Clear your target: every red icon returns to normal at once.\n6. Untick &quot;Tint Out-of-Range Spells Red&quot;: no red. Tick it again with a target: red returns.\n7. Works in combat; BugGrabber shows no Wise errors.\n8. Spells that become unusable while red (e.g. a stance requirement) dim WITHOUT staying red." type="string"/>
+            <KeyValue key="action" value="local red = 0; for _, f in pairs(Wise.frames or {}) do for _, b in ipairs(f.buttons or {}) do if b._wiseOutOfRange then red = red + 1 end end end; print(&apos;range driver running&apos;, Wise.RangeTint and Wise.RangeTint.IsRunning(), &apos;buttons tinted red&apos;, red)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_ClassResourceMetric" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Indicator Rules: Class Resource Metric" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-13 (Paladin example; any class with a secondary resource works).\n1. Run the action: it must print rev 6, your resource token (e.g. HOLY_POWER) and a secrecy level.\n2. On a graph node&apos;s indicator rules, add &quot;Holy Power &gt;= 3&quot; Green + Glow + a sound. Open world: generate Holy Power; at 3 the border/glow appear and the sound plays once; spending clears it.\n3. Add &quot;Holy Power &lt;= 0&quot; Red: Red at 0 only.\n4. Repeat in a dungeon, a raid pull and M+. The border must keep tracking. If it stays dark at 3, the value is hidden there, and the &lt;= 0 rule must NOT light either (unknown, never 0).\n5. /wise cpu while energy or mana regenerates with no resource rules: indicator cost unchanged.\n6. Warrior/Hunter/Priest/Shaman/Demon Hunter: the metric is absent from the dropdown.\n7. Death Knight: the value equals the number of READY runes and updates as runes recharge (this is an unverified assumption; report if it differs)." type="string"/>
+            <KeyValue key="action" value="local IR = Wise.IndicatorRules; local cr = IR and IR.GetClassResource and IR.GetClassResource(); print(&apos;indicator rev&apos;, Wise.INDICATOR_RULES_REV, &apos;resource&apos;, cr and cr.token or &apos;none&apos;, &apos;secrecy&apos;, IR and IR.GetResourceSecrecy and IR.GetResourceSecrecy()); if cr then local v = UnitPower(&apos;player&apos;, cr.powerType); print(&apos;value hidden:&apos;, issecretvalue and issecretvalue(v) or false) end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_HeroConditional" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="[hero] Conditional" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-13.\n1. Run the action: it prints your active hero tree as &quot;name (id)&quot;, or None.\n2. Give an interface the Show condition [hero:&lt;your tree name&gt;]: it shows. [nohero:&lt;your tree name&gt;]: it hides.\n3. [hero:&lt;id from step 1&gt;], bare [hero], and [hero:Wrong/&lt;your tree name&gt;] all show.\n4. Swap hero trees in the talent frame WITHOUT reloading: the interface flips within about a second.\n5. Below level 71 (no hero tree): [hero] hides, [nohero] shows.\n6. Entering combat changes nothing and BugGrabber shows no Wise errors.\n7. WoW Forever: [hero:anything] simply hides, no Lua error." type="string"/>
+            <KeyValue key="action" value="print(&apos;hero tree:&apos;, Wise:GetConditionalValue(&apos;hero&apos;))" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_OpieWorldConditionals" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="[game] / [holiday] / [encounter] / [ownbuff] Conditionals" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-14 (OPie 8.10 parity). Calendar field shapes (eventID, iconTexture, start/end times) are unverified live; this is the check.\n1. Run the action: it prints the live values for game, holiday and encounter.\n2. Retail: game reads &quot;modern (...)&quot;; [game:modern] shows an interface, [game:forever] hides it. On a Timerunning character it reads remix. On WoW Forever it reads forever, plus /hc on a Hardcore realm.\n3. During a world event (Brewfest, Hallow&apos;s End, Winter Veil, ...): holiday lists its token, [holiday] and [holiday:&lt;token&gt;] show, [noholiday] hides. Outside one, holiday reads None and [holiday] hides.\n4. [holiday:darkmoon faire] shows while the Faire is on the calendar (title match), even though bare [holiday] ignores it.\n5. Pull any boss: the action reads &quot;name (id)&quot; mid-fight. After the kill or wipe it reads None again. [encounter:&lt;id&gt;] shows only during that boss (visibility applies once combat allows).\n6. Target a mob with your own DoT and a party member&apos;s DoT: [owndebuff:&lt;your DoT&gt;] shows, [owndebuff:&lt;their DoT&gt;] hides, [debuff:&lt;their DoT&gt;] shows.\n7. BugGrabber shows no Wise errors throughout." type="string"/>
+            <KeyValue key="action" value="for _, k in ipairs({&apos;game&apos;, &apos;holiday&apos;, &apos;encounter&apos;}) do print(k .. &apos;:&apos;, Wise:GetConditionalValue(k)) end" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_PingMacroFeedback" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Ping Macros: /pingspell, /pingitem, /ping Feedback" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-14 (OPie 8.10 parity).\n1. Make a slot from a custom macro: /pingspell &lt;a spell with a cooldown&gt;. It shows that spell&apos;s icon with a small ping marker in the bottom-left corner, and the cooldown swipe runs while the spell is on cooldown.\n2. Run out of the resource the spell needs (or stand out of its range): the icon stays lit, with no blue or red tint. You can still ping it.\n3. Press it in a party: a spell ping goes out. Spam it until the game refuses: the icon dims until the ping cooldown ends, then lights again by itself.\n4. Hover it: the tooltip is the spell&apos;s tooltip, and the cast-time text reads Inst / Off-GCD.\n5. /pingitem &lt;item ID in your bags&gt;: same, with the item&apos;s icon and cooldown.\n6. /ping [@target] attack: keeps the slot&apos;s own icon, shows the ping marker, and shows a swipe during the ping cooldown.\n7. In a raid with pings restricted to the leader (raid manager), as a non-leader: every ping slot dims. Lift the restriction: they light within a second.\n8. Change the slot back to /cast &lt;spell&gt;: the marker disappears and range/mana tints return. Run the action: it prints the resolved type, value and feedback (ping or nil) for the text in its first line; edit it to test other macros." type="string"/>
+            <KeyValue key="action" value="local text = &apos;/pingspell [@target] Hearthstone&apos;; print(&apos;resolve:&apos;, Wise:ResolveMacroData(text)); print(&apos;can ping now:&apos;, Wise.PingFeedback.CanPingNow(), &apos;permission:&apos;, Wise.PingFeedback.HasPingPermission(), &apos;cooldown:&apos;, select(2, Wise.PingFeedback.GetCooldown()))" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
+
+    <Frame name="WiseDebugTest_ConfiguratorGraphOnlySlot" inherits="WiseDebugTestsData">
+        <KeyValues>
+            <KeyValue key="testName" value="Slot Configurator: Nodes Survive a Slot With No Compiled Steps" type="string"/>
+            <KeyValue key="instructions" value="Added 2026-11-13. A slot can hold saved nodes but zero compiled steps. The configurator used to open such a slot as an empty canvas, and Apply then erased the nodes.\n1. Run the action (read-only): it lists every slot holding nodes but no compiled steps, with its node count.\n2. If one is listed, select that slot and open the Slot Configurator: its nodes appear on the canvas (not empty).\n3. Click Copy Nodes: the button reads &quot;Copied!&quot;, not &quot;No nodes in current slot to copy&quot;. Paste into an empty slot: the nodes and their connections appear there.\n4. Back on the original slot, click Apply/Back with Save, then run the action again: the node count for that slot is unchanged.\n5. Regression: on an ordinary slot, open, copy, paste into another slot, and Apply. Everything works as before, and BugGrabber shows no Wise errors." type="string"/>
+            <KeyValue key="action" value="local n = 0; for gname, g in pairs(WiseDB.groups or {}) do for i, s in pairs(g.actions or {}) do if type(s) == &apos;table&apos; and type(s.graph) == &apos;table&apos; and type(s.graph.nodes) == &apos;table&apos; and #s.graph.nodes &gt; 0 and #s == 0 then n = n + 1; print(&apos;graph-only slot:&apos;, gname, i, #s.graph.nodes .. &apos; nodes&apos;) end end end; print(&apos;graph-only slots found:&apos;, n)" type="string"/>
+            <KeyValue key="clearAction" value="" type="string"/>
+        </KeyValues>
+    </Frame>
 </Ui>

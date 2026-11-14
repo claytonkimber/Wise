@@ -30,21 +30,14 @@ local METRIC_IS_NUMERIC = IR.METRIC_IS_NUMERIC
 local DEFAULT_METRIC = IR.DEFAULT_METRIC
 local IsRetiredRule = IR.IsRetiredRule
 
+-- Secret-safe field readers from core/cooldown/SecretValues.lua (loaded first).
+local SafeReadField = Wise.CooldownUtil.SafeReadField
+local SafeReadFlag = Wise.CooldownUtil.SafeReadFlag
+
 -- Hoisted pcall bodies with scratch upvalues, handed to pcall BY REFERENCE so no
 -- closure is allocated per button per pass. They MUST live in the same file as
 -- the code that sets the scratch values: across a file boundary the setter would
 -- write a global while the probe read its own nil local.
-local _scdStart, _scdDuration, _scdNow
-local function SafeCheckCD()
-	if _scdDuration and _scdDuration > 1.5 then
-		local rem = (_scdStart + _scdDuration) - _scdNow
-		if rem > 0 then
-			return rem
-		end
-	end
-	return nil
-end
-
 local _usableSpellID
 local function SafeCheckUsable()
 	return (C_Spell.IsSpellUsable(_usableSpellID)) and true or false
@@ -122,6 +115,38 @@ local function SecretSafeNumber(v)
 	return nil
 end
 
+-- Class resource (Holy Power, Combo Points, ...). Hoisted pcall body with a
+-- scratch upvalue, like the probes above. UnitPower is looked up at call time (a
+-- plain global) so it can be stubbed, and so a client without it just reads as
+-- unknown. Whole units: for Soul Shards that is whole shards.
+--
+-- Blizzard's 12.0 notes say secondary resources are not secret while primary
+-- power is (UnitPower of mana/energy/rage IS secret on 12.1, measured). That is
+-- documentation, so the raw value still goes through SecretSafeNumber: a hidden
+-- or unreadable value is UNKNOWN (second return false), never 0 -- a 0 would
+-- light every "resource <= N" rule for the whole fight.
+local _resourcePowerType
+local function ResourceProbe()
+	return UnitPower("player", _resourcePowerType)
+end
+local function ReadClassResource()
+	local cr = IR.GetClassResource()
+	if not cr then
+		return 0, false -- this class has no secondary resource
+	end
+	_resourcePowerType = cr.powerType
+	local ok, raw = pcall(ResourceProbe)
+	_resourcePowerType = nil
+	if not ok then
+		return 0, false
+	end
+	local n = SecretSafeNumber(raw)
+	if n == nil then
+		return 0, false
+	end
+	return n, true
+end
+
 -- NOTE: no nested-field helper here on purpose. Indexing a SECRET TABLE (e.g.
 -- aura.points[1]) throws outright, and issecretvalue cannot catch that — it
 -- reports on values, not on whether their container can be indexed. That is
@@ -155,7 +180,7 @@ end
 -- aura may be hidden rather than missing — stacks/buff state become UNKNOWN
 -- (stacksKnown=false) instead of a false "0", and the instance handle learned
 -- out of combat is exposed for the sanctioned display-count path.
-local function ResolveSpellState(spellID, name, action)
+local function ResolveSpellState(spellID, name, action, wantResource)
 	local stacks = 0
 	local buffActive = false
 	local stacksKnown = true
@@ -189,31 +214,63 @@ local function ResolveSpellState(spellID, name, action)
 		-- stays nil.
 		stacksKnown = false
 	end
-	local charges = 0
+	-- Charges. currentCharges can be secret (only maxCharges and isActive are
+	-- documented NeverSecret), so a hidden count is UNKNOWN (chargesKnown=false),
+	-- never 0 -- a 0 lit every "charges <= N" rule for the whole fight. One case
+	-- is still decidable: with no recharge running the spell is at max charges.
+	-- A spell without charges has no info table and keeps the old 0.
+	local charges, chargesKnown = 0, true
 	if spellID and C_Spell and C_Spell.GetSpellCharges then
 		local info = C_Spell.GetSpellCharges(spellID)
 		if info then
-			-- Charge counts are secret in combat; a raw secret stored here would
-			-- blow up the bare comparisons in EvaluateNumericRule. (No direct nil
-			-- check on the field — SecretSafeNumber handles nil and secrets alike.)
-			charges = SecretSafeNumber(info.currentCharges) or 0
+			local current = SecretSafeNumber(SafeReadField(info, "currentCharges"))
+			if current then
+				charges = current
+			else
+				local maxCharges = SecretSafeNumber(SafeReadField(info, "maxCharges"))
+				if maxCharges and SafeReadFlag(info, "isActive") == false then
+					charges = maxCharges
+				else
+					chargesKnown = false
+				end
+			end
 		end
 	end
+	-- Class resource: read ONCE here, only when one of this entry's rules watches
+	-- it (entry.usesResource, set by RebuildIndicatorRules). Not read means
+	-- unknown, so a stale flag can never produce a confident 0.
+	local resource, resourceKnown = 0, false
+	if wantResource then
+		resource, resourceKnown = ReadClassResource()
+	end
 	local known = spellID and Wise:IsActionKnown("spell", spellID) or false
-	local onCooldown = spellID and Wise:IsActionOnCooldown("spell", spellID, action) or false
+	-- cdKnown=false: the client hid both the times and the flags (see
+	-- Wise:IsActionOnCooldown). Cooldown-derived rules then refuse to match.
+	local onCooldown, cdKnown = false, true
+	if spellID then
+		onCooldown, cdKnown = Wise:IsActionOnCooldown("spell", spellID, action)
+	end
 	-- Seconds until usable again (to schedule a precise off-cooldown wake — see below)
 	-- plus the cooldown START time, which we use to detect a FRESH cooldown between
 	-- samples: when a spell is recast (or proc-reset) the start time advances, telling
 	-- us a new available-edge is coming even if our sampling never caught the trough.
+	-- Both come from cleaned numbers: a secret time reads as nil here, so no wake is
+	-- scheduled and cdStart stays 0 (no recast edge) rather than a raw secret
+	-- escaping into Paint.lua's comparisons.
 	local cdRemaining, cdStart = nil, 0
 	if spellID and C_Spell and C_Spell.GetSpellCooldown then
 		local ci = C_Spell.GetSpellCooldown(spellID)
-		if ci and ci.startTime then
-			cdStart = ci.startTime
-			_scdStart, _scdDuration, _scdNow = ci.startTime, ci.duration, GetTime()
-			local ok, rem = pcall(SafeCheckCD)
-			if ok and rem then
-				cdRemaining = rem
+		if ci then
+			local start = SecretSafeNumber(SafeReadField(ci, "startTime"))
+			local duration = SecretSafeNumber(SafeReadField(ci, "duration"))
+			if start and duration then
+				cdStart = start
+				if duration > 1.5 then
+					local rem = (start + duration) - GetTime()
+					if rem > 0 then
+						cdRemaining = rem
+					end
+				end
 			end
 		end
 	end
@@ -241,11 +298,19 @@ local function ResolveSpellState(spellID, name, action)
 		stacksKnown = stacksKnown,
 		countInstID = countInstID,
 		charges = charges,
+		chargesKnown = chargesKnown,
+		resource = resource,
+		resourceKnown = resourceKnown,
 		buffActive = buffActive,
 		onCooldown = onCooldown,
+		cdKnown = cdKnown,
 		cdRemaining = cdRemaining,
 		cdStart = cdStart,
-		available = known and usable,
+		-- "Available (off CD)" needs the cooldown too: IsSpellUsable judges
+		-- resources and requirements, not cooldown, so a usable spell can still be
+		-- cooling down. Same pairing as AudioCues' "spell ready" trigger. An
+		-- unknown cooldown is not available -- a "press me" cue must not guess.
+		available = (known and usable and cdKnown and not onCooldown) and true or false,
 	}
 end
 
@@ -256,11 +321,19 @@ local function RuleMatches(rule, st)
 	end
 	local metric = RuleMetric(rule)
 	if metric == "charges" then
+		if not st.chargesKnown then
+			return false -- hidden count: no threshold is provable
+		end
 		return Wise:EvaluateNumericRule(st.charges, rule.operator, rule.value)
+	elseif metric == "resource" then
+		if not st.resourceKnown then
+			return false -- hidden value, or a class with no resource: unprovable
+		end
+		return Wise:EvaluateNumericRule(st.resource, rule.operator, rule.value)
 	elseif metric == "available" then
 		return st.available == true
 	elseif metric == "cooldown" then
-		return st.onCooldown == true
+		return st.cdKnown and st.onCooldown == true
 	elseif metric == "buff_active" then
 		-- buffActive=true is provable even for a hidden aura (instance read hit);
 		-- when state is unknown (hidden, no handle) this stays false — unprovable.
@@ -284,6 +357,8 @@ local function RuleDistance(rule, st)
 	local metric = RuleMetric(rule)
 	if metric == "charges" then
 		return math.abs(st.charges - (tonumber(rule.value) or 0))
+	elseif metric == "resource" then
+		return math.abs(st.resource - (tonumber(rule.value) or 0))
 	end
 	return 0
 end
@@ -312,7 +387,7 @@ local function ResolveEntry(entry)
 	if entry.condition and Wise.EvalConditionExact and not Wise:EvalConditionExact(entry.condition) then
 		return nil, nil
 	end
-	local st = ResolveSpellState(entry.spellID, entry.name, entry.action)
+	local st = ResolveSpellState(entry.spellID, entry.name, entry.action, entry.usesResource)
 	return FindMatchedRule(entry.rules, st), st
 end
 

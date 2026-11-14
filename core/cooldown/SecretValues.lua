@@ -219,12 +219,38 @@ local function CleanSecretNumber(val)
 	return nil
 end
 
+-- Helper: read a boolean field, or nil when it is missing, not a boolean, or
+-- secret. nil means "unknown" -- never coerce it to false.
+--
+-- This exists for the cooldown FLAGS. Blizzard's generated API docs (12.1.5)
+-- mark SpellCooldownInfo.isEnabled / isActive / isOnGCD and
+-- SpellChargeInfo.isActive / maxCharges as NeverSecret, while the times and
+-- currentCharges may be secret. So in restricted content "is it on cooldown?"
+-- stays answerable even when "for how long?" is not. The secret check stays
+-- anyway: if Blizzard ever revises that list, a hidden flag degrades to
+-- "unknown" instead of throwing on the truth test.
+local function SafeReadFlag(tbl, key)
+	local ok, val = pcall(rawIndex, tbl, key)
+	if not ok then
+		return nil
+	end
+	local svOk, isSecret = pcall(checkSecret, val)
+	if not svOk or isSecret then
+		return nil
+	end
+	if type(val) ~= "boolean" then
+		return nil
+	end
+	return val
+end
+
 -- Published for core/GUI.lua, which binds all of these as upvalues.
 local CD = Wise.CooldownUtil or {}
 Wise.CooldownUtil = CD
 CD.FormatWiseCountdownText = FormatWiseCountdownText
 CD.GetWiseCountdownFormatter = GetWiseCountdownFormatter
 CD.SafeReadField = SafeReadField
+CD.SafeReadFlag = SafeReadFlag
 CD.CleanSecretNumber = CleanSecretNumber
 CD.COUNTDOWN_FORMAT_DEFAULT = COUNTDOWN_FORMAT_DEFAULT
 CD.COUNTDOWN_DECIMAL_THRESHOLD = COUNTDOWN_DECIMAL_THRESHOLD

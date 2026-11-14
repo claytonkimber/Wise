@@ -1451,6 +1451,43 @@ function Wise:RepairCompiledSlotFromGraph(slotActions)
 	return true
 end
 
+-- Independent copy of a stored node graph: fresh node/connection tables, and
+-- node conditions with the old doubled "[[...]]" brackets collapsed. Tolerates a
+-- graph missing either list. Used both to load a slot into the configurator and
+-- to fill the Copy Nodes clipboard.
+local function CloneNodeGraph(srcGraph)
+	if not srcGraph then
+		return nil
+	end
+	local cloned = {
+		nodes = {},
+		connections = {},
+	}
+	if srcGraph.nodes then
+		for _, n in ipairs(srcGraph.nodes) do
+			local cond = n.condition or ""
+			if cond ~= "" then
+				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
+			end
+			tinsert(cloned.nodes, {
+				id = n.id,
+				action = ShallowCopyAction(n.action),
+				condition = cond,
+			})
+		end
+	end
+	if srcGraph.connections then
+		for _, c in ipairs(srcGraph.connections) do
+			tinsert(cloned.connections, {
+				from = c.from,
+				to = c.to,
+				type = c.type,
+			})
+		end
+	end
+	return cloned
+end
+
 local function ImportSlotData(groupName, slotIdx)
 	local state = configuratorState
 	state.groupName = groupName
@@ -1487,7 +1524,14 @@ local function ImportSlotData(groupName, slotIdx)
 		state.rowConditions[1] = ""
 		state.rowMods[1] = {}
 		state.rowExclusive[1] = false
-		state.graph = { nodes = {}, connections = {} }
+		-- A slot can hold a stored graph with ZERO compiled steps: the compiler
+		-- emits nothing for a path with no slash command, and an older compiler
+		-- dropped whole macros (see RepairCompiledSlotFromGraph). The graph is
+		-- the source of truth, so load it anyway. Loading an empty canvas here
+		-- hid the author's nodes, made Copy Nodes report "No nodes", and the
+		-- next Apply overwrote the stored graph with that empty canvas.
+		state.graph = CloneNodeGraph(actions.graph) or { nodes = {}, connections = {} }
+		state.isDirty = false
 		return
 	end
 
@@ -1568,25 +1612,7 @@ local function ImportSlotData(groupName, slotIdx)
 	end
 
 	if actions.graph then
-		state.graph = { nodes = {}, connections = {} }
-		for _, n in ipairs(actions.graph.nodes) do
-			local cond = n.condition or ""
-			if cond ~= "" then
-				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
-			end
-			tinsert(state.graph.nodes, {
-				id = n.id,
-				action = ShallowCopyAction(n.action),
-				condition = cond,
-			})
-		end
-		for _, c in ipairs(actions.graph.connections) do
-			tinsert(state.graph.connections, {
-				from = c.from,
-				to = c.to,
-				type = c.type,
-			})
-		end
+		state.graph = CloneNodeGraph(actions.graph)
 	else
 		state.graph = ConvertGridToGraph()
 	end
@@ -5334,39 +5360,6 @@ local function GetCurrentSlotActions()
 		return nil
 	end
 	return group.actions[slotIdx]
-end
-
-local function CloneNodeGraph(srcGraph)
-	if not srcGraph then
-		return nil
-	end
-	local cloned = {
-		nodes = {},
-		connections = {},
-	}
-	if srcGraph.nodes then
-		for _, n in ipairs(srcGraph.nodes) do
-			local cond = n.condition or ""
-			if cond ~= "" then
-				cond = cond:gsub("^%[%[+", "["):gsub("%]+$", "]")
-			end
-			tinsert(cloned.nodes, {
-				id = n.id,
-				action = ShallowCopyAction(n.action),
-				condition = cond,
-			})
-		end
-	end
-	if srcGraph.connections then
-		for _, c in ipairs(srcGraph.connections) do
-			tinsert(cloned.connections, {
-				from = c.from,
-				to = c.to,
-				type = c.type,
-			})
-		end
-	end
-	return cloned
 end
 
 local function UpdatePasteButtonState()

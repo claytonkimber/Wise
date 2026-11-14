@@ -202,8 +202,10 @@ proof of a working addon, and a red one is not always your bug.
   this file claimed one existed (82/82 on 12.0.7 vs 80/82 on 12.1.0) and that
   was wrong; no such test file exists in the repo.** `run-tests` is not pinned
   to any particular image tag; use whichever tag `BLIZZARD_UI_TAG` currently
-  defaults to (verified 2026-11-07: `run-tests Wise` scores identically, 93/102,
-  on both `12.0.7` and `12.1.5`). `Compat.hasAuraWidgets` (`core/Compat121.lua`)
+  defaults to (verified 2026-11-07: identical scores on both `12.0.7` and
+  `12.1.5`). As of 2026-11-13 the suite is fully green on `12.1.5`: 155/155. A
+  failure is now a real signal, so don't accept a "pre-existing" red count again.
+  `Compat.hasAuraWidgets` (`core/Compat121.lua`)
   is `false` on both images regardless of tag — the sim does not implement
   `AuraContainerTemplate`'s `AddAuraSlot`, a sim capability gap (see "Probe the
   capability, not the template name" above), not a version difference. If you
@@ -216,6 +218,25 @@ proof of a working addon, and a red one is not always your bug.
 - **Never stub the global `print` in a test helper.** The runner reports failures
   through it, so a helper that silences `print` swallows every later file's
   failure output and makes a red suite look green.
+- **Files in `tests/` share one Lua state and run in alphabetical order, so a
+  global a file leaves behind breaks every LATER file.** Assign globals only
+  inside a helper that restores them, even on error: `pcall` the body, restore,
+  re-raise (`withVehicleEnv` in `vehicle_bar_macros.lua` and `withBarState` in
+  `override_bar_exclusive.lua` show the pattern). Never assign at file scope.
+  The sim also loads EVERY `.lua` in `tests/`, so a standalone `lua5.1` script
+  does not belong there.
+  - Measured 2026-11-13: `test_vehicle_bar_fix.lua` was a standalone script. At
+    file scope it overwrote `CreateFrame`, `UIParent`, `C_Spell` and more, then
+    died on `loadfile` (nil in the sim). All five `tooltips.lua` tests failed
+    behind it, though they pass alone. Both read as "pre-existing failures" for
+    months. When one file fails, run it alone before debugging it.
+- **Find result lines with grep, not `tail`.** A passing file's `✓` line can be
+  printed mid-output, between blocks of Blizzard noise (`addon_magic_state.lua`
+  did this), so a file missing from the tail has not necessarily failed. The
+  final `N tests, X passed, Y failed` line is the authority.
+- **TestFramework's `assert*` helpers take no message argument.** Detail passed
+  as an extra argument is silently dropped. Raise your own `error(msg, 2)` where
+  the failing value matters, as `check()` in `vehicle_bar_macros.lua` does.
 - **`--exec-lua` is the fastest way to see a failure.** It is a **global** flag,
   not a `run-tests` option, so pair it with a cheap subcommand:
   `--exec-lua '<code>' dump-tree -f NoSuchFrame`. Its `print` output *does*
@@ -469,7 +490,7 @@ Insecure UI updates are safe (Rule 10), but a `C_Timer.NewTicker` that re-runs a
 
 3. **Skip in combat, flush on exit.** Refreshes that touch secure attributes no-op in combat anyway — don't even schedule them while `InCombatLockdown()`; register `PLAYER_REGEN_ENABLED` to flush a single refresh on combat exit.
 
-4. **Poll only the genuinely event-less.** The only inputs with no event are modifier keys (`[mod:shift]`). Flag just those groups (`f._needsPoll`) and serve them from one shared slow ticker (0.3s), not a ticker per group. Groups without modifier conditions poll zero times.
+4. **Poll only the genuinely event-less.** Three inputs have no event: modifier keys (`[mod:shift]`), spell range, and Blizzard's Assisted Combat suggestion. Flag just the groups with modifier conditions (`f._needsPoll`) and serve them from one shared slow ticker (0.3s), not a ticker per group. Groups without modifier conditions poll zero times. Range and the suggestion each have ONE gated driver frame in `core/effects/`; see "Effect Drivers" below for the gating that keeps them idle.
 
 5. **Gate per-frame `OnUpdate` on visibility.** A mouse-follow / cursor-tracking `OnUpdate` must `if not frame:IsShown() then return end` — `OnShow` handles positioning on appear, so tracking while hidden is pure waste.
 
@@ -897,13 +918,18 @@ it can be read from SavedVariables after a `/reload`.
 
 ### Custom Conditionals: the Three-Table Rule
 
-Wise implements ~58 visibility tokens WoW's secure state driver does not
+Wise implements ~63 visibility tokens WoW's secure state driver does not
 understand (`[bank]`, `[mailbox]`, `[zoneability]`, `[undermouse]`,
-`[available]`, plus ~35 ported from OPie: zone, instance/in, race, buff/debuff,
-moving, ready, combo, and so on).
+`[available]`, plus ~40 ported from OPie: zone, instance/in, race, buff/debuff,
+ownbuff/owndebuff, holiday, encounter, moving, ready, combo, and so on).
+World-state tokens that keep their own event-fed caches (game flavour,
+holiday, encounter) live in `core/conditionals/WorldEvents.lua`. OPie's
+`[flag:]` is deliberately not ported: it depends on OPie's own secure
+`/setflag` macro commands, which Wise's Blizzard-run macrotext cannot add.
 
 - **Three tables must agree, and only one of them actually dispatches.**
-  `CUSTOM_VIS_CONDITIONALS` (`core/GUI.lua`) is the authority — a token **must**
+  `CUSTOM_VIS_CONDITIONALS` (`core/conditionals/Vocabulary.lua`; it lived in
+  `core/GUI.lua` before the 2026-09-09 extraction) is the authority — a token **must**
   be listed there to have any effect. `VALID_CONDITIONALS`
   (`core/Conditionals.lua`) accepts/rejects in the editor, and
   `extendedConditionals` is the displayed reference list. **A token present in
@@ -929,12 +955,20 @@ moving, ready, combo, and so on).
   *sampled* at `PLAYER_REGEN_DISABLED` and frozen for its duration
   (`Wise.SampleCombatConditionals`), then released at `PLAYER_REGEN_ENABLED`.
   Each `pcall` is isolated so one bad token cannot break combat entry.
+- **`[hero]` is cached and event-invalidated, NOT combat-sampled.** It reads
+  `C_ClassTalents.GetActiveHeroTalentSpec` plus the tree name, caches both, and
+  drops the cache on `TRAIT_CONFIG_UPDATED` / `PLAYER_SPECIALIZATION_CHANGED` /
+  `ACTIVE_COMBAT_CONFIG_CHANGED` / `PLAYER_ENTERING_WORLD` (`heroEventFrame` in
+  `core/conditionals/Predicates.lua`). The tree cannot change in combat, so
+  freezing it would add nothing. Real subTreeID values and the Forever client's
+  behaviour are unverified as of 2026-11-13; the options tab's `hero:name` row
+  shows the live "name (id)".
 - **`[available]` is provider-backed.** A module owning a dynamically-populated
   interface registers `Wise:RegisterAvailabilityProvider(groupName, fn)`;
   interfaces with no registered provider report available whenever they hold any
   action, so `[available]` stays meaningful on ordinary bars too.
 
-### Indicator Rules and Withdrawn Features (`modules/IndicatorRules.lua`)
+### Indicator Rules and Withdrawn Features (`modules/indicators/`)
 
 Per-action rules (`action.indicatorRules`: operator/value/color/glow/sound)
 matched against that action's own live state — the generalisation of the old
@@ -945,13 +979,101 @@ global, Resto-only "Abundance Colors, Glows & Sounds".
   colour/glow/sound can never fire in combat — the only time it would matter.
   **Shipping it would produce an indicator that silently does nothing in a raid,
   so the option is withdrawn rather than shipped broken.** The stack count still
-  *displays* on the button corner; only branching on it is gone. Everything
-  cooldown- or usability-derived (charges, available, on-cooldown, buff
-  active/missing) reads fine in combat and is unaffected.
+  *displays* on the button corner; only branching on it is gone.
   **Do not "restore" the stacks metric** without first proving a readable source.
+- **The cooldown metrics are only partly secrecy-proof; see "Cooldown and Charge
+  Secrecy (12.x)" below.** An earlier version of this section said charges,
+  available and on-cooldown "read fine in combat". That was never measured, and
+  Blizzard's API docs say otherwise, so it was removed. A hidden charge count is
+  now *unknown* (no charges rule matches) instead of 0.
+- **The "class resource" metric (added 2026-11-13) reads SECONDARY resources
+  only.** It covers Combo Points, Holy Power, Chi, Soul Shards, Arcane Charges,
+  Essence and Runes, through `UnitPower("player", type)`. Blizzard's 12.0 notes
+  call these non-secret. That is NOT measured, so every read goes through
+  `SecretSafeNumber`, and a hidden value is unknown (`resourceKnown=false`, no
+  rule matches), never 0. Primary power (mana, energy, rage) is secret on 12.1
+  (measured, see "Self-Resource Secrecy") and is deliberately not offered.
+  `UNIT_POWER_UPDATE` fires constantly, so `Paint.lua` repaints only when the
+  payload token is the class's resource token AND some built rule uses the
+  metric (`IR.anyResourceRule`). Unverified: whether `UnitPower(Runes)` returns
+  the count of READY runes.
 - `Wise.INDICATOR_RULES_REV` is bumped on behaviour changes so an in-game probe
   can confirm which revision the client actually loaded — invaluable when a fix
   appears not to work and the real cause is a stale load.
+
+### Cooldown and Charge Secrecy (12.x)
+
+**Source: Blizzard's generated API docs for 12.1.5 (build 70529), read
+2026-11-13. These docs are not measured in-client; the secret cases below have
+not yet been seen live, so verify with a probe before building on them.**
+
+- `C_Spell.GetSpellCooldown`: `startTime`/`duration` are
+  *SecretWhenCooldownsRestricted*, while `isEnabled`, `isActive` and `isOnGCD`
+  are **NeverSecret**. So "is it on cooldown?" stays answerable when "for how
+  long?" is not. `isOnGCD` is documented as trustworthy only inside
+  `SPELL_UPDATE_COOLDOWN`; cross-check it with the GCD spell 61304's own
+  `isActive` (no GCD running means an active cooldown is the spell's own).
+- `C_Spell.GetSpellCharges`: only `maxCharges` and `isActive` are NeverSecret.
+  `currentCharges` can hide. One case stays decidable: with no recharge running
+  (`isActive == false`), the spell is at `maxCharges`.
+- Individual spells can be flagged never- or always-secret, which overrides the
+  restriction. So a spell reading fine in one test proves nothing about another.
+- **The bug this fixed (2026-11-13):** `Wise:IsActionOnCooldown`
+  (`modules/Actions.lua`) compared the times inside a `pcall`. A secret made the
+  comparison throw, and the function answered "off cooldown" for every spell.
+  The waterfall icon, dynamic-group cooldown filtering, the cooldown snapshots
+  and the indicator `available`/`cooldown` metrics all believed it. It now falls
+  back to the flags and returns `onCooldown, known`. Callers that need certainty
+  (indicator rules) check `known`; the rest keep the old false-when-unknown
+  default. Read flags with `Wise.CooldownUtil.SafeReadFlag`, which returns nil
+  for missing, non-boolean or secret values (`core/cooldown/SecretValues.lua`).
+- **Never let a raw cooldown field escape.** `ResolveSpellState` used to store
+  `ci.startTime` unread into `st.cdStart` and truth-test it outside any `pcall`.
+  It now stores only cleaned numbers; a hidden start reads as 0, which means
+  "no recast edge".
+
+### Effect Drivers: Suggestion Glow and Range Tint (`core/effects/`)
+
+Added 2026-11-13. Both features are display-only, so they run in combat (Rule
+10), and both are documented exceptions to Rule 12's no-polling default.
+
+- **Neither input has an event, so each has one gated driver frame.** Its
+  OnUpdate runs only while the frame is shown; hiding it is the "off" state.
+  - `AssistGlow.lua` runs only while the setting is on for some interface,
+    `C_AssistedCombat.IsAvailable()` is true, and the player is in combat or has
+    an attackable target.
+  - `RangeTint.lua` runs only while a target exists and the tint is on somewhere.
+  - Both repaint only buttons whose state changed, and allocate nothing per
+    pass.
+  - Blizzard's own AssistedCombatManager polls the same way. It runs an OnUpdate
+    every `assistedCombatIconUpdateRate` seconds (CVar, clamped 0..1); read from
+    wow-ui-source `Blizzard_ActionBar/Mainline/AssistedCombatManager.lua`,
+    2026-11-13. No event fires when the suggestion changes.
+- **`GetNextCastSpell(false)`, never `true`.** Blizzard passes `true`
+  (`checkForVisibleButton`), which only returns spells on Blizzard's VISIBLE
+  action buttons. Wise often hides those bars, so `true` would make the
+  suggestion vanish.
+- **Range tint has one painter.** `RangeTint.lua` only sets
+  `btn._wiseOutOfRange` and calls `Wise:UpdateButtonUsability(btn)` when the
+  value flips. The usability pass decides the colour: red beats out-of-mana
+  blue, and the unusable branch now resets the tint so a dimmed icon cannot
+  stay red. Do not set icon colours from the driver.
+- **Items are not range-checked.** `C_Item.IsItemInRange` is restricted in
+  combat for many units. The check covers spells and action-bar slots only.
+- **Glow styles come from LibCustomGlow-1.0** (`Libs/LibCustomGlow-1.0`, MIT,
+  minor 25), wrapped by `core/effects/StyledGlow.lua`.
+  - It is the unmodified upstream release, sha256 `d7ddb97f9cfa649f...`
+    (identical in BigWigs, EnhanceQoL, WarpDeplete, ProcGlows). Do NOT
+    "update" it from RotationMaster's copy, which is a modified build at the
+    same minor version.
+  - Styled glows are keyed per driver and coexist with the proc overlay.
+    LibCustomGlow's ButtonGlow is one-per-frame (no key), so only one driver
+    may use the "button" style.
+- **Per-interface effect settings** (`showAssistGlow`, `assistGlowStyle`,
+  `rangeTint`) go through `Wise.Effects.GroupSetting`. It uses the same
+  tri-state override as `showGlows`, deliberately NOT added to
+  `GetGroupDisplaySettings`. That function returns ~20 values positionally,
+  and every new one shifts its call sites.
 
 ### Gamepad / ConsolePort Support (`core/Bindings.lua`)
 

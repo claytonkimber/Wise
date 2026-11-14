@@ -277,12 +277,35 @@ indicatorFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
 -- aura/cooldown event and the sound is late/missed).
 indicatorFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 indicatorFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-indicatorFrame:SetScript("OnEvent", function(_, event)
-	if event == "PLAYER_SPECIALIZATION_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+-- Class resource (Holy Power, Combo Points, ...). UNIT_POWER_UPDATE fires
+-- constantly for energy/mana, so OnEvent filters on the resource's power token
+-- and on whether any built rule uses the metric. Runes change on
+-- RUNE_POWER_UPDATE instead. No ticker (Rule 12).
+indicatorFrame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+indicatorFrame:RegisterEvent("RUNE_POWER_UPDATE")
+local function OnIndicatorEvent(_, event, _, powerType)
+	if event == "UNIT_POWER_UPDATE" or event == "RUNE_POWER_UPDATE" then
+		local cr = IR.GetClassResource()
+		if not (IR.anyResourceRule and cr) then
+			return
+		end
+		if event == "UNIT_POWER_UPDATE" then
+			if powerType ~= cr.token then
+				return
+			end
+		elseif cr.token ~= "RUNES" then
+			return
+		end
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		IR.RefreshClassResource()
+		Wise:RebuildIndicatorRules()
+	elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
 		Wise:RebuildIndicatorRules()
 	end
 	Wise:ScheduleIndicatorUpdate()
-end)
+end
+indicatorFrame:SetScript("OnEvent", OnIndicatorEvent)
+IR.OnIndicatorEvent = OnIndicatorEvent
 
 -- The button visuals can change out from under us on spell swaps / cooldown passes;
 -- repaint then too (coalesced). Mirrors the old Abundance hooks.
